@@ -1,0 +1,2106 @@
+[
+  {
+    "name": "Barbell Back Squat",
+    "bodyPart": "Legs",
+    "category": "Strength",
+    "equipment": "Barbell",
+    "cuesSetup": [
+      "Feet about shoulder-width, toes slightly out",
+      "Brace hard before the first rep",
+      "Keep ribs stacked over pelvis"
+    ],
+    "cuesExecution": [
+      "Sit between the hips; keep chest tall",
+      "Knees track in line with toes",
+      "Control the descent; drive through mid-foot"
+    ]
+  },
+  {
+    "name": "Front Squat",
+    "bodyPart": "Legs",
+    "category": "Strength",
+    "equipment": "Barbell",
+    "cuesSetup": [
+      "Feet about shoulder-width, toes slightly out",
+      "Brace hard before the first rep",
+      "Keep ribs stacked over pelvis"
+    ],
+    "cuesExecution": [
+      "Sit between the hips; keep chest tall",
+      "Knees track in line with toes",
+      "Control the descent; drive through mid-foot",
+      "Keep torso upright; avoid dumping forward"
+    ]
+  },
+  {
+    "name": "Goblet Squat",
+    "bodyPart": "Legs",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Feet about shoulder-width, toes slightly out",
+      "Brace hard before the first rep",
+      "Keep ribs stacked over pelvis"
+    ],
+    "cuesExecution": [
+      "Sit between the hips; keep chest tall",
+      "Knees track in line with toes",
+      "Control the descent; drive through mid-foot"
+    ]
+  },
+  {
+    "name": "Leg Press",
+    "bodyPart": "Legs",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Feet about shoulder-width, toes slightly out",
+      "Brace hard before the first rep",
+      "Keep ribs stacked over pelvis"
+    ],
+    "cuesExecution": [
+      "Sit between the hips; keep chest tall",
+      "Knees track in line with toes",
+      "Control the descent; drive through mid-foot"
+    ]
+  },
+  {
+    "name": "Hack Squat",
+    "bodyPart": "Legs",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Feet about shoulder-width, toes slightly out",
+      "Brace hard before the first rep",
+      "Keep ribs stacked over pelvis"
+    ],
+    "cuesExecution": [
+      "Sit between the hips; keep chest tall",
+      "Knees track in line with toes",
+      "Control the descent; drive through mid-foot"
+    ]
+  },
+  {
+    "name": "Bulgarian Split Squat",
+    "bodyPart": "Legs",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Feet about shoulder-width, toes slightly out",
+      "Brace hard before the first rep",
+      "Keep ribs stacked over pelvis"
+    ],
+    "cuesExecution": [
+      "Sit between the hips; keep chest tall",
+      "Knees track in line with toes",
+      "Control the descent; drive through mid-foot"
+    ]
+  },
+  {
+    "name": "Walking Lunge",
+    "bodyPart": "Legs",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Tall torso; brace",
+      "Front foot flat; knee tracks over toes",
+      "Use a stride that lets you control depth"
+    ],
+    "cuesExecution": [
+      "Lower under control; back knee toward floor",
+      "Drive through front heel/mid-foot",
+      "Keep hips square; don’t collapse inward"
+    ]
+  },
+  {
+    "name": "Reverse Lunge",
+    "bodyPart": "Legs",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Tall torso; brace",
+      "Front foot flat; knee tracks over toes",
+      "Use a stride that lets you control depth"
+    ],
+    "cuesExecution": [
+      "Lower under control; back knee toward floor",
+      "Drive through front heel/mid-foot",
+      "Keep hips square; don’t collapse inward"
+    ]
+  },
+  {
+    "name": "Step Up",
+    "bodyPart": "Legs",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Tall torso; brace",
+      "Front foot flat; knee tracks over toes",
+      "Use a stride that lets you control depth"
+    ],
+    "cuesExecution": [
+      "Lower under control; back knee toward floor",
+      "Drive through front heel/mid-foot",
+      "Keep hips square; don’t collapse inward"
+    ]
+  },
+  {
+    "name": "Romanian Deadlift",
+    "bodyPart": "Legs",
+    "category": "Strength",
+    "equipment": "Barbell",
+    "cuesSetup": [
+      "Feet hip-width; bar/weight close to shins",
+      "Hinge back to find hamstring tension",
+      "Brace and set lats (pull shoulders down/back)"
+    ],
+    "cuesExecution": [
+      "Push the floor away; keep the weight close",
+      "Hips and shoulders rise together",
+      "Stand tall without overextending the low back",
+      "Soft knees; hinge until hamstrings limit you"
+    ]
+  },
+  {
+    "name": "Deadlift",
+    "bodyPart": "Legs",
+    "category": "Strength",
+    "equipment": "Barbell",
+    "cuesSetup": [
+      "Feet hip-width; bar/weight close to shins",
+      "Hinge back to find hamstring tension",
+      "Brace and set lats (pull shoulders down/back)"
+    ],
+    "cuesExecution": [
+      "Push the floor away; keep the weight close",
+      "Hips and shoulders rise together",
+      "Stand tall without overextending the low back"
+    ]
+  },
+  {
+    "name": "Trap Bar Deadlift",
+    "bodyPart": "Legs",
+    "category": "Strength",
+    "equipment": "Other",
+    "cuesSetup": [
+      "Feet hip-width; bar/weight close to shins",
+      "Hinge back to find hamstring tension",
+      "Brace and set lats (pull shoulders down/back)"
+    ],
+    "cuesExecution": [
+      "Push the floor away; keep the weight close",
+      "Hips and shoulders rise together",
+      "Stand tall without overextending the low back"
+    ]
+  },
+  {
+    "name": "Sumo Deadlift",
+    "bodyPart": "Legs",
+    "category": "Strength",
+    "equipment": "Barbell",
+    "cuesSetup": [
+      "Feet hip-width; bar/weight close to shins",
+      "Hinge back to find hamstring tension",
+      "Brace and set lats (pull shoulders down/back)"
+    ],
+    "cuesExecution": [
+      "Push the floor away; keep the weight close",
+      "Hips and shoulders rise together",
+      "Stand tall without overextending the low back"
+    ]
+  },
+  {
+    "name": "Hip Thrust",
+    "bodyPart": "Legs",
+    "category": "Strength",
+    "equipment": "Barbell",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Glute Bridge",
+    "bodyPart": "Legs",
+    "category": "Strength",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Leg Extension",
+    "bodyPart": "Legs",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Elbows fixed; shoulders down",
+      "Brace core; avoid flaring ribs",
+      "Pick a weight you can control"
+    ],
+    "cuesExecution": [
+      "Extend fully without locking painfully",
+      "Slow eccentric; keep elbows in",
+      "Avoid using momentum"
+    ]
+  },
+  {
+    "name": "Seated Leg Curl",
+    "bodyPart": "Legs",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Stand tall; ribs down",
+      "Elbows pinned near sides",
+      "Grip hard; wrists neutral"
+    ],
+    "cuesExecution": [
+      "Curl without swinging",
+      "Squeeze at the top; slow lower",
+      "Stop short of elbow pain"
+    ]
+  },
+  {
+    "name": "Lying Leg Curl",
+    "bodyPart": "Legs",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Stand tall; ribs down",
+      "Elbows pinned near sides",
+      "Grip hard; wrists neutral"
+    ],
+    "cuesExecution": [
+      "Curl without swinging",
+      "Squeeze at the top; slow lower",
+      "Stop short of elbow pain"
+    ]
+  },
+  {
+    "name": "Standing Calf Raise",
+    "bodyPart": "Legs",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Full range: stretch at bottom",
+      "Use support for balance",
+      "Keep knee position consistent"
+    ],
+    "cuesExecution": [
+      "Pause at the top; squeeze calves",
+      "Slow on the way down",
+      "Don’t bounce"
+    ]
+  },
+  {
+    "name": "Seated Calf Raise",
+    "bodyPart": "Legs",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Full range: stretch at bottom",
+      "Use support for balance",
+      "Keep knee position consistent"
+    ],
+    "cuesExecution": [
+      "Pause at the top; squeeze calves",
+      "Slow on the way down",
+      "Don’t bounce"
+    ]
+  },
+  {
+    "name": "Tibialis Raise",
+    "bodyPart": "Legs",
+    "category": "Strength",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Barbell Bench Press",
+    "bodyPart": "Chest",
+    "category": "Strength",
+    "equipment": "Barbell",
+    "cuesSetup": [
+      "Shoulder blades down and back",
+      "Wrists stacked; grip the handle/bar tight",
+      "Feet planted; light arch allowed"
+    ],
+    "cuesExecution": [
+      "Lower with control; elbows ~45° from torso",
+      "Press up and back; keep shoulders packed",
+      "Stop 1 rep before form breaks"
+    ]
+  },
+  {
+    "name": "Incline Barbell Bench Press",
+    "bodyPart": "Chest",
+    "category": "Strength",
+    "equipment": "Barbell",
+    "cuesSetup": [
+      "Shoulder blades down and back",
+      "Wrists stacked; grip the handle/bar tight",
+      "Feet planted; light arch allowed"
+    ],
+    "cuesExecution": [
+      "Lower with control; elbows ~45° from torso",
+      "Press up and back; keep shoulders packed",
+      "Stop 1 rep before form breaks"
+    ]
+  },
+  {
+    "name": "Dumbbell Bench Press",
+    "bodyPart": "Chest",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Shoulder blades down and back",
+      "Wrists stacked; grip the handle/bar tight",
+      "Feet planted; light arch allowed"
+    ],
+    "cuesExecution": [
+      "Lower with control; elbows ~45° from torso",
+      "Press up and back; keep shoulders packed",
+      "Stop 1 rep before form breaks"
+    ]
+  },
+  {
+    "name": "Incline Dumbbell Bench Press",
+    "bodyPart": "Chest",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Shoulder blades down and back",
+      "Wrists stacked; grip the handle/bar tight",
+      "Feet planted; light arch allowed"
+    ],
+    "cuesExecution": [
+      "Lower with control; elbows ~45° from torso",
+      "Press up and back; keep shoulders packed",
+      "Stop 1 rep before form breaks"
+    ]
+  },
+  {
+    "name": "Close Grip Bench Press",
+    "bodyPart": "Arms",
+    "category": "Strength",
+    "equipment": "Barbell",
+    "cuesSetup": [
+      "Shoulder blades down and back",
+      "Wrists stacked; grip the handle/bar tight",
+      "Feet planted; light arch allowed"
+    ],
+    "cuesExecution": [
+      "Lower with control; elbows ~45° from torso",
+      "Press up and back; keep shoulders packed",
+      "Stop 1 rep before form breaks"
+    ]
+  },
+  {
+    "name": "Push Up",
+    "bodyPart": "Chest",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Hands under shoulders; body in a straight line",
+      "Brace glutes and abs",
+      "Hands screw into the floor (create tension)"
+    ],
+    "cuesExecution": [
+      "Lower as one unit; chest to near-floor",
+      "Keep elbows ~30–45°",
+      "Press the floor away; finish with locked-out arms"
+    ]
+  },
+  {
+    "name": "Weighted Push Up",
+    "bodyPart": "Chest",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Hands under shoulders; body in a straight line",
+      "Brace glutes and abs",
+      "Hands screw into the floor (create tension)"
+    ],
+    "cuesExecution": [
+      "Lower as one unit; chest to near-floor",
+      "Keep elbows ~30–45°",
+      "Press the floor away; finish with locked-out arms"
+    ]
+  },
+  {
+    "name": "Chest Dip",
+    "bodyPart": "Chest",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Shoulder blades down and back",
+      "Wrists stacked; grip the handle/bar tight",
+      "Feet planted; light arch allowed"
+    ],
+    "cuesExecution": [
+      "Lower with control; elbows ~45° from torso",
+      "Press up and back; keep shoulders packed",
+      "Stop 1 rep before form breaks",
+      "Go as deep as shoulders tolerate"
+    ]
+  },
+  {
+    "name": "Cable Fly",
+    "bodyPart": "Chest",
+    "category": "Machine",
+    "equipment": "Cable",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Pec Deck",
+    "bodyPart": "Chest",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Machine Chest Press",
+    "bodyPart": "Chest",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Shoulder blades down and back",
+      "Wrists stacked; grip the handle/bar tight",
+      "Feet planted; light arch allowed"
+    ],
+    "cuesExecution": [
+      "Lower with control; elbows ~45° from torso",
+      "Press up and back; keep shoulders packed",
+      "Stop 1 rep before form breaks"
+    ]
+  },
+  {
+    "name": "Pull Up",
+    "bodyPart": "Back",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Hang tall; shoulders set down",
+      "Brace abs; legs slightly in front",
+      "Choose grip you can control"
+    ],
+    "cuesExecution": [
+      "Drive elbows down; chest toward bar",
+      "Avoid kicking/swinging",
+      "Lower under control to full hang"
+    ]
+  },
+  {
+    "name": "Chin Up",
+    "bodyPart": "Back",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Hang tall; shoulders set down",
+      "Brace abs; legs slightly in front",
+      "Choose grip you can control"
+    ],
+    "cuesExecution": [
+      "Drive elbows down; chest toward bar",
+      "Avoid kicking/swinging",
+      "Lower under control to full hang"
+    ]
+  },
+  {
+    "name": "Assisted Pull Up",
+    "bodyPart": "Back",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Hang tall; shoulders set down",
+      "Brace abs; legs slightly in front",
+      "Choose grip you can control"
+    ],
+    "cuesExecution": [
+      "Drive elbows down; chest toward bar",
+      "Avoid kicking/swinging",
+      "Lower under control to full hang"
+    ]
+  },
+  {
+    "name": "Lat Pulldown",
+    "bodyPart": "Back",
+    "category": "Machine",
+    "equipment": "Cable",
+    "cuesSetup": [
+      "Set shoulders down and back before pulling",
+      "Brace; keep torso stable",
+      "Start each rep from a dead stop/tension"
+    ],
+    "cuesExecution": [
+      "Pull elbows toward your pockets",
+      "Pause briefly at the top; squeeze back",
+      "Control the return; don’t let shoulders dump forward",
+      "Pull bar to upper chest; don’t swing"
+    ]
+  },
+  {
+    "name": "Straight Arm Pulldown",
+    "bodyPart": "Back",
+    "category": "Machine",
+    "equipment": "Cable",
+    "cuesSetup": [
+      "Set shoulders down and back before pulling",
+      "Brace; keep torso stable",
+      "Start each rep from a dead stop/tension"
+    ],
+    "cuesExecution": [
+      "Pull elbows toward your pockets",
+      "Pause briefly at the top; squeeze back",
+      "Control the return; don’t let shoulders dump forward",
+      "Pull bar to upper chest; don’t swing"
+    ]
+  },
+  {
+    "name": "Seated Cable Row",
+    "bodyPart": "Back",
+    "category": "Machine",
+    "equipment": "Cable",
+    "cuesSetup": [
+      "Set shoulders down and back before pulling",
+      "Brace; keep torso stable",
+      "Start each rep from a dead stop/tension"
+    ],
+    "cuesExecution": [
+      "Pull elbows toward your pockets",
+      "Pause briefly at the top; squeeze back",
+      "Control the return; don’t let shoulders dump forward"
+    ]
+  },
+  {
+    "name": "Chest Supported Row",
+    "bodyPart": "Back",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Set shoulders down and back before pulling",
+      "Brace; keep torso stable",
+      "Start each rep from a dead stop/tension"
+    ],
+    "cuesExecution": [
+      "Pull elbows toward your pockets",
+      "Pause briefly at the top; squeeze back",
+      "Control the return; don’t let shoulders dump forward"
+    ]
+  },
+  {
+    "name": "One Arm Dumbbell Row",
+    "bodyPart": "Back",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Set shoulders down and back before pulling",
+      "Brace; keep torso stable",
+      "Start each rep from a dead stop/tension"
+    ],
+    "cuesExecution": [
+      "Pull elbows toward your pockets",
+      "Pause briefly at the top; squeeze back",
+      "Control the return; don’t let shoulders dump forward"
+    ]
+  },
+  {
+    "name": "Barbell Row",
+    "bodyPart": "Back",
+    "category": "Strength",
+    "equipment": "Barbell",
+    "cuesSetup": [
+      "Set shoulders down and back before pulling",
+      "Brace; keep torso stable",
+      "Start each rep from a dead stop/tension"
+    ],
+    "cuesExecution": [
+      "Pull elbows toward your pockets",
+      "Pause briefly at the top; squeeze back",
+      "Control the return; don’t let shoulders dump forward"
+    ]
+  },
+  {
+    "name": "Pendlay Row",
+    "bodyPart": "Back",
+    "category": "Strength",
+    "equipment": "Barbell",
+    "cuesSetup": [
+      "Set shoulders down and back before pulling",
+      "Brace; keep torso stable",
+      "Start each rep from a dead stop/tension"
+    ],
+    "cuesExecution": [
+      "Pull elbows toward your pockets",
+      "Pause briefly at the top; squeeze back",
+      "Control the return; don’t let shoulders dump forward"
+    ]
+  },
+  {
+    "name": "T-Bar Row",
+    "bodyPart": "Back",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Set shoulders down and back before pulling",
+      "Brace; keep torso stable",
+      "Start each rep from a dead stop/tension"
+    ],
+    "cuesExecution": [
+      "Pull elbows toward your pockets",
+      "Pause briefly at the top; squeeze back",
+      "Control the return; don’t let shoulders dump forward"
+    ]
+  },
+  {
+    "name": "Inverted Row",
+    "bodyPart": "Back",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Set shoulders down and back before pulling",
+      "Brace; keep torso stable",
+      "Start each rep from a dead stop/tension"
+    ],
+    "cuesExecution": [
+      "Pull elbows toward your pockets",
+      "Pause briefly at the top; squeeze back",
+      "Control the return; don’t let shoulders dump forward"
+    ]
+  },
+  {
+    "name": "Face Pull",
+    "bodyPart": "Shoulders",
+    "category": "Machine",
+    "equipment": "Cable",
+    "cuesSetup": [
+      "Set cable at upper-chest/face height",
+      "Thumbs back; elbows high",
+      "Brace; slight lean back"
+    ],
+    "cuesExecution": [
+      "Pull to nose/forehead",
+      "Externally rotate at the end",
+      "Return slowly; keep tension"
+    ]
+  },
+  {
+    "name": "Rear Delt Fly",
+    "bodyPart": "Shoulders",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Light weight; strict form",
+      "Shoulders down; neck long",
+      "Slight bend in elbows"
+    ],
+    "cuesExecution": [
+      "Move from the shoulder; don’t shrug",
+      "Stop around shoulder height",
+      "Control down; feel the target muscle"
+    ]
+  },
+  {
+    "name": "Reverse Pec Deck",
+    "bodyPart": "Shoulders",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Barbell Overhead Press",
+    "bodyPart": "Shoulders",
+    "category": "Strength",
+    "equipment": "Barbell",
+    "cuesSetup": [
+      "Hands just outside shoulders",
+      "Squeeze glutes; ribs down",
+      "Start with forearms vertical"
+    ],
+    "cuesExecution": [
+      "Press up in a straight line; move head slightly back then through",
+      "Lock out overhead with biceps near ears",
+      "Avoid leaning back; keep core tight"
+    ]
+  },
+  {
+    "name": "Dumbbell Shoulder Press",
+    "bodyPart": "Shoulders",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Hands just outside shoulders",
+      "Squeeze glutes; ribs down",
+      "Start with forearms vertical"
+    ],
+    "cuesExecution": [
+      "Press up in a straight line; move head slightly back then through",
+      "Lock out overhead with biceps near ears",
+      "Avoid leaning back; keep core tight"
+    ]
+  },
+  {
+    "name": "Arnold Press",
+    "bodyPart": "Shoulders",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Machine Shoulder Press",
+    "bodyPart": "Shoulders",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Hands just outside shoulders",
+      "Squeeze glutes; ribs down",
+      "Start with forearms vertical"
+    ],
+    "cuesExecution": [
+      "Press up in a straight line; move head slightly back then through",
+      "Lock out overhead with biceps near ears",
+      "Avoid leaning back; keep core tight"
+    ]
+  },
+  {
+    "name": "Lateral Raise",
+    "bodyPart": "Shoulders",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Light weight; strict form",
+      "Shoulders down; neck long",
+      "Slight bend in elbows"
+    ],
+    "cuesExecution": [
+      "Move from the shoulder; don’t shrug",
+      "Stop around shoulder height",
+      "Control down; feel the target muscle"
+    ]
+  },
+  {
+    "name": "Cable Lateral Raise",
+    "bodyPart": "Shoulders",
+    "category": "Machine",
+    "equipment": "Cable",
+    "cuesSetup": [
+      "Light weight; strict form",
+      "Shoulders down; neck long",
+      "Slight bend in elbows"
+    ],
+    "cuesExecution": [
+      "Move from the shoulder; don’t shrug",
+      "Stop around shoulder height",
+      "Control down; feel the target muscle"
+    ]
+  },
+  {
+    "name": "Front Raise",
+    "bodyPart": "Shoulders",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Upright Row",
+    "bodyPart": "Shoulders",
+    "category": "Strength",
+    "equipment": "Barbell",
+    "cuesSetup": [
+      "Set shoulders down and back before pulling",
+      "Brace; keep torso stable",
+      "Start each rep from a dead stop/tension"
+    ],
+    "cuesExecution": [
+      "Pull elbows toward your pockets",
+      "Pause briefly at the top; squeeze back",
+      "Control the return; don’t let shoulders dump forward"
+    ]
+  },
+  {
+    "name": "Shrug",
+    "bodyPart": "Shoulders",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Barbell Curl",
+    "bodyPart": "Arms",
+    "category": "Strength",
+    "equipment": "Barbell",
+    "cuesSetup": [
+      "Stand tall; ribs down",
+      "Elbows pinned near sides",
+      "Grip hard; wrists neutral"
+    ],
+    "cuesExecution": [
+      "Curl without swinging",
+      "Squeeze at the top; slow lower",
+      "Stop short of elbow pain"
+    ]
+  },
+  {
+    "name": "Dumbbell Curl",
+    "bodyPart": "Arms",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Stand tall; ribs down",
+      "Elbows pinned near sides",
+      "Grip hard; wrists neutral"
+    ],
+    "cuesExecution": [
+      "Curl without swinging",
+      "Squeeze at the top; slow lower",
+      "Stop short of elbow pain"
+    ]
+  },
+  {
+    "name": "Hammer Curl",
+    "bodyPart": "Arms",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Stand tall; ribs down",
+      "Elbows pinned near sides",
+      "Grip hard; wrists neutral"
+    ],
+    "cuesExecution": [
+      "Curl without swinging",
+      "Squeeze at the top; slow lower",
+      "Stop short of elbow pain"
+    ]
+  },
+  {
+    "name": "Incline Dumbbell Curl",
+    "bodyPart": "Arms",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Stand tall; ribs down",
+      "Elbows pinned near sides",
+      "Grip hard; wrists neutral"
+    ],
+    "cuesExecution": [
+      "Curl without swinging",
+      "Squeeze at the top; slow lower",
+      "Stop short of elbow pain"
+    ]
+  },
+  {
+    "name": "Preacher Curl",
+    "bodyPart": "Arms",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Stand tall; ribs down",
+      "Elbows pinned near sides",
+      "Grip hard; wrists neutral"
+    ],
+    "cuesExecution": [
+      "Curl without swinging",
+      "Squeeze at the top; slow lower",
+      "Stop short of elbow pain"
+    ]
+  },
+  {
+    "name": "Cable Curl",
+    "bodyPart": "Arms",
+    "category": "Machine",
+    "equipment": "Cable",
+    "cuesSetup": [
+      "Stand tall; ribs down",
+      "Elbows pinned near sides",
+      "Grip hard; wrists neutral"
+    ],
+    "cuesExecution": [
+      "Curl without swinging",
+      "Squeeze at the top; slow lower",
+      "Stop short of elbow pain"
+    ]
+  },
+  {
+    "name": "Triceps Pushdown",
+    "bodyPart": "Arms",
+    "category": "Machine",
+    "equipment": "Cable",
+    "cuesSetup": [
+      "Elbows fixed; shoulders down",
+      "Brace core; avoid flaring ribs",
+      "Pick a weight you can control"
+    ],
+    "cuesExecution": [
+      "Extend fully without locking painfully",
+      "Slow eccentric; keep elbows in",
+      "Avoid using momentum"
+    ]
+  },
+  {
+    "name": "Overhead Triceps Extension",
+    "bodyPart": "Arms",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Elbows fixed; shoulders down",
+      "Brace core; avoid flaring ribs",
+      "Pick a weight you can control"
+    ],
+    "cuesExecution": [
+      "Extend fully without locking painfully",
+      "Slow eccentric; keep elbows in",
+      "Avoid using momentum"
+    ]
+  },
+  {
+    "name": "Skullcrusher",
+    "bodyPart": "Arms",
+    "category": "Strength",
+    "equipment": "Barbell",
+    "cuesSetup": [
+      "Elbows fixed; shoulders down",
+      "Brace core; avoid flaring ribs",
+      "Pick a weight you can control"
+    ],
+    "cuesExecution": [
+      "Extend fully without locking painfully",
+      "Slow eccentric; keep elbows in",
+      "Avoid using momentum"
+    ]
+  },
+  {
+    "name": "Triceps Dip",
+    "bodyPart": "Arms",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Shoulder blades down and back",
+      "Wrists stacked; grip the handle/bar tight",
+      "Feet planted; light arch allowed"
+    ],
+    "cuesExecution": [
+      "Lower with control; elbows ~45° from torso",
+      "Press up and back; keep shoulders packed",
+      "Stop 1 rep before form breaks",
+      "Go as deep as shoulders tolerate"
+    ]
+  },
+  {
+    "name": "Cable Overhead Triceps Extension",
+    "bodyPart": "Arms",
+    "category": "Machine",
+    "equipment": "Cable",
+    "cuesSetup": [
+      "Elbows fixed; shoulders down",
+      "Brace core; avoid flaring ribs",
+      "Pick a weight you can control"
+    ],
+    "cuesExecution": [
+      "Extend fully without locking painfully",
+      "Slow eccentric; keep elbows in",
+      "Avoid using momentum"
+    ]
+  },
+  {
+    "name": "Farmer Carry",
+    "bodyPart": "Full Body",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Kettlebell Swing",
+    "bodyPart": "Full Body",
+    "category": "Strength",
+    "equipment": "Kettlebell",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Turkish Get Up",
+    "bodyPart": "Full Body",
+    "category": "Strength",
+    "equipment": "Kettlebell",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Sled Push",
+    "bodyPart": "Full Body",
+    "category": "Strength",
+    "equipment": "Other",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Sled Pull",
+    "bodyPart": "Full Body",
+    "category": "Strength",
+    "equipment": "Other",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Box Jump",
+    "bodyPart": "Legs",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Plank",
+    "bodyPart": "Core",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Brace abs as if being punched",
+      "Ribs down; pelvis neutral",
+      "Breathe behind the brace"
+    ],
+    "cuesExecution": [
+      "Hold steady; no sagging or piking",
+      "Move slow and controlled",
+      "Stop if low back takes over"
+    ]
+  },
+  {
+    "name": "Side Plank",
+    "bodyPart": "Core",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Brace abs as if being punched",
+      "Ribs down; pelvis neutral",
+      "Breathe behind the brace"
+    ],
+    "cuesExecution": [
+      "Hold steady; no sagging or piking",
+      "Move slow and controlled",
+      "Stop if low back takes over"
+    ]
+  },
+  {
+    "name": "Dead Bug",
+    "bodyPart": "Core",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Brace abs as if being punched",
+      "Ribs down; pelvis neutral",
+      "Breathe behind the brace"
+    ],
+    "cuesExecution": [
+      "Hold steady; no sagging or piking",
+      "Move slow and controlled",
+      "Stop if low back takes over"
+    ]
+  },
+  {
+    "name": "Bird Dog",
+    "bodyPart": "Core",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Brace abs as if being punched",
+      "Ribs down; pelvis neutral",
+      "Breathe behind the brace"
+    ],
+    "cuesExecution": [
+      "Hold steady; no sagging or piking",
+      "Move slow and controlled",
+      "Stop if low back takes over"
+    ]
+  },
+  {
+    "name": "Hanging Knee Raise",
+    "bodyPart": "Core",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Hanging Leg Raise",
+    "bodyPart": "Core",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Cable Crunch",
+    "bodyPart": "Core",
+    "category": "Machine",
+    "equipment": "Cable",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Ab Wheel Rollout",
+    "bodyPart": "Core",
+    "category": "Strength",
+    "equipment": "Other",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Pallof Press",
+    "bodyPart": "Core",
+    "category": "Machine",
+    "equipment": "Cable",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Russian Twist",
+    "bodyPart": "Core",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Back Extension",
+    "bodyPart": "Back",
+    "category": "Strength",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Elbows fixed; shoulders down",
+      "Brace core; avoid flaring ribs",
+      "Pick a weight you can control"
+    ],
+    "cuesExecution": [
+      "Extend fully without locking painfully",
+      "Slow eccentric; keep elbows in",
+      "Avoid using momentum"
+    ]
+  },
+  {
+    "name": "Good Morning",
+    "bodyPart": "Back",
+    "category": "Strength",
+    "equipment": "Barbell",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Hip Hinge Drill",
+    "bodyPart": "Other",
+    "category": "Warmup",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Band Pull Apart",
+    "bodyPart": "Shoulders",
+    "category": "Warmup",
+    "equipment": "Band",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "External Rotation",
+    "bodyPart": "Shoulders",
+    "category": "Mobility",
+    "equipment": "Band",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Scap Push Up",
+    "bodyPart": "Shoulders",
+    "category": "Warmup",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Hands under shoulders; body in a straight line",
+      "Brace glutes and abs",
+      "Hands screw into the floor (create tension)"
+    ],
+    "cuesExecution": [
+      "Lower as one unit; chest to near-floor",
+      "Keep elbows ~30–45°",
+      "Press the floor away; finish with locked-out arms"
+    ]
+  },
+  {
+    "name": "Wall Slide",
+    "bodyPart": "Shoulders",
+    "category": "Mobility",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Thoracic Rotation",
+    "bodyPart": "Other",
+    "category": "Mobility",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Cat Cow",
+    "bodyPart": "Other",
+    "category": "Mobility",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Hip Flexor Stretch",
+    "bodyPart": "Other",
+    "category": "Mobility",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Hamstring Stretch",
+    "bodyPart": "Other",
+    "category": "Mobility",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Calf Stretch",
+    "bodyPart": "Other",
+    "category": "Mobility",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Full range: stretch at bottom",
+      "Use support for balance",
+      "Keep knee position consistent"
+    ],
+    "cuesExecution": [
+      "Pause at the top; squeeze calves",
+      "Slow on the way down",
+      "Don’t bounce"
+    ]
+  },
+  {
+    "name": "Rowing Machine",
+    "bodyPart": "Cardio",
+    "category": "Cardio",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Hang tall; shoulders set down",
+      "Brace abs; legs slightly in front",
+      "Choose grip you can control"
+    ],
+    "cuesExecution": [
+      "Drive elbows down; chest toward bar",
+      "Avoid kicking/swinging",
+      "Lower under control to full hang"
+    ]
+  },
+  {
+    "name": "Treadmill Walk",
+    "bodyPart": "Cardio",
+    "category": "Cardio",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Incline Treadmill Walk",
+    "bodyPart": "Cardio",
+    "category": "Cardio",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Stationary Bike",
+    "bodyPart": "Cardio",
+    "category": "Cardio",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Assault Bike",
+    "bodyPart": "Cardio",
+    "category": "Cardio",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Elliptical",
+    "bodyPart": "Cardio",
+    "category": "Cardio",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Stair Climber",
+    "bodyPart": "Cardio",
+    "category": "Cardio",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Jump Rope",
+    "bodyPart": "Cardio",
+    "category": "Cardio",
+    "equipment": "Other",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Burpee",
+    "bodyPart": "Full Body",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Mountain Climber",
+    "bodyPart": "Core",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Air Squat",
+    "bodyPart": "Legs",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Feet about shoulder-width, toes slightly out",
+      "Brace hard before the first rep",
+      "Keep ribs stacked over pelvis"
+    ],
+    "cuesExecution": [
+      "Sit between the hips; keep chest tall",
+      "Knees track in line with toes",
+      "Control the descent; drive through mid-foot"
+    ]
+  },
+  {
+    "name": "Glute Med Kickback",
+    "bodyPart": "Legs",
+    "category": "Machine",
+    "equipment": "Cable",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Hip Abduction",
+    "bodyPart": "Legs",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Hip Adduction",
+    "bodyPart": "Legs",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Cable Pull Through",
+    "bodyPart": "Legs",
+    "category": "Machine",
+    "equipment": "Cable",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Single Leg Romanian Deadlift",
+    "bodyPart": "Legs",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Feet hip-width; bar/weight close to shins",
+      "Hinge back to find hamstring tension",
+      "Brace and set lats (pull shoulders down/back)"
+    ],
+    "cuesExecution": [
+      "Push the floor away; keep the weight close",
+      "Hips and shoulders rise together",
+      "Stand tall without overextending the low back",
+      "Soft knees; hinge until hamstrings limit you"
+    ]
+  },
+  {
+    "name": "Smith Machine Squat",
+    "bodyPart": "Legs",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Feet about shoulder-width, toes slightly out",
+      "Brace hard before the first rep",
+      "Keep ribs stacked over pelvis"
+    ],
+    "cuesExecution": [
+      "Sit between the hips; keep chest tall",
+      "Knees track in line with toes",
+      "Control the descent; drive through mid-foot"
+    ]
+  },
+  {
+    "name": "Smith Machine Bench Press",
+    "bodyPart": "Chest",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Shoulder blades down and back",
+      "Wrists stacked; grip the handle/bar tight",
+      "Feet planted; light arch allowed"
+    ],
+    "cuesExecution": [
+      "Lower with control; elbows ~45° from torso",
+      "Press up and back; keep shoulders packed",
+      "Stop 1 rep before form breaks"
+    ]
+  },
+  {
+    "name": "Landmine Press",
+    "bodyPart": "Shoulders",
+    "category": "Strength",
+    "equipment": "Other",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Landmine Row",
+    "bodyPart": "Back",
+    "category": "Strength",
+    "equipment": "Other",
+    "cuesSetup": [
+      "Set shoulders down and back before pulling",
+      "Brace; keep torso stable",
+      "Start each rep from a dead stop/tension"
+    ],
+    "cuesExecution": [
+      "Pull elbows toward your pockets",
+      "Pause briefly at the top; squeeze back",
+      "Control the return; don’t let shoulders dump forward"
+    ]
+  },
+  {
+    "name": "Cable Row (Wide Grip)",
+    "bodyPart": "Back",
+    "category": "Machine",
+    "equipment": "Cable",
+    "cuesSetup": [
+      "Set shoulders down and back before pulling",
+      "Brace; keep torso stable",
+      "Start each rep from a dead stop/tension"
+    ],
+    "cuesExecution": [
+      "Pull elbows toward your pockets",
+      "Pause briefly at the top; squeeze back",
+      "Control the return; don’t let shoulders dump forward"
+    ]
+  },
+  {
+    "name": "Lat Pulldown (Neutral Grip)",
+    "bodyPart": "Back",
+    "category": "Machine",
+    "equipment": "Cable",
+    "cuesSetup": [
+      "Set shoulders down and back before pulling",
+      "Brace; keep torso stable",
+      "Start each rep from a dead stop/tension"
+    ],
+    "cuesExecution": [
+      "Pull elbows toward your pockets",
+      "Pause briefly at the top; squeeze back",
+      "Control the return; don’t let shoulders dump forward",
+      "Pull bar to upper chest; don’t swing"
+    ]
+  },
+  {
+    "name": "Incline Push Up",
+    "bodyPart": "Chest",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Hands under shoulders; body in a straight line",
+      "Brace glutes and abs",
+      "Hands screw into the floor (create tension)"
+    ],
+    "cuesExecution": [
+      "Lower as one unit; chest to near-floor",
+      "Keep elbows ~30–45°",
+      "Press the floor away; finish with locked-out arms"
+    ]
+  },
+  {
+    "name": "Decline Push Up",
+    "bodyPart": "Chest",
+    "category": "Bodyweight",
+    "equipment": "Bodyweight",
+    "cuesSetup": [
+      "Hands under shoulders; body in a straight line",
+      "Brace glutes and abs",
+      "Hands screw into the floor (create tension)"
+    ],
+    "cuesExecution": [
+      "Lower as one unit; chest to near-floor",
+      "Keep elbows ~30–45°",
+      "Press the floor away; finish with locked-out arms"
+    ]
+  },
+  {
+    "name": "Chest Supported Dumbbell Row",
+    "bodyPart": "Back",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Set shoulders down and back before pulling",
+      "Brace; keep torso stable",
+      "Start each rep from a dead stop/tension"
+    ],
+    "cuesExecution": [
+      "Pull elbows toward your pockets",
+      "Pause briefly at the top; squeeze back",
+      "Control the return; don’t let shoulders dump forward"
+    ]
+  },
+  {
+    "name": "Dumbbell Pullover",
+    "bodyPart": "Chest",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Cable Chest Press",
+    "bodyPart": "Chest",
+    "category": "Machine",
+    "equipment": "Cable",
+    "cuesSetup": [
+      "Shoulder blades down and back",
+      "Wrists stacked; grip the handle/bar tight",
+      "Feet planted; light arch allowed"
+    ],
+    "cuesExecution": [
+      "Lower with control; elbows ~45° from torso",
+      "Press up and back; keep shoulders packed",
+      "Stop 1 rep before form breaks"
+    ]
+  },
+  {
+    "name": "Overhead Cable Triceps Extension",
+    "bodyPart": "Arms",
+    "category": "Machine",
+    "equipment": "Cable",
+    "cuesSetup": [
+      "Elbows fixed; shoulders down",
+      "Brace core; avoid flaring ribs",
+      "Pick a weight you can control"
+    ],
+    "cuesExecution": [
+      "Extend fully without locking painfully",
+      "Slow eccentric; keep elbows in",
+      "Avoid using momentum"
+    ]
+  },
+  {
+    "name": "EZ Bar Curl",
+    "bodyPart": "Arms",
+    "category": "Strength",
+    "equipment": "Barbell",
+    "cuesSetup": [
+      "Stand tall; ribs down",
+      "Elbows pinned near sides",
+      "Grip hard; wrists neutral"
+    ],
+    "cuesExecution": [
+      "Curl without swinging",
+      "Squeeze at the top; slow lower",
+      "Stop short of elbow pain"
+    ]
+  },
+  {
+    "name": "Concentration Curl",
+    "bodyPart": "Arms",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Stand tall; ribs down",
+      "Elbows pinned near sides",
+      "Grip hard; wrists neutral"
+    ],
+    "cuesExecution": [
+      "Curl without swinging",
+      "Squeeze at the top; slow lower",
+      "Stop short of elbow pain"
+    ]
+  },
+  {
+    "name": "Wrist Curl",
+    "bodyPart": "Arms",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Stand tall; ribs down",
+      "Elbows pinned near sides",
+      "Grip hard; wrists neutral"
+    ],
+    "cuesExecution": [
+      "Curl without swinging",
+      "Squeeze at the top; slow lower",
+      "Stop short of elbow pain"
+    ]
+  },
+  {
+    "name": "Reverse Curl",
+    "bodyPart": "Arms",
+    "category": "Strength",
+    "equipment": "Barbell",
+    "cuesSetup": [
+      "Stand tall; ribs down",
+      "Elbows pinned near sides",
+      "Grip hard; wrists neutral"
+    ],
+    "cuesExecution": [
+      "Curl without swinging",
+      "Squeeze at the top; slow lower",
+      "Stop short of elbow pain"
+    ]
+  },
+  {
+    "name": "Suitcase Carry",
+    "bodyPart": "Core",
+    "category": "Strength",
+    "equipment": "Dumbbell",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Cable Woodchop",
+    "bodyPart": "Core",
+    "category": "Machine",
+    "equipment": "Cable",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Reverse Hyper",
+    "bodyPart": "Back",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Set a stable stance and brace your core",
+      "Start each rep in a strong, stacked position",
+      "Choose a load you can control"
+    ],
+    "cuesExecution": [
+      "Move smoothly; control the lowering phase",
+      "Keep tension on the target muscles",
+      "Stop before form breaks"
+    ]
+  },
+  {
+    "name": "Seated Row Machine",
+    "bodyPart": "Back",
+    "category": "Machine",
+    "equipment": "Machine",
+    "cuesSetup": [
+      "Hang tall; shoulders set down",
+      "Brace abs; legs slightly in front",
+      "Choose grip you can control"
+    ],
+    "cuesExecution": [
+      "Drive elbows down; chest toward bar",
+      "Avoid kicking/swinging",
+      "Lower under control to full hang"
+    ]
+  }
+]

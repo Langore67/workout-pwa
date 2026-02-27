@@ -1,0 +1,1200 @@
+/* BUILD_ID: 2026-02-11-UI-02 */
+/* =========================================
+   Strong-like LIGHT Theme + Resets
+   ========================================= */
+:root{
+  --bg:#f3f4f6;          /* app background */
+  --card:#ffffff;        /* primary surface */
+  --muted:#6b7280;       /* gray text */
+  --text:#111827;        /* near-black text */
+  --line:#e5e7eb;        /* separators */
+  --line2:#d1d5db;       /* hover */
+  --accent:#16a34a;      /* strong-ish green */
+  --danger:#dc2626;
+
+  --radius: 14px;
+  --radius-sm: 12px;
+  --radius-xs: 12px;
+
+  /* Strong is very flat */
+  --shadow: 0 1px 2px rgba(16,24,40,0.05);
+}
+
+*{ box-sizing:border-box; }
+html,body{ height:100%; width:100%; }
+#root{ width:100%; }
+
+body{
+  margin:0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+  background: var(--bg);
+  color: var(--text);
+}
+
+a{ color:inherit; text-decoration:none; }
+
+hr{ border:0; border-top:1px solid var(--line); margin:10px 0; }
+
+/* =========================================
+   Breadcrumb S1 (Layout Helpers)
+   ========================================= */
+.container{ max-width:980px; margin:0 auto; padding:16px; }
+.row{ display:flex; gap:8px; flex-wrap:wrap; }
+
+.grid{
+  display:grid;
+  grid-template-columns: 1fr;
+  gap:12px;
+}
+@media (min-width: 900px){
+  .grid.two{ grid-template-columns: 1fr 1fr; }
+}
+
+/* =========================================
+   Breadcrumb S2 (Cards / Typography)
+   ========================================= */
+.card{
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;         /* denser like Strong */
+  box-shadow: var(--shadow);  /* flatter */
+}
+
+.card h2, .card h3{ margin:0 0 8px 0; }
+h2{ font-size: 18px; font-weight: 800; }
+h3{ font-size: 16px; font-weight: 800; }
+
+.muted{ color: var(--muted); }
+
+.kv{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Nested card should look inset (Strong-style) */
+.card .card{
+  box-shadow: none;
+  background: #fafafa;
+  border-color: var(--line);
+  padding: 8px 10px;
+}
+
+/* =========================================
+   Breadcrumb S3 (Inputs)
+   ========================================= */
+.input, select, textarea{
+  width:100%;
+  padding:7px 10px;                 /* denser */
+  border-radius: var(--radius-sm);
+  border:1px solid var(--line);
+  background:#f9fafb;
+  color: var(--text);
+  outline:none;
+  min-width: 0;
+}
+
+textarea{
+  resize: vertical;
+  height: auto;                      /* textarea should not be forced short */
+  padding: 9px 10px;
+}
+
+label{ font-size: 13px; color: var(--muted); }
+
+.input:focus-visible,
+select:focus-visible,
+textarea:focus-visible{
+  border-color: rgba(22,163,74,0.35);
+  box-shadow: 0 0 0 3px rgba(22,163,74,0.14);
+}
+
+/* =========================================
+   Breadcrumb S4 (Buttons)
+   ========================================= */
+.btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+
+  border:1px solid #d0d5dd;
+  background:#ffffff;
+  color: var(--text);
+
+  padding:6px 10px;
+  border-radius: 999px;
+  cursor:pointer;
+
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1.2;
+  min-height: 28px;
+
+  transition: border-color 120ms ease, transform 60ms ease, background 120ms ease, filter 120ms ease;
+}
+
+.btn:hover{ border-color:#9ca3af; }
+.btn:active{ transform: scale(0.99); }
+
+.btn.primary{
+  background: var(--accent);
+  border-color: rgba(22,163,74,0.35);
+  color:#ffffff;
+}
+.btn.primary:hover{ filter: brightness(1.02); }
+
+.btn.danger{
+  background:#ffffff;
+  border-color: rgba(180,35,24,0.28);
+  color:#b42318;
+}
+.btn.danger:hover{ background: rgba(180,35,24,0.06); }
+
+.btn.small{
+  padding:5px 9px;
+  font-size: 12px;
+  min-height: 26px;
+}
+
+.btn:disabled{ opacity:0.5; cursor:not-allowed; transform:none; }
+
+.btn:focus-visible{
+  outline:none;
+  border-color: rgba(22,163,74,0.35);
+  box-shadow: 0 0 0 3px rgba(22,163,74,0.14);
+}
+
+/* =========================================
+   Breadcrumb S5 (Badges)
+   ========================================= */
+.badge{
+  display:inline-flex;
+  align-items:center;
+  padding:2px 8px;
+  border-radius:999px;
+  font-size:12px;
+  border:1px solid var(--line);
+  background:#f3f4f6;
+  color: var(--muted);
+}
+
+.badge.green{
+  background: rgba(22,163,74,0.10);
+  border-color: rgba(22,163,74,0.20);
+  color:#14532d;
+}
+
+/* =========================================
+   Breadcrumb S6 (Top Nav)
+   ========================================= */
+.nav{
+  position: sticky;
+  top:0;
+  z-index: 10;
+  background: rgba(243,244,246,0.88);
+  backdrop-filter: blur(10px);
+  border-bottom:1px solid var(--line);
+}
+
+.nav-inner{
+  max-width:980px;
+  margin:0 auto;
+  display:flex;
+  gap:10px;
+  padding:10px 16px;
+  flex-wrap:wrap;
+  justify-content:center;
+  align-items:center;
+}
+
+.nav a{
+  padding:8px 10px;
+  border-radius: 10px;
+  border:1px solid transparent;
+  color: var(--muted);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.nav a.active{
+  color: var(--text);
+  border-color: var(--line);
+  background: #ffffff;
+}
+
+/* iPhone: single-row scrollable nav */
+@media (max-width: 520px){
+  .nav-inner{
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    justify-content: flex-start;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .nav-inner::-webkit-scrollbar{ display:none; }
+}
+
+/* =========================================
+   Breadcrumb S7 (Lists / Clickable Cards)
+   ========================================= */
+.list { display: grid; gap: 10px; }
+.list-card { padding: 12px; }
+
+.clickable{
+  cursor: pointer;
+  transition: transform 0.06s ease, border-color 0.12s ease, background 0.12s ease;
+}
+
+.clickable:hover{
+  border-color: var(--line2);
+  background:#ffffff;
+}
+
+.clickable:active{ transform: scale(0.99); }
+
+.card-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap: 12px;
+}
+
+.card-title{
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+/* =========================================
+   Breadcrumb S8 (Swipe-to-delete surfaces)
+   ========================================= */
+.swipe-row{
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+}
+
+.swipe-content{
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+/* =========================================
+   Breadcrumb S9 (Templates: Start page tiles)
+   ========================================= */
+.template-tiles{
+  display:grid;
+  gap:12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (min-width: 900px){
+  .template-tiles{
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.template-tile{ padding: 12px; }
+
+/* =========================================
+   Breadcrumb S10 (Mobile polish)
+   ========================================= */
+@media (max-width: 520px){
+  .container{ padding: 12px; }
+  .grid{ gap: 10px; }
+  hr{ margin: 10px 0; }
+
+  /* Keep iOS inputs >= 16px to avoid zoom */
+  input, select, textarea, .input{ font-size: 16px; }
+
+  /* Slightly tighter card padding on iPhone */
+  .card{ padding: 10px 12px; border-radius: 14px; }
+  .card .card{ padding: 8px 10px; }
+
+  /* Even tighter buttons on iPhone */
+  .btn{ min-height: 28px; padding: 6px 10px; }
+  .btn.small{ min-height: 26px; padding: 5px 9px; }
+
+  .row{ gap: 6px; }
+
+  /* --- Set-entry pill inputs (Strong-like) --- */
+  .input{
+    height: 28px;          /* smaller than before */
+    padding: 3px 8px;      /* less vertical padding */
+    border-radius: 10px;   /* tighter pill */
+    line-height: 20px;
+  }
+
+  /* Keep textareas usable */
+  textarea.input, textarea{
+    height: auto;
+    padding: 9px 10px;
+  }
+
+  /* Selects: same compact feel */
+  select, select.input{
+    height: 30px;
+    padding: 4px 8px;
+  }
+}
+
+/* =========================================
+   Breadcrumb S11 (Tighten set-row pill boxes: Gym)
+   ========================================= */
+@media (max-width: 520px){
+  .swipe-row{ margin-bottom: 6px; }
+  .swipe-content{
+    border-radius: 12px;
+  }
+
+  /* Make inputs a hair shorter (keep 16px to avoid iOS zoom) */
+  .swipe-content .input{
+    height: 28px;
+    padding: 3px 8px;
+    border-radius: 10px;
+  }
+}
+
+/* =========================================================
+   ✅ GYM MODE – TIGHTEN SET ROW VERTICAL SPACING (iPhone)
+   Put this at the VERY END of styles.css so it overrides.
+   ========================================================= */
+
+/* 1) Reduce the gap BETWEEN rows */
+.swipe-row{
+  margin-bottom: 6px; /* was ~8–10+ */
+}
+
+/* 2) Reduce internal padding/height of each row “pill strip” */
+.swipe-content{
+  padding: 6px 8px;   /* tighter row */
+}
+
+/* 3) Make the set inputs slightly shorter (keeps Strong-like density)
+      NOTE: keep font-size 16px on iPhone to avoid Safari zoom */
+@media (max-width: 520px){
+  .swipe-row{
+    margin-bottom: 4px; /* even tighter on iPhone */
+  }
+
+  .swipe-content{
+    padding: 5px 8px;
+  }
+
+  /* These are the "weight / reps / RPE" pills */
+  .swipe-content .input{
+    height: 28px;       /* tighter */
+    padding: 3px 8px;   /* less vertical padding */
+    border-radius: 10px;
+    font-size: 16px;    /* keep iOS no-zoom */
+    line-height: 20px;
+  }
+
+  /* WU/WK badge a bit tighter too */
+  .swipe-content .badge{
+    padding: 2px 6px;
+    font-size: 11px;
+  }
+}
+
+/* =========================================================
+   ✅ GYM SET ROWS – SUPER TIGHT (END-OF-FILE OVERRIDE)
+   ========================================================= */
+@media (max-width: 520px){
+  /* tighter spacing BETWEEN rows */
+  .swipe-row{
+    margin-bottom: 2px;            /* was 6–10 */
+    border-radius: 12px;
+  }
+
+  /* remove extra padding that makes each row feel tall */
+  .swipe-content{
+    padding: 0 !important;         /* key change */
+    border-radius: 12px;
+  }
+
+  /* tighten the inner layout */
+  .swipe-content > div{
+    padding: 6px 8px;              /* controlled row padding */
+  }
+
+  /* the weight/reps/rpe pills */
+  .swipe-content .input{
+    height: 26px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 16px;               /* keep iOS no-zoom */
+    line-height: 20px;
+  }
+
+  /* WU/WK chip tighter */
+  .swipe-content .badge{
+    padding: 1px 6px;
+    font-size: 11px;
+  }
+}
+
+/* ======================================================================
+   Breadcrumb S12 (MODALS) — StartPage template preview “floating card”
+   This is where you switch between OPTION 1 / 2 / 3.
+   ====================================================================== */
+
+/* ----------------------------------------------------------------------
+   OPTION 1 (ACTIVE): Centered floating card (Strong-style)
+   - This is the “float in the middle of the screen” behavior.
+   - If you decide to try Option 2 or 3 later, change ONLY this block.
+   ---------------------------------------------------------------------- */
+.modal-overlay{
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+
+  /* Centered modal container */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  /* Gutter so the card never touches screen edge */
+  padding: 12px;
+
+  /* Strong-like dim (clean, not dramatic) */
+  background: rgba(17, 24, 39, 0.35);
+}
+
+.modal-card{
+  /* Let the inline styles in React control width/maxHeight */
+  margin: 0;
+
+  /* Ensure it feels like a surface */
+  box-shadow: 0 10px 25px rgba(16, 24, 40, 0.10);
+}
+
+/* iPhone: slightly tighter gutter */
+@media (max-width: 520px){
+  .modal-overlay{ padding: 10px; }
+}
+
+/* ----------------------------------------------------------------------
+   OPTION 2 (TEMPLATE): Top-aligned with gutter (calm/clinical)
+   Uncomment this block + comment out OPTION 1 above to try it.
+   ----------------------------------------------------------------------
+.modal-overlay{
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+
+  padding: 12px;
+  background: rgba(17, 24, 39, 0.35);
+}
+
+.modal-card{
+  margin-top: 72px;  // clears nav / feels intentional
+  box-shadow: 0 10px 25px rgba(16, 24, 40, 0.10);
+}
+
+@media (max-width: 520px){
+  .modal-card{ margin-top: 12px; }
+}
+----------------------------------------------------------------------- */
+
+/* ----------------------------------------------------------------------
+   OPTION 3 (TEMPLATE): Bottom sheet (what you likely had)
+   Uncomment this block + comment out OPTION 1 above to try it.
+   ----------------------------------------------------------------------
+.modal-overlay{
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+
+  padding: 12px;
+  background: rgba(17, 24, 39, 0.35);
+}
+
+.modal-card{
+  margin: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  box-shadow: 0 10px 25px rgba(16, 24, 40, 0.10);
+}
+
+@media (max-width: 520px){
+  .modal-overlay{ padding: 0; }
+  .modal-card{
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 16px 16px 0 0;
+  }
+}
+----------------------------------------------------------------------- */
+
+/* ======================================================================
+   Breadcrumb S13 (GYM MODE SHEET — unified set table)
+   Add / keep this at END OF FILE so it overrides older gym row styles.
+   Used by new GymPage.tsx: .set-table, .set-row, .cell-input, etc.
+   ====================================================================== */
+
+.set-table{
+  margin-top: 8px;
+}
+
+/* Head + rows share a grid. Keep it calm and dense. */
+.set-head,
+.set-row{
+  display: grid;
+  grid-template-columns: 56px 1.25fr 76px 76px 76px 44px 36px;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Header */
+.set-head{
+  font-size: 12px;
+  letter-spacing: .02em;
+  color: var(--muted);
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Row */
+.set-row{
+  padding: 8px 2px;
+  border-bottom: 1px solid rgba(0,0,0,.06);
+}
+
+/* Completed row: slightly settled */
+.set-row.done{
+  background: rgba(17, 24, 39, 0.04);
+}
+
+/* Checkbox turns green when checked (modern browsers) */
+.set-row.done input[type="checkbox"]{
+  accent-color: var(--accent);
+}
+
+/* Warm-ups: slightly muted */
+.set-row.warmup{
+  opacity: .88;
+}
+
+/* Previous column styling */
+.prev-cell{
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Cell input pill */
+.cell-input{
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,.12);
+  background: rgba(0,0,0,.02);
+  color: var(--text);
+  outline: none;
+  min-width: 0;
+}
+
+.cell-input:focus-visible{
+  border-color: rgba(22,163,74,0.35);
+  box-shadow: 0 0 0 3px rgba(22,163,74,0.14);
+}
+
+.cell-input:disabled{
+  opacity: .70;
+}
+
+/* Set badge + invisible select (badge click opens select in TSX) */
+.set-badge-wrap{
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.set-badge{
+  width: 44px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,.12);
+  background: rgba(0,0,0,.02);
+  font-weight: 800;
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* Hidden select overlay (kept for accessibility & mobile picker UX) */
+.set-type-select{
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+/* Check + row actions */
+.check-cell{
+  display: flex;
+  justify-content: center;
+}
+
+.row-actions{
+  display: flex;
+  justify-content: center;
+}
+
+/* Add-set row */
+.set-add-row{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 2px;
+}
+
+/* Adaptive: mobile touch targets */
+@media (max-width: 520px){
+  .set-head,
+  .set-row{
+    grid-template-columns: 48px 1fr 66px 66px 66px 40px 34px;
+    gap: 6px;
+  }
+
+  /* Keep iOS inputs >=16px to avoid zoom */
+  .cell-input{
+    padding: 10px 10px;
+    font-size: 16px;
+  }
+
+  .set-badge{
+    width: 40px;
+    height: 34px;
+  }
+}
+
+/* Adaptive: desktop density */
+@media (min-width: 900px){
+  .set-head,
+  .set-row{
+    grid-template-columns: 56px 1.4fr 84px 84px 84px 44px 36px;
+  }
+}
+/* =========================================
+   Breadcrumb S4b (Icon buttons)
+   ========================================= */
+.iconbtn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease, transform 60ms ease;
+}
+
+.iconbtn:hover{
+  color: var(--text);
+  border-color: var(--line);
+  background: #ffffff;
+}
+
+.iconbtn:active{ transform: scale(0.99); }
+
+.iconbtn:focus-visible{
+  outline:none;
+  border-color: rgba(22,163,74,0.35);
+  box-shadow: 0 0 0 3px rgba(22,163,74,0.14);
+}
+
+@media (max-width: 520px){
+  .iconbtn{ width: 34px; height: 34px; }
+}
+/* ======================================================================
+   Breadcrumb S14 (GYM MODE – ExerciseCardBase polish helpers)
+   - Supports the "input + +/-" micro-controls used for Bench & RDL cards
+   - Safe: only affects new classnames (no regression to existing UI)
+   ====================================================================== */
+
+/* --- Cell stack: input with a small row of micro-controls underneath --- */
+.cell-stack{
+  display: grid;
+  gap: 4px;
+}
+
+/* Micro +/- row under the input */
+.cell-quick{
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+}
+
+/* Tiny button variant (keeps Strong-like pill feel but compact) */
+.btn.tiny{
+  padding: 4px 8px;
+  font-size: 12px;
+  min-height: 24px;
+  border-radius: 999px;
+}
+
+/* If tiny buttons are inside set cells, keep them from stretching */
+.cell-quick .btn.tiny{
+  flex: 1 1 0;
+}
+
+/* Mobile: keep the micro-controls dense and not taller than the inputs */
+@media (max-width: 520px){
+  .btn.tiny{
+    min-height: 24px;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .cell-stack{
+    gap: 3px;
+  }
+
+  .cell-quick{
+    gap: 6px;
+  }
+}
+/* ✅ Gym: completed WORKING sets get a green ring (iPhone + desktop) */
+.set-row.done-working{
+  border-radius: 12px;
+  box-shadow: 0 0 0 2px rgba(22,163,74,0.35);
+}
+
+/* optional: slightly stronger on iPhone */
+@media (max-width: 520px){
+  .set-row.done-working{
+    box-shadow: 0 0 0 2px rgba(22,163,74,0.45);
+  }
+}
+/* =========================================
+   ✅ Regression stability: Complete-set checkbox
+   - Bigger hit target (44px)
+   - Force checkbox above any overlays
+   ========================================= */
+
+.check-cell{
+  position: relative;
+  z-index: 2;                 /* keep above any row overlays */
+}
+
+/* If you used my <label class="complete-set-hit"> wrapper */
+.complete-set-hit{
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+/* Ensure the actual checkbox is clickable + sized consistently */
+.check-cell input[type="checkbox"]{
+  pointer-events: auto;
+  width: 18px;
+  height: 18px;
+  z-index: 3;
+}
+/* StartPage grouping hierarchy */
+.folder-group{
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  overflow: hidden;
+}
+
+.folder-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.folder-title{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+  font-weight: 900;
+}
+
+.folder-count{
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.folder-body{
+  padding: 10px 12px 12px 12px;
+}
+
+.folder-rail{
+  border-left: 2px solid var(--line);
+  padding-left: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+/* Templates inside folders should read as children */
+.template-row.child{
+  box-shadow: none;
+  border-radius: 12px;
+}
+/* ======================================================================
+   BUILD_ID: 2026-02-21-GYM-UI-01
+   Gym vNext (styles only)
+   Add this at END OF FILE to override older gym styles safely.
+   ====================================================================== */
+
+/* ------------------------------------------------------
+   Gym: exercise header row (title + actions like Cues)
+   ------------------------------------------------------ */
+.gym-ex-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 10px;
+}
+
+.gym-ex-title{
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.15;
+  margin: 0;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.gym-ex-actions{
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* A calmer “pill” button for in-card actions (Cues / History / etc.) */
+.btn.pill{
+  border-radius: 999px;
+  padding: 7px 12px;
+  min-height: 30px;
+}
+
+/* ------------------------------------------------------
+   Gym: "Load Today" prescription row
+   (sets x reps @ RIR, target weight, rest)
+   ------------------------------------------------------ */
+.gym-prescription{
+  margin-top: 8px;
+  display:flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.gym-prescription .chip{
+  display:inline-flex;
+  align-items:center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #f9fafb;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.gym-prescription .chip .muted{
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* A slightly stronger chip for the main target */
+.gym-prescription .chip.primary{
+  border-color: rgba(22,163,74,0.20);
+  background: rgba(22,163,74,0.08);
+}
+
+/* ------------------------------------------------------
+   Gym: Full-screen Cues overlay (white bg, bold black text)
+   Closing should be easy: big X + tap backdrop + swipe down later
+   ------------------------------------------------------ */
+.cues-overlay{
+  position: fixed;
+  inset: 0;
+  z-index: 80; /* above modals */
+  background: #ffffff;
+  color: #000000;
+  display:flex;
+  flex-direction: column;
+}
+
+.cues-top{
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #ffffff;
+  border-bottom: 1px solid var(--line);
+  padding: 12px 14px;
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cues-title{
+  font-size: 16px;
+  font-weight: 900;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.cues-close{
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: #000000;
+  font-size: 18px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.cues-close:active{ transform: scale(0.99); }
+
+.cues-body{
+  padding: 14px 16px 24px 16px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.cues-body ul{
+  margin: 0;
+  padding-left: 18px;
+}
+
+.cues-body li{
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.25;
+  margin: 12px 0;
+}
+
+/* ------------------------------------------------------
+   Gym: Pinned rest timer bar (high contrast, big, readable)
+   ------------------------------------------------------ */
+.restbar{
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+
+  /* calm + readable */
+  background: #ffffff;
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -8px 18px rgba(16,24,40,0.06);
+
+  padding: 10px 12px;
+}
+
+.restbar-inner{
+  max-width: 980px;
+  margin: 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.restbar-time{
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.restbar-meta{
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.restbar-actions{
+  display:flex;
+  align-items:center;
+  gap: 8px;
+}
+
+/* Ensure content isn't hidden behind pinned rest bar */
+.has-restbar{
+  padding-bottom: 72px;
+}
+
+@media (max-width: 520px){
+  .restbar{ padding: 10px 10px; }
+  .restbar-time{ font-size: 24px; }
+  .has-restbar{ padding-bottom: 84px; } /* a hair more on iPhone */
+}
+
+/* ------------------------------------------------------
+   Gym: Small helper for "Previous" column staying subtle
+   ------------------------------------------------------ */
+.prev-cell{
+  color: rgba(107,114,128,0.85); /* slightly lighter than default muted */
+}
+/* =========================================
+   Breadcrumb S15 (GYM Rest Banner)
+   ========================================= */
+.rest-banner{
+  margin-top: 10px;
+  padding: 10px 10px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 12px;
+}
+
+.rest-banner__left{
+  min-width: 0;
+}
+
+.rest-banner__title{
+  font-weight: 900;
+  font-size: 13px;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rest-banner__sub{
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.rest-banner__actions{
+  display:flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 520px){
+  .rest-banner{
+    position: sticky;
+    bottom: 10px;
+    z-index: 5;
+    box-shadow: 0 10px 25px rgba(16, 24, 40, 0.10);
+  }
+}
+/* =========================================================
+   Breadcrumb S15 (GYM) — Rest Timer Dock (Option B)
+   Mobile-only: fixed to bottom of screen
+   Desktop: stays in-flow (looks like a small in-card banner)
+   ========================================================= */
+
+.rest-banner{
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 10px 12px;
+}
+
+.rest-banner__top{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap: 10px;
+}
+
+.rest-banner__title{
+  font-weight: 900;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.rest-banner__sub{
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.rest-banner__actions{
+  display:flex;
+  gap: 8px;
+  align-items:center;
+}
+
+/* Mobile-only dock */
+@media (max-width: 520px){
+  /* Give the page breathing room so the dock doesn't cover content */
+  .container{
+    padding-bottom: 96px;
+  }
+
+  .rest-banner{
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+
+    margin: 0;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+    border-radius: 0;
+
+    /* Safe area for iPhone home indicator */
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .rest-banner-inner{
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 10px 12px;
+  }
+}
+/* =========================================================
+   Breadcrumb S16 (GYM) — Cues Placeholder
+   ========================================================= */
+
+.cues-box{
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: #fafafa;
+  font-size: 14px;
+}

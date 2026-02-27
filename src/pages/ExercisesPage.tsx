@@ -1,0 +1,1610 @@
+// src/pages/ExercisesPage.tsx
+/* ========================================================================== */
+/*  ExercisesPage.tsx                                                         */
+/*  BUILD_ID: 2026-02-25-EX-07                                                 */
+/* -------------------------------------------------------------------------- */
+/*  Strong-like Exercise Catalog + Coaching + Performance Tabs                 */
+/*                                                                            */
+/*  Revision history                                                          */
+/*  - 2026-02-xx  EX-01  Catalog: search + body part filter + create + edit     */
+/*                       FocusArea (optional) + aliases + safe dedupe          */
+/*  - 2026-02-22  EX-02  Coaching editor: summary/directions/setup+exec cues    */
+/*                       common mistakes + video URL + copy-to-clipboard       */
+/*                       Row indicators for cues presence                      */
+/*  - 2026-02-22  EX-03  ✅ Tap exercise name opens DETAILS (read-only) modal   */
+/*                       Edit remains an explicit action button                */
+/*                       Details modal includes Copy cues + Edit               */
+/*  - 2026-02-24  EX-04  ✅ Details modal shows Performance chart (monthly)     */
+/*                       Best Set (est. 1RM) across all logged tracks/sets     */
+/*  - 2026-02-24  EX-05  ✅ Strong-ish DETAILS tabs: Details / History / Charts */
+/*                       / Records with derived performance hook               */
+/*  - 2026-02-24  EX-06  ✅ Added in-file breadcrumbs + expanded dev notes      */
+/*                       Kept behavior stable; clarified tab-default logic     */
+/*  - 2026-02-25  EX-07  ✅ Add Exercise.metricMode editor (reps/distance/time) */
+/*                       Saved to DB; defaults to "reps" if missing/invalid    */
+/* ========================================================================== */
+
+import React, { useMemo, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { useNavigate } from "react-router-dom";
+import { db, normalizeName } from "../db";
+import type { Exercise, BodyPart, MetricMode } from "../db";
+import { uuid } from "../utils";
+import { Page, Section } from "../components/Page";
+import { seedExercises } from "../seed/seedExercises";
+import { CoachingPanel } from "../components/CoachingPanel";
+
+/* ========================================================================== */
+/*  Breadcrumb 1 — Schema tolerance + design intent                            */
+/* -------------------------------------------------------------------------- */
+/*  Why this file reads defensively:                                           */
+/*  - Some iterations used db.setEntries; others used db.sets.                 */
+/*  - Completion timestamps varied: completedAt / doneAt / finishedAt.         */
+/*  - We only count "history" when: (session endedAt) AND (set completedAt).   */
+/*                                                                            */
+/*  UI intent:                                                                 */
+/*  - Tap exercise name => DETAILS modal (read-only)                            */
+/*  - Edit is explicit action                                                  */
+/*  - DETAILS default tab (Option B):                                          */
+/*      If the exercise has history => open on History                         */
+/*      Else => open on Details                                                */
+/* ========================================================================== */
+
+type FocusArea =
+  | "Delts"
+  | "Front Delts"
+  | "Side Delts"
+  | "Rear Delts"
+  | "Lats"
+  | "Upper Back"
+  | "Mid Back"
+  | "Lower Back"
+  | "Traps"
+  | "Biceps"
+  | "Triceps"
+  | "Forearms"
+  | "Chest"
+  | "Upper Chest"
+  | "Glutes"
+  | "Quads"
+  | "Hamstrings"
+  | "Calves"
+  | "Core";
+
+const FOCUS_AREAS: FocusArea[] = [
+  "Delts",
+  "Front Delts",
+  "Side Delts",
+  "Rear Delts",
+  "Lats",
+  "Upper Back",
+  "Mid Back",
+  "Lower Back",
+  "Traps",
+  "Biceps",
+  "Triceps",
+  "Forearms",
+  "Chest",
+  "Upper Chest",
+  "Glutes",
+  "Quads",
+  "Hamstrings",
+  "Calves",
+  "Core",
+];
+
+const BODY_PARTS: BodyPart[] = ["Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Full Body", "Cardio", "Other"];
+
+/* ========================================================================== */
+/*  Breadcrumb 2 — Small helpers (string/arrays)                               */
+/* ========================================================================== */
+
+function getFocusArea(e: Exercise): string | undefined {
+  const fa = (e as any).focusArea as string | undefined;
+  return fa && fa.trim() ? fa : undefined;
+}
+
+function normalizeAliases(raw: string): string[] {
+  // comma or newline separated
+  const parts = raw
+    .split(/[\n,]/g)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  // dedupe case-insensitively
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const p of parts) {
+    const k = normalizeName(p);
+    if (!k) continue;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(p);
+  }
+  return out;
+}
+
+function normalizeLines(raw: string): string[] {
+  // one per line; trim + drop blanks; dedupe case-insensitively but preserve first casing
+  const parts = raw
+    .split(/\n/g)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const p of parts) {
+    const k = normalizeName(p);
+    if (!k) continue;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(p);
+  }
+  return out;
+}
+
+function textOrUndef(v: string): string | undefined {
+  const s = (v ?? "").trim();
+  return s ? s : undefined;
+}
+
+function safeLen(a: any): number {
+  return Array.isArray(a) ? a.filter((x) => typeof x === "string" && x.trim().length > 0).length : 0;
+}
+
+function cleanStringArray(v: any): string[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .map((x) => (typeof x === "string" ? x.trim() : ""))
+    .filter(Boolean);
+}
+
+function normalizeMetricMode(v: any): MetricMode {
+  return v === "distance" || v === "time" ? v : "reps";
+}
+
+function prettyMetricLabel(m: MetricMode): string {
+  return m === "distance" ? "Distance" : m === "time" ? "Time" : "Reps";
+}
+
+async function copyTextToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    window.alert("Copied to clipboard.");
+  } catch {
+    // Fallback for older browsers / non-secure contexts
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "true");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      ta.style.top = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      window.alert("Copied to clipboard.");
+    } catch {
+      window.alert("Copy failed. Your browser may block clipboard access.");
+    }
+  }
+}
+
+/** Epley est 1RM. Safe + simple. */
+function e1rm(weight: number, reps: number): number {
+  const w = Number(weight);
+  const r = Number(reps);
+  if (!Number.isFinite(w) || !Number.isFinite(r) || w <= 0 || r <= 0) return 0;
+  return w * (1 + r / 30);
+}
+
+function monthKeyFromMs(ms: number): string {
+  const d = new Date(ms);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
+}
+
+function prettyDateLabel(ms: number) {
+  const d = new Date(ms);
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+/* ========================================================================== */
+/*  Breadcrumb 3 — Small chart/record UI parts                                 */
+/* ========================================================================== */
+
+function MiniLineChart({ points, height }: { points: { x: string; y: number }[]; height: number }) {
+  const w = 520; // viewBox width
+  const h = Math.max(60, height);
+
+  if (!points?.length) {
+    return (
+      <div className="muted" style={{ fontSize: 13 }}>
+        No data yet.
+      </div>
+    );
+  }
+
+  const ys = points.map((p) => p.y).filter((v) => Number.isFinite(v));
+  if (!ys.length) {
+    return (
+      <div className="muted" style={{ fontSize: 13 }}>
+        No data yet.
+      </div>
+    );
+  }
+
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const span = Math.max(1e-6, maxY - minY);
+
+  const padX = 6;
+  const padY = 6;
+
+  const toX = (i: number) => {
+    if (points.length === 1) return w / 2;
+    return padX + (i * (w - padX * 2)) / (points.length - 1);
+  };
+
+  const toY = (y: number) => {
+    const t = (y - minY) / span;
+    return padY + (1 - t) * (h - padY * 2);
+  };
+
+  const d = points
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(i).toFixed(2)} ${toY(p.y).toFixed(2)}`)
+    .join(" ");
+
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} role="img" aria-label="Chart">
+      <path
+        d={`M ${padX} ${h - padY} L ${w - padX} ${h - padY}`}
+        stroke="currentColor"
+        strokeOpacity="0.15"
+        fill="none"
+      />
+      <path d={d} stroke="currentColor" strokeWidth="2" fill="none" />
+    </svg>
+  );
+}
+
+function RecordRow({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="card" style={{ padding: 10 }}>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+        <div style={{ fontWeight: 900 }}>{label}</div>
+        <div style={{ fontWeight: 900 }}>{value}</div>
+      </div>
+      {sub ? (
+        <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
+          {sub}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ChartCard({
+  title,
+  subtitle,
+  points,
+}: {
+  title: string;
+  subtitle: string;
+  points: { x: string; y: number }[];
+}) {
+  const last = points.length ? points[points.length - 1].y : undefined;
+
+  return (
+    <div className="card" style={{ padding: 10 }}>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
+        <div style={{ fontWeight: 900 }}>{title}</div>
+        <div className="muted" style={{ fontSize: 12 }}>
+          {last != null && Number.isFinite(last) ? `Now: ${Math.round(last)}` : "—"}
+        </div>
+      </div>
+      <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>
+        {subtitle}
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <MiniLineChart points={points} height={90} />
+      </div>
+      <div className="muted" style={{ marginTop: 8, fontSize: 12, display: "flex", justifyContent: "space-between" }}>
+        <span>{points[0]?.x ?? ""}</span>
+        <span>{points[points.length - 1]?.x ?? ""}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ========================================================================== */
+/*  Breadcrumb 4 — useExercisePerformance                                      */
+/* -------------------------------------------------------------------------- */
+/*  Performance derivation for an Exercise (across ALL tracks for exerciseId). */
+/*  Completion filtering: ended sessions + completed sets only.                */
+/*  Excludes warmups from volume by default.                                   */
+/* ========================================================================== */
+
+function useExercisePerformance(exerciseId?: string) {
+  const data = useLiveQuery(async () => {
+    if (!exerciseId) return { sessionCount: 0, rows: [] as any[] };
+
+    const tracksTable = (db as any).tracks;
+    const sessionsTable = (db as any).sessions;
+    const setsTable = (db as any).setEntries ?? (db as any).sets;
+
+    if (!tracksTable || !sessionsTable || !setsTable) {
+      return { sessionCount: 0, rows: [] as any[] };
+    }
+
+    const tracks: any[] = (await tracksTable.where("exerciseId").equals(exerciseId).toArray()) ?? [];
+    const trackIds = tracks.map((t) => t.id).filter(Boolean);
+    if (!trackIds.length) return { sessionCount: 0, rows: [] as any[] };
+
+    // Pull sets for those tracks
+    let sets: any[] = [];
+    try {
+      sets = (await setsTable.where("trackId").anyOf(trackIds).toArray()) ?? [];
+    } catch {
+      const all = (await setsTable.toArray()) ?? [];
+      sets = all.filter((s: any) => trackIds.includes(s.trackId));
+    }
+
+    const sessionIds = Array.from(new Set(sets.map((s: any) => s.sessionId).filter(Boolean)));
+    const sessions: any[] = (await sessionsTable.bulkGet(sessionIds)).filter(Boolean) as any[];
+
+    const endedSessions = sessions.filter(
+      (s) => typeof s?.endedAt === "number" && Number.isFinite(s.endedAt) && s.endedAt > 0
+    );
+    const endedIdSet = new Set<string>(endedSessions.map((s) => s.id));
+
+    const isSetCompleted = (se: any) => {
+      const c = se?.completedAt ?? se?.doneAt ?? se?.finishedAt;
+      return typeof c === "number" && Number.isFinite(c) && c > 0;
+    };
+
+    const doneSets = sets.filter((se: any) => {
+      if (!se?.sessionId) return false;
+      if (!endedIdSet.has(se.sessionId)) return false;
+      if (!isSetCompleted(se)) return false;
+      return true;
+    });
+
+    const setsBySession = new Map<string, any[]>();
+    for (const se of doneSets) {
+      const arr = setsBySession.get(se.sessionId) ?? [];
+      arr.push(se);
+      setsBySession.set(se.sessionId, arr);
+    }
+
+    const rows = endedSessions
+      .slice()
+      .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
+      .map((s) => {
+        const arr = (setsBySession.get(s.id) ?? []).slice();
+
+        const isWarmup = (x: any) => String(x?.setType ?? x?.kind ?? "working") === "warmup";
+        const nonWarmup = arr.filter((x) => !isWarmup(x));
+
+        let totalVolume = 0;
+        let bestWeight: number | undefined;
+        let bestReps: number | undefined;
+        let bestE1rm: number | undefined;
+        let bestSetLabel: string | undefined;
+
+        for (const se of nonWarmup) {
+          const w = Number(se.weight);
+          const r = Number(se.reps);
+          if (!Number.isFinite(w) || !Number.isFinite(r) || w <= 0 || r <= 0) continue;
+
+          totalVolume += w * r;
+
+          if (bestWeight == null || w > bestWeight) bestWeight = w;
+          if (bestReps == null || r > bestReps) bestReps = r;
+
+          const e1 = e1rm(w, r);
+          if (Number.isFinite(e1) && (bestE1rm == null || e1 > bestE1rm)) {
+            bestE1rm = e1;
+            bestSetLabel = `${w} x ${r}`;
+          }
+        }
+
+        const endedAt = typeof s.endedAt === "number" ? s.endedAt : (s.startedAt as number);
+        const dateLabel = prettyDateLabel(endedAt);
+
+        return {
+          sessionId: s.id,
+          templateName: s.templateName,
+          endedAt,
+          dateLabel,
+          totalVolume,
+          bestWeight,
+          maxReps: bestReps,
+          bestE1rm,
+          bestSetLabel,
+        };
+      });
+
+    return { sessionCount: endedSessions.length, rows };
+  }, [exerciseId]);
+
+  const rows = data?.rows ?? [];
+
+  const toMonthly = (pairs: Array<{ ms: number; value: number }>, mode: "sum" | "max") => {
+    const m = new Map<string, number>();
+    for (const p of pairs) {
+      const k = monthKeyFromMs(p.ms);
+      const prev = m.get(k);
+      if (prev == null) m.set(k, p.value);
+      else m.set(k, mode === "sum" ? prev + p.value : Math.max(prev, p.value));
+    }
+    const keys = Array.from(m.keys()).sort((a, b) => a.localeCompare(b));
+    return keys.map((k) => ({ x: k, y: m.get(k)! }));
+  };
+
+  const monthlyVolume = toMonthly(
+    rows.map((r: any) => ({ ms: r.endedAt, value: Number(r.totalVolume ?? 0) })),
+    "sum"
+  );
+
+  const monthlyE1rm = toMonthly(
+    rows.filter((r: any) => Number.isFinite(r.bestE1rm)).map((r: any) => ({ ms: r.endedAt, value: r.bestE1rm })),
+    "max"
+  );
+
+  const monthlyMaxWeight = toMonthly(
+    rows.filter((r: any) => Number.isFinite(r.bestWeight)).map((r: any) => ({ ms: r.endedAt, value: r.bestWeight })),
+    "max"
+  );
+
+  const monthlyMaxReps = toMonthly(
+    rows.filter((r: any) => Number.isFinite(r.maxReps)).map((r: any) => ({ ms: r.endedAt, value: r.maxReps })),
+    "max"
+  );
+
+  // Records
+  let bestE1rmVal: number | undefined;
+  let bestE1rmLabel: string | undefined;
+
+  let bestWeightVal: number | undefined;
+  let bestWeightLabel: string | undefined;
+
+  let bestSessionVolumeVal: number | undefined;
+  let bestSessionVolumeLabel: string | undefined;
+
+  let bestRepsVal: number | undefined;
+  let bestRepsLabel: string | undefined;
+
+  for (const r of rows) {
+    if (Number.isFinite(r.bestE1rm) && (bestE1rmVal == null || r.bestE1rm > bestE1rmVal)) {
+      bestE1rmVal = r.bestE1rm;
+      bestE1rmLabel = `${r.bestSetLabel ?? "—"} (${r.dateLabel})`;
+    }
+    if (Number.isFinite(r.bestWeight) && (bestWeightVal == null || r.bestWeight > bestWeightVal)) {
+      bestWeightVal = r.bestWeight;
+      bestWeightLabel = `${r.bestWeight} (${r.dateLabel})`;
+    }
+    if (Number.isFinite(r.totalVolume) && (bestSessionVolumeVal == null || r.totalVolume > bestSessionVolumeVal)) {
+      bestSessionVolumeVal = r.totalVolume;
+      bestSessionVolumeLabel = `${Math.round(r.totalVolume)} (${r.dateLabel})`;
+    }
+    if (Number.isFinite(r.maxReps) && (bestRepsVal == null || r.maxReps > bestRepsVal)) {
+      bestRepsVal = r.maxReps;
+      bestRepsLabel = `${r.maxReps} (${r.dateLabel})`;
+    }
+  }
+
+  return {
+    sessionCount: data?.sessionCount ?? 0,
+    historyRows: rows.slice(0, 30),
+    monthlyVolume,
+    monthlyE1rm,
+    monthlyMaxWeight,
+    monthlyMaxReps,
+    records: {
+      bestE1rm: bestE1rmVal,
+      bestE1rmLabel,
+      bestWeight: bestWeightVal,
+      bestWeightLabel,
+      bestSessionVolume: bestSessionVolumeVal,
+      bestSessionVolumeLabel,
+      bestReps: bestRepsVal,
+      bestRepsLabel,
+    },
+  };
+}
+
+/* ========================================================================== */
+/*  Breadcrumb 5 — ExerciseDetailsModal (tabs + sticky header)                 */
+/* ========================================================================== */
+
+function ExerciseDetailsModal({
+  exercise,
+  tab,
+  setTab,
+  onClose,
+  onEdit,
+}: {
+  exercise: any; // Exercise type in your db; keep `any` here to avoid import churn
+  tab: "details" | "history" | "charts" | "records";
+  setTab: (t: "details" | "history" | "charts" | "records") => void;
+  onClose: () => void;
+  onEdit: () => void;
+}) {
+  const perf = useExercisePerformance(exercise?.id);
+
+  const summary = textOrUndef(String((exercise as any).summary ?? ""));
+  const directions = textOrUndef(String((exercise as any).directions ?? ""));
+  const cs = cleanStringArray((exercise as any).cuesSetup);
+  const ce = cleanStringArray((exercise as any).cuesExecution);
+  const cm = cleanStringArray((exercise as any).commonMistakes);
+  const videoUrl = textOrUndef(String((exercise as any).videoUrl ?? ""));
+  const hasCoaching = !!summary || !!directions || cs.length || ce.length || cm.length || !!videoUrl;
+
+  const TabBtn = ({
+    id,
+    label,
+    badge,
+  }: {
+    id: "details" | "history" | "charts" | "records";
+    label: string;
+    badge?: string;
+  }) => {
+    const active = tab === id;
+    return (
+      <button
+        type="button"
+        className="btn small"
+        onClick={() => setTab(id)}
+        style={{
+          fontWeight: 900,
+          opacity: active ? 1 : 0.65,
+          borderRadius: 999,
+          padding: "8px 12px",
+        }}
+        aria-current={active ? "page" : undefined}
+      >
+        {label}
+        {badge ? (
+          <span className="badge" style={{ marginLeft: 8 }}>
+            {badge}
+          </span>
+        ) : null}
+      </button>
+    );
+  };
+
+  const metric = prettyMetricLabel(normalizeMetricMode((exercise as any).metricMode));
+
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Exercise details" onMouseDown={onClose}>
+      <div
+        className="card modal-card"
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: 900,
+          width: "min(900px, calc(100vw - 24px))",
+          maxHeight: "calc(100vh - 24px)",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <div style={{ position: "sticky", top: 0, zIndex: 2, background: "var(--card)" }}>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <button className="btn small" onClick={onClose} aria-label="Close">
+              ✕
+            </button>
+
+            <div style={{ textAlign: "center", flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {exercise.name}
+              </div>
+              <div className="muted" style={{ marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {[exercise.bodyPart ?? "—", getFocusArea(exercise), `Metric: ${metric}`].filter(Boolean).join(" • ") || "—"}
+              </div>
+            </div>
+
+            <button className="btn small" onClick={onEdit} title="Edit this exercise">
+              Edit
+            </button>
+          </div>
+
+          <div className="row" style={{ gap: 8, padding: "10px 4px 10px 4px", flexWrap: "wrap" }}>
+            <TabBtn id="details" label="Details" badge={!hasCoaching ? "empty" : undefined} />
+            <TabBtn id="history" label="History" badge={perf.sessionCount ? String(perf.sessionCount) : undefined} />
+            <TabBtn id="charts" label="Charts" />
+            <TabBtn id="records" label="Records" />
+          </div>
+
+          <hr style={{ margin: 0 }} />
+        </div>
+
+        <div style={{ paddingRight: 2, overflowY: "auto", maxHeight: "min(740px, calc(100vh - 240px))" }}>
+          {tab === "details" ? <CoachingPanel exercise={exercise} perf={perf} /> : null}
+
+          {tab === "history" ? (
+            <div className="card" style={{ padding: 12 }}>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
+                <div style={{ fontWeight: 900 }}>Recent sessions</div>
+                <div className="muted" style={{ fontSize: 12 }}>{perf.sessionCount ? `${perf.sessionCount} total` : "—"}</div>
+              </div>
+
+              <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>Completed sessions only (endedAt + completed sets).</div>
+
+              <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                {perf.historyRows.length ? (
+                  perf.historyRows.map((r) => (
+                    <div key={r.sessionId} className="card" style={{ padding: 10 }}>
+                      <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+                        <div style={{ fontWeight: 900 }}>{r.dateLabel}</div>
+                        <span className="badge">{r.templateName ?? "Session"}</span>
+                      </div>
+
+                      <div className="muted" style={{ marginTop: 6, fontSize: 13, lineHeight: 1.5 }}>
+                        Best set: <b>{r.bestSetLabel ?? "—"}</b>
+                        {"  •  "}
+                        e1RM: <b>{r.bestE1rm ? Math.round(r.bestE1rm) : "—"}</b>
+                        {"  •  "}
+                        Volume: <b>{r.totalVolume ? Math.round(r.totalVolume) : "—"}</b>
+                        {"  •  "}
+                        Max reps: <b>{r.maxReps ?? "—"}</b>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="muted">No completed history yet for this exercise.</div>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {tab === "charts" ? (
+            <div className="card" style={{ padding: 12 }}>
+              <div style={{ fontWeight: 900 }}>Charts (monthly)</div>
+              <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
+                Total Volume, PR progression (e1RM), Best Set (max weight), Max Reps.
+              </div>
+
+              <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+                <ChartCard title="Total Volume" subtitle="Sum(weight × reps) of completed non-warmup sets" points={perf.monthlyVolume} />
+                <ChartCard title="PR Progression (e1RM)" subtitle="Monthly max of e1RM (Epley)" points={perf.monthlyE1rm} />
+                <ChartCard title="Best Set (Max Weight)" subtitle="Monthly max weight across completed sets" points={perf.monthlyMaxWeight} />
+                <ChartCard title="Max Reps" subtitle="Monthly max reps across completed sets" points={perf.monthlyMaxReps} />
+              </div>
+            </div>
+          ) : null}
+
+          {tab === "records" ? (
+            <div className="card" style={{ padding: 12 }}>
+              <div style={{ fontWeight: 900 }}>Records</div>
+              <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>Derived from completed sessions only.</div>
+
+              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                <RecordRow
+                  label="Best e1RM"
+                  value={perf.records.bestE1rm ? `${Math.round(perf.records.bestE1rm)}` : "—"}
+                  sub={perf.records.bestE1rmLabel}
+                />
+                <RecordRow
+                  label="Best set (max weight)"
+                  value={perf.records.bestWeight != null ? `${perf.records.bestWeight}` : "—"}
+                  sub={perf.records.bestWeightLabel}
+                />
+                <RecordRow
+                  label="Best session volume"
+                  value={perf.records.bestSessionVolume != null ? `${Math.round(perf.records.bestSessionVolume)}` : "—"}
+                  sub={perf.records.bestSessionVolumeLabel}
+                />
+                <RecordRow
+                  label="Max reps in a set"
+                  value={perf.records.bestReps != null ? `${perf.records.bestReps}` : "—"}
+                  sub={perf.records.bestRepsLabel}
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <button className="btn" style={{ width: "100%", padding: "12px 14px" }} onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ========================================================================== */
+/*  Breadcrumb 6 — Clipboard block builder                                     */
+/* ========================================================================== */
+
+function buildClipboardText(e: Exercise, patchPreview?: any) {
+  const name = patchPreview?.name ?? e.name ?? "";
+  const body = patchPreview?.bodyPart ?? e.bodyPart ?? "—";
+  const metricMode: MetricMode = normalizeMetricMode(patchPreview?.metricMode ?? (e as any).metricMode);
+
+  const summary = (patchPreview?.summary ?? (e as any).summary ?? "").toString().trim();
+  const directions = (patchPreview?.directions ?? (e as any).directions ?? "").toString().trim();
+
+  const cuesSetup: string[] =
+    patchPreview?.cuesSetup ?? (Array.isArray((e as any).cuesSetup) ? (e as any).cuesSetup : []) ?? [];
+  const cuesExecution: string[] =
+    patchPreview?.cuesExecution ?? (Array.isArray((e as any).cuesExecution) ? (e as any).cuesExecution : []) ?? [];
+  const commonMistakes: string[] =
+    patchPreview?.commonMistakes ?? (Array.isArray((e as any).commonMistakes) ? (e as any).commonMistakes : []) ?? [];
+
+  const videoUrl = (patchPreview?.videoUrl ?? (e as any).videoUrl ?? "").toString().trim();
+
+  const lines: string[] = [];
+  lines.push(`${name}`);
+  lines.push(`Body Part: ${body}`);
+  lines.push(`Metric: ${prettyMetricLabel(metricMode)}`);
+  lines.push("");
+
+  if (summary) {
+    lines.push("Summary:");
+    lines.push(summary);
+    lines.push("");
+  }
+
+  if (directions) {
+    lines.push("Directions:");
+    lines.push(directions);
+    lines.push("");
+  }
+
+  if (cuesSetup.length) {
+    lines.push("Cues — Setup:");
+    for (const c of cuesSetup) lines.push(`- ${String(c).trim()}`);
+    lines.push("");
+  }
+
+  if (cuesExecution.length) {
+    lines.push("Cues — Execution:");
+    for (const c of cuesExecution) lines.push(`- ${String(c).trim()}`);
+    lines.push("");
+  }
+
+  if (commonMistakes.length) {
+    lines.push("Common Mistakes:");
+    for (const c of commonMistakes) lines.push(`- ${String(c).trim()}`);
+    lines.push("");
+  }
+
+  if (videoUrl) {
+    lines.push("Video:");
+    lines.push(videoUrl);
+    lines.push("");
+  }
+
+  return lines.join("\n").trim() + "\n";
+}
+
+/* ========================================================================== */
+/*  Breadcrumb 7 — Main page component                                         */
+/* ========================================================================== */
+
+export default function ExercisesPage() {
+  const nav = useNavigate();
+
+  // --- UI state -------------------------------------------------------------
+  const [q, setQ] = useState("");
+  const [bodyPart, setBodyPart] = useState<BodyPart | "">("");
+  const [sortAsc, setSortAsc] = useState(true); // true=A→Z, false=Z→A
+
+  // Create panel state
+  const [showCreate, setShowCreate] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [draftBodyPart, setDraftBodyPart] = useState<BodyPart | "">("");
+  const [draftFocusArea, setDraftFocusArea] = useState<FocusArea | "">("");
+
+  // Details modal state (read-only)
+  const [viewingId, setViewingId] = useState<string>("");
+  const [detailsTab, setDetailsTab] = useState<"details" | "history" | "charts" | "records">("details");
+
+  // Edit modal state (base fields)
+  const [editingId, setEditingId] = useState<string>("");
+  const [editName, setEditName] = useState("");
+  const [editBodyPart, setEditBodyPart] = useState<BodyPart | "">("");
+  const [editFocusArea, setEditFocusArea] = useState<FocusArea | "">("");
+  const [editAliasesText, setEditAliasesText] = useState("");
+  const [editError, setEditError] = useState<string>("");
+
+  // ✅ NEW: metric mode
+  const [editMetricMode, setEditMetricMode] = useState<MetricMode>("reps");
+
+  // Coaching fields
+  const [editSummary, setEditSummary] = useState("");
+  const [editDirections, setEditDirections] = useState("");
+  const [editCuesSetupText, setEditCuesSetupText] = useState("");
+  const [editCuesExecutionText, setEditCuesExecutionText] = useState("");
+  const [editCommonMistakesText, setEditCommonMistakesText] = useState("");
+  const [editVideoUrl, setEditVideoUrl] = useState("");
+
+  /* ======================================================================== */
+  /*  Breadcrumb 8 — DB reads                                                  */
+  /* ======================================================================== */
+
+  const exercises = useLiveQuery(async () => {
+    const arr = await db.exercises.toArray();
+    return arr.filter((e) => !e.archivedAt && !(e as any).mergedIntoExerciseId);
+  }, []);
+
+  const viewingExercise = useMemo(() => {
+    if (!viewingId) return null;
+    return (exercises ?? []).find((e) => e.id === viewingId) ?? null;
+  }, [viewingId, exercises]);
+
+  const editingExercise = useMemo(() => {
+    if (!editingId) return null;
+    return (exercises ?? []).find((e) => e.id === editingId) ?? null;
+  }, [editingId, exercises]);
+
+  /* ======================================================================== */
+  /*  Breadcrumb 9 — Derived filtering + grouping                               */
+  /* ======================================================================== */
+
+  const filtered = useMemo(() => {
+    const nq = normalizeName(q || "");
+    let arr = (exercises ?? []).slice();
+
+    if (bodyPart) arr = arr.filter((e) => e.bodyPart === bodyPart);
+
+    if (nq) {
+      arr = arr.filter((e) => {
+        const aliasHay = (e.aliases ?? []).map((a) => normalizeName(a)).join(" ");
+        const focusHay = normalizeName(getFocusArea(e) ?? "");
+
+        // Include coaching fields in search
+        const sumHay = normalizeName(String((e as any).summary ?? ""));
+        const dirHay = normalizeName(String((e as any).directions ?? ""));
+        const csHay = Array.isArray((e as any).cuesSetup)
+          ? (e as any).cuesSetup.map((x: any) => normalizeName(String(x))).join(" ")
+          : "";
+        const ceHay = Array.isArray((e as any).cuesExecution)
+          ? (e as any).cuesExecution.map((x: any) => normalizeName(String(x))).join(" ")
+          : "";
+
+        const hay = `${e.normalizedName} ${normalizeName(e.name)} ${aliasHay} ${focusHay} ${sumHay} ${dirHay} ${csHay} ${ceHay}`;
+        return hay.includes(nq);
+      });
+    }
+
+    arr.sort((a, b) => (a.normalizedName || "").localeCompare(b.normalizedName || ""));
+    if (!sortAsc) arr.reverse();
+
+    return arr;
+  }, [exercises, q, bodyPart, sortAsc]);
+
+  // Keep grouping internally (optional), but do not render headers.
+  const grouped = useMemo(() => {
+    const m = new Map<string, Exercise[]>();
+    for (const e of filtered) {
+      const ch = (e.name?.trim()?.[0] ?? "#").toUpperCase();
+      const key = /[A-Z]/.test(ch) ? ch : "#";
+      const arr = m.get(key) ?? [];
+      arr.push(e);
+      m.set(key, arr);
+    }
+    const keys = Array.from(m.keys()).sort((a, b) => {
+      if (a === "#") return 1;
+      if (b === "#") return -1;
+      return a.localeCompare(b);
+    });
+    return keys.map((k) => ({ key: k, items: m.get(k)! }));
+  }, [filtered]);
+
+  /* ======================================================================== */
+  /*  Breadcrumb 10 — Create + seed                                             */
+  /* ======================================================================== */
+
+  function openCreate(prefill?: string) {
+    setDraftName((prefill ?? q).trim());
+    setDraftBodyPart(bodyPart || "");
+    setDraftFocusArea("");
+    setShowCreate(true);
+  }
+
+  async function createExercise() {
+    const name = (draftName || "").trim();
+    if (!name) return;
+
+    const norm = normalizeName(name);
+
+    const existing = await db.exercises.where("normalizedName").equals(norm).first();
+    if (existing && !existing.archivedAt && !(existing as any).mergedIntoExerciseId) {
+      setShowCreate(false);
+      return;
+    }
+
+    const now = Date.now();
+    const ex: Exercise = {
+      id: uuid(),
+      name,
+      normalizedName: norm,
+      equipmentTags: [],
+      bodyPart: draftBodyPart || undefined,
+      createdAt: now,
+      updatedAt: now,
+      // metricMode intentionally omitted => defaults to reps on read
+    };
+
+    if (draftFocusArea) (ex as any).focusArea = draftFocusArea;
+
+    await db.exercises.add(ex);
+
+    setShowCreate(false);
+    setDraftName("");
+  }
+
+  async function runSeed() {
+    const res = await seedExercises();
+
+    window.alert(
+      `Seed complete.\n\n` +
+        `Seed rows: ${res.seedCount}\n` +
+        `Existing before: ${res.existingBefore}\n\n` +
+        `Added: ${res.added}\n` +
+        `Updated (backfilled): ${res.updated}\n` +
+        `Skipped (already existed): ${res.skippedExisting}\n` +
+        `Skipped (dup in seed): ${res.skippedDuplicateInSeed}\n` +
+        `Skipped (invalid): ${res.skippedInvalid}`
+    );
+  }
+
+  function clearAll() {
+    setQ("");
+    setBodyPart("");
+    setSortAsc(true);
+  }
+
+  /* ======================================================================== */
+  /*  Breadcrumb 11 — Details + edit helpers                                    */
+  /* ======================================================================== */
+
+  async function openDetails(e: Exercise) {
+    const hasCoaching =
+      !!textOrUndef(String((e as any).summary ?? "")) ||
+      !!textOrUndef(String((e as any).directions ?? "")) ||
+      cleanStringArray((e as any).cuesSetup).length > 0 ||
+      cleanStringArray((e as any).cuesExecution).length > 0 ||
+      cleanStringArray((e as any).commonMistakes).length > 0 ||
+      !!textOrUndef(String((e as any).videoUrl ?? ""));
+
+    const tracksTable = (db as any).tracks;
+    const sessionsTable = (db as any).sessions;
+    const setsTable = (db as any).setEntries ?? (db as any).sets;
+
+    let hasHistory = false;
+
+    try {
+      if (tracksTable && sessionsTable && setsTable) {
+        const tracks: any[] = (await tracksTable.where("exerciseId").equals(e.id).toArray()) ?? [];
+        const trackIds = tracks.map((t) => t.id).filter(Boolean);
+
+        if (trackIds.length) {
+          let sets: any[] = [];
+          try {
+            sets = (await setsTable.where("trackId").anyOf(trackIds).toArray()) ?? [];
+          } catch {
+            const all = (await setsTable.toArray()) ?? [];
+            sets = all.filter((s: any) => trackIds.includes(s.trackId));
+          }
+
+          const sessionIds = Array.from(new Set(sets.map((s: any) => s.sessionId).filter(Boolean)));
+          if (sessionIds.length) {
+            const sessions: any[] = (await sessionsTable.bulkGet(sessionIds)).filter(Boolean) as any[];
+            const endedSessionIds = new Set(
+              sessions
+                .filter((s: any) => typeof s?.endedAt === "number" && Number.isFinite(s.endedAt) && s.endedAt > 0)
+                .map((s: any) => s.id)
+            );
+
+            if (endedSessionIds.size) {
+              const isSetCompleted = (se: any) => {
+                const c = se?.completedAt ?? se?.doneAt ?? se?.finishedAt;
+                return typeof c === "number" && Number.isFinite(c) && c > 0;
+              };
+
+              hasHistory = sets.some((se: any) => endedSessionIds.has(se.sessionId) && isSetCompleted(se));
+            }
+          }
+        }
+      }
+    } catch {
+      hasHistory = false;
+    }
+
+    if (hasHistory) setDetailsTab("history");
+    else setDetailsTab("details");
+
+    setViewingId(e.id);
+  }
+
+  function closeDetails() {
+    setViewingId("");
+  }
+
+  function openEdit(e: Exercise) {
+    setEditingId(e.id);
+    setEditError("");
+
+    setEditName(e.name ?? "");
+    setEditBodyPart((e.bodyPart as any) ?? "");
+    setEditFocusArea(((e as any).focusArea as any) ?? "");
+    setEditAliasesText((e.aliases ?? []).join("\n"));
+
+    // ✅ NEW: load metricMode (default reps)
+    setEditMetricMode(normalizeMetricMode((e as any).metricMode));
+
+    setEditSummary(String((e as any).summary ?? ""));
+    setEditDirections(String((e as any).directions ?? ""));
+
+    const cs = Array.isArray((e as any).cuesSetup) ? (e as any).cuesSetup : [];
+    const ce = Array.isArray((e as any).cuesExecution) ? (e as any).cuesExecution : [];
+    const cm = Array.isArray((e as any).commonMistakes) ? (e as any).commonMistakes : [];
+
+    setEditCuesSetupText((cs ?? []).join("\n"));
+    setEditCuesExecutionText((ce ?? []).join("\n"));
+    setEditCommonMistakesText((cm ?? []).join("\n"));
+
+    setEditVideoUrl(String((e as any).videoUrl ?? ""));
+  }
+
+  function closeEdit() {
+    setEditingId("");
+    setEditError("");
+  }
+
+  async function saveEdit() {
+    if (!editingExercise) return;
+
+    const nextName = editName.trim();
+    if (!nextName) {
+      setEditError("Name is required.");
+      return;
+    }
+
+    const nextNorm = normalizeName(nextName);
+    if (!nextNorm) {
+      setEditError("Name is invalid.");
+      return;
+    }
+
+    if (nextNorm !== editingExercise.normalizedName) {
+      const clash = await db.exercises.where("normalizedName").equals(nextNorm).first();
+      if (clash && clash.id !== editingExercise.id && !clash.archivedAt && !(clash as any).mergedIntoExerciseId) {
+        setEditError(`That name already exists: "${clash.name}".`);
+        return;
+      }
+    }
+
+    const now = Date.now();
+    const aliases = normalizeAliases(editAliasesText);
+
+    const summary = textOrUndef(editSummary);
+    const directions = textOrUndef(editDirections);
+
+    const cuesSetup = normalizeLines(editCuesSetupText);
+    const cuesExecution = normalizeLines(editCuesExecutionText);
+    const commonMistakes = normalizeLines(editCommonMistakesText);
+
+    const videoUrl = textOrUndef(editVideoUrl);
+
+    const patch: any = {
+      name: nextName,
+      normalizedName: nextNorm,
+      bodyPart: editBodyPart || undefined,
+      updatedAt: now,
+      aliases,
+      summary,
+      directions,
+      cuesSetup,
+      cuesExecution,
+      commonMistakes: commonMistakes.length ? commonMistakes : undefined,
+      videoUrl,
+
+      // ✅ NEW: persist metricMode
+      metricMode: normalizeMetricMode(editMetricMode),
+    };
+
+    if (editFocusArea) patch.focusArea = editFocusArea;
+    else patch.focusArea = undefined;
+
+    try {
+      await db.exercises.update(editingExercise.id, patch);
+      closeEdit();
+    } catch (err: any) {
+      const msg =
+        err?.name === "ConstraintError"
+          ? "That name conflicts with an existing exercise (case-insensitive)."
+          : err?.message || "Failed to save.";
+      setEditError(msg);
+    }
+  }
+
+  /* ======================================================================== */
+  /*  Breadcrumb 12 — Render                                                    */
+  /* ======================================================================== */
+
+  return (
+    <Page title="Exercises">
+      <Section>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div style={{ fontWeight: 900, fontSize: 18 }}>Exercise Catalog</div>
+
+          <div className="row" style={{ gap: 8, alignItems: "center" }}>
+            <button className="btn small" onClick={() => nav("/templates")}>
+              Templates
+            </button>
+            <button className="btn small" onClick={runSeed} title="Seed catalog (adds missing)">
+              Seed
+            </button>
+            <button className="btn small primary" onClick={() => openCreate("")}>
+              + New
+            </button>
+          </div>
+        </div>
+
+        <div className="muted" style={{ marginTop: 8 }}>
+          Names are case-insensitive. Focus Area is optional (no filter). Coaching fields are editable per exercise.
+          <span className="muted" style={{ marginLeft: 10 }}>• Tap an exercise name to view Details / History / Charts / Records.</span>
+        </div>
+
+        <hr />
+
+        <div style={{ position: "relative" }}>
+          <input
+            className="input"
+            placeholder="Search exercises…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            style={{ paddingRight: 44 }}
+          />
+
+          {q.trim() ? (
+            <button
+              type="button"
+              className="btn small"
+              aria-label="Clear search"
+              title="Clear search"
+              onClick={() => setQ("")}
+              style={{
+                position: "absolute",
+                right: 6,
+                top: "50%",
+                transform: "translateY(-50%)",
+                width: 34,
+                height: 34,
+                padding: 0,
+                borderRadius: 999,
+                justifyContent: "center",
+              }}
+            >
+              ✕
+            </button>
+          ) : null}
+        </div>
+
+        <div className="row" style={{ marginTop: 10, gap: 10, alignItems: "end", flexWrap: "wrap", justifyContent: "space-between" }}>
+          <div style={{ minWidth: 220, flex: 1 }}>
+            <select className="input" value={bodyPart} onChange={(e) => setBodyPart(e.target.value as any)}>
+              <option value="">Any Body Part</option>
+              {BODY_PARTS.map((bp) => (
+                <option key={bp} value={bp}>
+                  {bp}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="row" style={{ gap: 8, alignItems: "end" }}>
+            <button
+              className="btn small"
+              onClick={() => setSortAsc((v) => !v)}
+              aria-label="Toggle sort"
+              title={sortAsc ? "A→Z (tap for Z→A)" : "Z→A (tap for A→Z)"}
+              style={{ minWidth: 44, justifyContent: "center" }}
+            >
+              ↑↓
+            </button>
+
+            {(q.trim() || bodyPart) && (
+              <button className="btn small" onClick={clearAll} title="Clear all">
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
+
+        <hr />
+
+        {filtered.length === 0 ? (
+          <div>
+            <div className="muted">No matches.</div>
+            <div className="row" style={{ marginTop: 10, gap: 8 }}>
+              <button className="btn primary" onClick={() => openCreate(q)}>
+                Create exercise
+              </button>
+              {(q.trim() || bodyPart) && (
+                <button className="btn" onClick={clearAll}>
+                  Reset
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            {grouped.flatMap((g) =>
+              g.items.map((e) => {
+                const focus = getFocusArea(e);
+                const meta = [e.bodyPart ?? "—", focus].filter(Boolean).join(" • ");
+
+                const cs = safeLen((e as any).cuesSetup);
+                const ce = safeLen((e as any).cuesExecution);
+                const hasCues = cs + ce > 0;
+
+                const metric = prettyMetricLabel(normalizeMetricMode((e as any).metricMode));
+
+                return (
+                  <div key={e.id} className="card" style={{ padding: 12 }}>
+                    <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        className="clickable"
+                        onClick={() => void openDetails(e)}
+                        onKeyDown={(ev) => {
+                          if (ev.key === "Enter" || ev.key === " ") {
+                            ev.preventDefault();
+                            void openDetails(e);
+                          }
+                        }}
+                        title="View details"
+                        style={{ minWidth: 0, flex: 1, cursor: "pointer", borderRadius: 12, padding: 2 }}
+                      >
+                        <div style={{ fontWeight: 900, wordBreak: "break-word" }}>{e.name}</div>
+
+                        <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
+                          {meta || "—"}
+                          <span className="muted" style={{ marginLeft: 10 }}>• Metric {metric}</span>
+                          <span className="muted" style={{ marginLeft: 10 }}>• Cues {hasCues ? `S${cs} • E${ce}` : "—"}</span>
+                        </div>
+
+                        {textOrUndef(String((e as any).summary ?? "")) ? (
+                          <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
+                            {String((e as any).summary ?? "")}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <button
+                        className="btn small"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          openEdit(e);
+                        }}
+                        title="Edit exercise"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {showCreate ? (
+          <div className="card" style={{ padding: 12, marginTop: 14 }}>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <div style={{ fontWeight: 900 }}>New Exercise</div>
+              <button className="btn small" onClick={() => setShowCreate(false)} aria-label="Close">
+                ✕
+              </button>
+            </div>
+
+            <div className="muted" style={{ marginTop: 6 }}>If the name already exists (case-insensitive), we’ll reuse it.</div>
+
+            <hr />
+
+            <label>Name</label>
+            <input
+              className="input"
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              placeholder="e.g., Barbell Bench Press"
+              autoFocus
+            />
+
+            <div className="row" style={{ marginTop: 10, gap: 10, flexWrap: "wrap" }}>
+              <div style={{ minWidth: 180, flex: 1 }}>
+                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Body Part</div>
+                <select className="input" value={draftBodyPart} onChange={(e) => setDraftBodyPart(e.target.value as any)}>
+                  <option value="">—</option>
+                  {BODY_PARTS.map((bp) => (
+                    <option key={bp} value={bp}>
+                      {bp}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ minWidth: 180, flex: 1 }}>
+                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Focus Area (optional)</div>
+                <select className="input" value={draftFocusArea} onChange={(e) => setDraftFocusArea(e.target.value as any)}>
+                  <option value="">—</option>
+                  {FOCUS_AREAS.map((fa) => (
+                    <option key={fa} value={fa}>
+                      {fa}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="row" style={{ marginTop: 12, gap: 8 }}>
+              <button className="btn primary" onClick={createExercise} disabled={!draftName.trim()}>
+                Save
+              </button>
+              <button className="btn" onClick={() => setShowCreate(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </Section>
+
+      {viewingExercise ? (
+        <ExerciseDetailsModal
+          exercise={viewingExercise}
+          tab={detailsTab}
+          setTab={setDetailsTab}
+          onClose={closeDetails}
+          onEdit={() => {
+            closeDetails();
+            openEdit(viewingExercise);
+          }}
+        />
+      ) : null}
+
+      {editingExercise ? (
+        <div className="modal-overlay" role="dialog" aria-modal="true" onMouseDown={closeEdit}>
+          <div
+            className="card modal-card"
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: 820,
+              width: "min(820px, calc(100vw - 24px))",
+              maxHeight: "calc(100vh - 24px)",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <button className="btn small" onClick={closeEdit} aria-label="Close">
+                ✕
+              </button>
+
+              <div style={{ textAlign: "center", flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Edit Exercise</div>
+                <div className="muted" style={{ marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {editingExercise.name}
+                </div>
+              </div>
+
+              <button className="btn small" onClick={() => nav("/templates")}>
+                Templates
+              </button>
+            </div>
+
+            <hr />
+
+            <div style={{ paddingRight: 2, overflowY: "auto", maxHeight: "min(680px, calc(100vh - 250px))" }}>
+              <div className="card" style={{ padding: 12 }}>
+                {editError ? (
+                  <div className="card" style={{ padding: 10, marginBottom: 10 }}>
+                    <div style={{ fontWeight: 900 }}>Can’t save</div>
+                    <div className="muted" style={{ marginTop: 6 }}>{editError}</div>
+                  </div>
+                ) : null}
+
+                <label>Name</label>
+                <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} />
+
+                <div className="row" style={{ marginTop: 10, gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 180, flex: 1 }}>
+                    <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Body Part</div>
+                    <select className="input" value={editBodyPart} onChange={(e) => setEditBodyPart(e.target.value as any)}>
+                      <option value="">—</option>
+                      {BODY_PARTS.map((bp) => (
+                        <option key={bp} value={bp}>
+                          {bp}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ minWidth: 180, flex: 1 }}>
+                    <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Focus Area (optional)</div>
+                    <select className="input" value={editFocusArea} onChange={(e) => setEditFocusArea(e.target.value as any)}>
+                      <option value="">—</option>
+                      {FOCUS_AREAS.map((fa) => (
+                        <option key={fa} value={fa}>
+                          {fa}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* ✅ NEW: Metric Mode */}
+                <div style={{ marginTop: 10 }}>
+                  <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Primary Metric</div>
+                  <select
+                    className="input"
+                    value={editMetricMode}
+                    onChange={(e) => setEditMetricMode(normalizeMetricMode(e.target.value))}
+                    title="Controls how GymPage logs this exercise (reps vs distance vs time)"
+                  >
+                    <option value="reps">Reps (default)</option>
+                    <option value="distance">Distance</option>
+                    <option value="time">Time</option>
+                  </select>
+                  <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
+                    Reps = weight + reps (+ RIR). Distance = weight + distance. Time = mm:ss.
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Aliases (optional)</div>
+                  <textarea
+                    className="input"
+                    value={editAliasesText}
+                    onChange={(e) => setEditAliasesText(e.target.value)}
+                    placeholder={"e.g.\nBB Bench\nBench Press"}
+                    style={{ minHeight: 92, resize: "vertical" as any }}
+                  />
+                  <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>One per line (or comma-separated). Used for search only.</div>
+                </div>
+
+                <hr />
+
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>Coaching</div>
+
+                <div style={{ marginTop: 10 }}>
+                  <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Summary (optional)</div>
+                  <textarea
+                    className="input"
+                    value={editSummary}
+                    onChange={(e) => setEditSummary(e.target.value)}
+                    placeholder={"1–2 lines: what/why\n(e.g., 'Heavy hinge pattern for posterior chain strength.')."}
+                    style={{ minHeight: 72, resize: "vertical" as any }}
+                  />
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Directions (optional)</div>
+                  <textarea
+                    className="input"
+                    value={editDirections}
+                    onChange={(e) => setEditDirections(e.target.value)}
+                    placeholder={"Step-by-step instructions (short is fine)."}
+                    style={{ minHeight: 110, resize: "vertical" as any }}
+                  />
+                </div>
+
+                <div className="row" style={{ marginTop: 10, gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 260, flex: 1 }}>
+                    <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Cues — Setup (one per line)</div>
+                    <textarea
+                      className="input"
+                      value={editCuesSetupText}
+                      onChange={(e) => setEditCuesSetupText(e.target.value)}
+                      placeholder={"Feet set\nBrace\nUpper back tight"}
+                      style={{ minHeight: 140, resize: "vertical" as any }}
+                    />
+                  </div>
+
+                  <div style={{ minWidth: 260, flex: 1 }}>
+                    <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Cues — Execution (one per line)</div>
+                    <textarea
+                      className="input"
+                      value={editCuesExecutionText}
+                      onChange={(e) => setEditCuesExecutionText(e.target.value)}
+                      placeholder={"Control down\nKnees track\nDrive through mid-foot"}
+                      style={{ minHeight: 140, resize: "vertical" as any }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Common mistakes (optional; one per line)</div>
+                  <textarea
+                    className="input"
+                    value={editCommonMistakesText}
+                    onChange={(e) => setEditCommonMistakesText(e.target.value)}
+                    placeholder={"Losing brace\nKnees cave\nRushing the eccentric"}
+                    style={{ minHeight: 110, resize: "vertical" as any }}
+                  />
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Video URL (optional)</div>
+                  <input className="input" value={editVideoUrl} onChange={(e) => setEditVideoUrl(e.target.value)} placeholder={"https://…"} />
+                  <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>You can store a demo link here.</div>
+                </div>
+
+                <hr />
+
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <div className="muted" style={{ fontSize: 12 }}>Copy a portable coaching block for GymPage / notes.</div>
+
+                  <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                    <button
+                      className="btn small"
+                      type="button"
+                      onClick={() => {
+                        if (!editingExercise) return;
+                        const previewPatch: any = {
+                          name: editName.trim() || editingExercise.name,
+                          bodyPart: editBodyPart || editingExercise.bodyPart,
+                          metricMode: editMetricMode,
+                          summary: textOrUndef(editSummary),
+                          directions: textOrUndef(editDirections),
+                          cuesSetup: normalizeLines(editCuesSetupText),
+                          cuesExecution: normalizeLines(editCuesExecutionText),
+                          commonMistakes: normalizeLines(editCommonMistakesText),
+                          videoUrl: textOrUndef(editVideoUrl),
+                        };
+                        const txt = buildClipboardText(editingExercise, previewPatch);
+                        copyTextToClipboard(txt);
+                      }}
+                      title="Copy using current form values (even before saving)"
+                    >
+                      Copy cues
+                    </button>
+
+                    <button
+                      className="btn small"
+                      type="button"
+                      onClick={() => {
+                        if (!editingExercise) return;
+                        const txt = buildClipboardText(editingExercise);
+                        copyTextToClipboard(txt);
+                      }}
+                      title="Copy from saved DB values"
+                    >
+                      Copy saved
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <button className="btn primary" style={{ width: "100%", padding: "12px 14px" }} onClick={saveEdit}>
+                Save
+              </button>
+              <button className="btn" style={{ width: "100%", padding: "12px 14px", marginTop: 8 }} onClick={closeEdit}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </Page>
+  );
+}
+
+/* ========================================================================== */
+/*  TAIL (end of file)                                                        */
+/*  - Default export = ExercisesPage                                           */
+/*  - BUILD_ID: 2026-02-25-EX-07                                               */
+/* ========================================================================== */
