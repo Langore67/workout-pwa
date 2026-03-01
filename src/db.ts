@@ -859,58 +859,107 @@ export class WorkoutDB extends Dexie {
     // - Exercise.metricMode ("reps" | "distance" | "time")
     // - SetEntry distance + distanceUnit
     // --------------------------------------------------------
+    // --------------------------------------------------------
+    // v10 (NEW):
+    // --------------------------------------------------------
     this.version(10)
       .stores({
         exercises:
           "id, &normalizedName, name, bodyPart, category, equipment, archivedAt, mergedIntoExerciseId, createdAt",
-
         exerciseVariants:
           "id, exerciseId, [exerciseId+normalizedName], name, archivedAt, mergedIntoVariantId, createdAt",
-
         tracks: "id, exerciseId, variantId, trackType, displayName, createdAt",
-
         folders: "id, orderIndex, name, archivedAt, createdAt",
         templates: "id, name, createdAt, folderId, archivedAt, orderIndex, lastPerformedAt",
         templateItems: "id, templateId, orderIndex, trackId, groupId, createdAt",
-
         sessions: "id, startedAt, endedAt, templateId",
         sessionItems: "id, sessionId, orderIndex, trackId, createdAt",
-
-        // (Indexes unchanged; distance fields are not indexed in v10)
         sets: "id, sessionId, trackId, createdAt, setType, completedAt",
-
         walks: "id, date",
         trackPrs: "trackId, updatedAt",
-
         bodyMetrics:
           "id, measuredAt, createdAt, weightLb, bodyFatPct, skeletalMuscleMassLb, visceralFatIndex, bodyWaterPct",
       })
       .upgrade(async (tx) => {
-        // Exercises: normalize metricMode to a safe default.
         await tx.table("exercises").toCollection().modify((e: any) => {
           if (e.metricMode === null) e.metricMode = undefined;
-
-          const mm = e.metricMode;
-          const ok = mm === "reps" || mm === "distance" || mm === "time";
-          if (!ok) e.metricMode = "reps";
+    
+          // Only coerce when present and invalid (keeps field sparse)
+          if (e.metricMode !== undefined) {
+            const mm = e.metricMode;
+            const ok = mm === "reps" || mm === "distance" || mm === "time";
+            if (!ok) e.metricMode = "reps";
+          }
         });
-
-        // Sets: normalize new distance fields to undefined.
+    
         await tx.table("sets").toCollection().modify((s: any) => {
           if (s.distance === null) s.distance = undefined;
           if (s.distanceUnit === null) s.distanceUnit = undefined;
-
-          // If a unit exists but distance is missing, clear unit.
-          if (s.distanceUnit && (s.distance === undefined || s.distance === "")) {
-            s.distanceUnit = undefined;
+    
+          // If unit exists but distance is not a valid number, clear both.
+          if (s.distanceUnit) {
+            const d = s.distance;
+            if (d === undefined || d === null || !Number.isFinite(Number(d))) {
+              s.distance = undefined;
+              s.distanceUnit = undefined;
+            }
           }
-
-          // Keep seconds numeric if present.
+    
           if (s.seconds !== undefined && s.seconds !== null && !Number.isFinite(Number(s.seconds))) {
             s.seconds = undefined;
           }
         });
       });
+      
+  // --------------------------------------------------------
+// v11 (NEW):
+// - Add bodyMetrics.takenAt index for BodyPage/Strength compatibility
+// - Backfill takenAt <-> measuredAt so either can be used safely
+// --------------------------------------------------------
+this.version(11)
+  .stores({
+    exercises:
+      "id, &normalizedName, name, bodyPart, category, equipment, archivedAt, mergedIntoExerciseId, createdAt",
+
+    exerciseVariants:
+      "id, exerciseId, [exerciseId+normalizedName], name, archivedAt, mergedIntoVariantId, createdAt",
+
+    tracks: "id, exerciseId, variantId, trackType, displayName, createdAt",
+
+    folders: "id, orderIndex, name, archivedAt, createdAt",
+    templates: "id, name, createdAt, folderId, archivedAt, orderIndex, lastPerformedAt",
+    templateItems: "id, templateId, orderIndex, trackId, groupId, createdAt",
+
+    sessions: "id, startedAt, endedAt, templateId",
+    sessionItems: "id, sessionId, orderIndex, trackId, createdAt",
+
+    sets: "id, sessionId, trackId, createdAt, setType, completedAt",
+
+    walks: "id, date",
+    trackPrs: "trackId, updatedAt",
+
+    // ✅ add takenAt to indexes
+    bodyMetrics:
+      "id, measuredAt, takenAt, createdAt, weightLb, bodyFatPct, skeletalMuscleMassLb, visceralFatIndex, bodyWaterPct",
+  })
+  .upgrade(async (tx) => {
+    await tx.table("bodyMetrics").toCollection().modify((m: any) => {
+      // normalize null-ish
+      if (m.measuredAt === null) m.measuredAt = undefined;
+      if (m.takenAt === null) m.takenAt = undefined;
+
+      // Backfill both directions
+      const measured = typeof m.measuredAt === "number" ? m.measuredAt : undefined;
+      const taken = typeof m.takenAt === "number" ? m.takenAt : undefined;
+
+      if (!taken && measured) m.takenAt = measured;
+      if (!measured && taken) m.measuredAt = taken;
+
+      // Keep createdAt sane
+      if (m.createdAt === null) m.createdAt = undefined;
+      if (m.createdAt === undefined) m.createdAt = m.measuredAt ?? m.takenAt ?? Date.now();
+    });
+  });          
   }
 }
 

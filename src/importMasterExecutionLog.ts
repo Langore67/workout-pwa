@@ -460,19 +460,79 @@ export async function importMasterExecutionLogCsvText(csvText: string): Promise<
       if (rawLine) noteParts.push(rawLine);
       if (rpeRaw) noteParts.push(`RPE=${rpeRaw}`);
 
+      // Ensure stable, non-negative timestamps
+      const createdAtRaw = (startedAt ?? 0) + setIndex * 1000;
+      const createdAtSafe =
+        Number.isFinite(createdAtRaw) && createdAtRaw > 0
+          ? createdAtRaw
+          : Date.now();
+      
+      // Master Execution Log = historical performed data → mark completed
+      const completedAtSafe = createdAtSafe;
+      
+      // Parse RIR if present (allow 0)
+      // Sources (best → fallback):
+      // 1) Explicit CSV column RIR (if it exists)
+      // 2) RawLine tokens like "@2", "RIR 3.5", "/rir 4"
+      // 3) From RPE approximation: RIR = 10 - RPE
+      const rirRaw =
+        (r as any)["RIR"] ??
+        (r as any)["Rir"] ??
+        (r as any)["rir"] ??
+        undefined;
+      
+      let rirNum: number | undefined = undefined;
+      
+      // 1) Direct column
+      if (typeof rirRaw === "number" && Number.isFinite(rirRaw)) {
+        rirNum = rirRaw;
+      } else if (typeof rirRaw === "string" && rirRaw.trim() !== "") {
+        const n = Number(rirRaw.trim());
+        if (Number.isFinite(n)) rirNum = n;
+      }
+      
+      // 2) Parse from rawLine if still missing
+      if (rirNum === undefined && rawLine) {
+        // examples: "185 x 8 @2", "185x8/rir 4", "RIR=3.5"
+        const m =
+          rawLine.match(/(?:\bRIR\b\s*=?\s*|\/\s*rir\s*|@\s*)(\d+(?:\.\d+)?)/i) ??
+          rawLine.match(/(?:\bRIR\b)(\d+(?:\.\d+)?)/i);
+      
+        if (m && m[1] !== undefined) {
+          const n = Number(String(m[1]).trim());
+          if (Number.isFinite(n)) rirNum = n;
+        }
+      }
+      
+      // 3) Optional fallback from RPE: RIR ≈ 10 - RPE
+      if (rirNum === undefined && rpeRaw) {
+        const rpeNum = Number(String(rpeRaw).trim());
+        if (Number.isFinite(rpeNum)) {
+          const approx = 10 - rpeNum;
+          // allow 0, clamp negatives
+          rirNum = Math.max(0, approx);
+        }
+      }
+      
+      // Normalize: allow 0, drop NaN/invalid
+      const rirSafe =
+        rirNum === undefined || rirNum === null || !Number.isFinite(rirNum)
+          ? undefined
+    : Math.max(0, rirNum);
+      
       newSets.push({
         id: uid(),
         sessionId,
         trackId: trackIdToUse,
-        createdAt: startedAt + setIndex * 1000, // stable ordering
+        createdAt: createdAtSafe,
+        completedAt: completedAtSafe,
         setType: isWarmup ? "warmup" : "working",
         weight: loadNum ?? undefined,
         reps: reps ?? undefined,
         seconds: undefined,
-        rir: undefined,
+        rir: Number.isFinite(rirNum as any) ? (rirNum as number) : undefined,
         notes: noteParts.length ? noteParts.join(" | ") : undefined,
-      });
-
+});
       setsInserted++;
       setIndex++;
     }
