@@ -127,33 +127,74 @@ export default function GymPage() {
   const { sessionId } = useParams();
   const nav = useNavigate();
 
-  // --- Breadcrumb 5 (DB reads) ----------------------------------------------
-  const session = useLiveQuery(
-    () => (sessionId ? db.sessions.get(sessionId) : Promise.resolve(undefined)),
-    [sessionId]
-  );
-
-  const templateItems = useLiveQuery(async () => {
-    if (!session?.templateId) return [];
-    return db.templateItems.where("templateId").equals(session.templateId).sortBy("orderIndex");
-  }, [session?.templateId]);
-
-  const trackIdsKey = useMemo(() => {
-    const ids = (templateItems ?? []).map((i) => i.trackId);
-    return ids.join("|");
-  }, [templateItems]);
-
-  const tracks = useLiveQuery(async () => {
-    if (!templateItems || templateItems.length === 0) return [];
-    const ids = templateItems.map((i) => i.trackId);
-    const arr = await db.tracks.bulkGet(ids);
-    return arr.filter(Boolean) as Track[];
-  }, [trackIdsKey]);
-
-  const sets = useLiveQuery(async () => {
-    if (!sessionId) return [];
-    return db.sets.where("sessionId").equals(sessionId).sortBy("createdAt");
-  }, [sessionId]);
+   // --- Breadcrumb 5 (DB reads) ----------------------------------------------
+   const session = useLiveQuery(
+     () => (sessionId ? db.sessions.get(sessionId) : Promise.resolve(undefined)),
+     [sessionId]
+   );
+   
+   // ✅ Plan source:
+   // - Prefer sessionItems if table exists and has rows (import-safe)
+   // - Fallback to templateItems
+   const sessionItems = useLiveQuery(async () => {
+     if (!sessionId) return [];
+     const t = (db as any).sessionItems;
+     if (!t || typeof t.where !== "function") return [];
+     return t.where("sessionId").equals(sessionId).sortBy("orderIndex");
+   }, [sessionId]);
+   
+   const templateItems = useLiveQuery(async () => {
+     if (!session?.templateId) return [];
+     return db.templateItems.where("templateId").equals(session.templateId).sortBy("orderIndex");
+   }, [session?.templateId]);
+   
+   // ✅ Truth: sets are always authoritative (single declaration)
+   const sets = useLiveQuery(async () => {
+     if (!sessionId) return [];
+     return db.sets.where("sessionId").equals(sessionId).sortBy("createdAt");
+   }, [sessionId]);
+   
+   // ✅ planned items = sessionItems (if any) else templateItems
+   const plannedItems = useMemo(() => {
+     const si = (sessionItems ?? []) as any[];
+     if (si.length) return si;
+     return (templateItems ?? []) as any[];
+   }, [sessionItems, templateItems]);
+   
+   // ✅ set-driven track ids (stable order by first appearance)
+   const setDrivenTrackIds = useMemo(() => {
+     const s = (sets ?? []) as SetEntryX[];
+     if (!s.length) return [] as string[];
+   
+     const firstSeen = new Map<string, number>();
+     for (const se of s) {
+       if (!firstSeen.has(se.trackId)) firstSeen.set(se.trackId, se.createdAt ?? 0);
+     }
+   
+     return [...firstSeen.entries()]
+       .sort((a, b) => a[1] - b[1])
+       .map(([trackId]) => trackId);
+   }, [sets]);
+   
+   // ✅ renderTrackIds = planned order first, then any set-tracks not in the plan
+   const renderTrackIds = useMemo(() => {
+     const planIds = (plannedItems ?? []).map((p: any) => String(p.trackId));
+     const planSet = new Set(planIds);
+   
+     const merged: string[] = [];
+     for (const id of planIds) merged.push(id);
+     for (const id of setDrivenTrackIds) if (!planSet.has(id)) merged.push(id);
+   
+     return merged;
+   }, [plannedItems, setDrivenTrackIds]);
+   
+   const trackIdsKey = useMemo(() => renderTrackIds.join("|"), [renderTrackIds]);
+   
+   const tracks = useLiveQuery(async () => {
+     if (!renderTrackIds.length) return [];
+     const arr = await db.tracks.bulkGet(renderTrackIds);
+     return arr.filter(Boolean) as Track[];
+}, [trackIdsKey]);
 
   // --- Breadcrumb 6 (UI state) ----------------------------------------------
   const [sessionNotes, setSessionNotes] = useState("");
@@ -240,7 +281,12 @@ export default function GymPage() {
         <hr />
 
         <label>Session notes (optional)</label>
-        <textarea className="input" rows={3} value={sessionNotes} onChange={(e) => setSessionNotes(e.target.value)} />
+        <textarea
+          className="input"
+          rows={3}
+          value={sessionNotes}
+          onChange={(e) => setSessionNotes(e.target.value)}
+        />
 
         <hr />
 
@@ -249,17 +295,43 @@ export default function GymPage() {
         </button>
       </div>
 
-      {/* --- Exercise cards --- */}
-      {(templateItems ?? []).map((item) => {
-        const track = trackById.get(item.trackId);
-        if (!track) return null;
+      {/* --- Exercise cards (plan + set-driven) --- */}
+      {(() => {
+        const planArr = (plannedItems ?? []) as any[];
 
-        return (
-          <div key={item.id} id={`track-${track.id}`}>
-            <ExerciseCard sessionId={sessionId} item={item} track={track} sets={(sets ?? []) as SetEntryX[]} />
-          </div>
-        );
-      })}
+        // Map of planned item by trackId (for overrides/notes when present)
+        const planByTrackId = new Map<string, any>();
+        for (const it of planArr) planByTrackId.set(String(it.trackId), it);
+
+        return (renderTrackIds ?? []).map((trackId) => {
+          const tid = String(trackId);
+          const track = trackById.get(tid);
+          if (!track) return null;
+
+          const planned = planByTrackId.get(tid);
+
+          // If this track came from sets (not in plan), synthesize a minimal item.
+          const item =
+            planned ??
+            ({
+              id: `adhoc-${tid}`,
+              trackId: tid,
+              orderIndex: 9999,
+              notes: undefined,
+            } as any);
+
+          return (
+            <div key={String(item.id ?? tid)} id={`track-${track.id}`}>
+              <ExerciseCard
+                sessionId={sessionId}
+                item={item as any}
+                track={track}
+                sets={(sets ?? []) as SetEntryX[]}
+              />
+            </div>
+          );
+        });
+      })()}
 
       {/* --- Single Finish control at very bottom --- */}
       <FinishSessionCard
@@ -301,17 +373,17 @@ function ExerciseCard({
   sets,
 }: {
   sessionId: string;
-  item: TemplateItem;
+  item: any;
   track: Track;
   sets: SetEntryX[];
 }) {
   const nav = useNavigate();
 
-  const repMin = item.repMinOverride ?? track.repMin;
-  const repMax = item.repMaxOverride ?? track.repMax;
+  const repMin = item?.repMinOverride ?? track.repMin;
+  const repMax = item?.repMaxOverride ?? track.repMax;
 
-  const warmupTarget = item.warmupSetsOverride ?? track.warmupSetsDefault;
-  const workingTarget = item.workingSetsOverride ?? track.workingSetsDefault;
+  const warmupTarget = item?.warmupSetsOverride ?? track.warmupSetsDefault;
+  const workingTarget = item?.workingSetsOverride ?? track.workingSetsDefault;
 
   // ✅ TIMER STATE (per-exercise)
   const [restSec, setRestSec] = useState<number>(120);

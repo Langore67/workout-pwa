@@ -1,16 +1,25 @@
 // /src/pages/SessionDetailPage.tsx
 /* ============================================================================
-   SessionDetailPage.tsx — Session Review (Strong-ish, calm)
+   SessionDetailPage.tsx — Session Review (Strong-ish, calm) — SET-DRIVEN VIEW
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-02-23-SESS-DETAIL-03
+   BUILD_ID: 2026-02-28-SESS-DETAIL-04
+   FILE: src/pages/SessionDetailPage.tsx
+
+   What changed (this iteration)
+   ✅ FIX: Render exercises from SETS (truth) instead of templateItems/sessionItems (plan)
+      - Imported sessions with sets now show correctly even if templates are incomplete.
+      - If a template/sessionItems exist, we use them for ordering + "planned" display.
+   ✅ FIX: trackingMode normalization
+      - DB may store: "weight_reps" | "reps_only" | "time_seconds" etc.
+      - UI expects: weightedReps | repsOnly | timeSeconds | breaths | checkbox
+   ✅ Keep calm Warmups toggle (default OFF)
+   ✅ Keep breadcrumbs + docs + footer (file path)
 
    Version history
-   - 2026-02-23  SESS-DETAIL-01  Baseline session detail (template + started/ended + warmup/working columns)
-   - 2026-02-23  SESS-DETAIL-02  Performance header (Title/Date/Stats), hide warmups, fix RIR vs RPE mismatch, table nits
-   - 2026-02-23  SESS-DETAIL-03  ✅ Add calm Warmups toggle (default OFF)
-                                ✅ Add breadcrumbs for fast navigation in code
-                                ✅ Document component boundaries + "where I render sets"
-                                ✅ Fix import issues (duplicate React imports)
+   - 2026-02-23  SESS-DETAIL-01  Baseline session detail
+   - 2026-02-23  SESS-DETAIL-02  Performance header, hide warmups, table nits
+   - 2026-02-23  SESS-DETAIL-03  Warmups toggle + breadcrumbs + doc boundaries
+   - 2026-02-28  SESS-DETAIL-04  SET-DRIVEN rendering + trackingMode normalize (import-safe)
    ============================================================================ */
 
 import React, { useMemo, useState } from "react";
@@ -29,7 +38,7 @@ type SetBuckets = {
   failure: SetEntry[];
 };
 
-type RenderItem = {
+type PlannedItem = {
   id: string;
   orderIndex: number;
   trackId: string;
@@ -78,9 +87,7 @@ function safeParsePrsCount(prsJson?: string): number {
     const v = JSON.parse(prsJson);
     if (Array.isArray(v)) return v.length;
     if (v && typeof v === "object") {
-      // allow either {hits:[...]} or {something:[...]} shapes
       if (Array.isArray((v as any).hits)) return (v as any).hits.length;
-      // count array values in object as a fallback
       const arrs = Object.values(v).filter((x) => Array.isArray(x)) as any[];
       if (arrs.length === 1) return arrs[0].length;
     }
@@ -91,9 +98,45 @@ function safeParsePrsCount(prsJson?: string): number {
 }
 
 /* =============================================================================
-   Breadcrumb 2 — Component: SessionDetailPage (screen)
-   NOTE: This is the page-level component you’ll search for when navigating files.
+   Breadcrumb 1b — trackingMode normalization (IMPORT-SAFE)
    ============================================================================= */
+
+type CanonMode = "weightedReps" | "repsOnly" | "timeSeconds" | "breaths" | "checkbox" | "unknown";
+
+function normalizeTrackingMode(raw: any): CanonMode {
+  const s = String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+
+  // Common variants seen in this project
+  if (
+    s === "weightedreps" ||
+    s === "weight_reps" ||
+    s === "weightreps" ||
+    s === "weight-reps" ||
+    s === "weighted_reps"
+  )
+    return "weightedReps";
+
+  if (s === "repsonly" || s === "reps_only" || s === "reps") return "repsOnly";
+
+  if (s === "timeseconds" || s === "time_seconds" || s === "seconds" || s === "time") return "timeSeconds";
+
+  if (s === "breaths") return "breaths";
+
+  if (s === "checkbox" || s === "check" || s === "bool") return "checkbox";
+
+  return "unknown";
+}
+
+/* =============================================================================
+   Breadcrumb 2 — Component: SessionDetailPage (screen)
+   ============================================================================= */
+
+const PAGE_VERSION = "4";
+const BUILD_ID = "2026-02-28-SESS-DETAIL-04";
+const FILE_FOOTER = "src/pages/SessionDetailPage.tsx";
 
 export default function SessionDetailPage() {
   /* ---------------------------------------------------------------------------
@@ -102,7 +145,7 @@ export default function SessionDetailPage() {
   const { sessionId } = useParams();
   const nav = useNavigate();
 
-  // ✅ Calm warmup toggle (default OFF)
+  // Calm warmup toggle (default OFF)
   const [showWarmups, setShowWarmups] = useState<boolean>(false);
 
   /* ---------------------------------------------------------------------------
@@ -113,8 +156,7 @@ export default function SessionDetailPage() {
     [sessionId]
   );
 
-  // ✅ Always try sessionItems first (imported sessions use these)
-  // Guarded so we never white-screen if a table is missing during migrations/dev.
+  // sessionItems (preferred “plan” when present)
   const sessionItems = useLiveQuery(async () => {
     if (!sessionId) return [];
     const t = (db as any).sessionItems;
@@ -122,7 +164,7 @@ export default function SessionDetailPage() {
     return t.where("sessionId").equals(sessionId).sortBy("orderIndex");
   }, [sessionId]);
 
-  // Legacy fallback: templateItems
+  // templateItems (fallback plan)
   const templateItems = useLiveQuery(async () => {
     if (!session?.templateId) return [];
     const t = (db as any).templateItems;
@@ -130,8 +172,16 @@ export default function SessionDetailPage() {
     return t.where("templateId").equals(session.templateId).sortBy("orderIndex");
   }, [session?.templateId]);
 
-  // ✅ Choose what we render: sessionItems > templateItems
-  const itemsToRender: RenderItem[] = useMemo(() => {
+  // ✅ Truth source: sets in this session
+  const sets = useLiveQuery(async () => {
+    if (!sessionId) return [];
+    return db.sets.where("sessionId").equals(sessionId).sortBy("createdAt");
+  }, [sessionId]);
+
+  /* ---------------------------------------------------------------------------
+     Breadcrumb 2c — Build "planned items" (if any)
+     --------------------------------------------------------------------------- */
+  const plannedItems: PlannedItem[] = useMemo(() => {
     const si = sessionItems ?? [];
     if (si.length) {
       return si.map((i: SessionItem) => ({
@@ -151,21 +201,64 @@ export default function SessionDetailPage() {
     }));
   }, [sessionItems, templateItems]);
 
-  // Load tracks for whichever items we're showing
-  const tracks = useLiveQuery(async () => {
-    if (!itemsToRender || itemsToRender.length === 0) return [];
-    const ids = itemsToRender.map((i) => i.trackId);
-    const arr = await db.tracks.bulkGet(ids);
-    return arr.filter(Boolean) as Track[];
-  }, [itemsToRender.map((i) => i.trackId).join("|")]);
+  /* ---------------------------------------------------------------------------
+     Breadcrumb 2d — Build "set-driven tracks" (always)
+     - If template is incomplete, we still show tracks that have sets.
+     --------------------------------------------------------------------------- */
+  const setDrivenTrackIds = useMemo(() => {
+    const s = sets ?? [];
+    if (!s.length) return [] as string[];
 
-  const sets = useLiveQuery(async () => {
-    if (!sessionId) return [];
-    return db.sets.where("sessionId").equals(sessionId).sortBy("createdAt");
-  }, [sessionId]);
+    // preserve a stable order: first appearance by createdAt
+    const firstSeen = new Map<string, number>();
+    for (const se of s) {
+      if (!firstSeen.has(se.trackId)) firstSeen.set(se.trackId, se.createdAt ?? 0);
+    }
+    return [...firstSeen.entries()]
+      .sort((a, b) => a[1] - b[1])
+      .map(([trackId]) => trackId);
+  }, [sets]);
+
+  /* ---------------------------------------------------------------------------
+     Breadcrumb 2e — Merge plan + truth into final render order
+     Rules:
+     1) Start with planned items (if any) in their orderIndex order
+     2) Append any set-driven trackIds that are NOT in the plan
+     3) If there is NO plan, just render set-driven
+     --------------------------------------------------------------------------- */
+  const renderTrackIds = useMemo(() => {
+    const planned = plannedItems ?? [];
+    const planIds = planned.map((p) => p.trackId);
+    const planSet = new Set(planIds);
+
+    const merged: string[] = [];
+
+    // 1) planned first
+    for (const id of planIds) merged.push(id);
+
+    // 2) append set-driven extras
+    for (const id of setDrivenTrackIds) {
+      if (!planSet.has(id)) merged.push(id);
+    }
+
+    // 3) if nothing planned and nothing set-driven
+    return merged;
+  }, [plannedItems, setDrivenTrackIds]);
+
+  /* ---------------------------------------------------------------------------
+     Breadcrumb 2f — Load tracks for render list
+     --------------------------------------------------------------------------- */
+  const tracks = useLiveQuery(async () => {
+    if (!renderTrackIds.length) return [];
+    const arr = await db.tracks.bulkGet(renderTrackIds);
+    return arr.filter(Boolean) as Track[];
+  }, [renderTrackIds.join("|")]);
 
   const trackById = useMemo(() => new Map((tracks ?? []).map((t) => [t.id, t])), [tracks]);
 
+  /* ---------------------------------------------------------------------------
+     Breadcrumb 2g — Bucket sets by trackId
+     --------------------------------------------------------------------------- */
   const setsByTrack = useMemo(() => {
     const map = new Map<string, SetBuckets>();
     for (const se of sets ?? []) {
@@ -183,13 +276,13 @@ export default function SessionDetailPage() {
   }, [sets]);
 
   /* ---------------------------------------------------------------------------
-     Breadcrumb 2c — Session summary stats
+     Breadcrumb 2h — Session summary stats
      --------------------------------------------------------------------------- */
   const summary = useMemo(() => {
     const dur = fmtDuration(session?.startedAt, session?.endedAt);
 
     // Total "weight lifted": only weighted reps sets with both weight+reps
-    // (includes working/drop/failure; excludes warmups by default)
+    // (excludes warmups)
     let total = 0;
     for (const se of sets ?? []) {
       if (se.setType === "warmup") continue;
@@ -203,7 +296,7 @@ export default function SessionDetailPage() {
   }, [session?.startedAt, session?.endedAt, session?.prsJson, sets]);
 
   /* ---------------------------------------------------------------------------
-     Breadcrumb 2d — Guards
+     Breadcrumb 2i — Guards
      --------------------------------------------------------------------------- */
   if (!sessionId) {
     return (
@@ -229,6 +322,11 @@ export default function SessionDetailPage() {
 
   const title = session.templateName ?? "Session";
   const dateLine = fmtDayDate(session.startedAt);
+
+  // Helpful debug counts (for import troubleshooting)
+  const plannedCount = plannedItems.length;
+  const setDrivenCount = setDrivenTrackIds.length;
+  const renderCount = renderTrackIds.length;
 
   return (
     <div className="grid" data-testid="session-detail">
@@ -273,9 +371,14 @@ export default function SessionDetailPage() {
                 🏆 {summary.prs} PR{summary.prs === 1 ? "" : "s"}
               </span>
             </div>
+
+            {/* Import/debug line (quiet but useful) */}
+            <div className="muted" style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
+              Render sources: planned={plannedCount} • setTracks={setDrivenCount} • showing={renderCount}
+            </div>
           </div>
 
-          {/* Sticky actions + calm warmups toggle */}
+          {/* Actions + calm warmups toggle */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
             <button className="btn" onClick={() => nav("/history")} data-testid="back-to-history">
               Back to history
@@ -303,60 +406,82 @@ export default function SessionDetailPage() {
           </div>
         </div>
 
-        {/* Notes are still useful, but keep them compact */}
         <hr />
         <label>Session notes</label>
-        <div
-          className="input"
-          style={{ minHeight: 54, whiteSpace: "pre-wrap" }}
-          data-testid="session-notes"
-        >
+        <div className="input" style={{ minHeight: 54, whiteSpace: "pre-wrap" }} data-testid="session-notes">
           {session.notes ?? <span className="muted">No notes.</span>}
         </div>
       </div>
 
-      {itemsToRender.length === 0 && (
+      {/* --------------------------------------------------------------------
+         Breadcrumb 4 — Empty states
+         -------------------------------------------------------------------- */}
+      {renderTrackIds.length === 0 && (
         <div className="card" data-testid="session-no-exercises">
           <p className="muted">No exercises found for this session.</p>
           <p className="muted" style={{ marginTop: 6 }}>
-            (This session has no sessionItems and no template reference.)
+            This usually means there are no sets yet AND no template/session items.
           </p>
         </div>
       )}
 
       {/* --------------------------------------------------------------------
-         Breadcrumb 4 — Exercise cards
+         Breadcrumb 5 — Exercise cards (SET-DRIVEN)
+         - We render tracks in renderTrackIds order (planned first, then set-driven extras).
+         - Each track shows warmups (optional) + working (always).
          -------------------------------------------------------------------- */}
-      {itemsToRender.map((item) => {
-        const track = trackById.get(item.trackId);
+      {renderTrackIds.map((trackId) => {
+        const track = trackById.get(trackId);
         if (!track) return null;
 
         const bucket = setsByTrack.get(track.id) ?? { warmup: [], working: [], drop: [], failure: [] };
-
-        // Working rows always shown (includes drop/failure appended)
         const workingRows = [...bucket.working, ...bucket.drop, ...bucket.failure];
 
+        // Planned notes (if this track was in the plan)
+        const planned = plannedItems.find((p) => p.trackId === track.id);
+
+        // Flag: set-driven extra (not in plan)
+        const isExtra = planned ? false : plannedItems.length > 0;
+
         return (
-          <div key={item.id} className="card" data-testid={`exercise-card:${track.id}`}>
+          <div key={track.id} className="card" data-testid={`exercise-card:${track.id}`}>
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
-              <h3 style={{ marginTop: 0, marginBottom: 0 }} data-testid={`exercise-name:${track.id}`}>
-                {track.displayName}
-              </h3>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                <h3 style={{ marginTop: 0, marginBottom: 0 }} data-testid={`exercise-name:${track.id}`}>
+                  {track.displayName}
+                </h3>
+                {isExtra && (
+                  <span
+                    className="muted"
+                    style={{
+                      fontSize: 12,
+                      border: "1px solid var(--line)",
+                      padding: "2px 8px",
+                      borderRadius: 999,
+                      opacity: 0.9,
+                    }}
+                    title="This exercise has sets, but it isn't in the template/session plan for this workout."
+                  >
+                    imported
+                  </span>
+                )}
+              </div>
+
               <span className="muted" style={{ whiteSpace: "nowrap" }} data-testid={`exercise-mode:${track.id}`}>
                 {track.trackType}
               </span>
             </div>
 
-            {item.notes && (
+            {planned?.notes && (
               <div className="muted" style={{ marginTop: 6 }} data-testid={`exercise-notes:${track.id}`}>
-                {item.notes}
+                {planned.notes}
               </div>
             )}
 
             <hr />
 
             {/* ================================================================
-               Breadcrumb 5 — WHERE I RENDER SETS
+               Breadcrumb 6 — WHERE I RENDER SETS
                - Warmups: rendered only when showWarmups === true
                - Working: always rendered (working + drop + failure)
                ================================================================ */}
@@ -392,13 +517,18 @@ export default function SessionDetailPage() {
           </div>
         );
       })}
+
+      {/* Breadcrumb 7 — Footer */}
+      <div className="muted" style={{ marginBottom: 20, fontSize: 12 }}>
+        {FILE_FOOTER} • v{PAGE_VERSION} • {BUILD_ID}
+      </div>
     </div>
   );
 }
 
 /* =============================================================================
-   Breadcrumb 6 — Component: ReadOnlySetTable
-   NOTE: This component is the single place where row cells are rendered.
+   Breadcrumb 8 — Component: ReadOnlySetTable
+   Single place where row cells are rendered.
    ============================================================================= */
 
 function ReadOnlySetTable({
@@ -410,12 +540,11 @@ function ReadOnlySetTable({
   rows: SetEntry[];
   tableTestId?: string;
 }) {
-  const mode = track.trackingMode;
+  const mode = normalizeTrackingMode((track as any).trackingMode);
 
   const headers: string[] = (() => {
     switch (mode) {
       case "weightedReps":
-        // ✅ Fix mismatch: DB stores RIR, so show RIR here.
         return ["Weight", "Reps", "RIR"];
       case "repsOnly":
         return ["Reps"];
@@ -426,24 +555,24 @@ function ReadOnlySetTable({
       case "checkbox":
         return ["Done"];
       default:
-        return ["Value"];
+        // Safe fallback for unknown modes
+        return ["Weight", "Reps", "RIR"];
     }
   })();
 
   function cellAlign(h: string) {
-    // right align numeric columns
     if (h === "Weight" || h === "Reps" || h === "RIR" || h === "Seconds" || h === "Breaths") return "right";
     return "left";
   }
 
   function renderCells(se: SetEntry) {
+    const badge = se.setType === "drop" ? "DROP" : se.setType === "failure" ? "FAIL" : undefined;
+
     switch (mode) {
       case "weightedReps": {
         const w = se.weight ?? "—";
         const r = se.reps ?? "—";
         const rir = (se as any).rir ?? "—"; // DB has rir; keep runtime safe
-        const combo = `${w}x${r}`;
-        const badge = se.setType === "drop" ? "DROP" : se.setType === "failure" ? "FAIL" : undefined;
 
         return (
           <>
@@ -452,9 +581,6 @@ function ReadOnlySetTable({
             </td>
             <td style={{ textAlign: "right" }} data-testid={`set-reps:${se.id}`}>
               {r}
-              <span style={{ display: "none" }} data-testid={`set-combo:${se.id}`}>
-                {combo}
-              </span>
               {badge && (
                 <span
                   className="muted"
@@ -478,28 +604,40 @@ function ReadOnlySetTable({
           </>
         );
       }
+
       case "repsOnly":
         return (
           <td style={{ textAlign: "right" }} data-testid={`set-reps:${se.id}`}>
             {se.reps ?? "—"}
           </td>
         );
+
       case "timeSeconds":
         return (
           <td style={{ textAlign: "right" }} data-testid={`set-seconds:${se.id}`}>
             {se.seconds ?? "—"}
           </td>
         );
+
       case "breaths":
         return (
           <td style={{ textAlign: "right" }} data-testid={`set-breaths:${se.id}`}>
             {se.reps ?? "—"}
           </td>
         );
+
       case "checkbox":
         return <td data-testid={`set-done:${se.id}`}>{(se.reps ?? 0) === 1 ? "Yes" : "No"}</td>;
+
       default:
-        return <td>—</td>;
+        // Fallback: try to show weight/reps/rir if present
+        return (
+          <>
+            <td style={{ textAlign: "right" }}>{se.weight ?? "—"}</td>
+            <td style={{ textAlign: "right" }}>{se.reps ?? "—"}</td>
+            <td style={{ textAlign: "right" }}>{(se as any).rir ?? "—"}</td>
+          </>
+        );
     }
   }
 
