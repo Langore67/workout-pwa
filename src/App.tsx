@@ -13,7 +13,6 @@
 
 import React from "react";
 import { NavLink, Route, Routes, Navigate } from "react-router-dom";
-
 import StartPage from "./pages/StartPage";
 import TemplatesPage from "./pages/TemplatesPage";
 import ExercisesPage from "./pages/ExercisesPage";
@@ -26,6 +25,7 @@ import HistoryPage from "./pages/HistoryPage";
 import ExportPage from "./pages/ExportPage";
 import SessionCompletePage from "./pages/SessionCompletePage";
 import SessionDetailPage from "./pages/SessionDetailPage";
+import DevDiagnosticsPage from "./pages/DevDiagnosticsPage";
 
 // Flip this to false at any time to instantly restore baseline behavior.
 const USE_NEW_GYM_PAGE = true;
@@ -110,6 +110,12 @@ export default function App() {
           <NavLink to="/history" className={({ isActive }) => (isActive ? "active" : "")}>
             History
           </NavLink>
+          
+          {import.meta.env.DEV && (
+	              <NavLink to="/dev" className={({ isActive }) => (isActive ? "active" : "")}>
+	                Dev
+	              </NavLink>
+          )}       
 
           <NavLink to="/export" className={({ isActive }) => (isActive ? "active" : "")}>
             Export
@@ -146,6 +152,9 @@ export default function App() {
             {/* Session pipeline */}
             <Route path="/complete/:sessionId" element={<SessionCompletePage />} />
             <Route path="/session/:sessionId" element={<SessionDetailPage />} />
+
+	   {/* DEV Diagnostics (dev-only; page redirects to / in prod) */}
+           <Route path="/dev" element={<DevDiagnosticsPage />} />
 
             {/* Safety net */}
             <Route path="*" element={<Navigate to="/" replace />} />

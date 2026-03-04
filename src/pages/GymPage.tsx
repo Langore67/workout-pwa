@@ -1,17 +1,44 @@
-// /src/pages/GymPage.tsx
+/// /src/pages/GymPage.tsx
 /* ============================================================================
    GymPage.tsx — Execution / Logging (Strong-ish)
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-02-22-GYM-CANCEL-01
+   BUILD_ID: 2026-03-02-GYM-RIR-DECIMAL-01
 
    Version history
    - 2026-02-11  GP-01  Baseline Gym Mode execution + sets + finish pipeline
    - 2026-02-14  GP-02  SetRow refinements + iPhone/compact ghost placeholders
    - 2026-02-17  GP-03  Finish gate review list (tap-to-jump), RIR rule, green ring
    - 2026-02-19  GP-04  Rest timer banner (per-exercise card) + timer controls
-   - 2026-02-22  GP-05  Cues modal (Strong-style) + ✅ DB wired cuesSetup/cuesExecution
-   - 2026-02-22  GP-06  ✅ Copy cues to clipboard + ✅ Edit in catalog deep-link
-   - 2026-02-22  GP-07  ✅ Cancel session (delete sets + session) next to Finish
+   - 2026-02-22  GP-05  Cues modal (Strong-style) + DB wired cuesSetup/cuesExecution
+   - 2026-02-22  GP-06  Copy cues to clipboard + Edit in catalog deep-link
+   - 2026-02-22  GP-07  Cancel session (delete sets + session)
+   - 2026-03-02  GP-08  Decimal RIR support (1.5 / 2.5 allowed)
+                      RIR required ONLY for completed WORKING sets
+                      Warmups never block finish
+                      Finish gate logic tightened + clarified
+   ============================================================================
+
+   Execution Guarantees (current behavior)
+
+   1) Single Finish Session control at bottom
+   2) Compact ghost placeholders for working sets (weight + reps)
+   3) Guardrails: reject fat-finger values (>300 lbs, >50 reps, etc.)
+   4) Green ring for completed WORKING sets
+   5) Decimal RIR supported (Number storage, no rounding)
+   6) RIR enforcement ONLY when:
+        - setType === "working"
+        - completedAt is set
+        - trackType !== "corrective"
+        - trackingMode === "weightedReps"
+        - metricMode === "reps"
+   7) Warmup sets NEVER require RIR
+   8) Finish reveals issues only after user taps Finish
+   9) Cancel session deletes sets + session (no PRs, no template update)
+
+   Backend compatibility:
+   - No DB schema changes required
+   - RIR stored as number (float-safe)
+   - IndexedDB verified to preserve decimals
    ============================================================================
 */
 
@@ -89,10 +116,50 @@ const LIMITS = {
 };
 
 function parseNum(v: string): number | undefined {
-  const t = v.trim();
+  const t = (v ?? "").trim();
   if (!t) return undefined;
   const x = Number(t);
   return Number.isFinite(x) ? x : undefined;
+}
+
+// --- Time helpers -----------------------------------------------------------
+// Store as seconds; display as mm:ss.
+// Accepts: "90" (seconds), "2:30", "02:30", "2:3" (=> 02:03)
+function parseTimeToSeconds(raw: string): number | undefined {
+  const s = (raw ?? "").trim();
+  if (!s) return undefined;
+
+  // mm:ss (preferred explicit form)
+  const m = s.match(/^(\d{1,3})\s*:\s*(\d{1,2})$/);
+  if (m) {
+    const mins = Number(m[1]);
+    const secs = Number(m[2]);
+    if (!Number.isFinite(mins) || !Number.isFinite(secs)) return undefined;
+    if (secs < 0 || secs > 59) return undefined;
+    return Math.max(0, mins * 60 + secs);
+  }
+
+  // digits only
+  if (!/^\d+$/.test(s)) return undefined;
+
+  // shorthand: 130 -> 1:30, 245 -> 2:45, 1234 -> 12:34
+  if (s.length === 3 || s.length === 4) {
+    const mins = Number(s.slice(0, s.length - 2));
+    const secs = Number(s.slice(-2));
+    if (!Number.isFinite(mins) || !Number.isFinite(secs)) return undefined;
+    if (secs > 59) return undefined;
+    return Math.max(0, mins * 60 + secs);
+  }
+
+  // otherwise treat as seconds (e.g. "90" -> 90 sec)
+  const sec = Number(s);
+  return Number.isFinite(sec) ? Math.max(0, Math.floor(sec)) : undefined;
+}
+function formatSecondsToMMSS(totalSeconds?: number): string {
+  if (typeof totalSeconds !== "number" || !Number.isFinite(totalSeconds) || totalSeconds < 0) return "";
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = Math.floor(totalSeconds % 60);
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
 async function copyTextToClipboard(text: string): Promise<boolean> {
@@ -127,74 +194,74 @@ export default function GymPage() {
   const { sessionId } = useParams();
   const nav = useNavigate();
 
-   // --- Breadcrumb 5 (DB reads) ----------------------------------------------
-   const session = useLiveQuery(
-     () => (sessionId ? db.sessions.get(sessionId) : Promise.resolve(undefined)),
-     [sessionId]
-   );
-   
-   // ✅ Plan source:
-   // - Prefer sessionItems if table exists and has rows (import-safe)
-   // - Fallback to templateItems
-   const sessionItems = useLiveQuery(async () => {
-     if (!sessionId) return [];
-     const t = (db as any).sessionItems;
-     if (!t || typeof t.where !== "function") return [];
-     return t.where("sessionId").equals(sessionId).sortBy("orderIndex");
-   }, [sessionId]);
-   
-   const templateItems = useLiveQuery(async () => {
-     if (!session?.templateId) return [];
-     return db.templateItems.where("templateId").equals(session.templateId).sortBy("orderIndex");
-   }, [session?.templateId]);
-   
-   // ✅ Truth: sets are always authoritative (single declaration)
-   const sets = useLiveQuery(async () => {
-     if (!sessionId) return [];
-     return db.sets.where("sessionId").equals(sessionId).sortBy("createdAt");
-   }, [sessionId]);
-   
-   // ✅ planned items = sessionItems (if any) else templateItems
-   const plannedItems = useMemo(() => {
-     const si = (sessionItems ?? []) as any[];
-     if (si.length) return si;
-     return (templateItems ?? []) as any[];
-   }, [sessionItems, templateItems]);
-   
-   // ✅ set-driven track ids (stable order by first appearance)
-   const setDrivenTrackIds = useMemo(() => {
-     const s = (sets ?? []) as SetEntryX[];
-     if (!s.length) return [] as string[];
-   
-     const firstSeen = new Map<string, number>();
-     for (const se of s) {
-       if (!firstSeen.has(se.trackId)) firstSeen.set(se.trackId, se.createdAt ?? 0);
-     }
-   
-     return [...firstSeen.entries()]
-       .sort((a, b) => a[1] - b[1])
-       .map(([trackId]) => trackId);
-   }, [sets]);
-   
-   // ✅ renderTrackIds = planned order first, then any set-tracks not in the plan
-   const renderTrackIds = useMemo(() => {
-     const planIds = (plannedItems ?? []).map((p: any) => String(p.trackId));
-     const planSet = new Set(planIds);
-   
-     const merged: string[] = [];
-     for (const id of planIds) merged.push(id);
-     for (const id of setDrivenTrackIds) if (!planSet.has(id)) merged.push(id);
-   
-     return merged;
-   }, [plannedItems, setDrivenTrackIds]);
-   
-   const trackIdsKey = useMemo(() => renderTrackIds.join("|"), [renderTrackIds]);
-   
-   const tracks = useLiveQuery(async () => {
-     if (!renderTrackIds.length) return [];
-     const arr = await db.tracks.bulkGet(renderTrackIds);
-     return arr.filter(Boolean) as Track[];
-}, [trackIdsKey]);
+  // --- Breadcrumb 5 (DB reads) ----------------------------------------------
+  const session = useLiveQuery(
+    () => (sessionId ? db.sessions.get(sessionId) : Promise.resolve(undefined)),
+    [sessionId]
+  );
+
+  // ✅ Plan source:
+  // - Prefer sessionItems if table exists and has rows (import-safe)
+  // - Fallback to templateItems
+  const sessionItems = useLiveQuery(async () => {
+    if (!sessionId) return [];
+    const t = (db as any).sessionItems;
+    if (!t || typeof t.where !== "function") return [];
+    return t.where("sessionId").equals(sessionId).sortBy("orderIndex");
+  }, [sessionId]);
+
+  const templateItems = useLiveQuery(async () => {
+    if (!session?.templateId) return [];
+    return db.templateItems.where("templateId").equals(session.templateId).sortBy("orderIndex");
+  }, [session?.templateId]);
+
+  // ✅ Truth: sets are always authoritative (single declaration)
+  const sets = useLiveQuery(async () => {
+    if (!sessionId) return [];
+    return db.sets.where("sessionId").equals(sessionId).sortBy("createdAt");
+  }, [sessionId]);
+
+  // ✅ planned items = sessionItems (if any) else templateItems
+  const plannedItems = useMemo(() => {
+    const si = (sessionItems ?? []) as any[];
+    if (si.length) return si;
+    return (templateItems ?? []) as any[];
+  }, [sessionItems, templateItems]);
+
+  // ✅ set-driven track ids (stable order by first appearance)
+  const setDrivenTrackIds = useMemo(() => {
+    const s = (sets ?? []) as SetEntryX[];
+    if (!s.length) return [] as string[];
+
+    const firstSeen = new Map<string, number>();
+    for (const se of s) {
+      if (!firstSeen.has(se.trackId)) firstSeen.set(se.trackId, se.createdAt ?? 0);
+    }
+
+    return [...firstSeen.entries()]
+      .sort((a, b) => a[1] - b[1])
+      .map(([trackId]) => trackId);
+  }, [sets]);
+
+  // ✅ renderTrackIds = planned order first, then any set-tracks not in the plan
+  const renderTrackIds = useMemo(() => {
+    const planIds = (plannedItems ?? []).map((p: any) => String(p.trackId));
+    const planSet = new Set(planIds);
+
+    const merged: string[] = [];
+    for (const id of planIds) merged.push(id);
+    for (const id of setDrivenTrackIds) if (!planSet.has(id)) merged.push(id);
+
+    return merged;
+  }, [plannedItems, setDrivenTrackIds]);
+
+  const trackIdsKey = useMemo(() => renderTrackIds.join("|"), [renderTrackIds]);
+
+  const tracks = useLiveQuery(async () => {
+    if (!renderTrackIds.length) return [];
+    const arr = await db.tracks.bulkGet(renderTrackIds);
+    return arr.filter(Boolean) as Track[];
+  }, [trackIdsKey]);
 
   // --- Breadcrumb 6 (UI state) ----------------------------------------------
   const [sessionNotes, setSessionNotes] = useState("");
@@ -341,6 +408,7 @@ export default function GymPage() {
         onFinish={finish}
         onCancel={cancelSession}
       />
+  
     </div>
   );
 }
@@ -469,7 +537,11 @@ function ExerciseCard({
   }, [exercise, variant]);
 
   const cuesHasAnything =
-    cuesSetup.length > 0 || cuesExecution.length > 0 || !!summary || !!directions || (commonMistakes?.length ?? 0) > 0;
+    cuesSetup.length > 0 ||
+    cuesExecution.length > 0 ||
+    !!summary ||
+    !!directions ||
+    (commonMistakes?.length ?? 0) > 0;
 
   const variantName = useMemo(() => cleanText((variant as any)?.name), [variant]);
 
@@ -546,15 +618,20 @@ function ExerciseCard({
 
   const workingIndexById = useMemo(() => {
     const map = new Map<string, number>();
-    let n = 0;
+  
+    let workingIndex = 0;
+  
     for (const s of currentSets) {
-      if (s.setType === "working") {
-        n += 1;
-        map.set(s.id, n);
-      }
+      const type = ((s.setType as SetKind) ?? "working") as SetKind;
+  
+      if (type !== "working") continue;
+  
+      workingIndex += 1;
+      map.set(s.id, workingIndex);
     }
+  
     return map;
-  }, [currentSets]);
+}, [currentSets]);
 
   const prev = usePrevByWorkingIndex(sessionId, track.id);
 
@@ -628,6 +705,10 @@ function ExerciseCard({
       }
     }
 
+    // ✅ RIR sanitation:
+    // - allow decimals (1.5, 2.5, 3.5...)
+    // - blank/NaN -> undefined
+    // - clamp floor at 0
     if ("rir" in patch) {
       const v = patch.rir as any;
       if (v === undefined || v === null) {
@@ -875,54 +956,79 @@ function ExerciseCard({
   const midHeader = metricMode === "distance" ? "Dist" : metricMode === "time" ? "Time" : "Reps";
   const rirHeader = metricMode === "reps" && track.trackingMode === "weightedReps" ? "RIR" : "—";
 
-  // ✅ Strong-ish table geometry (keeps distance unit on the same line)
-  const cardScope = useMemo(() => `excard-${track.id}`, [track.id]);
-
-  const gridTemplateColumns = useMemo(() => {
-    // 7 columns: Set | Previous | Weight | Mid | RIR | ✓ | X
-    // Keep “Mid” wider in distance mode so unit dropdown never wraps.
-    if (metricMode === "distance") return "64px 1.4fr 96px 200px 56px 44px 44px";
-    if (metricMode === "time") return "64px 1.4fr 56px 200px 56px 44px 44px";
-    return "64px 1.4fr 110px 110px 70px 44px 44px";
-  }, [metricMode]);
-
-  return (
-    <div className="card">
-      {/* Local, scoped layout polish (no global CSS churn) */}
-      <div data-excard-scope={cardScope}>
-        <style>
-          {`
-            [data-excard-scope="${cardScope}"] .set-head,
-            [data-excard-scope="${cardScope}"] .set-row{
-              display: grid;
-              grid-template-columns: ${gridTemplateColumns};
-              column-gap: 10px;
-              align-items: center;
-            }
-
-            /* tighter row height */
-            [data-excard-scope="${cardScope}"] .set-row{
-              padding: 10px 0;
-            }
-
-            /* header looks lighter + tighter */
-            [data-excard-scope="${cardScope}"] .set-head{
-              font-size: 13px;
-              opacity: 0.75;
-              padding: 6px 0 10px 0;
-            }
-
-            /* prevent inline “distance input + unit” from wrapping */
-            [data-excard-scope="${cardScope}"] .set-row .row{
-              flex-wrap: nowrap;
-            }
-
-            /* keep inputs compact inside grid */
-            [data-excard-scope="${cardScope}"] .cell-input{
-              min-width: 0;
-            }
-          `}
-        </style>
+   // ✅ Strong-ish table geometry (keeps distance unit on the same line)
+   const cardScope = useMemo(() => `excard-${track.id}`, [track.id]);
+ 
+   // Desktop/tablet columns (existing intent)
+   const gridTemplateColumnsDesktop = useMemo(() => {
+     // 7 columns: Set | Previous | Weight | Mid | RIR | ✓ | X
+     if (metricMode === "distance") return "64px 1.4fr 96px 200px 56px 44px 44px";
+     if (metricMode === "time") return "64px 1.4fr 56px 200px 56px 44px 44px";
+     return "64px 1.4fr 110px 110px 70px 44px 44px";
+   }, [metricMode]);
+ 
+   // ✅ iPhone-safe columns (prevents “shrink-to-fit” zoom)
+   const gridTemplateColumnsMobile = useMemo(() => {
+     // Keep fixed columns small enough to fit inside container padding.
+     // Goal: no horizontal overflow -> Safari stops auto-scaling the page.
+     if (metricMode === "distance") return "44px minmax(0,1fr) 56px minmax(0,120px) 40px 32px 32px";
+     if (metricMode === "time") return "44px minmax(0,1fr) 40px minmax(0,120px) 40px 32px 32px";
+     // reps
+     return "44px minmax(0,1fr) 64px 64px 48px 32px 32px";
+   }, [metricMode]);
+ 
+   return (
+     <div className="card">
+       {/* Local, scoped layout polish (no global CSS churn) */}
+       <div data-excard-scope={cardScope}>
+         <style>
+           {`
+             [data-excard-scope="${cardScope}"] .set-head,
+             [data-excard-scope="${cardScope}"] .set-row{
+               display: grid;
+               grid-template-columns: ${gridTemplateColumnsDesktop};
+               column-gap: 10px;
+               align-items: center;
+             }
+ 
+             /* tighter row height */
+             [data-excard-scope="${cardScope}"] .set-row{
+               padding: 10px 0;
+             }
+ 
+             /* header looks lighter + tighter */
+             [data-excard-scope="${cardScope}"] .set-head{
+               font-size: 13px;
+               opacity: 0.75;
+               padding: 6px 0 10px 0;
+             }
+ 
+             /* prevent inline “distance input + unit” from wrapping */
+             [data-excard-scope="${cardScope}"] .set-row .row{
+               flex-wrap: nowrap;
+             }
+ 
+             /* keep inputs compact inside grid */
+             [data-excard-scope="${cardScope}"] .cell-input{
+               min-width: 0;
+             }
+ 
+             /* ✅ iPhone override: smaller columns + smaller gap = no overflow */
+             @media (max-width: 520px){
+               [data-excard-scope="${cardScope}"] .set-head,
+               [data-excard-scope="${cardScope}"] .set-row{
+                 grid-template-columns: ${gridTemplateColumnsMobile};
+                 column-gap: 6px;
+               }
+ 
+               /* a touch smaller header text helps */
+               [data-excard-scope="${cardScope}"] .set-head{
+                 font-size: 12px;
+               }
+             }
+           `}
+         </style>
+ 
 
         <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
           <div style={{ minWidth: 0 }}>
@@ -1012,84 +1118,102 @@ function ExerciseCard({
           </div>
 
           {currentSets.length ? (
-            currentSets.map((se) => {
-              const done = !!se.completedAt;
-
-              const label =
-                se.setType === "warmup"
-                  ? "W"
-                  : se.setType === "drop"
-                  ? "D"
-                  : se.setType === "failure"
-                  ? "F"
-                  : String(workingIndexById.get(se.id) ?? "");
-
-              const workingIndex = workingIndexById.get(se.id);
-
-              // ✅ Mode-aware Previous
-              const prevText = se.setType === "working" && workingIndex ? formatPrevForMode(se, workingIndex) : "";
-
-              // reps mode uses weight x reps parsing for ghost placeholders; otherwise blank
-              const prevParsed =
-                metricMode === "reps" && se.setType === "working" && workingIndex ? parsePrev(prevText) : {};
-
-              return (
-                <SetRow
-                  key={se.id}
-                  rowDomId={`set-${se.id}`}
-                  se={se}
-                  label={label}
-                  prevText={prevText}
-                  prevParsed={prevParsed}
-                  track={track}
-                  metricMode={metricMode}
-                  done={done}
-                  compact={compact}
-                  onChange={updateSet}
-                  onDelete={deleteSet}
-                  onSetType={async (t) => {
-                    const patch: Partial<SetEntryX> = { setType: t };
-                    if (t === "failure") patch.rir = 0;
-                    await updateSet(se.id, patch);
-                  }}
-                  onToggleDone={async (next) => {
-                    // ✅ Don’t block checking when RIR is missing.
-                    // Finishing is gated in FinishSessionCard (missingRir).
-                    const kind = ((se.setType as SetKind) ?? "working") as SetKind;
-
-                    if (next) {
-                      const patch: Partial<SetEntryX> = { completedAt: Date.now() };
-                      if (kind === "failure") patch.rir = 0;
-                      await updateSet(se.id, patch);
-
-                      // ✅ TIMER START (only for non-warmup sets)
-                      if (kind !== "warmup") timer.start(restSec);
-                    } else {
-                      await updateSet(se.id, { completedAt: undefined });
-                    }
-                  }}
-                  onAcceptPrevWeight={() => {
-                    // Only relevant for reps-weighted and weight-prefill scenarios
-                    const kind = ((se.setType as SetKind) ?? "working") as SetKind;
-                    if (kind !== "working") return;
-                    if (metricMode !== "reps") return;
-
-                    if (se.weight === undefined && (prevParsed as any).prevWeight !== undefined) {
-                      updateSet(se.id, { weight: (prevParsed as any).prevWeight });
-                    }
-                  }}
-                  onAcceptPrevReps={() => {
-                    const kind = ((se.setType as SetKind) ?? "working") as SetKind;
-                    if (kind !== "working") return;
-                    if (metricMode !== "reps") return;
-
-                    if (se.reps === undefined && (prevParsed as any).prevReps !== undefined) {
-                      updateSet(se.id, { reps: (prevParsed as any).prevReps });
-                    }
-                  }}
-                />
-              );
-            })
+           currentSets.map((se) => {
+	     const done = !!se.completedAt;
+	   
+	     const label =
+	       se.setType === "warmup"
+	         ? "W"
+	         : se.setType === "drop"
+	         ? "D"
+	         : se.setType === "failure"
+	         ? "F"
+	         : String(workingIndexById.get(se.id) ?? "");
+	   
+	     const workingIndex = workingIndexById.get(se.id);
+	   
+	     // ✅ Mode-aware Previous
+	     const prevText = se.setType === "working" && workingIndex ? formatPrevForMode(se, workingIndex) : "";
+	   
+	     // reps mode uses weight x reps parsing for ghost placeholders; otherwise blank
+	     const prevParsed =
+	       metricMode === "reps" && se.setType === "working" && workingIndex ? parsePrev(prevText) : {};
+	   
+	     // ✅ Tap Previous => autofill missing fields (reps mode only)
+	     const onTapPrev = () => {
+	       const kind = ((se.setType as SetKind) ?? "working") as SetKind;
+	       if (kind !== "working") return;
+	   
+	       // Only reps mode supports weight+reps autofill right now
+	       if (metricMode !== "reps") return;
+	   
+	       const pw = (prevParsed as any).prevWeight as number | undefined;
+	       const pr = (prevParsed as any).prevReps as number | undefined;
+	   
+	       // Only fill missing values (won’t overwrite what you typed)
+	       if (se.weight === undefined && pw !== undefined) updateSet(se.id, { weight: pw });
+	       if (se.reps === undefined && pr !== undefined) updateSet(se.id, { reps: pr });
+	     };
+	   
+	     return (
+	       <SetRow
+	         key={se.id}
+	         rowDomId={`set-${se.id}`}
+	         se={se}
+	         label={label}
+	         prevText={prevText}
+	         prevParsed={prevParsed}
+	         track={track}
+	         metricMode={metricMode}
+	         done={done}
+	         compact={compact}
+	         onTapPrev={onTapPrev}   // ✅ NEW
+	         onChange={updateSet}
+	         onDelete={deleteSet}
+	         onSetType={async (t) => {
+	           const patch: Partial<SetEntryX> = { setType: t };
+	           if (t === "failure") patch.rir = 0;
+	           if (t === "warmup") patch.rir = undefined; // keep warmups clean
+	           await updateSet(se.id, patch);
+	         }}
+	         onToggleDone={async (next) => {
+	           // ✅ Don’t block checking when RIR is missing.
+	           // Finishing is gated in FinishSessionCard (missingRir).
+	           const kind = ((se.setType as SetKind) ?? "working") as SetKind;
+	   
+	           if (next) {
+	             const patch: Partial<SetEntryX> = { completedAt: Date.now() };
+	             if (kind === "failure") patch.rir = 0;
+	             if (kind === "warmup") patch.rir = undefined;
+	             await updateSet(se.id, patch);
+	   
+	             // ✅ TIMER START (only for non-warmup sets)
+	             if (kind !== "warmup") timer.start(restSec);
+	           } else {
+	             await updateSet(se.id, { completedAt: undefined });
+	           }
+	         }}
+	         onAcceptPrevWeight={() => {
+	           const kind = ((se.setType as SetKind) ?? "working") as SetKind;
+	           if (kind !== "working") return;
+	           if (metricMode !== "reps") return;
+	   
+	           if (se.weight === undefined && (prevParsed as any).prevWeight !== undefined) {
+	             updateSet(se.id, { weight: (prevParsed as any).prevWeight });
+	           }
+	         }}
+	         onAcceptPrevReps={() => {
+	           const kind = ((se.setType as SetKind) ?? "working") as SetKind;
+	           if (kind !== "working") return;
+	           if (metricMode !== "reps") return;
+	   
+	           if (se.reps === undefined && (prevParsed as any).prevReps !== undefined) {
+	             updateSet(se.id, { reps: (prevParsed as any).prevReps });
+	           }
+	         }}
+	       />
+	     );
+           })
           ) : (
             <div className="muted" style={{ padding: "10px 2px" }}>
               No sets logged yet.
@@ -1147,6 +1271,7 @@ function ExerciseCard({
     </div>
   );
 }
+
 // --- Breadcrumb 11 ----------------------------------------------------------
 // SetRow (clean row)
 // Adds:
@@ -1158,6 +1283,16 @@ function ExerciseCard({
 //    - reps: weight + reps (+ RIR for weightedReps; existing behavior)
 //    - distance: distance + unit (optionally weight for weighted movements), RIR hidden
 //    - time: mm:ss input stored as seconds, RIR hidden
+// ✅ Decimal-safe RIR typing:
+//    - allows ".", "2.", ".5", "2.5"
+//    - commits number on blur/enter
+//
+// Refactor (this iteration):
+// - BC11a: set type + row flags
+// - BC11b: ghost placeholders + ring styles
+// - BC11c: decimal-safe RIR editor state
+// - BC11d: time editor state (mm:ss typing without fighting)
+// - BC11e: render blocks (reps / distance / time)
 // ---------------------------------------------------------------------------
 function SetRow({
   rowDomId,
@@ -1169,6 +1304,7 @@ function SetRow({
   metricMode,
   done,
   compact,
+  onTapPrev, // ✅ NEW
   onChange,
   onDelete,
   onSetType,
@@ -1185,6 +1321,7 @@ function SetRow({
   metricMode: "reps" | "distance" | "time";
   done: boolean;
   compact: boolean;
+  onTapPrev: () => void; // ✅ NEW
   onChange: (id: string, patch: Partial<SetEntryX>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onSetType: (t: SetKind) => Promise<void>;
@@ -1192,6 +1329,7 @@ function SetRow({
   onAcceptPrevWeight: () => void;
   onAcceptPrevReps: () => void;
 }) {
+  // --- Breadcrumb 11a (Set type + row flags) --------------------------------
   const selectRef = useRef<HTMLSelectElement | null>(null);
 
   function openTypePicker() {
@@ -1207,38 +1345,22 @@ function SetRow({
   const distance = (se as any).distance as number | undefined;
   const distanceUnit = ((se as any).distanceUnit as string | undefined) ?? "mi"; // cardio-friendly default
 
-  function formatMMSS(totalSeconds?: number): string {
-    const s = Number(totalSeconds);
-    if (!Number.isFinite(s) || s < 0) return "";
-    const secs = Math.floor(s);
-    const mm = Math.floor(secs / 60);
-    const ss = secs % 60;
-    return `${mm}:${String(ss).padStart(2, "0")}`;
-  }
+  // Weight cell usage:
+  // - reps mode: only when weightedReps (existing behavior)
+  // - distance mode: show weight only when the track is actually weight-based (eg sled/prowler)
+  // - time mode: hide weight by default
+  const showWeightInDistance = track.trackingMode === "weightedReps";
 
-  function parseTimeToSeconds(input: string): number | undefined {
-    const t = (input || "").trim();
-    if (!t) return undefined;
-
-    // Accept mm:ss
-    const m = t.match(/^(\d+)\s*:\s*(\d{1,2})$/);
-    if (m) {
-      const mm = Number(m[1]);
-      const ss = Number(m[2]);
-      if (!Number.isFinite(mm) || !Number.isFinite(ss)) return undefined;
-      return Math.max(0, mm * 60 + Math.min(59, ss));
-    }
-
-    // Accept seconds (numeric)
-    const n = Number(t);
-    return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : undefined;
-  }
-
+  // --- Breadcrumb 11b (Ghost placeholders + ring styles) ---------------------
   const ghostWeight =
-    compact && isWorking && se.weight === undefined && prevParsed.prevWeight !== undefined ? String(prevParsed.prevWeight) : "lbs";
+    compact && isWorking && se.weight === undefined && prevParsed.prevWeight !== undefined
+      ? String(prevParsed.prevWeight)
+      : "lbs";
 
   const ghostReps =
-    compact && isWorking && se.reps === undefined && prevParsed.prevReps !== undefined ? String(prevParsed.prevReps) : "reps";
+    compact && isWorking && se.reps === undefined && prevParsed.prevReps !== undefined
+      ? String(prevParsed.prevReps)
+      : "reps";
 
   const rowClass = "set-row" + (done ? " done" : "") + (kind === "warmup" ? " warmup" : "");
 
@@ -1252,12 +1374,54 @@ function SetRow({
         }
       : {};
 
-  // Weight cell usage:
-  // - reps mode: only when weightedReps (existing behavior)
-  // - distance mode: show weight only when the track is actually weight-based (eg sled/prowler)
-  // - time mode: hide weight by default
-  const showWeightInDistance = track.trackingMode === "weightedReps";
+  // --- Breadcrumb 11c (Decimal-safe RIR typing) ------------------------------
+  function normalizeDecimalInput(raw: string): string {
+    return (raw ?? "").replace(",", ".").trim();
+  }
 
+  function parseRirCommitted(raw: string): number | undefined {
+    const t = normalizeDecimalInput(raw);
+    if (!t) return undefined;
+
+    // allow ".5" -> 0.5
+    if (/^\.\d+$/.test(t)) return Math.max(0, Number(`0${t}`));
+
+    // allow "2." -> 2
+    if (/^\d+\.$/.test(t)) return Math.max(0, Number(t.slice(0, -1)));
+
+    const n = Number(t);
+    return Number.isFinite(n) ? Math.max(0, n) : undefined;
+  }
+
+  const [rirText, setRirText] = useState<string>("");
+
+  useEffect(() => {
+    const v = (se as any).rir;
+    setRirText(v === undefined || v === null ? "" : String(v));
+  }, [se.id, (se as any).rir]);
+
+  // Show RIR only when it matters:
+  // - reps metricMode
+  // - weightedReps trackingMode
+  // - working sets only
+  // - NOT correctives (your preference)
+  const showRir =
+    metricMode === "reps" && track.trackingMode === "weightedReps" && isWorking && track.trackType !== "corrective";
+
+  // --- Breadcrumb 11d (Time editor state: mm:ss typing without fighting) -----
+  // NOTE: This fixes the “can only enter a single digit” feeling by decoupling
+  // the typing string from the formatted seconds display.
+  const [timeText, setTimeText] = useState<string>("");
+
+  useEffect(() => {
+    const sec = (se as any).seconds as number | undefined;
+    setTimeText(sec === undefined || sec === null ? "" : formatSecondsToMMSS(sec));
+  }, [se.id, (se as any).seconds]);
+
+  // --- Prev-cell clickability (reps mode only) -------------------------------
+  const canTapPrev = !locked && isWorking && metricMode === "reps" && !!(prevText || "").trim();
+
+  // --- Breadcrumb 11e (Render) ----------------------------------------------
   return (
     <div id={rowDomId} className={rowClass} style={ringStyle}>
       <div className="set-badge-wrap">
@@ -1280,10 +1444,32 @@ function SetRow({
         </select>
       </div>
 
-      <div className="prev-cell">{prevText || "—"}</div>
+      <div
+        className="prev-cell"
+        role={canTapPrev ? "button" : undefined}
+        tabIndex={canTapPrev ? 0 : -1}
+        title={canTapPrev ? "Tap to prefill missing weight/reps from previous" : undefined}
+        onClick={() => {
+          if (canTapPrev) onTapPrev();
+        }}
+        onKeyDown={(e) => {
+          if (!canTapPrev) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onTapPrev();
+          }
+        }}
+        style={{
+          cursor: canTapPrev ? "pointer" : "default",
+          opacity: canTapPrev ? 0.9 : 0.7,
+          userSelect: "none",
+        }}
+      >
+        {prevText || "—"}
+      </div>
 
       {/* -------------------------------------------------------------------
-         REPS MODE (existing behavior preserved)
+         REPS MODE (existing behavior preserved, with decimal-safe RIR)
          ------------------------------------------------------------------- */}
       {metricMode === "reps" && (
         <>
@@ -1302,6 +1488,7 @@ function SetRow({
                 }}
                 disabled={locked}
               />
+
               <input
                 className="cell-input"
                 name="reps"
@@ -1315,14 +1502,38 @@ function SetRow({
                 }}
                 disabled={locked}
               />
-              <input
-                className="cell-input"
-                placeholder="rir"
-                value={se.rir ?? ""}
-                inputMode="decimal"
-                onChange={(e) => onChange(se.id, { rir: parseNum(e.target.value) })}
-                disabled={locked || kind === "failure"}
-              />
+
+              {/* ✅ RIR:
+                  - show ONLY when showRir (working + non-corrective)
+                  - decimals allowed (including ".", "2.", ".5")
+                  - blank allowed (stores undefined)
+                  - commit to DB on blur/enter */}
+              {showRir ? (
+                <input
+                  className="cell-input"
+                  placeholder="rir"
+                  value={rirText}
+                  inputMode="decimal"
+                  type="text"
+                  onChange={(e) => setRirText(e.target.value)}
+                  onBlur={() => {
+                    const committed = parseRirCommitted(rirText);
+                    onChange(se.id, { rir: committed });
+                    setRirText(committed === undefined ? "" : String(committed));
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+                    if (e.key === "Escape") {
+                      const v = (se as any).rir;
+                      setRirText(v === undefined || v === null ? "" : String(v));
+                      (e.currentTarget as HTMLInputElement).blur();
+                    }
+                  }}
+                  disabled={locked || kind === "failure"}
+                />
+              ) : (
+                <div className="muted">—</div>
+              )}
             </>
           )}
 
@@ -1347,8 +1558,9 @@ function SetRow({
               <input
                 className="cell-input"
                 placeholder="mm:ss"
-                value={formatMMSS((se as any).seconds)}
-                inputMode="text"
+                value={formatSecondsToMMSS((se as any).seconds)}
+                inputMode="numeric"
+                type="text"
                 onChange={(e) => onChange(se.id, { seconds: parseTimeToSeconds(e.target.value) } as any)}
                 disabled={locked}
               />
@@ -1448,7 +1660,8 @@ function SetRow({
 
       {/* -------------------------------------------------------------------
          TIME MODE
-         - Time as mm:ss stored to seconds
+         - mm:ss typing without fighting
+         - commit seconds on blur/enter
          - Weight hidden + RIR hidden
          ------------------------------------------------------------------- */}
       {metricMode === "time" && (
@@ -1460,9 +1673,26 @@ function SetRow({
             name="time"
             aria-label="time"
             placeholder="mm:ss"
-            value={formatMMSS((se as any).seconds)}
-            inputMode="text"
-            onChange={(e) => onChange(se.id, { seconds: parseTimeToSeconds(e.target.value) } as any)}
+            type="text"
+            inputMode="numeric"
+            value={timeText}
+            onChange={(e) => {
+              const v = (e.target.value ?? "").replace(/[^\d:]/g, "");
+              setTimeText(v);
+            }}
+            onBlur={() => {
+              const committed = parseTimeToSeconds(timeText);
+              onChange(se.id, { seconds: committed } as any);
+              setTimeText(committed === undefined ? "" : formatSecondsToMMSS(committed));
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+              if (e.key === "Escape") {
+                const sec = (se as any).seconds as number | undefined;
+                setTimeText(sec === undefined || sec === null ? "" : formatSecondsToMMSS(sec));
+                (e.currentTarget as HTMLInputElement).blur();
+              }
+            }}
             disabled={locked}
           />
 
@@ -1471,7 +1701,12 @@ function SetRow({
       )}
 
       <div className="check-cell">
-        <input type="checkbox" checked={done} onChange={(e) => onToggleDone(e.target.checked)} aria-label="Complete set" />
+        <input
+          type="checkbox"
+          checked={done}
+          onChange={(e) => onToggleDone(e.target.checked)}
+          aria-label="Complete set"
+        />
       </div>
 
       <div className="row-actions">
@@ -1541,55 +1776,61 @@ function FinishSessionCard({
     return "reps";
   }
 
-  // --- Breadcrumb 12.3 (Compute problems) -----------------------------------
-  const review = useMemo(() => {
-    const working = (sets ?? []).filter((s) => (((s.setType as SetKind) ?? "working") as SetKind) === "working");
-
-    const unchecked = working.filter((s) => !s.completedAt);
-
-    // Rule 2: require RIR only for:
-    // - completed sets
-    // - NON-corrective tracks
-    // - weightedReps mode
-    // - metricMode === "reps" (distance/time shouldn't be blocked by RIR)
-    const missingRir = working.filter((s) => {
-      if (!s.completedAt) return false;
-
-      const tr = trackById.get(s.trackId);
-      if (!tr) return false;
-
-      if (tr.trackType === "corrective") return false;
-      if (tr.trackingMode !== "weightedReps") return false;
-
-      const mm = metricModeForTrack(tr);
-      if (mm !== "reps") return false;
-
-      return s.rir === undefined || s.rir === null || String(s.rir).trim() === "";
-    });
-
-    const problems = [
-      ...unchecked.map((s) => ({
-        kind: "unchecked" as const,
-        setId: s.id,
-        trackId: s.trackId,
-        label: "Not checked",
-      })),
-      ...missingRir.map((s) => ({
-        kind: "missingRir" as const,
-        setId: s.id,
-        trackId: s.trackId,
-        label: "Missing RIR",
-      })),
-    ];
-
-    return {
-      uncheckedCount: unchecked.length,
-      missingRirCount: missingRir.length,
-      problems,
-      canFinish: problems.length === 0,
-    };
+   // --- Breadcrumb 12.3 (Compute problems) -----------------------------------
+   const review = useMemo(() => {
+     const working = (sets ?? []).filter((s) => (((s.setType as SetKind) ?? "working") as SetKind) === "working");
+ 
+     const unchecked = working.filter((s) => !s.completedAt);
+ 
+     // Rule 2: require RIR only for:
+     // - completed sets
+     // - NON-corrective tracks
+     // - weightedReps mode
+     // - metricMode === "reps" (distance/time shouldn't be blocked by RIR)
+     // - ✅ extra safety: only if the set has weight+reps (import oddities won't block finishing)
+     // - ✅ extra safety: RIR must be a finite number (reject NaN/Infinity/strings from imports)
+     const missingRir = working.filter((s) => {
+       if (!s.completedAt) return false;
+ 
+       const tr = trackById.get(s.trackId);
+       if (!tr) return false;
+ 
+       if (tr.trackType === "corrective") return false;
+       if (tr.trackingMode !== "weightedReps") return false;
+ 
+       const mm = metricModeForTrack(tr);
+       if (mm !== "reps") return false;
+ 
+       const hasWR = typeof (s as any).weight === "number" && typeof (s as any).reps === "number";
+       if (!hasWR) return false;
+ 
+       const rir = (s as any).rir;
+       const rirOk = typeof rir === "number" && Number.isFinite(rir);
+       return !rirOk;
+     });
+ 
+     const problems = [
+       ...unchecked.map((s) => ({
+         kind: "unchecked" as const,
+         setId: s.id,
+         trackId: s.trackId,
+         label: "Not checked",
+       })),
+       ...missingRir.map((s) => ({
+         kind: "missingRir" as const,
+         setId: s.id,
+         trackId: s.trackId,
+         label: "Missing RIR",
+       })),
+     ];
+ 
+     return {
+       uncheckedCount: unchecked.length,
+       missingRirCount: missingRir.length,
+       problems,
+       canFinish: problems.length === 0,
+     };
   }, [sets, trackById, exerciseById]); // include exerciseById so metricMode updates re-compute
-
   // --- Breadcrumb 12.4 (Scroll helper) --------------------------------------
   function scrollToSet(setId: string, trackId: string) {
     const row = document.getElementById(`set-${setId}`);
@@ -1680,6 +1921,7 @@ function FinishSessionCard({
     </div>
   );
 }
+
 // --- Breadcrumb 13 (Helpers) ------------------------------------------------
 // Per-exercise rest timer
 function useRestTimer() {
@@ -1807,4 +2049,183 @@ function usePrevByWorkingIndex(currentSessionId: string, trackId: string) {
   }, [data?.prevSets]);
 
   return map;
+}
+// --- Breadcrumb 15 (Dev-only overlay) --------------------------------------
+// Clean dev HUD:
+// - Collapsed by default into a tiny chip
+// - Tap to expand/collapse
+// - Remembers preference in localStorage
+function DevGymOverlay({
+  sessionId,
+  sets,
+  tracks,
+}: {
+  sessionId: string;
+  sets: SetEntryX[];
+  tracks: Track[];
+}) {
+  if (!import.meta.env.DEV) return null;
+
+  const trackNameById = useMemo(
+    () => new Map(tracks.map((t) => [t.id, t.displayName] as const)),
+    [tracks]
+  );
+
+  const rows = useMemo(() => {
+    const s = (sets ?? [])
+      .filter((x) => x.sessionId === sessionId)
+      .slice()
+      .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+
+    return s.map((x) => {
+      const kind = ((x.setType as any) ?? "working") as string;
+      const done = !!x.completedAt;
+
+      const weight = (x as any).weight;
+      const reps = (x as any).reps;
+      const seconds = (x as any).seconds;
+      const distance = (x as any).distance;
+      const unit = ((x as any).distanceUnit as string | undefined) ?? "";
+      const rir = (x as any).rir;
+
+      return {
+        id: x.id,
+        track: trackNameById.get(x.trackId) ?? x.trackId,
+        kind,
+        done: done ? "✓" : "",
+        weight: typeof weight === "number" ? weight : "",
+        reps: typeof reps === "number" ? reps : "",
+        seconds: typeof seconds === "number" ? seconds : "",
+        distance: typeof distance === "number" ? `${distance}${unit ? " " + unit : ""}` : "",
+        rir: typeof rir === "number" && Number.isFinite(rir) ? rir : "",
+      };
+    });
+  }, [sets, sessionId, trackNameById]);
+
+  // --- collapsed state (persisted) ---
+  const storageKey = "devHudCollapsed";
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem(storageKey);
+      // default = collapsed (true)
+      return v === null ? true : v === "1";
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, collapsed ? "1" : "0");
+    } catch {}
+  }, [collapsed]);
+
+  // Tiny chip size when collapsed
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        onClick={() => setCollapsed(false)}
+        title="Open DEV HUD"
+        style={{
+          position: "fixed",
+          right: 10,
+          bottom: 10,
+          zIndex: 9999,
+          border: "0",
+          background: "rgba(0,0,0,0.78)",
+          color: "white",
+          borderRadius: 999,
+          padding: "8px 10px",
+          fontSize: 12,
+          fontWeight: 900,
+          lineHeight: 1,
+          boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          cursor: "pointer",
+        }}
+      >
+        <span style={{ opacity: 0.9 }}>DEV</span>
+        <span style={{ opacity: 0.7, fontWeight: 800 }}>{rows.length}</span>
+        <span style={{ opacity: 0.55, fontWeight: 800 }}>tap</span>
+      </button>
+    );
+  }
+
+  // Expanded panel
+  return (
+    <div
+      style={{
+        position: "fixed",
+        right: 10,
+        bottom: 10,
+        zIndex: 9999,
+        width: "min(520px, calc(100vw - 20px))",
+        maxHeight: "40vh",
+        overflow: "auto",
+        background: "rgba(0,0,0,0.82)",
+        color: "white",
+        borderRadius: 12,
+        padding: 10,
+        fontSize: 12,
+        lineHeight: 1.35,
+        boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <div style={{ fontWeight: 900 }}>DEV HUD</div>
+          <div style={{ opacity: 0.8 }}>sets: {rows.length}</div>
+        </div>
+
+        <button
+          type="button"
+          className="btn small"
+          onClick={() => setCollapsed(true)}
+          style={{
+            background: "rgba(255,255,255,0.08)",
+            color: "white",
+            border: "1px solid rgba(255,255,255,0.18)",
+          }}
+          title="Collapse"
+        >
+          Collapse
+        </button>
+      </div>
+
+      <div style={{ opacity: 0.85, marginTop: 4, marginBottom: 8 }}>
+        session: <span style={{ opacity: 1 }}>{sessionId}</span>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 48px 56px 48px 56px 60px 40px", gap: 6 }}>
+        <div style={{ opacity: 0.75 }}>track</div>
+        <div style={{ opacity: 0.75 }}>kind</div>
+        <div style={{ opacity: 0.75 }}>wt</div>
+        <div style={{ opacity: 0.75 }}>reps</div>
+        <div style={{ opacity: 0.75 }}>sec</div>
+        <div style={{ opacity: 0.75 }}>dist</div>
+        <div style={{ opacity: 0.75 }}>RIR</div>
+
+        {rows.slice(-40).map((r) => (
+          <React.Fragment key={r.id}>
+            <div title={r.id} style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {r.done} {r.track}
+            </div>
+            <div>{r.kind}</div>
+            <div>{r.weight}</div>
+            <div>{r.reps}</div>
+            <div>{r.seconds}</div>
+            <div>{r.distance}</div>
+            <div>{r.rir}</div>
+          </React.Fragment>
+        ))}
+      </div>
+
+      <div style={{ marginTop: 8, opacity: 0.65 }}>
+        Dev-only. Removed from prod by <code style={{ opacity: 0.9 }}>import.meta.env.DEV</code>.
+      </div>
+    </div>
+  );
 }

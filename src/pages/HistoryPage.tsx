@@ -2,7 +2,7 @@
 /* ============================================================================
    HistoryPage.tsx — Session History (Strong-ish, compact rows)
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-02-23-HIST-05
+   BUILD_ID: 2026-03-01-HIST-06
 
    Version history
    - 2026-02-23  HIST-03  ✅ Strong-like “…” menu pattern (both sections)
@@ -15,6 +15,9 @@
                          ✅ Batch compute totals + PRs (no N+1 queries)
    - 2026-02-23  HIST-05  ✅ Standard “…” dropdown styling (dark menu, hover, danger)
                          ✅ FIX: clicking Done / menu no longer opens session details
+   - 2026-03-01  HIST-06  ✅ Imported sessions w/o endedAt are NOT "In progress" forever
+                         ✅ In-progress = endedAt missing AND last activity is recent
+                         ✅ Optional duration estimate from set timestamps (when endedAt missing)
    ============================================================================ */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -34,10 +37,6 @@ type SessionRow = {
   prsJson?: string;
 };
 
-function isEnded(s: any): boolean {
-  return typeof s?.endedAt === "number" && Number.isFinite(s.endedAt) && s.endedAt > 0;
-}
-
 function fmtDayShort(ms: number) {
   try {
     const d = new Date(ms);
@@ -47,15 +46,19 @@ function fmtDayShort(ms: number) {
   }
 }
 
-function formatDurationShort(startedAt: number, endedAt?: number) {
-  if (!endedAt || !Number.isFinite(endedAt)) return "—";
-  const ms = Math.max(0, endedAt - startedAt);
+function formatDurationShortFromMs(ms: number) {
   const mins = Math.max(0, Math.round(ms / 60000));
   if (mins < 60) return `${mins}m`;
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   if (m <= 0) return `${h}h`;
   return `${h}h ${m}m`;
+}
+
+function formatDurationShort(startedAt: number, endedAt?: number) {
+  if (!endedAt || !Number.isFinite(endedAt)) return "—";
+  const ms = Math.max(0, endedAt - startedAt);
+  return formatDurationShortFromMs(ms);
 }
 
 function fmtTotal(n: number) {
@@ -289,12 +292,77 @@ export default function HistoryPage() {
     return map;
   }, [setsAll]);
 
+  /* =============================================================================
+     Breadcrumb 2b — Import-tolerant completion + duration estimate
+     - If endedAt exists => completed (normal)
+     - If endedAt missing:
+         - Consider "in progress" ONLY if last activity is recent (default 18h)
+         - Otherwise treat as completed (import-safe)
+     - Duration:
+         - endedAt present => real duration
+         - else if has sets => estimate from first..last set timestamps (createdAt/completedAt)
+   ============================================================================= */
+
+  const lastActivityBySession = useMemo(() => {
+    const map = new Map<string, { first?: number; last?: number; count: number }>();
+    for (const se of setsAll ?? []) {
+      const sid = (se as any)?.sessionId;
+      if (!sid) continue;
+
+      const t = Number((se as any)?.completedAt ?? (se as any)?.createdAt);
+      if (!Number.isFinite(t) || t <= 0) continue;
+
+      const cur = map.get(sid) ?? { first: undefined, last: undefined, count: 0 };
+      cur.count += 1;
+      cur.first = cur.first == null ? t : Math.min(cur.first, t);
+      cur.last = cur.last == null ? t : Math.max(cur.last, t);
+      map.set(sid, cur);
+    }
+    return map;
+  }, [setsAll]);
+
+  const IN_PROGRESS_RECENT_MS = 18 * 60 * 60 * 1000; // 18h: safe for gym reality + imports
+
+  function isSessionInProgress(s: SessionRow): boolean {
+    // If endedAt is set and valid => not in progress
+    const endedAt = Number((s as any)?.endedAt);
+    if (Number.isFinite(endedAt) && endedAt > 0) return false;
+
+    // If endedAt missing:
+    // If there's no activity at all, treat as in progress (true "shell" session)
+    const act = lastActivityBySession.get(s.id);
+    if (!act || !act.last || !Number.isFinite(act.last)) return true;
+
+    // Activity exists: in progress only if recent; otherwise it's an imported/old session.
+    const age = Date.now() - act.last;
+    return age >= 0 && age <= IN_PROGRESS_RECENT_MS;
+  }
+
+  function getSessionDurationLabel(s: SessionRow, showInProgress: boolean): string {
+    if (showInProgress) return "—";
+
+    // Prefer real endedAt
+    const endedAt = Number((s as any)?.endedAt);
+    if (Number.isFinite(endedAt) && endedAt > 0) return formatDurationShort(s.startedAt, endedAt);
+
+    // Estimate from set activity
+    const act = lastActivityBySession.get(s.id);
+    if (!act?.first || !act?.last) return "—";
+
+    const ms = Math.max(0, act.last - act.first);
+    // If there's almost no spread, avoid lying
+    if (ms < 2 * 60 * 1000) return "—"; // <2 min
+    // Clamp to sane bounds
+    const clamped = Math.min(ms, 4 * 60 * 60 * 1000); // <=4h
+    return formatDurationShortFromMs(clamped);
+  }
+
   const { inProgress, completed } = useMemo(() => {
     const all = sessions ?? [];
-    const inProgress = all.filter((s) => !isEnded(s));
-    const completed = all.filter((s) => isEnded(s));
+    const inProgress = all.filter((s) => isSessionInProgress(s));
+    const completed = all.filter((s) => !isSessionInProgress(s));
     return { inProgress, completed };
-  }, [sessions]);
+  }, [sessions, lastActivityBySession]);
 
   async function deleteSessionCascade(sessionId: string) {
     const ok = window.confirm("Delete this session? This cannot be undone.");
@@ -344,7 +412,7 @@ export default function HistoryPage() {
 
   function RowMeta({ s, showInProgress }: { s: SessionRow; showInProgress: boolean }) {
     const date = fmtDayShort(s.startedAt);
-    const dur = showInProgress ? "—" : formatDurationShort(s.startedAt, s.endedAt);
+    const dur = getSessionDurationLabel(s, showInProgress);
     const total = totalsBySession.get(s.id) ?? 0;
     const prs = safeParsePrsCount(s.prsJson);
 
@@ -437,10 +505,7 @@ export default function HistoryPage() {
                       }}
                       style={{ position: "relative", paddingTop: 10, paddingBottom: 10 }}
                     >
-                      <div
-                        className="card-head"
-                        style={{ alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}
-                      >
+                      <div className="card-head" style={{ alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
                         <RowMeta s={s} showInProgress={true} />
 
                         {/* Breadcrumb 3b — Actions cluster (STOP CLICK BUBBLE HERE) */}
@@ -451,11 +516,7 @@ export default function HistoryPage() {
                           onMouseDown={(e) => e.stopPropagation()}
                         >
                           <span className="badge">In progress</span>
-                          <MenuButton
-                            open={isMenuOpen}
-                            ariaLabel="Open session actions"
-                            onToggle={(el) => toggleMenu(s.id, el)}
-                          />
+                          <MenuButton open={isMenuOpen} ariaLabel="Open session actions" onToggle={(el) => toggleMenu(s.id, el)} />
                         </div>
                       </div>
 
@@ -507,10 +568,7 @@ export default function HistoryPage() {
                       }}
                       style={{ position: "relative", paddingTop: 10, paddingBottom: 10 }}
                     >
-                      <div
-                        className="card-head"
-                        style={{ alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}
-                      >
+                      <div className="card-head" style={{ alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
                         <RowMeta s={s} showInProgress={false} />
 
                         {/* Breadcrumb 3c — Actions cluster (STOP CLICK BUBBLE HERE) */}
@@ -521,11 +579,7 @@ export default function HistoryPage() {
                           onMouseDown={(e) => e.stopPropagation()}
                         >
                           <span className="badge">Done</span>
-                          <MenuButton
-                            open={isMenuOpen}
-                            ariaLabel="Open session actions"
-                            onToggle={(el) => toggleMenu(s.id, el)}
-                          />
+                          <MenuButton open={isMenuOpen} ariaLabel="Open session actions" onToggle={(el) => toggleMenu(s.id, el)} />
                         </div>
                       </div>
 
