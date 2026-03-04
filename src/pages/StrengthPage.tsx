@@ -14,7 +14,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Page, Section } from "../components/Page.tsx";
-import { computeStrengthIndex, computeStrengthTrend, StrengthTrendRow } from "../strength/strength";
+import { computeStrengthIndex, computeStrengthTrend, StrengthTrendRow } from "../strength/Strength";
 
 type StrengthPattern = "squat" | "hinge" | "push" | "pull";
 type Mode = "cut" | "maintain" | "bulk";
