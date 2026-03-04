@@ -30,7 +30,7 @@ import { useNavigate } from "react-router-dom";
 import { db, normalizeName } from "../db";
 import type { Exercise, BodyPart, MetricMode } from "../db";
 import { uuid } from "../utils";
-import { Page, Section } from "../components/Page";
+import { Page, Section } from "../components/Page.tsx";
 import { seedExercises } from "../seed/seedExercises";
 import { CoachingPanel } from "../components/CoachingPanel";
 

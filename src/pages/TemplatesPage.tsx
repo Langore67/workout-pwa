@@ -25,7 +25,7 @@ import { useNavigate } from "react-router-dom";
 import { db } from "../db";
 import type { Template, TemplateItem, Track, Exercise, Folder, TrackType, TrackingMode } from "../db";
 import { uuid } from "../utils";
-import { Page, Section } from "../components/Page";
+import { Page, Section } from "../components/Page.tsx";
 import { ActionMenu, MenuIcons, MenuItem } from "../components/ActionMenu";
 
 // --- Breadcrumb 1 (helpers) -------------------------------------------------

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, WalkEntry } from "../db";
 import { uuid } from "../utils";
-import { Page, Section } from "../components/Page";
+import { Page, Section } from "../components/Page.tsx";
 
 export default function WalksPage() {
   const walks = useLiveQuery(() => db.walks.orderBy("date").reverse().toArray(), []);

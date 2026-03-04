@@ -13,7 +13,7 @@
 /* ========================================================================== */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Page, Section } from "../components/Page";
+import { Page, Section } from "../components/Page.tsx";
 import { computeStrengthIndex, computeStrengthTrend, StrengthTrendRow } from "../strength/strength";
 
 type StrengthPattern = "squat" | "hinge" | "push" | "pull";

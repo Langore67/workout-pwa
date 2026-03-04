@@ -21,7 +21,7 @@ import React, { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../db";
 import { uuid } from "../utils";
-import { Page, Section } from "../components/Page";
+import { Page, Section } from "../components/Page.tsx";
 
 // --- Breadcrumb 1 -----------------------------------------------------------
 // DB tolerance

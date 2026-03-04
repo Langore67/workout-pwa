@@ -25,7 +25,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
 import { db, Template, TemplateItem, Track, Folder } from "../db";
 import { uuid } from "../utils";
-import { Page, Section } from "../components/Page";
+import { Page, Section } from "../components/Page.tsx";
 import { ActionMenu, MenuIcons, MenuItem } from "../components/ActionMenu";
 
 // --- Breadcrumb 1 (0-110) ---------------------------------------------------
