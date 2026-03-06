@@ -823,6 +823,56 @@ export class WorkoutDB extends Dexie {
         });
       });
     // ===== END OF v13 =====
+    
+       // v14
+    this.version(14)
+      .stores({
+        exercises:
+          "id, &normalizedName, name, bodyPart, category, equipment, archivedAt, mergedIntoExerciseId, createdAt",
+        exerciseVariants:
+          "id, exerciseId, [exerciseId+normalizedName], name, archivedAt, mergedIntoVariantId, createdAt",
+        tracks: "id, exerciseId, variantId, trackType, displayName, createdAt",
+        folders: "id, orderIndex, name, archivedAt, createdAt",
+        templates: "id, name, createdAt, folderId, archivedAt, orderIndex, lastPerformedAt",
+        templateItems: "id, templateId, orderIndex, trackId, groupId, createdAt",
+        sessions: "id, startedAt, endedAt, templateId, updatedAt, deletedAt",
+        sessionItems: "id, sessionId, orderIndex, trackId, createdAt",
+        sets: "id, sessionId, trackId, createdAt, setType, completedAt, updatedAt, deletedAt",
+        walks: "id, date, updatedAt, deletedAt",
+        trackPrs: "trackId, updatedAt",
+        bodyMetrics:
+          "id, measuredAt, takenAt, createdAt, weightLb, bodyFatPct, skeletalMuscleMassLb, visceralFatIndex, bodyWaterPct",
+        app_meta: "key, updatedAt",
+      })
+      .upgrade(async (tx) => {
+        await tx.table("tracks").toCollection().modify((t: any) => {
+          if (t.trackType !== "corrective") return;
+
+          const name = normalizeLoose(String(t.displayName ?? ""));
+
+          if (name.includes("crocodile breathing")) {
+            t.trackingMode = "breaths";
+            return;
+          }
+
+          if (name.includes("90/90 hip rotations")) {
+            t.trackingMode = "repsOnly";
+            return;
+          }
+
+          if (name.includes("knee-to-wall dorsiflexion")) {
+            t.trackingMode = "repsOnly";
+            return;
+          }
+
+          if (name.includes("banded pull aparts")) {
+            t.trackingMode = "repsOnly";
+            return;
+          }
+        });
+      });
+    // ===== END OF v14 =====   
+    
   }
 }
 

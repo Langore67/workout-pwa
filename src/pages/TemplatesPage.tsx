@@ -1,25 +1,29 @@
 // src/pages/TemplatesPage.tsx
 /* ========================================================================== */
 /*  TemplatesPage.tsx                                                         */
-/*  BUILD_ID: 2026-02-20-TP-05                                                 */
+/*  BUILD_ID: 2026-03-06-TP-06                                                */
 /* -------------------------------------------------------------------------- */
 /*  Revision history                                                          */
 /*  - 2026-02-18 TP-02                                                        */
-/*    * Inline template rename                                                 */
-/*    * Folder label de-dupe                                                   */
-/*    * Folder management modal                                                */
+/*    * Inline template rename                                                */
+/*    * Folder label de-dupe                                                  */
+/*    * Folder management modal                                               */
 /*  - 2026-02-19 TP-03                                                        */
-/*    * Replace per-row "..." menu with ActionMenu (iPhone reliable)           */
-/*    * Remove mousedown-only outside click logic                              */
+/*    * Replace per-row "..." menu with ActionMenu (iPhone reliable)          */
+/*    * Remove mousedown-only outside click logic                             */
 /*  - 2026-02-20 TP-04                                                        */
-/*    * Restore editor "Add exercises" panel (catalog + quick add)             */
-/*    * Use existing createAndAddTrackToTemplate / catalogGroups helpers       */
+/*    * Restore editor "Add exercises" panel (catalog + quick add)            */
+/*    * Use existing createAndAddTrackToTemplate / catalogGroups helpers      */
 /*  - 2026-02-20 TP-05                                                        */
-/*    * Reuse existing Tracks (exerciseId+trackType+trackingMode) to avoid dup */
-/*    * Prefer variantId undefined; pick oldest createdAt if multiple          */
+/*    * Reuse existing Tracks (exerciseId+trackType+trackingMode) to avoid dup*/
+/*    * Prefer variantId undefined; pick oldest createdAt if multiple         */
+/*  - 2026-03-06 TP-06                                                        */
+/*    * Refine breadcrumbs                                                    */
+/*    * Safer corrective defaults in editor                                   */
+/*    * corrective + weightedReps auto-normalizes to repsOnly / breaths       */
 /* ========================================================================== */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
 import { db } from "../db";
@@ -28,7 +32,9 @@ import { uuid } from "../utils";
 import { Page, Section } from "../components/Page.tsx";
 import { ActionMenu, MenuIcons, MenuItem } from "../components/ActionMenu";
 
-// --- Breadcrumb 1 (helpers) -------------------------------------------------
+/* ========================================================================== */
+/*  Breadcrumb 01 — shared helpers                                            */
+/* ========================================================================== */
 function fmtArchived(ms?: number) {
   if (!ms) return "—";
   return new Date(ms).toLocaleDateString();
@@ -58,10 +64,15 @@ type CatalogGroup = {
   exercises: Exercise[];
 };
 
+/* ========================================================================== */
+/*  Breadcrumb 02 — page component                                            */
+/* ========================================================================== */
 export default function TemplatesPage() {
   const navigate = useNavigate();
 
-  // --- Breadcrumb 2 (DB reads + UI state) -----------------------------------
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 02.1 — base DB reads                                         */
+  /* ------------------------------------------------------------------------ */
   const folders = useLiveQuery(() => db.folders.orderBy("orderIndex").toArray(), []);
   const templates = useLiveQuery(async () => {
     const arr = await db.templates.toArray();
@@ -83,33 +94,48 @@ export default function TemplatesPage() {
     return arr;
   }, []);
 
-  // UI state
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 02.2 — page UI state                                         */
+  /* ------------------------------------------------------------------------ */
   const [showArchived, setShowArchived] = useState(false);
 
-  // Inline rename state
   const [renamingTemplateId, setRenamingTemplateId] = useState<string>("");
   const [renameDraft, setRenameDraft] = useState<string>("");
 
-  // Folder management modal
   const [foldersModalOpen, setFoldersModalOpen] = useState(false);
   const [renamingFolderId, setRenamingFolderId] = useState<string>("");
   const [folderRenameDraft, setFolderRenameDraft] = useState<string>("");
 
-  // Editor modal state
   const [editingTemplateId, setEditingTemplateId] = useState<string>("");
 
-  // Catalog search + quick add
   const [quickAddName, setQuickAddName] = useState<string>("");
 
-  // Variant creator controls
   const [variantType, setVariantType] = useState<TrackType>("hypertrophy");
   const [variantMode, setVariantMode] = useState<TrackingMode>("weightedReps");
 
-  // (Legacy retained; safe)
   const [, setTrackSearch] = useState<string>("");
   const [, setSelectedTrackId] = useState<string>("");
 
-  // --- Breadcrumb 3 (Derived maps) ------------------------------------------
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 02.3 — corrective default safety                             */
+  /* ------------------------------------------------------------------------ */
+  useEffect(() => {
+    if (variantType !== "corrective") return;
+    if (variantMode !== "weightedReps") return;
+
+    const q = normalizeLoose(quickAddName);
+
+    if (q.includes("breathing") || q.includes("breath")) {
+      setVariantMode("breaths");
+      return;
+    }
+
+    setVariantMode("repsOnly");
+  }, [variantType, variantMode, quickAddName]);
+
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 03 — derived maps / counts                                   */
+  /* ------------------------------------------------------------------------ */
   const itemsByTemplate = useMemo(() => {
     const map = new Map<string, TemplateItem[]>();
     for (const it of templateItems ?? []) {
@@ -135,7 +161,9 @@ export default function TemplatesPage() {
     return map;
   }, [tracks]);
 
-  // --- Breadcrumb 3A (Folder label de-dupe) ---------------------------------
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 03.1 — folder label de-dupe                                  */
+  /* ------------------------------------------------------------------------ */
   const folderLabelById = useMemo(() => {
     const list = (folders ?? []) as Folder[];
     const sorted = list
@@ -166,6 +194,9 @@ export default function TemplatesPage() {
     };
   }, [folderLabelById]);
 
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 03.2 — template rows                                         */
+  /* ------------------------------------------------------------------------ */
   const rows: Row[] = useMemo(() => {
     const all = (templates ?? []) as Template[];
     const filtered = showArchived ? all : all.filter((t: any) => !t.archivedAt);
@@ -179,6 +210,9 @@ export default function TemplatesPage() {
       .sort((a, b) => a.t.name.localeCompare(b.t.name));
   }, [templates, showArchived, itemCountByTemplateId, folderNameForTemplate]);
 
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 03.3 — active editor state                                   */
+  /* ------------------------------------------------------------------------ */
   const editingTemplate = useMemo(() => {
     if (!editingTemplateId) return null;
     return (templates ?? []).find((t) => t.id === editingTemplateId) ?? null;
@@ -199,7 +233,9 @@ export default function TemplatesPage() {
     return set;
   }, [editingItems, trackMap]);
 
-  // --- Breadcrumb 3B (Catalog grouping + search) ----------------------------
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 03.4 — catalog filtering / grouping                          */
+  /* ------------------------------------------------------------------------ */
   const filteredExercisesForCatalog = useMemo(() => {
     const q = normalizeLoose(quickAddName);
     let arr = (exercises ?? []).slice();
@@ -255,7 +291,9 @@ export default function TemplatesPage() {
     return `${base} — ${vt}`;
   }, [quickAddName, variantType]);
 
-  // --- Breadcrumb 4 (Actions: templates) ------------------------------------
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 04 — template actions                                        */
+  /* ------------------------------------------------------------------------ */
   async function renameTemplateDirect(t: Template, nextNameRaw: string) {
     const name = nextNameRaw.trim();
     if (!name) return;
@@ -333,7 +371,9 @@ export default function TemplatesPage() {
     if (editingTemplateId === t.id) closeEditor();
   }
 
-  // --- Breadcrumb 4B (Actions: folders) -------------------------------------
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 04.1 — folder actions                                        */
+  /* ------------------------------------------------------------------------ */
   async function createFolder() {
     const next = window.prompt("New folder name:");
     if (!next) return;
@@ -382,7 +422,9 @@ export default function TemplatesPage() {
     });
   }
 
-  // --- Breadcrumb 4C (create template) --------------------------------------
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 04.2 — create template                                       */
+  /* ------------------------------------------------------------------------ */
   async function createTemplate() {
     const next = window.prompt("New template name:");
     if (!next) return;
@@ -404,7 +446,9 @@ export default function TemplatesPage() {
     openEditor(id);
   }
 
-  // --- Breadcrumb 5 (Folder selector) ---------------------------------------
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 05 — folder selector component                               */
+  /* ------------------------------------------------------------------------ */
   function FolderSelect({ template }: { template: Template }) {
     const currentFolderId = (template as any).folderId as string | undefined;
     const visibleFolders = ((folders ?? []) as Folder[]).filter((f: any) => !f.archivedAt);
@@ -428,7 +472,9 @@ export default function TemplatesPage() {
     );
   }
 
-  // --- Breadcrumb 6 (Editor modal helpers) ----------------------------------
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 06 — editor modal helpers                                    */
+  /* ------------------------------------------------------------------------ */
   function openEditor(templateId: string) {
     setEditingTemplateId(templateId);
     setTrackSearch("");
@@ -467,7 +513,9 @@ export default function TemplatesPage() {
     await db.templateItems.delete(itemId);
   }
 
-  // --- Breadcrumb 6C (find-or-create Exercise) ------------------------------
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 06.1 — find or create exercise                               */
+  /* ------------------------------------------------------------------------ */
   async function findOrCreateExerciseByName(rawName: string): Promise<string> {
     const name = rawName.trim();
     if (!name) throw new Error("Exercise name is required.");
@@ -506,7 +554,9 @@ export default function TemplatesPage() {
     return exerciseId;
   }
 
-  // --- Breadcrumb 6D (create Track variant) ---------------------------------
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 06.2 — create track variant                                  */
+  /* ------------------------------------------------------------------------ */
   async function createTrackVariant(args: {
     exerciseId: string;
     displayName: string;
@@ -552,21 +602,17 @@ export default function TemplatesPage() {
     return trackId;
   }
 
-  // --- Breadcrumb 6D2 (REUSE Track by key) ----------------------------------
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 06.3 — reuse existing track by key                           */
+  /* ------------------------------------------------------------------------ */
   async function findOrCreateReusableTrack(args: {
     exerciseId: string;
     desiredDisplayName: string;
     trackType: TrackType;
     trackingMode: TrackingMode;
   }): Promise<string> {
-    // We do not have a compound index for (exerciseId+trackType+trackingMode),
-    // so we fetch by exerciseId and filter in-memory.
     const allForExercise = await db.tracks.where("exerciseId").equals(args.exerciseId).toArray();
 
-    // Prefer:
-    // 1) exact match with variantId undefined
-    // 2) any match with variantId undefined
-    // 3) any match at all
     const matches = allForExercise.filter(
       (t: any) => t.trackType === args.trackType && t.trackingMode === args.trackingMode
     );
@@ -589,7 +635,6 @@ export default function TemplatesPage() {
       return pool[0].id;
     }
 
-    // none found => create
     return await createTrackVariant({
       exerciseId: args.exerciseId,
       displayName: args.desiredDisplayName,
@@ -598,7 +643,9 @@ export default function TemplatesPage() {
     });
   }
 
-  // --- Breadcrumb 6E (create/reuse Track + add) -----------------------------
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 06.4 — create/reuse track and add to template                */
+  /* ------------------------------------------------------------------------ */
   async function createAndAddTrackToTemplate(args: {
     templateId: string;
     exerciseName: string;
@@ -613,7 +660,6 @@ export default function TemplatesPage() {
     await db.transaction("rw", db.exercises, db.tracks, db.templateItems, async () => {
       const exerciseId = await findOrCreateExerciseByName(exerciseName);
 
-      // ✅ Reuse existing track when possible
       const trackId = await findOrCreateReusableTrack({
         exerciseId,
         desiredDisplayName: trackDisplayName,
@@ -625,7 +671,9 @@ export default function TemplatesPage() {
     });
   }
 
-  // --- Breadcrumb 7 (Inline rename helpers) ---------------------------------
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 07 — inline rename helpers                                   */
+  /* ------------------------------------------------------------------------ */
   function beginRenameTemplate(t: Template) {
     setRenamingTemplateId(t.id);
     setRenameDraft(t.name ?? "");
@@ -643,7 +691,9 @@ export default function TemplatesPage() {
     cancelRenameTemplate();
   }
 
-  // --- Breadcrumb 7B (Folder modal helpers) ---------------------------------
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 07.1 — folder modal helpers                                  */
+  /* ------------------------------------------------------------------------ */
   function openFoldersModal() {
     setFoldersModalOpen(true);
     setRenamingFolderId("");
@@ -673,10 +723,15 @@ export default function TemplatesPage() {
     cancelRenameFolder();
   }
 
-  // --- Breadcrumb 8 (Render Templates list) ---------------------------------
+  /* ------------------------------------------------------------------------ */
+  /*  Breadcrumb 08 — page render                                             */
+  /* ------------------------------------------------------------------------ */
   return (
     <Page title="Templates">
       <Section>
+        {/* ------------------------------------------------------------------ */}
+        {/*  Breadcrumb 08.1 — top toolbar                                     */}
+        {/* ------------------------------------------------------------------ */}
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <div style={{ fontWeight: 900, fontSize: 18 }}>Manage Templates</div>
 
@@ -708,6 +763,9 @@ export default function TemplatesPage() {
           </div>
         </div>
 
+        {/* ------------------------------------------------------------------ */}
+        {/*  Breadcrumb 08.2 — template list                                   */}
+        {/* ------------------------------------------------------------------ */}
         <div style={{ marginTop: 14 }}>
           {rows.length ? (
             <div style={{ display: "grid", gap: 10 }}>
@@ -801,7 +859,9 @@ export default function TemplatesPage() {
 
                       <FolderSelect template={r.t} />
 
-                      {/* --- Breadcrumb 8A (Strong-like ActionMenu) ---------- */}
+                      {/* ------------------------------------------------------ */}
+                      {/*  Breadcrumb 08.2.a — row action menu                  */}
+                      {/* ------------------------------------------------------ */}
                       <ActionMenu theme="dark" items={menuItems} offsetX={6} />
                     </div>
                   </div>
@@ -816,7 +876,9 @@ export default function TemplatesPage() {
         </div>
       </Section>
 
-      {/* --- Breadcrumb 8B (Folder Management Modal) ------------------------ */}
+      {/* -------------------------------------------------------------------- */}
+      {/*  Breadcrumb 09 — folder management modal                             */}
+      {/* -------------------------------------------------------------------- */}
       {foldersModalOpen ? (
         <div className="modal-overlay" role="dialog" aria-modal="true" onMouseDown={closeFoldersModal}>
           <div
@@ -831,6 +893,9 @@ export default function TemplatesPage() {
               flexDirection: "column",
             }}
           >
+            {/* ---------------------------------------------------------------- */}
+            {/*  Breadcrumb 09.1 — modal header                                 */}
+            {/* ---------------------------------------------------------------- */}
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <button className="btn small" onClick={closeFoldersModal} aria-label="Close">
                 ✕
@@ -850,6 +915,9 @@ export default function TemplatesPage() {
 
             <hr />
 
+            {/* ---------------------------------------------------------------- */}
+            {/*  Breadcrumb 09.2 — folder list                                  */}
+            {/* ---------------------------------------------------------------- */}
             <div style={{ paddingRight: 2, overflowY: "auto", maxHeight: "min(600px, calc(100vh - 260px))" }}>
               <div className="card" style={{ padding: 12 }}>
                 {((folders ?? []) as Folder[]).filter((f: any) => !f.archivedAt).length ? (
@@ -932,6 +1000,9 @@ export default function TemplatesPage() {
               </div>
             </div>
 
+            {/* ---------------------------------------------------------------- */}
+            {/*  Breadcrumb 09.3 — modal footer                                 */}
+            {/* ---------------------------------------------------------------- */}
             <div style={{ marginTop: 12 }}>
               <button className="btn" style={{ width: "100%", padding: "12px 14px" }} onClick={closeFoldersModal}>
                 Done
@@ -941,7 +1012,9 @@ export default function TemplatesPage() {
         </div>
       ) : null}
 
-      {/* --- Breadcrumb 9 (Editor Modal) ----------------------------------- */}
+      {/* -------------------------------------------------------------------- */}
+      {/*  Breadcrumb 10 — editor modal                                         */}
+      {/* -------------------------------------------------------------------- */}
       {editingTemplate ? (
         <div className="modal-overlay" role="dialog" aria-modal="true" onMouseDown={closeEditor}>
           <div
@@ -956,6 +1029,9 @@ export default function TemplatesPage() {
               flexDirection: "column",
             }}
           >
+            {/* ---------------------------------------------------------------- */}
+            {/*  Breadcrumb 10.1 — modal header                                 */}
+            {/* ---------------------------------------------------------------- */}
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <button className="btn small" onClick={closeEditor} aria-label="Close">
                 ✕
@@ -977,8 +1053,13 @@ export default function TemplatesPage() {
 
             <hr />
 
+            {/* ---------------------------------------------------------------- */}
+            {/*  Breadcrumb 10.2 — modal scroll body                            */}
+            {/* ---------------------------------------------------------------- */}
             <div style={{ paddingRight: 2, overflowY: "auto", maxHeight: "min(600px, calc(100vh - 260px))" }}>
-              {/* --- Breadcrumb 9A (Add exercises panel) ------------------- */}
+              {/* -------------------------------------------------------------- */}
+              {/*  Breadcrumb 10.2.a — add exercises panel                      */}
+              {/* -------------------------------------------------------------- */}
               <div className="card" style={{ padding: 12, marginBottom: 10 }}>
                 <div style={{ fontWeight: 900, marginBottom: 10 }}>Add exercises</div>
 
@@ -1024,7 +1105,13 @@ export default function TemplatesPage() {
                   Reuse rule: {`exerciseId + type + mode`} (prefers no variant). Only creates a new Track if none exists.
                 </div>
 
-                {/* Quick create/add */}
+                <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
+                  Corrective safeguard: corrective + weighted reps auto-normalizes to reps only, or breaths for breathing drills.
+                </div>
+
+                {/* ------------------------------------------------------------ */}
+                {/*  Breadcrumb 10.2.a.1 — quick add                            */}
+                {/* ------------------------------------------------------------ */}
                 <div style={{ marginTop: 12 }}>
                   <div className="row" style={{ alignItems: "center", justifyContent: "space-between" }}>
                     <div style={{ fontWeight: 800 }}>Quick add</div>
@@ -1065,7 +1152,9 @@ export default function TemplatesPage() {
                   </div>
                 </div>
 
-                {/* Catalog */}
+                {/* ------------------------------------------------------------ */}
+                {/*  Breadcrumb 10.2.a.2 — catalog                              */}
+                {/* ------------------------------------------------------------ */}
                 <div style={{ marginTop: 14 }}>
                   <div style={{ fontWeight: 800, marginBottom: 8 }}>Catalog</div>
 
@@ -1125,7 +1214,9 @@ export default function TemplatesPage() {
                 </div>
               </div>
 
-              {/* --- Breadcrumb 9B (Current exercises in template) ----------- */}
+              {/* -------------------------------------------------------------- */}
+              {/*  Breadcrumb 10.2.b — current exercises in template            */}
+              {/* -------------------------------------------------------------- */}
               <div className="card" style={{ padding: 12 }}>
                 <div style={{ fontWeight: 900, marginBottom: 8 }}>Exercises in this template</div>
 
@@ -1168,6 +1259,9 @@ export default function TemplatesPage() {
               </div>
             </div>
 
+            {/* ---------------------------------------------------------------- */}
+            {/*  Breadcrumb 10.3 — modal footer                                 */}
+            {/* ---------------------------------------------------------------- */}
             <div style={{ marginTop: 12 }}>
               <button className="btn" style={{ width: "100%", padding: "12px 14px" }} onClick={closeEditor}>
                 Done

@@ -2,7 +2,7 @@
 /* ============================================================================
    GymPage.tsx — Execution / Logging (Strong-ish)
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-06-GYM-LOADED-REPS-HARDEN-01
+   BUILD_ID: 2026-03-06-GYM-ADD-EXERCISE-01
 
    Version history
    - 2026-02-11  GP-01  Baseline Gym Mode execution + sets + finish pipeline
@@ -13,50 +13,25 @@
    - 2026-02-22  GP-06  Copy cues to clipboard + Edit in catalog deep-link
    - 2026-02-22  GP-07  Cancel session (delete sets + session)
    - 2026-03-02  GP-08  Decimal RIR support (1.5 / 2.5 allowed)
-   - 2026-03-06  GP-09  Loaded-reps hardening:
-                      - reps hypertrophy/strength rows still show weight even if
-                        trackingMode was mis-saved as repsOnly
-                      - finish gate aligned with loaded reps logic
-                      - breadcrumbs refined / made more granular
-   ============================================================================
-
-   Execution Guarantees (current behavior)
-
-   1) Single Finish Session control at bottom
-   2) Compact ghost placeholders for working sets (weight + reps)
-   3) Guardrails: reject fat-finger values (>300 lbs, >50 reps, etc.)
-   4) Green ring for completed WORKING sets
-   5) Decimal RIR supported (Number storage, no rounding)
-   6) RIR enforcement ONLY when:
-        - setType === "working"
-        - completedAt is set
-        - trackType !== "corrective"
-        - movement is treated as LOADED REPS
-        - metricMode === "reps"
-   7) Warmup sets NEVER require RIR
-   8) Finish reveals issues only after user taps Finish
-   9) Cancel session deletes sets + session (no PRs, no template update)
-
-   Backend compatibility:
-   - No DB schema changes required for this UI hardening
-   - RIR stored as number (float-safe)
-   - IndexedDB verified to preserve decimals
-   ============================================================================
-
-   IMPORTANT NOTE (GP-09)
-   - Some older installs/imports may have hypertrophy rows saved as:
-       trackingMode = "repsOnly"
-     even though they are really loaded lifts.
-   - This file now derives "loaded reps movement" more defensively so the UI
-     still shows weight + reps + RIR for those rows.
-   ============================================================================
-*/
+   - 2026-03-06  GP-09  Loaded-reps hardening
+   - 2026-03-06  GP-10  Add Exercise during active session
+                      - searchable modal
+                      - reuse/create track
+                      - append sessionItem
+                      - duplicate guard
+   ============================================================================ */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../db";
-import type { Track, SetEntry } from "../db";
+import type {
+  Track,
+  SetEntry,
+  Exercise,
+  TrackType,
+  TrackingMode,
+} from "../db";
 import { uuid } from "../utils";
 import { getBestSessionLastNDays, suggestionFromBest } from "../progression";
 import { computeAndStorePRsForSession } from "../prs";
@@ -72,10 +47,19 @@ type SetEntryX = SetEntry & {
   completedAt?: number;
 };
 
+type CatalogGroup = {
+  key: string;
+  title: string;
+  exercises: Exercise[];
+};
+
 /* ============================================================================
-   Breadcrumb 02 — Viewport / compact mode
-   - mobile-like behavior from viewport width (not UA sniffing)
+   Breadcrumb 02 — Shared helpers
    ============================================================================ */
+function normalizeLoose(s: string) {
+  return (s || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function useCompactMode(maxWidthPx: number = 520): boolean {
   const [compact, setCompact] = React.useState<boolean>(() => {
     if (typeof window === "undefined") return false;
@@ -95,9 +79,6 @@ function useCompactMode(maxWidthPx: number = 520): boolean {
   return compact;
 }
 
-/* ============================================================================
-   Breadcrumb 03 — Parse previous-set text ("135 x 10")
-   ============================================================================ */
 function parsePrev(prevText: string): { prevWeight?: number; prevReps?: number } {
   const t = (prevText || "").trim();
   if (!t) return {};
@@ -111,9 +92,6 @@ function parsePrev(prevText: string): { prevWeight?: number; prevReps?: number }
   };
 }
 
-/* ============================================================================
-   Breadcrumb 04 — Guardrails / parsers
-   ============================================================================ */
 const LIMITS = {
   maxWeight: 300,
   maxReps: 50,
@@ -126,11 +104,6 @@ function parseNum(v: string): number | undefined {
   return Number.isFinite(x) ? x : undefined;
 }
 
-/* ============================================================================
-   Breadcrumb 05 — Time helpers
-   - store as seconds
-   - accept: "90", "2:30", "02:30", "130" => 1:30
-   ============================================================================ */
 function parseTimeToSeconds(raw: string): number | undefined {
   const s = (raw ?? "").trim();
   if (!s) return undefined;
@@ -165,9 +138,6 @@ function formatSecondsToMMSS(totalSeconds?: number): string {
   return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
-/* ============================================================================
-   Breadcrumb 06 — Clipboard helper
-   ============================================================================ */
 async function copyTextToClipboard(text: string): Promise<boolean> {
   try {
     if (navigator?.clipboard?.writeText) {
@@ -195,32 +165,514 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
   }
 }
 
-/* ============================================================================
-   Breadcrumb 07 — Loaded reps inference
-   IMPORTANT:
-   - canonical loaded reps = trackingMode === "weightedReps"
-   - hardening path: treat non-corrective repsOnly rows as loaded reps too
-     for reps metric movements (covers bad old hypertrophy rows)
-   ============================================================================ */
 function isLoadedRepsTrack(track: Track, metricMode: MetricModeX): boolean {
   if (metricMode !== "reps") return false;
   if (track.trackType === "corrective") return false;
 
+  return track.trackingMode === "weightedReps" || track.trackingMode === "repsOnly";
+}
+
+/* ============================================================================
+   Breadcrumb 03 — Active-session add exercise helpers
+   ============================================================================ */
+async function findOrCreateExerciseByName(rawName: string): Promise<string> {
+  const name = rawName.trim();
+  if (!name) throw new Error("Exercise name is required.");
+
+  const norm = normalizeLoose(name);
+
+  const indexedHit = await db.exercises.where("normalizedName").equals(norm).first();
+  if (indexedHit && !(indexedHit as any).mergedIntoExerciseId) {
+    if ((indexedHit as any).archivedAt) {
+      await db.exercises.update(indexedHit.id, { archivedAt: undefined, updatedAt: Date.now() } as any);
+    }
+    return indexedHit.id;
+  }
+
+  const all = await db.exercises.toArray();
+  const scanHit = all.find(
+    (ex: any) => normalizeLoose(String(ex.name ?? "")) === norm && !ex.mergedIntoExerciseId
+  );
+  if (scanHit) {
+    if ((scanHit as any).archivedAt) {
+      await db.exercises.update(scanHit.id, { archivedAt: undefined, updatedAt: Date.now() } as any);
+    }
+    return scanHit.id;
+  }
+
+  const now = Date.now();
+  const exerciseId = uuid();
+
+  await db.exercises.add({
+    id: exerciseId,
+    name,
+    normalizedName: norm,
+    equipmentTags: [],
+    createdAt: now,
+    updatedAt: now,
+  } as any);
+
+  return exerciseId;
+}
+
+async function createTrackVariant(args: {
+  exerciseId: string;
+  displayName: string;
+  trackType: TrackType;
+  trackingMode: TrackingMode;
+}): Promise<string> {
+  const now = Date.now();
+  const trackId = uuid();
+
+  const defaults =
+    args.trackType === "corrective"
+      ? {
+          warmupSetsDefault: 0,
+          workingSetsDefault: 1,
+          repMin: 1,
+          repMax: 1,
+          restSecondsDefault: 60,
+          rirTargetMin: undefined,
+          rirTargetMax: undefined,
+          weightJumpDefault: 0,
+        }
+      : {
+          warmupSetsDefault: 2,
+          workingSetsDefault: 3,
+          repMin: args.trackType === "strength" ? 3 : 8,
+          repMax: args.trackType === "strength" ? 6 : 12,
+          restSecondsDefault: args.trackType === "strength" ? 180 : 120,
+          rirTargetMin: 1,
+          rirTargetMax: 2,
+          weightJumpDefault: 5,
+        };
+
+  await db.tracks.add({
+    id: trackId,
+    exerciseId: args.exerciseId,
+    trackType: args.trackType,
+    displayName: args.displayName,
+    trackingMode: args.trackingMode,
+    ...defaults,
+    createdAt: now,
+  } as any);
+
+  return trackId;
+}
+
+async function findOrCreateReusableTrack(args: {
+  exerciseId: string;
+  desiredDisplayName: string;
+  trackType: TrackType;
+  trackingMode: TrackingMode;
+}): Promise<string> {
+  const allForExercise = await db.tracks.where("exerciseId").equals(args.exerciseId).toArray();
+
+  const matches = allForExercise.filter(
+    (t: any) => t.trackType === args.trackType && t.trackingMode === args.trackingMode
+  );
+
+  if (matches.length) {
+    const normWanted = normalizeLoose(args.desiredDisplayName);
+    const preferNoVariant = matches.filter((t: any) => t.variantId == null);
+
+    const exactNameNoVariant = preferNoVariant.filter(
+      (t: any) => normalizeLoose(String(t.displayName ?? "")) === normWanted
+    );
+
+    const pool = exactNameNoVariant.length
+      ? exactNameNoVariant
+      : preferNoVariant.length
+      ? preferNoVariant
+      : matches;
+
+    pool.sort((a: any, b: any) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+    return pool[0].id;
+  }
+
+  return await createTrackVariant({
+    exerciseId: args.exerciseId,
+    displayName: args.desiredDisplayName,
+    trackType: args.trackType,
+    trackingMode: args.trackingMode,
+  });
+}
+
+async function addTrackToSession(args: {
+  sessionId: string;
+  existingSessionItems: any[];
+  existingRenderTrackIds: string[];
+  exerciseName: string;
+  trackDisplayName: string;
+  trackType: TrackType;
+  trackingMode: TrackingMode;
+}): Promise<{ trackId: string; added: boolean }> {
+  const exerciseName = args.exerciseName.trim();
+  const trackDisplayName = args.trackDisplayName.trim();
+  if (!exerciseName || !trackDisplayName) throw new Error("Exercise name is required.");
+
+  return await db.transaction("rw", db.exercises, db.tracks, db.sessionItems, async () => {
+    const exerciseId = await findOrCreateExerciseByName(exerciseName);
+
+    const trackId = await findOrCreateReusableTrack({
+      exerciseId,
+      desiredDisplayName: trackDisplayName,
+      trackType: args.trackType,
+      trackingMode: args.trackingMode,
+    });
+
+    if (args.existingRenderTrackIds.includes(trackId)) {
+      return { trackId, added: false };
+    }
+
+    const maxOrder = args.existingSessionItems.length
+      ? Math.max(...args.existingSessionItems.map((x: any) => x.orderIndex ?? 0))
+      : 0;
+
+    await db.sessionItems.add({
+      id: uuid(),
+      sessionId: args.sessionId,
+      orderIndex: maxOrder + 1,
+      trackId,
+      createdAt: Date.now(),
+    } as any);
+
+    return { trackId, added: true };
+  });
+}
+
+/* ============================================================================
+   Breadcrumb 04 — Add Exercise Modal
+   ============================================================================ */
+function AddExerciseModal({
+  open,
+  sessionId,
+  existingSessionItems,
+  existingRenderTrackIds,
+  onClose,
+}: {
+  open: boolean;
+  sessionId: string;
+  existingSessionItems: any[];
+  existingRenderTrackIds: string[];
+  onClose: () => void;
+}) {
+  const [quickAddName, setQuickAddName] = useState("");
+  const [variantType, setVariantType] = useState<TrackType>("hypertrophy");
+  const [variantMode, setVariantMode] = useState<TrackingMode>("weightedReps");
+  const [busy, setBusy] = useState(false);
+
+  const exercises = useLiveQuery(async () => {
+    const arr = await db.exercises.toArray();
+    const filtered = arr.filter((e: any) => !e.mergedIntoExerciseId && !e.archivedAt);
+    filtered.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+    return filtered as Exercise[];
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    setQuickAddName("");
+    setVariantType("hypertrophy");
+    setVariantMode("weightedReps");
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
+  const filteredExercises = useMemo(() => {
+    const q = normalizeLoose(quickAddName);
+    let arr = (exercises ?? []).slice();
+
+    if (q) {
+      arr = arr.filter((ex) => {
+        const name = normalizeLoose(ex.name ?? "");
+        const aliases = Array.isArray((ex as any).aliases) ? (ex as any).aliases : [];
+        const aliasHay = aliases.map((a: string) => normalizeLoose(a)).join(" ");
+        return name.includes(q) || aliasHay.includes(q);
+      });
+    }
+
+    arr.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+    return arr;
+  }, [exercises, quickAddName]);
+
+  const catalogGroups: CatalogGroup[] = useMemo(() => {
+    const m = new Map<string, Exercise[]>();
+    for (const ex of filteredExercises) {
+      const ch = (ex.name?.trim()?.[0] ?? "#").toUpperCase();
+      const key = /[A-Z]/.test(ch) ? ch : "#";
+      const arr = m.get(key) ?? [];
+      arr.push(ex);
+      m.set(key, arr);
+    }
+
+    const keys = Array.from(m.keys()).sort((a, b) => {
+      if (a === "#") return 1;
+      if (b === "#") return -1;
+      return a.localeCompare(b);
+    });
+
+    return keys.map((k) => ({ key: k, title: k, exercises: m.get(k)! }));
+  }, [filteredExercises]);
+
+  const catalogHasResults = useMemo(
+    () => catalogGroups.some((g) => g.exercises.length > 0),
+    [catalogGroups]
+  );
+
+  const topCatalogExercise = useMemo(() => {
+    for (const g of catalogGroups) {
+      if (g.exercises.length) return g.exercises[0];
+    }
+    return undefined as Exercise | undefined;
+  }, [catalogGroups]);
+
+  const suggestedTrackName = useMemo(() => {
+    const base = quickAddName.trim();
+    if (!base) return "";
+    const vt = variantType;
+    if (base.toLowerCase().includes(vt)) return base;
+    return `${base} — ${vt}`;
+  }, [quickAddName, variantType]);
+
+  async function doAdd(exerciseName: string, displayName: string) {
+    const exName = exerciseName.trim();
+    const trName = displayName.trim();
+    if (!exName || !trName) return;
+
+    setBusy(true);
+    try {
+      const res = await addTrackToSession({
+        sessionId,
+        existingSessionItems,
+        existingRenderTrackIds,
+        exerciseName: exName,
+        trackDisplayName: trName,
+        trackType: variantType,
+        trackingMode: variantMode,
+      });
+
+      if (!res.added) {
+        window.alert("That exercise/variant is already in this session.");
+        return;
+      }
+
+      onClose();
+    } catch (err: any) {
+      window.alert(err?.message || "Could not add exercise to session.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) return null;
+
   return (
-    track.trackingMode === "weightedReps" ||
-    track.trackingMode === "repsOnly"
+    <div className="modal-overlay" role="dialog" aria-modal="true" onMouseDown={onClose}>
+      <div
+        className="card modal-card"
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: 760,
+          width: "min(760px, calc(100vw - 24px))",
+          maxHeight: "calc(100vh - 24px)",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <button className="btn small" onClick={onClose} aria-label="Close" disabled={busy}>
+            ✕
+          </button>
+
+          <div style={{ textAlign: "center", flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 900 }}>Add Exercise</div>
+            <div className="muted" style={{ marginTop: 4 }}>
+              Add an exercise to the active session without restarting.
+            </div>
+          </div>
+
+          <div style={{ width: 36 }} />
+        </div>
+
+        <hr />
+
+        <div style={{ paddingRight: 2, overflowY: "auto", maxHeight: "min(600px, calc(100vh - 260px))" }}>
+          <div className="card" style={{ padding: 12, marginBottom: 10 }}>
+            <div style={{ fontWeight: 900, marginBottom: 10 }}>Search / Quick add</div>
+
+            <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <input
+                className="input"
+                placeholder="Search exercises…"
+                value={quickAddName}
+                onChange={(e) => setQuickAddName(e.target.value)}
+                style={{ flex: 1, minWidth: 220 }}
+                disabled={busy}
+              />
+
+              <select
+                className="input"
+                value={variantType}
+                onChange={(e) => setVariantType(e.target.value as TrackType)}
+                style={{ width: "auto", minWidth: 160 }}
+                aria-label="Variant type"
+                disabled={busy}
+              >
+                <option value="strength">strength</option>
+                <option value="hypertrophy">hypertrophy</option>
+                <option value="corrective">corrective</option>
+              </select>
+
+              <select
+                className="input"
+                value={variantMode}
+                onChange={(e) => setVariantMode(e.target.value as TrackingMode)}
+                style={{ width: "auto", minWidth: 170 }}
+                aria-label="Tracking mode"
+                disabled={busy}
+              >
+                <option value="weightedReps">weighted reps</option>
+                <option value="repsOnly">reps only</option>
+                <option value="timeSeconds">time</option>
+                <option value="checkbox">checkbox</option>
+                <option value="breaths">breaths</option>
+              </select>
+            </div>
+
+            <div className="muted" style={{ marginTop: 8, fontSize: 13 }}>
+              Reuse rule: exercise + type + mode. If no matching track exists, a new one is created.
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div className="row" style={{ alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ fontWeight: 800 }}>Quick add</div>
+                <div className="muted" style={{ fontSize: 13 }}>
+                  Track name:{" "}
+                  <span style={{ color: "var(--text)", fontWeight: 800 }}>
+                    {suggestedTrackName || "—"}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 10 }} className="row">
+                <button
+                  className="btn primary"
+                  disabled={!quickAddName.trim() || busy}
+                  onClick={() =>
+                    doAdd(
+                      quickAddName,
+                      suggestedTrackName || quickAddName.trim()
+                    )
+                  }
+                >
+                  Add to session
+                </button>
+
+                <button
+                  className="btn"
+                  disabled={!quickAddName.trim() || busy}
+                  onClick={() => {
+                    if (topCatalogExercise?.name) setQuickAddName(topCatalogExercise.name);
+                  }}
+                >
+                  Use top match
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="card" style={{ padding: 12 }}>
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>Catalog</div>
+
+            {!catalogHasResults ? (
+              <p className="muted" style={{ margin: 0 }}>
+                No exercises match your search.
+              </p>
+            ) : (
+              <div style={{ display: "grid", gap: 10 }}>
+                {catalogGroups
+                  .filter((g) => g.exercises.length)
+                  .slice(0, 6)
+                  .map((g) => (
+                    <div key={g.key}>
+                      <div className="muted" style={{ fontWeight: 900, marginBottom: 6 }}>
+                        {g.title}
+                      </div>
+
+                      <div style={{ display: "grid", gap: 6 }}>
+                        {g.exercises.slice(0, 10).map((ex) => (
+                          <div
+                            key={ex.id}
+                            className="row"
+                            style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}
+                          >
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 800, wordBreak: "break-word" }}>{ex.name}</div>
+                            </div>
+
+                            <button
+                              className="btn small primary"
+                              disabled={busy}
+                              onClick={() =>
+                                doAdd(
+                                  ex.name ?? "",
+                                  `${(ex.name ?? "").trim()} — ${variantType}`
+                                )
+                              }
+                            >
+                              Add
+                            </button>
+                          </div>
+                        ))}
+                        {g.exercises.length > 10 ? (
+                          <div className="muted" style={{ fontSize: 13 }}>
+                            + {g.exercises.length - 10} more in {g.title} (refine search to narrow)
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <button className="btn" style={{ width: "100%", padding: "12px 14px" }} onClick={onClose} disabled={busy}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
 /* ============================================================================
-   Breadcrumb 08 — GymPage shell
+   Breadcrumb 05 — GymPage shell
    ============================================================================ */
 export default function GymPage() {
   const { sessionId } = useParams();
   const nav = useNavigate();
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 08.1 — Session read
+     Breadcrumb 05.1 — Session read
      ------------------------------------------------------------------------ */
   const session = useLiveQuery(
     () => (sessionId ? db.sessions.get(sessionId) : Promise.resolve(undefined)),
@@ -228,15 +680,11 @@ export default function GymPage() {
   );
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 08.2 — Planned items source
-     - prefer sessionItems when present
-     - fallback to templateItems
+     Breadcrumb 05.2 — Planned items source
      ------------------------------------------------------------------------ */
   const sessionItems = useLiveQuery(async () => {
     if (!sessionId) return [];
-    const t = (db as any).sessionItems;
-    if (!t || typeof t.where !== "function") return [];
-    return t.where("sessionId").equals(sessionId).sortBy("orderIndex");
+    return db.sessionItems.where("sessionId").equals(sessionId).sortBy("orderIndex");
   }, [sessionId]);
 
   const templateItems = useLiveQuery(async () => {
@@ -245,7 +693,7 @@ export default function GymPage() {
   }, [session?.templateId]);
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 08.3 — Sets are authoritative
+     Breadcrumb 05.3 — Sets are authoritative
      ------------------------------------------------------------------------ */
   const sets = useLiveQuery(async () => {
     if (!sessionId) return [];
@@ -253,7 +701,12 @@ export default function GymPage() {
   }, [sessionId]);
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 08.4 — Planned items memo
+     Breadcrumb 05.4 — Add Exercise modal state
+     ------------------------------------------------------------------------ */
+  const [showAddExercise, setShowAddExercise] = useState(false);
+
+  /* ------------------------------------------------------------------------
+     Breadcrumb 05.5 — Planned items memo
      ------------------------------------------------------------------------ */
   const plannedItems = useMemo(() => {
     const si = (sessionItems ?? []) as any[];
@@ -262,7 +715,7 @@ export default function GymPage() {
   }, [sessionItems, templateItems]);
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 08.5 — Set-driven track ids
+     Breadcrumb 05.6 — Set-driven track ids
      ------------------------------------------------------------------------ */
   const setDrivenTrackIds = useMemo(() => {
     const s = (sets ?? []) as SetEntryX[];
@@ -279,7 +732,7 @@ export default function GymPage() {
   }, [sets]);
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 08.6 — Merge planned order + set-driven extras
+     Breadcrumb 05.7 — Merge planned order + set-driven extras
      ------------------------------------------------------------------------ */
   const renderTrackIds = useMemo(() => {
     const planIds = (plannedItems ?? []).map((p: any) => String(p.trackId));
@@ -295,7 +748,7 @@ export default function GymPage() {
   const trackIdsKey = useMemo(() => renderTrackIds.join("|"), [renderTrackIds]);
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 08.7 — Bulk track read
+     Breadcrumb 05.8 — Bulk track read
      ------------------------------------------------------------------------ */
   const tracks = useLiveQuery(async () => {
     if (!renderTrackIds.length) return [];
@@ -304,7 +757,7 @@ export default function GymPage() {
   }, [trackIdsKey]);
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 08.8 — Session notes state
+     Breadcrumb 05.9 — Session notes
      ------------------------------------------------------------------------ */
   const [sessionNotes, setSessionNotes] = useState("");
   useEffect(() => {
@@ -312,12 +765,12 @@ export default function GymPage() {
   }, [session?.id, session?.notes]);
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 08.9 — Track lookup map
+     Breadcrumb 05.10 — Track lookup map
      ------------------------------------------------------------------------ */
   const trackById = useMemo(() => new Map((tracks ?? []).map((t) => [t.id, t] as const)), [tracks]);
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 08.10 — Guards
+     Breadcrumb 05.11 — Guards
      ------------------------------------------------------------------------ */
   if (!sessionId) {
     return (
@@ -336,7 +789,7 @@ export default function GymPage() {
   }
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 08.11 — Finish pipeline
+     Breadcrumb 05.12 — Finish pipeline
      ------------------------------------------------------------------------ */
   async function finish() {
     const endedAt = Date.now();
@@ -357,7 +810,7 @@ export default function GymPage() {
   }
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 08.12 — Cancel pipeline
+     Breadcrumb 05.13 — Cancel pipeline
      ------------------------------------------------------------------------ */
   async function cancelSession() {
     const ok = window.confirm(
@@ -375,12 +828,12 @@ export default function GymPage() {
   }
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 08.13 — Render
+     Breadcrumb 05.14 — Render
      ------------------------------------------------------------------------ */
   return (
     <div className="grid">
       {/* --------------------------------------------------------------------
-         Breadcrumb 08.13.a — Header card
+         Breadcrumb 05.14.a — Header card
          -------------------------------------------------------------------- */}
       <div className="card">
         <h2>Gym Mode</h2>
@@ -409,13 +862,19 @@ export default function GymPage() {
 
         <hr />
 
-        <button className="btn" onClick={() => nav("/history")}>
-          Back to history
-        </button>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <button className="btn primary" onClick={() => setShowAddExercise(true)}>
+            + Add Exercise
+          </button>
+
+          <button className="btn" onClick={() => nav("/history")}>
+            Back to history
+          </button>
+        </div>
       </div>
 
       {/* --------------------------------------------------------------------
-         Breadcrumb 08.13.b — Exercise cards
+         Breadcrumb 05.14.b — Exercise cards
          -------------------------------------------------------------------- */}
       {(() => {
         const planArr = (plannedItems ?? []) as any[];
@@ -453,7 +912,7 @@ export default function GymPage() {
       })()}
 
       {/* --------------------------------------------------------------------
-         Breadcrumb 08.13.c — Bottom finish card
+         Breadcrumb 05.14.c — Finish card
          -------------------------------------------------------------------- */}
       <FinishSessionCard
         sessionId={sessionId}
@@ -464,7 +923,18 @@ export default function GymPage() {
       />
 
       {/* --------------------------------------------------------------------
-         Breadcrumb 08.13.d — Dev overlay
+         Breadcrumb 05.14.d — Add Exercise modal
+         -------------------------------------------------------------------- */}
+      <AddExerciseModal
+        open={showAddExercise}
+        sessionId={sessionId}
+        existingSessionItems={(sessionItems ?? []) as any[]}
+        existingRenderTrackIds={renderTrackIds}
+        onClose={() => setShowAddExercise(false)}
+      />
+
+      {/* --------------------------------------------------------------------
+         Breadcrumb 05.14.e — Dev overlay
          -------------------------------------------------------------------- */}
       <DevGymOverlay
         sessionId={sessionId}
@@ -476,12 +946,7 @@ export default function GymPage() {
 }
 
 /* ============================================================================
-   Breadcrumb 09 — ExerciseCard
-   - unified set table
-   - cues modal
-   - rest timer
-   - metric-mode aware
-   - loaded-reps hardened
+   Breadcrumb 06 — ExerciseCard
    ============================================================================ */
 function ExerciseCard({
   sessionId,
@@ -497,7 +962,7 @@ function ExerciseCard({
   const nav = useNavigate();
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.1 — Template overrides / targets
+     Breadcrumb 06.1 — Template overrides / targets
      ------------------------------------------------------------------------ */
   const repMin = item?.repMinOverride ?? track.repMin;
   const repMax = item?.repMaxOverride ?? track.repMax;
@@ -506,23 +971,23 @@ function ExerciseCard({
   const workingTarget = item?.workingSetsOverride ?? track.workingSetsDefault;
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.2 — Timer state
+     Breadcrumb 06.2 — Timer state
      ------------------------------------------------------------------------ */
   const [restSec, setRestSec] = useState<number>(120);
   const timer = useRestTimer();
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.3 — Cues modal state
+     Breadcrumb 06.3 — Cues modal state
      ------------------------------------------------------------------------ */
   const [showCues, setShowCues] = useState<boolean>(false);
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.4 — Compact mode
+     Breadcrumb 06.4 — Compact mode
      ------------------------------------------------------------------------ */
   const compact = useCompactMode();
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.5 — Exercise / variant reads
+     Breadcrumb 06.5 — Exercise / variant reads
      ------------------------------------------------------------------------ */
   const exercise = useLiveQuery(async () => {
     return await db.exercises.get(track.exerciseId);
@@ -535,7 +1000,7 @@ function ExerciseCard({
   }, [(track as any).variantId]);
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.6 — Metric mode
+     Breadcrumb 06.6 — Metric mode
      ------------------------------------------------------------------------ */
   const metricMode = useMemo<MetricModeX>(() => {
     const m = (exercise as any)?.metricMode;
@@ -543,14 +1008,14 @@ function ExerciseCard({
   }, [exercise]);
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.7 — Loaded reps inference
+     Breadcrumb 06.7 — Loaded reps inference
      ------------------------------------------------------------------------ */
   const loadedReps = useMemo(() => {
     return isLoadedRepsTrack(track, metricMode);
   }, [track, metricMode]);
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.8 — Text cleaners
+     Breadcrumb 06.8 — Text cleaners
      ------------------------------------------------------------------------ */
   function cleanCueArray(v: any): string[] {
     if (!Array.isArray(v)) return [];
@@ -566,7 +1031,7 @@ function ExerciseCard({
   }
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.9 — Cue resolution
+     Breadcrumb 06.9 — Cue resolution
      ------------------------------------------------------------------------ */
   const cuesSetup = useMemo(() => {
     const v = cleanCueArray((variant as any)?.cuesSetup);
@@ -616,7 +1081,7 @@ function ExerciseCard({
   const variantName = useMemo(() => cleanText((variant as any)?.name), [variant]);
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.10 — Clipboard builder
+     Breadcrumb 06.10 — Clipboard builder
      ------------------------------------------------------------------------ */
   function buildCuesClipboardText(): string {
     const lines: string[] = [];
@@ -673,7 +1138,7 @@ function ExerciseCard({
   }
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.11 — Current sets normalization
+     Breadcrumb 06.11 — Current sets normalization
      ------------------------------------------------------------------------ */
   const currentSets = useMemo(() => {
     const arr = (sets ?? [])
@@ -692,7 +1157,7 @@ function ExerciseCard({
   }, [sets, track.id]);
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.12 — Working index map
+     Breadcrumb 06.12 — Working index map
      ------------------------------------------------------------------------ */
   const workingIndexById = useMemo(() => {
     const map = new Map<string, number>();
@@ -710,12 +1175,12 @@ function ExerciseCard({
   }, [currentSets]);
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.13 — Previous session mapping
+     Breadcrumb 06.13 — Previous session mapping
      ------------------------------------------------------------------------ */
   const prev = usePrevByWorkingIndex(sessionId, track.id);
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.14 — Progression / suggestion state
+     Breadcrumb 06.14 — Progression / suggestion state
      ------------------------------------------------------------------------ */
   const [bestSummary, setBestSummary] = useState<string>("");
   const [suggestion, setSuggestion] = useState<string>("");
@@ -748,7 +1213,7 @@ function ExerciseCard({
   }, [track.id, track.trackType, repMin, repMax, workingTarget, (track as any).weightJumpDefault, track.rirTargetMin]);
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.15 — DB write helper with guardrails
+     Breadcrumb 06.15 — DB write helper
      ------------------------------------------------------------------------ */
   async function updateSet(id: string, patch: Partial<SetEntryX>) {
     if ("weight" in patch) {
@@ -789,20 +1254,16 @@ function ExerciseCard({
 
     if ("rir" in patch) {
       const v = patch.rir as any;
-      if (v === undefined || v === null) {
-        patch.rir = undefined;
-      } else if (!Number.isFinite(v)) {
-        patch.rir = undefined;
-      } else {
-        patch.rir = Math.max(0, v) as any;
-      }
+      if (v === undefined || v === null) patch.rir = undefined;
+      else if (!Number.isFinite(v)) patch.rir = undefined;
+      else patch.rir = Math.max(0, v) as any;
     }
 
     await db.sets.update(id, patch as any);
   }
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.16 — Add set
+     Breadcrumb 06.16 — Add set
      ------------------------------------------------------------------------ */
   async function addSet() {
     const id = uuid();
@@ -835,14 +1296,14 @@ function ExerciseCard({
   }
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.17 — Delete set
+     Breadcrumb 06.17 — Delete set
      ------------------------------------------------------------------------ */
   async function deleteSet(id: string) {
     await db.sets.delete(id);
   }
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.18 — Rest label
+     Breadcrumb 06.18 — Rest label
      ------------------------------------------------------------------------ */
   function restLabel(seconds: number) {
     const mm = String(Math.floor(seconds / 60));
@@ -850,9 +1311,6 @@ function ExerciseCard({
     return `${mm}:${ss}`;
   }
 
-  /* ------------------------------------------------------------------------
-     Breadcrumb 09.19 — Previous formatter
-     ------------------------------------------------------------------------ */
   function formatMMSS(totalSeconds?: number): string {
     const s = Number(totalSeconds);
     if (!Number.isFinite(s) || s < 0) return "";
@@ -884,7 +1342,7 @@ function ExerciseCard({
   }
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.20 — Cues modal
+     Breadcrumb 06.19 — Cues modal
      ------------------------------------------------------------------------ */
   function CuesModal({
     open,
@@ -980,7 +1438,7 @@ function ExerciseCard({
                 <button className="btn primary" onClick={onEditInCatalog}>
                   Open catalog
                 </button>
-                <button className="btn" onClick={onCopyCues} title="Copies a scaffold you can paste into notes/ChatGPT">
+                <button className="btn" onClick={onCopyCues}>
                   Copy scaffold
                 </button>
               </div>
@@ -1041,15 +1499,12 @@ function ExerciseCard({
   }
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 09.21 — Header labels / column semantics
+     Breadcrumb 06.20 — Header labels / geometry
      ------------------------------------------------------------------------ */
   const weightHeader = metricMode === "time" ? "—" : "Lbs";
   const midHeader = metricMode === "distance" ? "Dist" : metricMode === "time" ? "Time" : "Reps";
   const rirHeader = metricMode === "reps" && loadedReps ? "RIR" : "—";
 
-  /* ------------------------------------------------------------------------
-     Breadcrumb 09.22 — Grid geometry
-     ------------------------------------------------------------------------ */
   const cardScope = useMemo(() => `excard-${track.id}`, [track.id]);
 
   const gridTemplateColumnsDesktop = useMemo(() => {
@@ -1064,9 +1519,6 @@ function ExerciseCard({
     return "44px minmax(0,1fr) 64px 64px 48px 32px 32px";
   }, [metricMode]);
 
-  /* ------------------------------------------------------------------------
-     Breadcrumb 09.23 — Render
-     ------------------------------------------------------------------------ */
   return (
     <div className="card">
       <div data-excard-scope={cardScope}>
@@ -1112,19 +1564,13 @@ function ExerciseCard({
           `}
         </style>
 
-        {/* ------------------------------------------------------------------
-           Breadcrumb 09.23.a — Card header
-           ------------------------------------------------------------------ */}
         <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
           <div style={{ minWidth: 0 }}>
             <h3 style={{ marginBottom: 6 }}>{track.displayName}</h3>
 
             {track.trackType !== "corrective" && loadedReps && (
               <div className="muted">
-                Rep range:{" "}
-                <b>
-                  {repMin}–{repMax}
-                </b>{" "}
+                Rep range: <b>{repMin}–{repMax}</b>{" "}
                 <span className="badge green" style={{ marginLeft: 8 }}>
                   {track.trackType}
                 </span>
@@ -1189,9 +1635,6 @@ function ExerciseCard({
 
         <hr />
 
-        {/* ------------------------------------------------------------------
-           Breadcrumb 09.23.b — Set table header
-           ------------------------------------------------------------------ */}
         <div className="set-table">
           <div className="set-head">
             <div>Set</div>
@@ -1203,9 +1646,6 @@ function ExerciseCard({
             <div></div>
           </div>
 
-          {/* ----------------------------------------------------------------
-             Breadcrumb 09.23.c — Set rows
-             ---------------------------------------------------------------- */}
           {currentSets.length ? (
             currentSets.map((se) => {
               const done = !!se.completedAt;
@@ -1220,9 +1660,7 @@ function ExerciseCard({
                   : String(workingIndexById.get(se.id) ?? "");
 
               const workingIndex = workingIndexById.get(se.id);
-
               const prevText = se.setType === "working" && workingIndex ? formatPrevForMode(se, workingIndex) : "";
-
               const prevParsed =
                 metricMode === "reps" && se.setType === "working" && workingIndex ? parsePrev(prevText) : {};
 
@@ -1268,7 +1706,6 @@ function ExerciseCard({
                       if (kind === "failure") patch.rir = 0;
                       if (kind === "warmup") patch.rir = undefined;
                       await updateSet(se.id, patch);
-
                       if (kind !== "warmup") timer.start(restSec);
                     } else {
                       await updateSet(se.id, { completedAt: undefined });
@@ -1301,9 +1738,6 @@ function ExerciseCard({
             </div>
           )}
 
-          {/* ----------------------------------------------------------------
-             Breadcrumb 09.23.d — Add set / rest buttons
-             ---------------------------------------------------------------- */}
           <div className="set-add-row" style={{ marginTop: 8 }}>
             <button className="btn small primary" onClick={addSet}>
               + Add Set
@@ -1319,9 +1753,6 @@ function ExerciseCard({
             </div>
           </div>
 
-          {/* ----------------------------------------------------------------
-             Breadcrumb 09.23.e — Rest banner
-             ---------------------------------------------------------------- */}
           {timer.running && (
             <div className="rest-banner" role="status" aria-live="polite">
               <div className="rest-banner-inner">
@@ -1355,11 +1786,7 @@ function ExerciseCard({
 }
 
 /* ============================================================================
-   Breadcrumb 10 — SetRow
-   - reps / distance / time rendering
-   - decimal-safe RIR
-   - compact ghosts
-   - loaded-reps aware
+   Breadcrumb 07 — SetRow
    ============================================================================ */
 function SetRow({
   rowDomId,
@@ -1398,9 +1825,6 @@ function SetRow({
   onAcceptPrevWeight: () => void;
   onAcceptPrevReps: () => void;
 }) {
-  /* ------------------------------------------------------------------------
-     Breadcrumb 10.1 — Row refs / state flags
-     ------------------------------------------------------------------------ */
   const selectRef = useRef<HTMLSelectElement | null>(null);
 
   function openTypePicker() {
@@ -1417,9 +1841,6 @@ function SetRow({
 
   const showWeightInDistance = track.trackingMode === "weightedReps";
 
-  /* ------------------------------------------------------------------------
-     Breadcrumb 10.2 — Ghost placeholders / ring
-     ------------------------------------------------------------------------ */
   const ghostWeight =
     compact && isWorking && se.weight === undefined && prevParsed.prevWeight !== undefined
       ? String(prevParsed.prevWeight)
@@ -1441,9 +1862,6 @@ function SetRow({
         }
       : {};
 
-  /* ------------------------------------------------------------------------
-     Breadcrumb 10.3 — Decimal-safe RIR editor
-     ------------------------------------------------------------------------ */
   function normalizeDecimalInput(raw: string): string {
     return (raw ?? "").replace(",", ".").trim();
   }
@@ -1451,10 +1869,8 @@ function SetRow({
   function parseRirCommitted(raw: string): number | undefined {
     const t = normalizeDecimalInput(raw);
     if (!t) return undefined;
-
     if (/^\.\d+$/.test(t)) return Math.max(0, Number(`0${t}`));
     if (/^\d+\.$/.test(t)) return Math.max(0, Number(t.slice(0, -1)));
-
     const n = Number(t);
     return Number.isFinite(n) ? Math.max(0, n) : undefined;
   }
@@ -1469,9 +1885,6 @@ function SetRow({
   const showRir =
     metricMode === "reps" && loadedReps && isWorking && track.trackType !== "corrective";
 
-  /* ------------------------------------------------------------------------
-     Breadcrumb 10.4 — Time editor state
-     ------------------------------------------------------------------------ */
   const [timeText, setTimeText] = useState<string>("");
 
   useEffect(() => {
@@ -1479,14 +1892,8 @@ function SetRow({
     setTimeText(sec === undefined || sec === null ? "" : formatSecondsToMMSS(sec));
   }, [se.id, (se as any).seconds]);
 
-  /* ------------------------------------------------------------------------
-     Breadcrumb 10.5 — Prev cell clickability
-     ------------------------------------------------------------------------ */
   const canTapPrev = !locked && isWorking && metricMode === "reps" && !!(prevText || "").trim();
 
-  /* ------------------------------------------------------------------------
-     Breadcrumb 10.6 — Render
-     ------------------------------------------------------------------------ */
   return (
     <div id={rowDomId} className={rowClass} style={ringStyle}>
       <div className="set-badge-wrap">
@@ -1533,9 +1940,6 @@ function SetRow({
         {prevText || "—"}
       </div>
 
-      {/* --------------------------------------------------------------------
-         Breadcrumb 10.6.a — REPS MODE
-         -------------------------------------------------------------------- */}
       {metricMode === "reps" && (
         <>
           {loadedReps && (
@@ -1661,9 +2065,6 @@ function SetRow({
         </>
       )}
 
-      {/* --------------------------------------------------------------------
-         Breadcrumb 10.6.b — DISTANCE MODE
-         -------------------------------------------------------------------- */}
       {metricMode === "distance" && (
         <>
           {showWeightInDistance ? (
@@ -1715,9 +2116,6 @@ function SetRow({
         </>
       )}
 
-      {/* --------------------------------------------------------------------
-         Breadcrumb 10.6.c — TIME MODE
-         -------------------------------------------------------------------- */}
       {metricMode === "time" && (
         <>
           <div className="muted">—</div>
@@ -1754,9 +2152,6 @@ function SetRow({
         </>
       )}
 
-      {/* --------------------------------------------------------------------
-         Breadcrumb 10.6.d — Completion + delete
-         -------------------------------------------------------------------- */}
       <div className="check-cell">
         <input
           type="checkbox"
@@ -1776,10 +2171,7 @@ function SetRow({
 }
 
 /* ============================================================================
-   Breadcrumb 11 — FinishSessionCard
-   - bottom-only finish control
-   - review hidden until user taps Finish
-   - finish gate aligned with loaded-reps inference
+   Breadcrumb 08 — FinishSessionCard
    ============================================================================ */
 function FinishSessionCard({
   sessionId,
@@ -1795,21 +2187,11 @@ function FinishSessionCard({
   onCancel: () => Promise<void>;
 }) {
   const nav = useNavigate();
-
-  /* ------------------------------------------------------------------------
-     Breadcrumb 11.1 — Review visibility
-     ------------------------------------------------------------------------ */
   const [showReview, setShowReview] = useState(false);
 
-  /* ------------------------------------------------------------------------
-     Breadcrumb 11.2 — Track lookup maps
-     ------------------------------------------------------------------------ */
   const trackById = useMemo(() => new Map(tracks.map((t) => [t.id, t] as const)), [tracks]);
   const trackNameById = useMemo(() => new Map(tracks.map((t) => [t.id, t.displayName] as const)), [tracks]);
 
-  /* ------------------------------------------------------------------------
-     Breadcrumb 11.3 — Exercise lookup for metric mode
-     ------------------------------------------------------------------------ */
   const exerciseIdsKey = useMemo(() => {
     const ids = Array.from(new Set((tracks ?? []).map((t) => t.exerciseId).filter(Boolean)));
     return ids.join("|");
@@ -1833,9 +2215,6 @@ function FinishSessionCard({
     return "reps";
   }
 
-  /* ------------------------------------------------------------------------
-     Breadcrumb 11.4 — Review computation
-     ------------------------------------------------------------------------ */
   const review = useMemo(() => {
     const working = (sets ?? []).filter((s) => (((s.setType as SetKind) ?? "working") as SetKind) === "working");
 
@@ -1850,10 +2229,7 @@ function FinishSessionCard({
       const mm = metricModeForTrack(tr);
       if (!isLoadedRepsTrack(tr, mm)) return false;
 
-      const hasWR =
-        typeof (s as any).weight === "number" &&
-        typeof (s as any).reps === "number";
-
+      const hasWR = typeof (s as any).weight === "number" && typeof (s as any).reps === "number";
       if (!hasWR) return false;
 
       const rir = (s as any).rir;
@@ -1884,9 +2260,6 @@ function FinishSessionCard({
     };
   }, [sets, trackById, exerciseById]);
 
-  /* ------------------------------------------------------------------------
-     Breadcrumb 11.5 — Scroll helper
-     ------------------------------------------------------------------------ */
   function scrollToSet(setId: string, trackId: string) {
     const row = document.getElementById(`set-${setId}`);
     if (row) {
@@ -1897,9 +2270,6 @@ function FinishSessionCard({
     card?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  /* ------------------------------------------------------------------------
-     Breadcrumb 11.6 — Finish click
-     ------------------------------------------------------------------------ */
   async function onClickFinish() {
     if (review.canFinish) {
       await onFinish();
@@ -1908,9 +2278,6 @@ function FinishSessionCard({
     setShowReview(true);
   }
 
-  /* ------------------------------------------------------------------------
-     Breadcrumb 11.7 — Render
-     ------------------------------------------------------------------------ */
   return (
     <div className="card">
       <h3 style={{ marginBottom: 6 }}>Finish</h3>
@@ -1980,7 +2347,7 @@ function FinishSessionCard({
 }
 
 /* ============================================================================
-   Breadcrumb 12 — Rest timer hook
+   Breadcrumb 09 — Rest timer hook
    ============================================================================ */
 function useRestTimer() {
   const [running, setRunning] = useState(false);
@@ -2022,8 +2389,7 @@ function useRestTimer() {
 }
 
 /* ============================================================================
-   Breadcrumb 13 — Previous session mapping by working index
-   - supports reps / time / distance
+   Breadcrumb 10 — Previous session mapping by working index
    ============================================================================ */
 function usePrevByWorkingIndex(currentSessionId: string, trackId: string) {
   const data = useLiveQuery(async () => {
@@ -2103,7 +2469,7 @@ function usePrevByWorkingIndex(currentSessionId: string, trackId: string) {
 }
 
 /* ============================================================================
-   Breadcrumb 14 — Dev-only overlay
+   Breadcrumb 11 — Dev-only overlay
    ============================================================================ */
 function DevGymOverlay({
   sessionId,
@@ -2276,7 +2642,6 @@ function DevGymOverlay({
   );
 }
 
-
-/* ========================================================================== */
-/*  End of file: src/pages/GymPage.tsx                                       */
-/* ========================================================================== */
+/* ============================================================================
+   End of file: src/pages/GymPage.tsx
+   ============================================================================ */
