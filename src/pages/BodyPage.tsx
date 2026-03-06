@@ -1,20 +1,22 @@
 // src/pages/BodyPage.tsx
 /* ========================================================================== */
 /*  BodyPage.tsx                                                              */
-/*  BUILD_ID: 2026-03-01-BODY-02                                               */
+/*  BUILD_ID: 2026-03-05-BODY-03                                              */
 /* -------------------------------------------------------------------------- */
-/*  Minimal Body Metrics Entry (Hume-friendly)                                 */
+/*  Minimal Body Metrics Entry (Hume-friendly)                                */
 /*                                                                            */
-/*  Goals                                                                      */
-/*  - Fast entry: all fields optional                                          */
-/*  - No bottlenecks: missing metrics allowed                                  */
-/*  - Simple list + delete                                                     */
-/*  - Future-proof old rows: tolerate takenAt/date/createdAt, backfill measuredAt */
+/*  Goals                                                                     */
+/*  - Fast entry: all fields optional                                         */
+/*  - No bottlenecks: missing metrics allowed                                 */
+/*  - Simple list + delete                                                    */
+/*  - Future-proof old rows: tolerate takenAt/date/createdAt, backfill        */
+/*    measuredAt, and keep new writes dual-written                            */
 /*                                                                            */
-/*  Revision history                                                           */
-/*  - 2026-02-24  BODY-01  Initial: add + list + delete (sparse-safe)          */
-/*  - 2026-03-01  BODY-02  Prefer measuredAt index; tolerate old rows + optional */
-/*                          backfill measuredAt for legacy takenAt rows         */
+/*  Revision history                                                          */
+/*  - 2026-02-24  BODY-01  Initial: add + list + delete (sparse-safe)         */
+/*  - 2026-03-01  BODY-02  Prefer measuredAt index; tolerate old rows         */
+/*  - 2026-03-05  BODY-03  Harden mixed-row reads; write both timestamps;     */
+/*                          use typed db.bodyMetrics                          */
 /* ========================================================================== */
 
 import React, { useMemo, useState } from "react";
@@ -22,13 +24,6 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../db";
 import { uuid } from "../utils";
 import { Page, Section } from "../components/Page.tsx";
-
-// --- Breadcrumb 1 -----------------------------------------------------------
-// DB tolerance
-// - This page expects a Dexie table at db.bodyMetrics.
-// - We access it as (db as any).bodyMetrics to avoid hard crashes if the table
-//   name/type shifts during iteration.
-// ---------------------------------------------------------------------------
 
 type BodyMetricRow = {
   id: string;
@@ -89,7 +84,7 @@ function show(v: number | undefined, digits = 1) {
 }
 
 export default function BodyPage() {
-  const table = (db as any).bodyMetrics;
+  const table = db.bodyMetrics;
 
   // --- Form state -----------------------------------------------------------
   const [weightLb, setWeightLb] = useState("");
@@ -110,38 +105,46 @@ export default function BodyPage() {
 
   // --- Read recent ----------------------------------------------------------
   const rows = useLiveQuery(async () => {
-    if (!table) return [] as BodyMetricRow[];
-
     try {
-      // 1) Prefer indexed ordering by measuredAt (canonical)
+      // Fast path: use canonical indexed field when rows are clean.
       try {
-        const arr: BodyMetricRow[] = (await table.orderBy("measuredAt").reverse().limit(30).toArray()) ?? [];
-        // If the DB has data but old rows are missing measuredAt, this could be empty-ish.
-        // We'll still fall back below if needed.
-        if (arr?.length) return arr;
+        const indexed = ((await table.orderBy("measuredAt").reverse().limit(30).toArray()) ??
+          []) as BodyMetricRow[];
+
+        const indexedLooksClean =
+          indexed.length > 0 &&
+          indexed.every((r) => typeof r.measuredAt === "number" && Number.isFinite(r.measuredAt));
+
+        if (indexedLooksClean) {
+          return indexed;
+        }
       } catch {
-        // ignore and fall back
+        // ignore and fall through
       }
 
-      // 2) Fallback: scan + sort (works no matter what fields exist)
-      const arr: BodyMetricRow[] = (await table.toArray()) ?? [];
+      // Safe fallback: scan, normalize, optionally persist backfill, then sort.
+      const arr = ((await table.toArray()) ?? []) as BodyMetricRow[];
 
-      // Nice-to-have future proofing:
-      // backfill measuredAt for legacy rows (in-memory + optional write-back)
       const patch: BodyMetricRow[] = [];
       for (const r of arr) {
         const legacyTime = Number((r as any)?.takenAt ?? (r as any)?.date ?? (r as any)?.createdAt);
+
         if ((r as any)?.measuredAt == null && Number.isFinite(legacyTime) && legacyTime > 0) {
           (r as any).measuredAt = legacyTime;
           patch.push(r);
         }
+
+        // Keep takenAt mirrored too if an old row only had measuredAt.
+        const measured = Number((r as any)?.measuredAt);
+        if ((r as any)?.takenAt == null && Number.isFinite(measured) && measured > 0) {
+          (r as any).takenAt = measured;
+          if (!patch.includes(r)) patch.push(r);
+        }
       }
 
-      // Optional: persist the backfill to keep DB clean over time.
-      // Safe: bulkPut will upsert by primary key (id).
       if (patch.length) {
         try {
-          await table.bulkPut(patch);
+          await table.bulkPut(patch as any[]);
         } catch {
           // ignore persistence errors; UI still works
         }
@@ -154,14 +157,9 @@ export default function BodyPage() {
     } catch {
       return [] as BodyMetricRow[];
     }
-  }, [table]);
+  }, []);
 
   async function addEntry() {
-    if (!table) {
-      window.alert("DB table not found: db.bodyMetrics. Add it to db.ts, then retry.");
-      return;
-    }
-
     const w = toNumOrUndef(weightLb);
     const bf = toNumOrUndef(bodyFatPct);
     const smm = toNumOrUndef(skeletalMuscleMassLb);
@@ -186,8 +184,8 @@ export default function BodyPage() {
     const now = Date.now();
 
     // Write both fields:
-    // - measuredAt is canonical and indexed (db.ts v9+)
-    // - takenAt preserved for BodyPage/legacy compatibility
+    // - measuredAt is canonical and indexed
+    // - takenAt preserved for compatibility
     const row: BodyMetricRow = {
       id: uuid(),
       measuredAt: now,
@@ -200,7 +198,7 @@ export default function BodyPage() {
       bodyWaterPct: water,
     };
 
-    await table.add(row);
+    await table.add(row as any);
 
     setWeightLb("");
     setBodyFatPct("");
@@ -210,7 +208,6 @@ export default function BodyPage() {
   }
 
   async function deleteEntry(id: string) {
-    if (!table) return;
     const ok = window.confirm("Delete this entry?");
     if (!ok) return;
     await table.delete(id);
@@ -221,19 +218,9 @@ export default function BodyPage() {
       <Section>
         <div style={{ fontWeight: 900, fontSize: 18 }}>Body metrics</div>
         <div className="muted" style={{ marginTop: 6 }}>
-          Quick entry. All fields optional. Hume handles detailed trends — we store snapshots for coaching context.
+          Quick entry. All fields optional. Hume handles detailed trends — we store snapshots for
+          coaching context.
         </div>
-
-        {!table ? (
-          <div className="card" style={{ padding: 12, marginTop: 12 }}>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>Body metrics table not found</div>
-            <div className="muted" style={{ fontSize: 13, lineHeight: 1.5 }}>
-              This page expects a Dexie table named <b>bodyMetrics</b> (db.bodyMetrics).
-              <br />
-              If you used a different name, update this page or add the table to db.ts.
-            </div>
-          </div>
-        ) : null}
 
         <div className="card" style={{ padding: 12, marginTop: 12 }}>
           <div style={{ fontWeight: 900, marginBottom: 10 }}>Add entry</div>
@@ -330,7 +317,10 @@ export default function BodyPage() {
         </div>
 
         <div className="card" style={{ padding: 12, marginTop: 12 }}>
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+          <div
+            className="row"
+            style={{ justifyContent: "space-between", alignItems: "baseline", gap: 10 }}
+          >
             <div style={{ fontWeight: 900 }}>Recent entries</div>
             <div className="muted" style={{ fontSize: 12 }}>
               {rows?.length ? `${rows.length} shown` : "—"}
@@ -341,7 +331,10 @@ export default function BodyPage() {
             {rows?.length ? (
               rows.map((r) => (
                 <div key={r.id} className="card" style={{ padding: 10 }}>
-                  <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <div
+                    className="row"
+                    style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}
+                  >
                     <div style={{ fontWeight: 900 }}>{fmtDate(pickTime(r))}</div>
                     <button className="btn small" onClick={() => deleteEntry(r.id)} title="Delete entry">
                       Delete
@@ -372,5 +365,5 @@ export default function BodyPage() {
 }
 
 /* ========================================================================== */
-/*  End of file: src/pages/BodyPage.tsx                                        */
+/*  End of file: src/pages/BodyPage.tsx                                       */
 /* ========================================================================== */

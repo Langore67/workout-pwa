@@ -9,52 +9,31 @@
    - v4  Add archive + manual order + templates.lastPerformedAt; upgrade null->undefined
    - v5  Add exercises.&normalizedName unique index + ExerciseVariants table + variantId on tracks;
          safe auto-merge duplicates; normalize nulls; backfill normalizedName, updatedAt, equipment guess
-   - v6  (Schema truth + future-safe fields)
-         * Widen SetType to include "drop" + "failure" (matches GymPage)
-         * Add SetEntry.completedAt (official field; used already by GymPage)
-         * Reserve TemplateItem grouping fields for supersets (optional, no UI yet)
-         * Add indexes for sets.completedAt + templateItems.groupId (optional convenience)
-   - v7  Split coaching cues into cuesSetup + cuesExecution on Exercises + ExerciseVariants;
-         migrate legacy cues[] -> cuesExecution[] when split cues are missing
-   - v8  Add sessionItems table (per-session ordering/notes; used by SessionDetailPage)
-   - v9  Add bodyMetrics table (Hume Body Pod snapshots; sparse/optional fields)
-   - v10 Add Exercise.metricMode ("reps" | "distance" | "time") + SetEntry distance fields
-   ============================================================================
+   - v6  Add SetEntry.completedAt; widen SetType; reserve TemplateItem grouping fields
+   - v7  Split coaching cues into cuesSetup + cuesExecution
+   - v8  Add sessionItems table
+   - v9  Add bodyMetrics table
+   - v10 Add Exercise.metricMode + SetEntry distance fields
+   - v11 Add bodyMetrics.takenAt index + backfill takenAt <-> measuredAt
+   - v12 Add updatedAt + deletedAt to sessions/sets/walks and app_meta table
+   - v13 Repair bad hypertrophy tracks saved as repsOnly -> weightedReps
+   ============================================================================ */
 
-   NOTE (v8):
-   SessionDetailPage references db.sessionItems. Prior schemas (<=v7) did not
-   include this table, causing runtime crashes ("Cannot read ... where").
-   This file adds the SessionItem model + Dexie table + a v8 schema.
-*/
-
-/* ============================================================
-   00) Imports + shared types
-   ============================================================ */
 import Dexie, { Table } from "dexie";
 
 export type UUID = string;
 
 export type TrackType = "strength" | "hypertrophy" | "corrective";
-
-/**
- * NOTE:
- * v6 widens SetType to match GymPage behavior.
- * Keep it small; additional patterns (backoff/amrap/etc.) can be modeled later
- * either as new values or via tags/metadata.
- */
 export type SetType = "warmup" | "working" | "drop" | "failure";
+export type TrackingMode =
+  | "weightedReps"
+  | "repsOnly"
+  | "timeSeconds"
+  | "checkbox"
+  | "breaths";
 
-export type TrackingMode = "weightedReps" | "repsOnly" | "timeSeconds" | "checkbox" | "breaths";
-
-/**
- * v10: Exercise-level primary metric.
- * - reps: typical strength/hypertrophy
- * - distance: carries/sled/treadmill, etc.
- * - time: planks/cardio intervals/holds, etc.
- */
 export type MetricMode = "reps" | "distance" | "time";
 
-// Strong-like metadata (optional taxonomy)
 export type BodyPart =
   | "Chest"
   | "Back"
@@ -86,14 +65,13 @@ export type Equipment =
   | "Other";
 
 /* ============================================================
-   00b) Helpers
+   Helpers
    ============================================================ */
 export function normalizeName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function shortId(id: string): string {
-  // cheap + deterministic (good enough for uniqueness suffix)
   return (id || "").replace(/[^a-z0-9]/gi, "").slice(-6).toLowerCase() || "id";
 }
 
@@ -110,56 +88,35 @@ function guessEquipmentFromTags(tags: string[]): Equipment | undefined {
 }
 
 /* ============================================================
-   01) Core domain models
+   Core domain models
    ============================================================ */
 export interface Exercise {
   id: UUID;
-
-  /** Canonical display name */
   name: string;
-
-  /** Case-insensitive uniqueness + search/sort key */
   normalizedName: string;
 
   bodyPart?: BodyPart;
   category?: ExerciseCategory;
   equipment?: Equipment;
+  metricMode?: MetricMode;
 
-  /**
-   * v10: Primary metric for this exercise.
-   * Default behavior if missing/invalid: "reps"
-   */
-  metricMode?: "reps" | "distance" | "time";
-
-  /** Keep tags (multi-equipment or user tagging) */
   equipmentTags: string[];
 
-  /** Coaching */
-  summary?: string; // 1–2 lines: what/why
-  directions?: string; // step-by-step
+  summary?: string;
+  directions?: string;
 
-  /**
-   * v7+ (preferred): split cues
-   * - cuesSetup: how to set up (stance/grip/brace)
-   * - cuesExecution: how to perform (path/tempo/ROM)
-   */
   cuesSetup?: string[];
   cuesExecution?: string[];
 
-  /**
-   * Legacy (pre-v7): short bullets (deprecated).
-   * Kept for safe migrations + backward compatibility.
-   */
+  /** legacy */
   cues?: string[];
 
   commonMistakes?: string[];
 
-  /** Media placeholders */
   videoUrl?: string;
   animationKey?: string;
   imageUrl?: string;
 
-  /** Dedupe/merge support */
   aliases?: string[];
   mergedIntoExerciseId?: UUID;
   mergeNote?: string;
@@ -177,21 +134,17 @@ export interface ExerciseVariant {
   name: string;
   normalizedName: string;
 
-  /** Variant-specific coaching */
   directions?: string;
 
-  /** v7+ (preferred): split cues */
   cuesSetup?: string[];
   cuesExecution?: string[];
 
-  /** Legacy (pre-v7): short bullets (deprecated) */
+  /** legacy */
   cues?: string[];
 
-  /** Media placeholders */
   videoUrl?: string;
   animationKey?: string;
 
-  /** Dedupe/merge support */
   aliases?: string[];
   mergedIntoVariantId?: UUID;
   mergeNote?: string;
@@ -204,11 +157,7 @@ export interface ExerciseVariant {
 
 export interface Track {
   id: UUID;
-
-  /** Keep for easy querying */
   exerciseId: UUID;
-
-  /** Optional variant under the exercise (wide/narrow/paused/etc.) */
   variantId?: UUID;
 
   trackType: TrackType;
@@ -224,35 +173,17 @@ export interface Track {
   rirTargetMax?: number;
   weightJumpDefault: number;
 
-  /**
-   * (Reserved for future)
-   * Track-level scheme/pattern configuration (straight/pyramid/rest-pause/etc.)
-   * Not indexed; safe to add later in UI.
-   */
   schemeJson?: string;
-
-  /**
-   * (Reserved for future)
-   * Track-level user cues override (variant/personal cues).
-   */
   cuesOverride?: string[];
 
   createdAt: number;
 }
 
-/* ============================================================
-   02) Templates + folders (Strong-style grouping + admin bay)
-   ============================================================ */
 export interface Folder {
   id: UUID;
   name: string;
-
-  /** Manual ordering */
   orderIndex: number;
-
-  /** Soft-archive folders */
   archivedAt?: number;
-
   createdAt: number;
 }
 
@@ -262,11 +193,8 @@ export interface Template {
   createdAt: number;
 
   folderId?: UUID;
-
   archivedAt?: number;
   orderIndex?: number;
-
-  /** LRU sort support */
   lastPerformedAt?: number;
 }
 
@@ -282,29 +210,16 @@ export interface TemplateItem {
   repMinOverride?: number;
   repMaxOverride?: number;
 
-  /**
-   * v6 (Reserved): grouping to support supersets/circuits later.
-   * - groupId: items with same groupId are grouped
-   * - groupType: "superset" for now (later expand)
-   * - groupOrder: A/B/C ordering (1..n)
-   * - inGroupOrder: ordering within the group (1..m)
-   */
   groupId?: UUID;
   groupType?: "superset";
   groupOrder?: number;
   inGroupOrder?: number;
 
-  /**
-   * (Reserved for future): per-template scheme override.
-   */
   schemeOverrideJson?: string;
 
   createdAt: number;
 }
 
-/* ============================================================
-   03) Session logging + sets + walks + PR store
-   ============================================================ */
 export interface Session {
   id: UUID;
   templateId?: UUID;
@@ -312,17 +227,13 @@ export interface Session {
   startedAt: number;
   endedAt?: number;
   notes?: string;
-
-  /** JSON string of PR hits for this session (computed on finish). */
   prsJson?: string;
+
+  /** v12 */
+  updatedAt?: number;
+  deletedAt?: number;
 }
 
-/**
- * v8 (NEW):
- * SessionItem = per-session ordering/notes for tracks.
- * This is used by SessionDetailPage for imported sessions and for future features
- * like reordering within a session independent of a template.
- */
 export interface SessionItem {
   id: UUID;
   sessionId: UUID;
@@ -341,50 +252,34 @@ export interface SetEntry {
 
   weight?: number;
   reps?: number;
-
-  /**
-   * TIME metric (already used in the app).
-   * Keep as canonical "time" field (seconds).
-   */
   seconds?: number;
 
-  /**
-   * v10: DISTANCE metric (carries/sled/treadmill, etc.)
-   * - distance: numeric distance value
-   * - distanceUnit: "m" or "steps" (UI can convert as needed)
-   */
   distance?: number;
   distanceUnit?: "m" | "steps";
 
   rir?: number;
   notes?: string;
-
-  /**
-   * v6: official completion field (GymPage already uses it).
-   * If undefined: not completed.
-   */
   completedAt?: number;
+
+  /** v12 */
+  updatedAt?: number;
+  deletedAt?: number;
 }
 
-/**
- * v9 (NEW):
- * BodyMetricEntry = sparse snapshots from Hume Body Pod (or manual entry).
- * All metrics are optional to avoid bottlenecks.
- */
 export interface BodyMetricEntry {
   id: UUID;
 
-  /** Timestamp of measurement (ms since epoch) */
-  measuredAt: number;
+  /** canonical timestamp */
+  measuredAt?: number;
 
-  /** All fields optional (sparse) */
+  /** compatibility alias used by some pages */
+  takenAt?: number;
+
   weightLb?: number;
   bodyFatPct?: number;
   skeletalMuscleMassLb?: number;
   visceralFatIndex?: number;
   bodyWaterPct?: number;
-
-  /** Optional note: fasted / post-workout / evening, etc. */
   notes?: string;
 
   createdAt: number;
@@ -397,27 +292,27 @@ export interface WalkEntry {
   distanceMiles?: number;
   steps?: number;
   notes?: string;
+
+  /** v12 */
+  updatedAt?: number;
+  deletedAt?: number;
 }
 
 export interface TrackPRs {
-  /** primary key = trackId */
   trackId: UUID;
   updatedAt: number;
 
-  // Best single-set volume: weight * reps
   bestVolumeValue?: number;
   bestVolumeWeight?: number;
   bestVolumeReps?: number;
   bestVolumeAt?: number;
   bestVolumeSessionId?: UUID;
 
-  // Best weight: highest working-set weight (tie-breaker by reps)
   bestWeightValue?: number;
   bestWeightReps?: number;
   bestWeightAt?: number;
   bestWeightSessionId?: UUID;
 
-  // Best e1RM (Epley), eligible only when reps <= 12
   bestE1RMValue?: number;
   bestE1RMWeight?: number;
   bestE1RMReps?: number;
@@ -425,8 +320,14 @@ export interface TrackPRs {
   bestE1RMSessionId?: UUID;
 }
 
+export interface AppMeta {
+  key: string;
+  valueJson?: string;
+  updatedAt: number;
+}
+
 /* ============================================================
-   04) Dexie DB class + versioned schema
+   Dexie DB
    ============================================================ */
 export class WorkoutDB extends Dexie {
   exercises!: Table<Exercise, UUID>;
@@ -436,23 +337,17 @@ export class WorkoutDB extends Dexie {
   templates!: Table<Template, UUID>;
   templateItems!: Table<TemplateItem, UUID>;
   sessions!: Table<Session, UUID>;
-
-  // ✅ v8 (NEW)
   sessionItems!: Table<SessionItem, UUID>;
-
   sets!: Table<SetEntry, UUID>;
   walks!: Table<WalkEntry, UUID>;
   trackPrs!: Table<TrackPRs, UUID>;
-
-  // ✅ v9 (NEW)
   bodyMetrics!: Table<BodyMetricEntry, UUID>;
+  app_meta!: Table<AppMeta, string>;
 
   constructor() {
     super("workout_mvp_db");
 
-    // --------------------------------------------------------
     // v1
-    // --------------------------------------------------------
     this.version(1).stores({
       exercises: "id, name, createdAt",
       tracks: "id, exerciseId, trackType, displayName, createdAt",
@@ -462,10 +357,9 @@ export class WorkoutDB extends Dexie {
       sets: "id, sessionId, trackId, createdAt, setType",
       walks: "id, date",
     });
+    // ===== END OF v1 =====
 
-    // --------------------------------------------------------
     // v2
-    // --------------------------------------------------------
     this.version(2).stores({
       exercises: "id, name, createdAt",
       tracks: "id, exerciseId, trackType, displayName, createdAt",
@@ -476,36 +370,29 @@ export class WorkoutDB extends Dexie {
       walks: "id, date",
       trackPrs: "trackId, updatedAt",
     });
+    // ===== END OF v2 =====
 
-    // --------------------------------------------------------
-    // v3 (NEW): folders + template.folderId
-    // --------------------------------------------------------
+    // v3
     this.version(3).stores({
       exercises: "id, name, createdAt",
       tracks: "id, exerciseId, trackType, displayName, createdAt",
-
       folders: "id, orderIndex, name, createdAt",
       templates: "id, name, createdAt, folderId",
-
       templateItems: "id, templateId, orderIndex, trackId, createdAt",
       sessions: "id, startedAt, endedAt, templateId",
       sets: "id, sessionId, trackId, createdAt, setType",
       walks: "id, date",
       trackPrs: "trackId, updatedAt",
     });
+    // ===== END OF v3 =====
 
-    // --------------------------------------------------------
-    // v4 (NEW): archive + manual order + (optional) lastPerformedAt
-    // --------------------------------------------------------
+    // v4
     this.version(4)
       .stores({
         exercises: "id, name, createdAt",
         tracks: "id, exerciseId, trackType, displayName, createdAt",
-
         folders: "id, orderIndex, name, archivedAt, createdAt",
-
         templates: "id, name, createdAt, folderId, archivedAt, orderIndex, lastPerformedAt",
-
         templateItems: "id, templateId, orderIndex, trackId, createdAt",
         sessions: "id, startedAt, endedAt, templateId",
         sets: "id, sessionId, trackId, createdAt, setType",
@@ -513,7 +400,6 @@ export class WorkoutDB extends Dexie {
         trackPrs: "trackId, updatedAt",
       })
       .upgrade(async (tx) => {
-        // Normalize any legacy/null-ish values to undefined.
         await tx.table("templates").toCollection().modify((t: any) => {
           if (t.folderId === null) t.folderId = undefined;
           if (t.archivedAt === null) t.archivedAt = undefined;
@@ -525,25 +411,16 @@ export class WorkoutDB extends Dexie {
           if (f.archivedAt === null) f.archivedAt = undefined;
         });
       });
+    // ===== END OF v4 =====
 
-    // --------------------------------------------------------
-    // v5 (NEW):
-    // - Exercises gain &normalizedName unique index for case-insensitive uniqueness
-    // - ExerciseVariants table added (unique per exercise via [exerciseId+normalizedName])
-    // - Tracks index variantId (optional)
-    // - Migration safely auto-merges duplicates
-    // --------------------------------------------------------
+    // v5
     this.version(5)
       .stores({
-        // Include BOTH normalizedName unique + name index to avoid SchemaError if any code does orderBy("name")
         exercises:
           "id, &normalizedName, name, bodyPart, category, equipment, archivedAt, mergedIntoExerciseId, createdAt",
-
         exerciseVariants:
           "id, exerciseId, [exerciseId+normalizedName], name, archivedAt, mergedIntoVariantId, createdAt",
-
         tracks: "id, exerciseId, variantId, trackType, displayName, createdAt",
-
         folders: "id, orderIndex, name, archivedAt, createdAt",
         templates: "id, name, createdAt, folderId, archivedAt, orderIndex, lastPerformedAt",
         templateItems: "id, templateId, orderIndex, trackId, createdAt",
@@ -555,7 +432,6 @@ export class WorkoutDB extends Dexie {
       .upgrade(async (tx) => {
         const now = Date.now();
         const exTable = tx.table("exercises");
-
         const all: any[] = await exTable.toArray();
 
         function safeNormFor(e: any) {
@@ -564,21 +440,21 @@ export class WorkoutDB extends Dexie {
           return norm || `__unnamed__${shortId(e?.id)}`;
         }
 
-        // Canonical per normalizedName (oldest createdAt wins)
         const byNorm = new Map<string, { canonicalId: UUID; canonicalCreatedAt: number }>();
 
         for (const e of all) {
           const norm = safeNormFor(e);
           const createdAt = typeof e.createdAt === "number" ? e.createdAt : now;
-
           const cur = byNorm.get(norm);
-          if (!cur) byNorm.set(norm, { canonicalId: e.id, canonicalCreatedAt: createdAt });
-          else if (createdAt < cur.canonicalCreatedAt)
+
+          if (!cur) {
             byNorm.set(norm, { canonicalId: e.id, canonicalCreatedAt: createdAt });
+          } else if (createdAt < cur.canonicalCreatedAt) {
+            byNorm.set(norm, { canonicalId: e.id, canonicalCreatedAt: createdAt });
+          }
         }
 
         await exTable.toCollection().modify((e: any) => {
-          // Normalize null-ish
           if (e.archivedAt === null) e.archivedAt = undefined;
           if (e.mergedIntoExerciseId === null) e.mergedIntoExerciseId = undefined;
           if (e.aliases === null) e.aliases = undefined;
@@ -588,7 +464,6 @@ export class WorkoutDB extends Dexie {
           const norm = safeNormFor(e);
           const canonical = byNorm.get(norm);
 
-          // Backfills
           e.normalizedName = norm;
           if (e.updatedAt == null) e.updatedAt = e.createdAt ?? now;
 
@@ -597,7 +472,6 @@ export class WorkoutDB extends Dexie {
             if (guessed) e.equipment = guessed;
           }
 
-          // Duplicate (not canonical): mark merged+archived and suffix normalizedName to satisfy &unique
           if (canonical && e.id !== canonical.canonicalId) {
             e.mergedIntoExerciseId = canonical.canonicalId;
             e.archivedAt = e.archivedAt ?? now;
@@ -606,12 +480,10 @@ export class WorkoutDB extends Dexie {
           }
         });
 
-        // Tracks: normalize null-ish variantId
         await tx.table("tracks").toCollection().modify((t: any) => {
           if (t.variantId === null) t.variantId = undefined;
         });
 
-        // Templates/Folders: keep v4 guardrails
         await tx.table("templates").toCollection().modify((t: any) => {
           if (t.folderId === null) t.folderId = undefined;
           if (t.archivedAt === null) t.archivedAt = undefined;
@@ -623,49 +495,32 @@ export class WorkoutDB extends Dexie {
           if (f.archivedAt === null) f.archivedAt = undefined;
         });
       });
+    // ===== END OF v5 =====
 
-    // --------------------------------------------------------
-    // v6 (NEW):
-    // - Schema truth for set types + completion
-    // - Reserve TemplateItem grouping fields for supersets
-    // - Add indexes: sets.completedAt, templateItems.groupId
-    // --------------------------------------------------------
+    // v6
     this.version(6)
       .stores({
         exercises:
           "id, &normalizedName, name, bodyPart, category, equipment, archivedAt, mergedIntoExerciseId, createdAt",
-
         exerciseVariants:
           "id, exerciseId, [exerciseId+normalizedName], name, archivedAt, mergedIntoVariantId, createdAt",
-
-        // (Indexes unchanged; additional fields like schemeJson/cuesOverride are not indexed)
         tracks: "id, exerciseId, variantId, trackType, displayName, createdAt",
-
         folders: "id, orderIndex, name, archivedAt, createdAt",
         templates: "id, name, createdAt, folderId, archivedAt, orderIndex, lastPerformedAt",
-
-        // Add groupId index (group fields are optional + not required by UI yet)
         templateItems: "id, templateId, orderIndex, trackId, groupId, createdAt",
-
         sessions: "id, startedAt, endedAt, templateId",
-
-        // Add completedAt index (optional convenience; no behavior change required)
         sets: "id, sessionId, trackId, createdAt, setType, completedAt",
-
         walks: "id, date",
         trackPrs: "trackId, updatedAt",
       })
       .upgrade(async (tx) => {
-        // Normalize null-ish values for new v6 fields, and sanitize any legacy setType.
         await tx.table("sets").toCollection().modify((s: any) => {
           if (s.completedAt === null) s.completedAt = undefined;
 
-          // Some legacy rows may have setType null/undefined.
           if (s.setType === null || s.setType === undefined || s.setType === "") {
             s.setType = "working";
           }
 
-          // If any unexpected values exist, keep them but coerce to "working" to stay safe.
           const st = String(s.setType);
           const ok = st === "warmup" || st === "working" || st === "drop" || st === "failure";
           if (!ok) s.setType = "working";
@@ -679,29 +534,21 @@ export class WorkoutDB extends Dexie {
           if (it.schemeOverrideJson === null) it.schemeOverrideJson = undefined;
         });
 
-        // Tracks: normalize reserved fields if they were ever written as null
         await tx.table("tracks").toCollection().modify((t: any) => {
           if (t.schemeJson === null) t.schemeJson = undefined;
           if (t.cuesOverride === null) t.cuesOverride = undefined;
         });
       });
+    // ===== END OF v6 =====
 
-    // --------------------------------------------------------
-    // v7 (NEW):
-    // - Exercise + Variant split cues: cuesSetup / cuesExecution
-    // - Backfill + normalize null-ish
-    // - Migrate legacy cues[] -> cuesExecution[] when split cues are missing
-    // --------------------------------------------------------
+    // v7
     this.version(7)
       .stores({
         exercises:
           "id, &normalizedName, name, bodyPart, category, equipment, archivedAt, mergedIntoExerciseId, createdAt",
-
         exerciseVariants:
           "id, exerciseId, [exerciseId+normalizedName], name, archivedAt, mergedIntoVariantId, createdAt",
-
         tracks: "id, exerciseId, variantId, trackType, displayName, createdAt",
-
         folders: "id, orderIndex, name, archivedAt, createdAt",
         templates: "id, name, createdAt, folderId, archivedAt, orderIndex, lastPerformedAt",
         templateItems: "id, templateId, orderIndex, trackId, groupId, createdAt",
@@ -711,32 +558,24 @@ export class WorkoutDB extends Dexie {
         trackPrs: "trackId, updatedAt",
       })
       .upgrade(async (tx) => {
-        // --------------------------
-        // Exercises: normalize + migrate
-        // --------------------------
         await tx.table("exercises").toCollection().modify((e: any) => {
-          // normalize null-ish
           if (e.summary === null) e.summary = undefined;
           if (e.directions === null) e.directions = undefined;
           if (e.videoUrl === null) e.videoUrl = undefined;
           if (e.imageUrl === null) e.imageUrl = undefined;
           if (e.animationKey === null) e.animationKey = undefined;
           if (e.commonMistakes === null) e.commonMistakes = undefined;
-
-          // NEW split cues fields
           if (e.cuesSetup === null) e.cuesSetup = undefined;
           if (e.cuesExecution === null) e.cuesExecution = undefined;
-
-          // legacy cues (if present)
           if (e.cues === null) e.cues = undefined;
 
-          // ensure arrays are arrays if present
           if (e.cuesSetup !== undefined && !Array.isArray(e.cuesSetup)) e.cuesSetup = [];
           if (e.cuesExecution !== undefined && !Array.isArray(e.cuesExecution)) e.cuesExecution = [];
           if (e.cues !== undefined && !Array.isArray(e.cues)) e.cues = [];
-          if (e.commonMistakes !== undefined && !Array.isArray(e.commonMistakes)) e.commonMistakes = [];
+          if (e.commonMistakes !== undefined && !Array.isArray(e.commonMistakes)) {
+            e.commonMistakes = [];
+          }
 
-          // migrate legacy cues -> cuesExecution (only if split cues are missing/empty)
           const hasSplit =
             (Array.isArray(e.cuesSetup) && e.cuesSetup.length > 0) ||
             (Array.isArray(e.cuesExecution) && e.cuesExecution.length > 0);
@@ -747,17 +586,12 @@ export class WorkoutDB extends Dexie {
           }
         });
 
-        // --------------------------
-        // ExerciseVariants: normalize + migrate
-        // --------------------------
         await tx.table("exerciseVariants").toCollection().modify((v: any) => {
           if (v.directions === null) v.directions = undefined;
           if (v.videoUrl === null) v.videoUrl = undefined;
           if (v.animationKey === null) v.animationKey = undefined;
-
           if (v.cuesSetup === null) v.cuesSetup = undefined;
           if (v.cuesExecution === null) v.cuesExecution = undefined;
-
           if (v.cues === null) v.cues = undefined;
 
           if (v.cuesSetup !== undefined && !Array.isArray(v.cuesSetup)) v.cuesSetup = [];
@@ -774,74 +608,51 @@ export class WorkoutDB extends Dexie {
           }
         });
 
-        // Keep v6 null-normalizations for reserved track fields (safe)
         await tx.table("tracks").toCollection().modify((t: any) => {
           if (t.schemeJson === null) t.schemeJson = undefined;
           if (t.cuesOverride === null) t.cuesOverride = undefined;
         });
       });
+    // ===== END OF v7 =====
 
-    // --------------------------------------------------------
-    // v8 (NEW):
-    // - Add sessionItems table (per-session ordering/notes; used by SessionDetailPage)
-    // --------------------------------------------------------
+    // v8
     this.version(8).stores({
       exercises:
         "id, &normalizedName, name, bodyPart, category, equipment, archivedAt, mergedIntoExerciseId, createdAt",
-
       exerciseVariants:
         "id, exerciseId, [exerciseId+normalizedName], name, archivedAt, mergedIntoVariantId, createdAt",
-
       tracks: "id, exerciseId, variantId, trackType, displayName, createdAt",
-
       folders: "id, orderIndex, name, archivedAt, createdAt",
       templates: "id, name, createdAt, folderId, archivedAt, orderIndex, lastPerformedAt",
       templateItems: "id, templateId, orderIndex, trackId, groupId, createdAt",
-
       sessions: "id, startedAt, endedAt, templateId",
-
-      // ✅ NEW
       sessionItems: "id, sessionId, orderIndex, trackId, createdAt",
-
       sets: "id, sessionId, trackId, createdAt, setType, completedAt",
       walks: "id, date",
       trackPrs: "trackId, updatedAt",
     });
+    // ===== END OF v8 =====
 
-    // --------------------------------------------------------
-    // v9 (NEW):
-    // - Add bodyMetrics table (sparse Hume Body Pod snapshots)
-    // --------------------------------------------------------
+    // v9
     this.version(9)
       .stores({
         exercises:
           "id, &normalizedName, name, bodyPart, category, equipment, archivedAt, mergedIntoExerciseId, createdAt",
-
         exerciseVariants:
           "id, exerciseId, [exerciseId+normalizedName], name, archivedAt, mergedIntoVariantId, createdAt",
-
         tracks: "id, exerciseId, variantId, trackType, displayName, createdAt",
-
         folders: "id, orderIndex, name, archivedAt, createdAt",
         templates: "id, name, createdAt, folderId, archivedAt, orderIndex, lastPerformedAt",
         templateItems: "id, templateId, orderIndex, trackId, groupId, createdAt",
-
         sessions: "id, startedAt, endedAt, templateId",
-
         sessionItems: "id, sessionId, orderIndex, trackId, createdAt",
-
         sets: "id, sessionId, trackId, createdAt, setType, completedAt",
         walks: "id, date",
         trackPrs: "trackId, updatedAt",
-
-        // ✅ NEW (indexes favor time-series queries)
-        // - measuredAt index for range queries
-        // - createdAt for debug/admin, optional
         bodyMetrics:
           "id, measuredAt, createdAt, weightLb, bodyFatPct, skeletalMuscleMassLb, visceralFatIndex, bodyWaterPct",
       })
       .upgrade(async (tx) => {
-        // Nothing required, but normalize any null-ish fields to undefined (future-safe).
         await tx.table("bodyMetrics").toCollection().modify((m: any) => {
           if (m.weightLb === null) m.weightLb = undefined;
           if (m.bodyFatPct === null) m.bodyFatPct = undefined;
@@ -853,15 +664,9 @@ export class WorkoutDB extends Dexie {
           if (m.createdAt === null) m.createdAt = undefined;
         });
       });
+    // ===== END OF v9 =====
 
-    // --------------------------------------------------------
-    // v10 (NEW):
-    // - Exercise.metricMode ("reps" | "distance" | "time")
-    // - SetEntry distance + distanceUnit
-    // --------------------------------------------------------
-    // --------------------------------------------------------
-    // v10 (NEW):
-    // --------------------------------------------------------
+    // v10
     this.version(10)
       .stores({
         exercises:
@@ -883,20 +688,18 @@ export class WorkoutDB extends Dexie {
       .upgrade(async (tx) => {
         await tx.table("exercises").toCollection().modify((e: any) => {
           if (e.metricMode === null) e.metricMode = undefined;
-    
-          // Only coerce when present and invalid (keeps field sparse)
+
           if (e.metricMode !== undefined) {
             const mm = e.metricMode;
             const ok = mm === "reps" || mm === "distance" || mm === "time";
             if (!ok) e.metricMode = "reps";
           }
         });
-    
+
         await tx.table("sets").toCollection().modify((s: any) => {
           if (s.distance === null) s.distance = undefined;
           if (s.distanceUnit === null) s.distanceUnit = undefined;
-    
-          // If unit exists but distance is not a valid number, clear both.
+
           if (s.distanceUnit) {
             const d = s.distance;
             if (d === undefined || d === null || !Number.isFinite(Number(d))) {
@@ -904,70 +707,130 @@ export class WorkoutDB extends Dexie {
               s.distanceUnit = undefined;
             }
           }
-    
-          if (s.seconds !== undefined && s.seconds !== null && !Number.isFinite(Number(s.seconds))) {
+
+          if (
+            s.seconds !== undefined &&
+            s.seconds !== null &&
+            !Number.isFinite(Number(s.seconds))
+          ) {
             s.seconds = undefined;
           }
         });
       });
-      
-  // --------------------------------------------------------
-// v11 (NEW):
-// - Add bodyMetrics.takenAt index for BodyPage/Strength compatibility
-// - Backfill takenAt <-> measuredAt so either can be used safely
-// --------------------------------------------------------
-this.version(11)
-  .stores({
-    exercises:
-      "id, &normalizedName, name, bodyPart, category, equipment, archivedAt, mergedIntoExerciseId, createdAt",
+    // ===== END OF v10 =====
 
-    exerciseVariants:
-      "id, exerciseId, [exerciseId+normalizedName], name, archivedAt, mergedIntoVariantId, createdAt",
+    // v11
+    this.version(11)
+      .stores({
+        exercises:
+          "id, &normalizedName, name, bodyPart, category, equipment, archivedAt, mergedIntoExerciseId, createdAt",
+        exerciseVariants:
+          "id, exerciseId, [exerciseId+normalizedName], name, archivedAt, mergedIntoVariantId, createdAt",
+        tracks: "id, exerciseId, variantId, trackType, displayName, createdAt",
+        folders: "id, orderIndex, name, archivedAt, createdAt",
+        templates: "id, name, createdAt, folderId, archivedAt, orderIndex, lastPerformedAt",
+        templateItems: "id, templateId, orderIndex, trackId, groupId, createdAt",
+        sessions: "id, startedAt, endedAt, templateId",
+        sessionItems: "id, sessionId, orderIndex, trackId, createdAt",
+        sets: "id, sessionId, trackId, createdAt, setType, completedAt",
+        walks: "id, date",
+        trackPrs: "trackId, updatedAt",
+        bodyMetrics:
+          "id, measuredAt, takenAt, createdAt, weightLb, bodyFatPct, skeletalMuscleMassLb, visceralFatIndex, bodyWaterPct",
+      })
+      .upgrade(async (tx) => {
+        await tx.table("bodyMetrics").toCollection().modify((m: any) => {
+          if (m.measuredAt === null) m.measuredAt = undefined;
+          if (m.takenAt === null) m.takenAt = undefined;
 
-    tracks: "id, exerciseId, variantId, trackType, displayName, createdAt",
+          const measured = typeof m.measuredAt === "number" ? m.measuredAt : undefined;
+          const taken = typeof m.takenAt === "number" ? m.takenAt : undefined;
 
-    folders: "id, orderIndex, name, archivedAt, createdAt",
-    templates: "id, name, createdAt, folderId, archivedAt, orderIndex, lastPerformedAt",
-    templateItems: "id, templateId, orderIndex, trackId, groupId, createdAt",
+          if (!taken && measured) m.takenAt = measured;
+          if (!measured && taken) m.measuredAt = taken;
 
-    sessions: "id, startedAt, endedAt, templateId",
-    sessionItems: "id, sessionId, orderIndex, trackId, createdAt",
+          if (m.createdAt === null) m.createdAt = undefined;
+          if (m.createdAt === undefined) {
+            m.createdAt = m.measuredAt ?? m.takenAt ?? Date.now();
+          }
+        });
+      });
+    // ===== END OF v11 =====
 
-    sets: "id, sessionId, trackId, createdAt, setType, completedAt",
+    // v12
+    this.version(12)
+      .stores({
+        exercises:
+          "id, &normalizedName, name, bodyPart, category, equipment, archivedAt, mergedIntoExerciseId, createdAt",
+        exerciseVariants:
+          "id, exerciseId, [exerciseId+normalizedName], name, archivedAt, mergedIntoVariantId, createdAt",
+        tracks: "id, exerciseId, variantId, trackType, displayName, createdAt",
+        folders: "id, orderIndex, name, archivedAt, createdAt",
+        templates: "id, name, createdAt, folderId, archivedAt, orderIndex, lastPerformedAt",
+        templateItems: "id, templateId, orderIndex, trackId, groupId, createdAt",
+        sessions: "id, startedAt, endedAt, templateId, updatedAt, deletedAt",
+        sessionItems: "id, sessionId, orderIndex, trackId, createdAt",
+        sets: "id, sessionId, trackId, createdAt, setType, completedAt, updatedAt, deletedAt",
+        walks: "id, date, updatedAt, deletedAt",
+        trackPrs: "trackId, updatedAt",
+        bodyMetrics:
+          "id, measuredAt, takenAt, createdAt, weightLb, bodyFatPct, skeletalMuscleMassLb, visceralFatIndex, bodyWaterPct",
+        app_meta: "key, updatedAt",
+      })
+      .upgrade(async (tx) => {
+        await tx.table("sessions").toCollection().modify((s: any) => {
+          if (s.updatedAt === null) s.updatedAt = undefined;
+          if (s.deletedAt === null) s.deletedAt = undefined;
+        });
 
-    walks: "id, date",
-    trackPrs: "trackId, updatedAt",
+        await tx.table("sets").toCollection().modify((s: any) => {
+          if (s.updatedAt === null) s.updatedAt = undefined;
+          if (s.deletedAt === null) s.deletedAt = undefined;
+        });
 
-    // ✅ add takenAt to indexes
-    bodyMetrics:
-      "id, measuredAt, takenAt, createdAt, weightLb, bodyFatPct, skeletalMuscleMassLb, visceralFatIndex, bodyWaterPct",
-  })
-  .upgrade(async (tx) => {
-    await tx.table("bodyMetrics").toCollection().modify((m: any) => {
-      // normalize null-ish
-      if (m.measuredAt === null) m.measuredAt = undefined;
-      if (m.takenAt === null) m.takenAt = undefined;
+        await tx.table("walks").toCollection().modify((w: any) => {
+          if (w.updatedAt === null) w.updatedAt = undefined;
+          if (w.deletedAt === null) w.deletedAt = undefined;
+        });
+      });
+    // ===== END OF v12 =====
 
-      // Backfill both directions
-      const measured = typeof m.measuredAt === "number" ? m.measuredAt : undefined;
-      const taken = typeof m.takenAt === "number" ? m.takenAt : undefined;
-
-      if (!taken && measured) m.takenAt = measured;
-      if (!measured && taken) m.measuredAt = taken;
-
-      // Keep createdAt sane
-      if (m.createdAt === null) m.createdAt = undefined;
-      if (m.createdAt === undefined) m.createdAt = m.measuredAt ?? m.takenAt ?? Date.now();
-    });
-  });          
+    // v13
+    this.version(13)
+      .stores({
+        exercises:
+          "id, &normalizedName, name, bodyPart, category, equipment, archivedAt, mergedIntoExerciseId, createdAt",
+        exerciseVariants:
+          "id, exerciseId, [exerciseId+normalizedName], name, archivedAt, mergedIntoVariantId, createdAt",
+        tracks: "id, exerciseId, variantId, trackType, displayName, createdAt",
+        folders: "id, orderIndex, name, archivedAt, createdAt",
+        templates: "id, name, createdAt, folderId, archivedAt, orderIndex, lastPerformedAt",
+        templateItems: "id, templateId, orderIndex, trackId, groupId, createdAt",
+        sessions: "id, startedAt, endedAt, templateId, updatedAt, deletedAt",
+        sessionItems: "id, sessionId, orderIndex, trackId, createdAt",
+        sets: "id, sessionId, trackId, createdAt, setType, completedAt, updatedAt, deletedAt",
+        walks: "id, date, updatedAt, deletedAt",
+        trackPrs: "trackId, updatedAt",
+        bodyMetrics:
+          "id, measuredAt, takenAt, createdAt, weightLb, bodyFatPct, skeletalMuscleMassLb, visceralFatIndex, bodyWaterPct",
+        app_meta: "key, updatedAt",
+      })
+      .upgrade(async (tx) => {
+        await tx.table("tracks").toCollection().modify((t: any) => {
+          if (t.trackType === "hypertrophy" && t.trackingMode === "repsOnly") {
+            t.trackingMode = "weightedReps";
+          }
+        });
+      });
+    // ===== END OF v13 =====
   }
 }
 
 export const db = new WorkoutDB();
 
-// ============================================================
-// 05) E2E support: Playwright seeding/reset via window.__db
-// ============================================================
+/* ============================================================
+   E2E support: Playwright seeding/reset via window.__db
+   ============================================================ */
 declare global {
   interface Window {
     __db?: WorkoutDB;

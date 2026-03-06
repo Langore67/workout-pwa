@@ -2,7 +2,7 @@
 /* ============================================================================
    GymPage.tsx — Execution / Logging (Strong-ish)
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-02-GYM-RIR-DECIMAL-01
+   BUILD_ID: 2026-03-06-GYM-LOADED-REPS-HARDEN-01
 
    Version history
    - 2026-02-11  GP-01  Baseline Gym Mode execution + sets + finish pipeline
@@ -13,9 +13,11 @@
    - 2026-02-22  GP-06  Copy cues to clipboard + Edit in catalog deep-link
    - 2026-02-22  GP-07  Cancel session (delete sets + session)
    - 2026-03-02  GP-08  Decimal RIR support (1.5 / 2.5 allowed)
-                      RIR required ONLY for completed WORKING sets
-                      Warmups never block finish
-                      Finish gate logic tightened + clarified
+   - 2026-03-06  GP-09  Loaded-reps hardening:
+                      - reps hypertrophy/strength rows still show weight even if
+                        trackingMode was mis-saved as repsOnly
+                      - finish gate aligned with loaded reps logic
+                      - breadcrumbs refined / made more granular
    ============================================================================
 
    Execution Guarantees (current behavior)
@@ -29,16 +31,24 @@
         - setType === "working"
         - completedAt is set
         - trackType !== "corrective"
-        - trackingMode === "weightedReps"
+        - movement is treated as LOADED REPS
         - metricMode === "reps"
    7) Warmup sets NEVER require RIR
    8) Finish reveals issues only after user taps Finish
    9) Cancel session deletes sets + session (no PRs, no template update)
 
    Backend compatibility:
-   - No DB schema changes required
+   - No DB schema changes required for this UI hardening
    - RIR stored as number (float-safe)
    - IndexedDB verified to preserve decimals
+   ============================================================================
+
+   IMPORTANT NOTE (GP-09)
+   - Some older installs/imports may have hypertrophy rows saved as:
+       trackingMode = "repsOnly"
+     even though they are really loaded lifts.
+   - This file now derives "loaded reps movement" more defensively so the UI
+     still shows weight + reps + RIR for those rows.
    ============================================================================
 */
 
@@ -46,36 +56,26 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../db";
-import type { TemplateItem, Track, SetEntry } from "../db";
+import type { Track, SetEntry } from "../db";
 import { uuid } from "../utils";
 import { getBestSessionLastNDays, suggestionFromBest } from "../progression";
 import { computeAndStorePRsForSession } from "../prs";
 
-// --- Breadcrumb 1 -----------------------------------------------------------
-// GymPage.tsx (Execution / Logging)
-// Goals (this iteration):
-// 1) Single Finish Session control at bottom (remove top/original)
-// 2) “ghost” placeholders for working sets (weight + reps) on compact screens
-//    - show previous as placeholder (light gray) when current is empty
-// 3) Keep logging stable + fast (no hook violations)
-// 4) Guardrails: prevent obvious fat-finger errors (weight > 300, reps > 50)
-// 5) RIR required for working sets (weightedReps) before you can finish
-// 6) Finish gate + review list: block finishing when sets missing ✓ or missing RIR,
-//    and allow tap-to-scroll to the exact row.
-// 7) Green outline (ring) for completed WORKING rows.
-// 8) ✅ Cancel session next to Finish (deletes sets + session; no PRs; no template lastPerformedAt)
-// ---------------------------------------------------------------------------
-
-// Local widening (so this file can evolve UI without requiring immediate db.ts changes)
+/* ============================================================================
+   Breadcrumb 01 — Local widenings / UI-only types
+   ============================================================================ */
 type SetKind = "warmup" | "working" | "drop" | "failure";
+type MetricModeX = "reps" | "distance" | "time";
+
 type SetEntryX = SetEntry & {
-  setType?: SetKind | string; // allow old values, future values
+  setType?: SetKind | string;
   completedAt?: number;
 };
 
-// --- Breadcrumb 2 (Helper: compact mode detect) ------------------------------
-// "Mobile-like" behavior on small screens (iPhone/iPad/Android) using viewport,
-// not brittle user-agent checks.
+/* ============================================================================
+   Breadcrumb 02 — Viewport / compact mode
+   - mobile-like behavior from viewport width (not UA sniffing)
+   ============================================================================ */
 function useCompactMode(maxWidthPx: number = 520): boolean {
   const [compact, setCompact] = React.useState<boolean>(() => {
     if (typeof window === "undefined") return false;
@@ -95,7 +95,9 @@ function useCompactMode(maxWidthPx: number = 520): boolean {
   return compact;
 }
 
-// --- Breadcrumb 3 (Helper: parse "135 x 10") --------------------------------
+/* ============================================================================
+   Breadcrumb 03 — Parse previous-set text ("135 x 10")
+   ============================================================================ */
 function parsePrev(prevText: string): { prevWeight?: number; prevReps?: number } {
   const t = (prevText || "").trim();
   if (!t) return {};
@@ -109,7 +111,9 @@ function parsePrev(prevText: string): { prevWeight?: number; prevReps?: number }
   };
 }
 
-// --- Breadcrumb 4 (Helper: guardrails) --------------------------------------
+/* ============================================================================
+   Breadcrumb 04 — Guardrails / parsers
+   ============================================================================ */
 const LIMITS = {
   maxWeight: 300,
   maxReps: 50,
@@ -122,14 +126,15 @@ function parseNum(v: string): number | undefined {
   return Number.isFinite(x) ? x : undefined;
 }
 
-// --- Time helpers -----------------------------------------------------------
-// Store as seconds; display as mm:ss.
-// Accepts: "90" (seconds), "2:30", "02:30", "2:3" (=> 02:03)
+/* ============================================================================
+   Breadcrumb 05 — Time helpers
+   - store as seconds
+   - accept: "90", "2:30", "02:30", "130" => 1:30
+   ============================================================================ */
 function parseTimeToSeconds(raw: string): number | undefined {
   const s = (raw ?? "").trim();
   if (!s) return undefined;
 
-  // mm:ss (preferred explicit form)
   const m = s.match(/^(\d{1,3})\s*:\s*(\d{1,2})$/);
   if (m) {
     const mins = Number(m[1]);
@@ -139,10 +144,8 @@ function parseTimeToSeconds(raw: string): number | undefined {
     return Math.max(0, mins * 60 + secs);
   }
 
-  // digits only
   if (!/^\d+$/.test(s)) return undefined;
 
-  // shorthand: 130 -> 1:30, 245 -> 2:45, 1234 -> 12:34
   if (s.length === 3 || s.length === 4) {
     const mins = Number(s.slice(0, s.length - 2));
     const secs = Number(s.slice(-2));
@@ -151,10 +154,10 @@ function parseTimeToSeconds(raw: string): number | undefined {
     return Math.max(0, mins * 60 + secs);
   }
 
-  // otherwise treat as seconds (e.g. "90" -> 90 sec)
   const sec = Number(s);
   return Number.isFinite(sec) ? Math.max(0, Math.floor(sec)) : undefined;
 }
+
 function formatSecondsToMMSS(totalSeconds?: number): string {
   if (typeof totalSeconds !== "number" || !Number.isFinite(totalSeconds) || totalSeconds < 0) return "";
   const mins = Math.floor(totalSeconds / 60);
@@ -162,6 +165,9 @@ function formatSecondsToMMSS(totalSeconds?: number): string {
   return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
+/* ============================================================================
+   Breadcrumb 06 — Clipboard helper
+   ============================================================================ */
 async function copyTextToClipboard(text: string): Promise<boolean> {
   try {
     if (navigator?.clipboard?.writeText) {
@@ -169,10 +175,9 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
       return true;
     }
   } catch {
-    // fall through to legacy attempt
+    // fall through
   }
 
-  // Legacy fallback
   try {
     const ta = document.createElement("textarea");
     ta.value = text;
@@ -190,19 +195,43 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
   }
 }
 
+/* ============================================================================
+   Breadcrumb 07 — Loaded reps inference
+   IMPORTANT:
+   - canonical loaded reps = trackingMode === "weightedReps"
+   - hardening path: treat non-corrective repsOnly rows as loaded reps too
+     for reps metric movements (covers bad old hypertrophy rows)
+   ============================================================================ */
+function isLoadedRepsTrack(track: Track, metricMode: MetricModeX): boolean {
+  if (metricMode !== "reps") return false;
+  if (track.trackType === "corrective") return false;
+
+  return (
+    track.trackingMode === "weightedReps" ||
+    track.trackingMode === "repsOnly"
+  );
+}
+
+/* ============================================================================
+   Breadcrumb 08 — GymPage shell
+   ============================================================================ */
 export default function GymPage() {
   const { sessionId } = useParams();
   const nav = useNavigate();
 
-  // --- Breadcrumb 5 (DB reads) ----------------------------------------------
+  /* ------------------------------------------------------------------------
+     Breadcrumb 08.1 — Session read
+     ------------------------------------------------------------------------ */
   const session = useLiveQuery(
     () => (sessionId ? db.sessions.get(sessionId) : Promise.resolve(undefined)),
     [sessionId]
   );
 
-  // ✅ Plan source:
-  // - Prefer sessionItems if table exists and has rows (import-safe)
-  // - Fallback to templateItems
+  /* ------------------------------------------------------------------------
+     Breadcrumb 08.2 — Planned items source
+     - prefer sessionItems when present
+     - fallback to templateItems
+     ------------------------------------------------------------------------ */
   const sessionItems = useLiveQuery(async () => {
     if (!sessionId) return [];
     const t = (db as any).sessionItems;
@@ -215,20 +244,26 @@ export default function GymPage() {
     return db.templateItems.where("templateId").equals(session.templateId).sortBy("orderIndex");
   }, [session?.templateId]);
 
-  // ✅ Truth: sets are always authoritative (single declaration)
+  /* ------------------------------------------------------------------------
+     Breadcrumb 08.3 — Sets are authoritative
+     ------------------------------------------------------------------------ */
   const sets = useLiveQuery(async () => {
     if (!sessionId) return [];
     return db.sets.where("sessionId").equals(sessionId).sortBy("createdAt");
   }, [sessionId]);
 
-  // ✅ planned items = sessionItems (if any) else templateItems
+  /* ------------------------------------------------------------------------
+     Breadcrumb 08.4 — Planned items memo
+     ------------------------------------------------------------------------ */
   const plannedItems = useMemo(() => {
     const si = (sessionItems ?? []) as any[];
     if (si.length) return si;
     return (templateItems ?? []) as any[];
   }, [sessionItems, templateItems]);
 
-  // ✅ set-driven track ids (stable order by first appearance)
+  /* ------------------------------------------------------------------------
+     Breadcrumb 08.5 — Set-driven track ids
+     ------------------------------------------------------------------------ */
   const setDrivenTrackIds = useMemo(() => {
     const s = (sets ?? []) as SetEntryX[];
     if (!s.length) return [] as string[];
@@ -243,7 +278,9 @@ export default function GymPage() {
       .map(([trackId]) => trackId);
   }, [sets]);
 
-  // ✅ renderTrackIds = planned order first, then any set-tracks not in the plan
+  /* ------------------------------------------------------------------------
+     Breadcrumb 08.6 — Merge planned order + set-driven extras
+     ------------------------------------------------------------------------ */
   const renderTrackIds = useMemo(() => {
     const planIds = (plannedItems ?? []).map((p: any) => String(p.trackId));
     const planSet = new Set(planIds);
@@ -257,21 +294,31 @@ export default function GymPage() {
 
   const trackIdsKey = useMemo(() => renderTrackIds.join("|"), [renderTrackIds]);
 
+  /* ------------------------------------------------------------------------
+     Breadcrumb 08.7 — Bulk track read
+     ------------------------------------------------------------------------ */
   const tracks = useLiveQuery(async () => {
     if (!renderTrackIds.length) return [];
     const arr = await db.tracks.bulkGet(renderTrackIds);
     return arr.filter(Boolean) as Track[];
   }, [trackIdsKey]);
 
-  // --- Breadcrumb 6 (UI state) ----------------------------------------------
+  /* ------------------------------------------------------------------------
+     Breadcrumb 08.8 — Session notes state
+     ------------------------------------------------------------------------ */
   const [sessionNotes, setSessionNotes] = useState("");
   useEffect(() => {
     setSessionNotes(session?.notes ?? "");
-  }, [session?.id]);
+  }, [session?.id, session?.notes]);
 
+  /* ------------------------------------------------------------------------
+     Breadcrumb 08.9 — Track lookup map
+     ------------------------------------------------------------------------ */
   const trackById = useMemo(() => new Map((tracks ?? []).map((t) => [t.id, t] as const)), [tracks]);
 
-  // --- Breadcrumb 7 (Guards) -------------------------------------------------
+  /* ------------------------------------------------------------------------
+     Breadcrumb 08.10 — Guards
+     ------------------------------------------------------------------------ */
   if (!sessionId) {
     return (
       <div className="card">
@@ -288,7 +335,9 @@ export default function GymPage() {
     );
   }
 
-  // --- Breadcrumb 8 (Finish pipeline) ---------------------------------------
+  /* ------------------------------------------------------------------------
+     Breadcrumb 08.11 — Finish pipeline
+     ------------------------------------------------------------------------ */
   async function finish() {
     const endedAt = Date.now();
 
@@ -307,7 +356,9 @@ export default function GymPage() {
     nav(`/complete/${sessionId}`);
   }
 
-  // --- Breadcrumb 8b (Cancel pipeline) --------------------------------------
+  /* ------------------------------------------------------------------------
+     Breadcrumb 08.12 — Cancel pipeline
+     ------------------------------------------------------------------------ */
   async function cancelSession() {
     const ok = window.confirm(
       "Cancel this session?\n\nThis will delete all logged sets and remove the session from history."
@@ -315,21 +366,22 @@ export default function GymPage() {
     if (!ok) return;
 
     try {
-      // Keep it simple: delete sets then the session.
       await db.sets.where("sessionId").equals(sessionId).delete();
       await db.sessions.delete(sessionId);
-
-      // Go back to history (recommended mental model).
       nav("/history");
     } catch (err: any) {
       window.alert(err?.message || "Cancel failed. Please try again.");
     }
   }
 
-  // --- Breadcrumb 9 (Render) ------------------------------------------------
+  /* ------------------------------------------------------------------------
+     Breadcrumb 08.13 — Render
+     ------------------------------------------------------------------------ */
   return (
     <div className="grid">
-      {/* --- Gym Mode header card (NO Finish button here) --- */}
+      {/* --------------------------------------------------------------------
+         Breadcrumb 08.13.a — Header card
+         -------------------------------------------------------------------- */}
       <div className="card">
         <h2>Gym Mode</h2>
 
@@ -362,11 +414,12 @@ export default function GymPage() {
         </button>
       </div>
 
-      {/* --- Exercise cards (plan + set-driven) --- */}
+      {/* --------------------------------------------------------------------
+         Breadcrumb 08.13.b — Exercise cards
+         -------------------------------------------------------------------- */}
       {(() => {
         const planArr = (plannedItems ?? []) as any[];
 
-        // Map of planned item by trackId (for overrides/notes when present)
         const planByTrackId = new Map<string, any>();
         for (const it of planArr) planByTrackId.set(String(it.trackId), it);
 
@@ -377,7 +430,6 @@ export default function GymPage() {
 
           const planned = planByTrackId.get(tid);
 
-          // If this track came from sets (not in plan), synthesize a minimal item.
           const item =
             planned ??
             ({
@@ -400,7 +452,9 @@ export default function GymPage() {
         });
       })()}
 
-      {/* --- Single Finish control at very bottom --- */}
+      {/* --------------------------------------------------------------------
+         Breadcrumb 08.13.c — Bottom finish card
+         -------------------------------------------------------------------- */}
       <FinishSessionCard
         sessionId={sessionId}
         tracks={(tracks ?? []) as Track[]}
@@ -408,32 +462,27 @@ export default function GymPage() {
         onFinish={finish}
         onCancel={cancelSession}
       />
-  
+
+      {/* --------------------------------------------------------------------
+         Breadcrumb 08.13.d — Dev overlay
+         -------------------------------------------------------------------- */}
+      <DevGymOverlay
+        sessionId={sessionId}
+        sets={(sets ?? []) as SetEntryX[]}
+        tracks={(tracks ?? []) as Track[]}
+      />
     </div>
   );
 }
 
-// --- Breadcrumb 10 ----------------------------------------------------------
-// ExerciseCard: unified set table + W/D/F + completion + timer banner + cues modal
-// Adds: compact-screen ghost placeholders (working sets only)
-// Adds: RIR recommended for working sets (weightedReps) before you can finish
-// Adds: Guardrails on write (reject > max rather than silently clamp)
-// ✅ Rest timer banner appears at bottom of THIS exercise card
-//    - Starts ONLY when you check a NON-warmup set
-//    - Shows countdown + -15/+15 + Skip
-// ✅ Cues modal (Strong-style full screen takeover)
-//    - Per-track (title uses track.displayName)
-//    - ✅ DB wired: pulls cuesSetup/cuesExecution from Exercise / Variant
-//    - ✅ Copy cues to clipboard
-//    - ✅ Deep-link to Exercises page to edit cues
-// ✅ MetricMode-aware logging:
-//    - reps: weight + reps (+ RIR for weightedReps)
-//    - distance: distance + unit (optionally weight for weighted movements)
-//    - time: mm:ss (stored as seconds)
-// ✅ Spacing polish (Strong-ish):
-//    - tighter row height + header alignment
-//    - explicit grid columns so distance unit stays inline
-// ---------------------------------------------------------------------------
+/* ============================================================================
+   Breadcrumb 09 — ExerciseCard
+   - unified set table
+   - cues modal
+   - rest timer
+   - metric-mode aware
+   - loaded-reps hardened
+   ============================================================================ */
 function ExerciseCard({
   sessionId,
   item,
@@ -447,26 +496,34 @@ function ExerciseCard({
 }) {
   const nav = useNavigate();
 
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.1 — Template overrides / targets
+     ------------------------------------------------------------------------ */
   const repMin = item?.repMinOverride ?? track.repMin;
   const repMax = item?.repMaxOverride ?? track.repMax;
 
   const warmupTarget = item?.warmupSetsOverride ?? track.warmupSetsDefault;
   const workingTarget = item?.workingSetsOverride ?? track.workingSetsDefault;
 
-  // ✅ TIMER STATE (per-exercise)
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.2 — Timer state
+     ------------------------------------------------------------------------ */
   const [restSec, setRestSec] = useState<number>(120);
   const timer = useRestTimer();
 
-  // Cues modal state
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.3 — Cues modal state
+     ------------------------------------------------------------------------ */
   const [showCues, setShowCues] = useState<boolean>(false);
 
-  // compact mode computed once per ExerciseCard
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.4 — Compact mode
+     ------------------------------------------------------------------------ */
   const compact = useCompactMode();
 
-  // ------------------------------------------------------------
-  // ✅ DB READ: Exercise + Variant (for cues + metricMode)
-  // - Prefer variant cues if present; otherwise fall back to exercise cues.
-  // ------------------------------------------------------------
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.5 — Exercise / variant reads
+     ------------------------------------------------------------------------ */
   const exercise = useLiveQuery(async () => {
     return await db.exercises.get(track.exerciseId);
   }, [track.exerciseId]);
@@ -477,12 +534,24 @@ function ExerciseCard({
     return await db.exerciseVariants.get(vid);
   }, [(track as any).variantId]);
 
-  // ✅ Metric mode (reps | distance | time). Defaults to reps.
-  const metricMode = useMemo(() => {
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.6 — Metric mode
+     ------------------------------------------------------------------------ */
+  const metricMode = useMemo<MetricModeX>(() => {
     const m = (exercise as any)?.metricMode;
     return m === "distance" || m === "time" ? m : "reps";
   }, [exercise]);
 
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.7 — Loaded reps inference
+     ------------------------------------------------------------------------ */
+  const loadedReps = useMemo(() => {
+    return isLoadedRepsTrack(track, metricMode);
+  }, [track, metricMode]);
+
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.8 — Text cleaners
+     ------------------------------------------------------------------------ */
   function cleanCueArray(v: any): string[] {
     if (!Array.isArray(v)) return [];
     return v
@@ -496,7 +565,9 @@ function ExerciseCard({
     return s ? s : undefined;
   }
 
-  // cues: variant first, then exercise, then legacy fields if any
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.9 — Cue resolution
+     ------------------------------------------------------------------------ */
   const cuesSetup = useMemo(() => {
     const v = cleanCueArray((variant as any)?.cuesSetup);
     if (v.length) return v;
@@ -504,7 +575,6 @@ function ExerciseCard({
     const e = cleanCueArray((exercise as any)?.cuesSetup);
     if (e.length) return e;
 
-    // legacy fallback (if something older exists)
     const legacy = cleanCueArray((exercise as any)?.cues);
     return legacy.length ? legacy : [];
   }, [exercise, variant]);
@@ -516,7 +586,6 @@ function ExerciseCard({
     const e = cleanCueArray((exercise as any)?.cuesExecution);
     if (e.length) return e;
 
-    // legacy fallback (if something older exists)
     const legacy = cleanCueArray((exercise as any)?.cues);
     return legacy.length ? legacy : [];
   }, [exercise, variant]);
@@ -525,6 +594,7 @@ function ExerciseCard({
     () => cleanText((variant as any)?.summary) ?? cleanText((exercise as any)?.summary),
     [exercise, variant]
   );
+
   const directions = useMemo(
     () => cleanText((variant as any)?.directions) ?? cleanText((exercise as any)?.directions),
     [exercise, variant]
@@ -545,6 +615,9 @@ function ExerciseCard({
 
   const variantName = useMemo(() => cleanText((variant as any)?.name), [variant]);
 
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.10 — Clipboard builder
+     ------------------------------------------------------------------------ */
   function buildCuesClipboardText(): string {
     const lines: string[] = [];
     lines.push(track.displayName);
@@ -596,12 +669,12 @@ function ExerciseCard({
   }
 
   function onEditInCatalog() {
-    // Deep-link so Exercises page can auto-open edit modal:
-    // implement there with: const id = new URLSearchParams(location.search).get("edit")
     nav(`/exercises?edit=${encodeURIComponent(track.exerciseId)}&from=gym`);
   }
 
-  // IMPORTANT: do NOT mutate Dexie objects during render; normalize via copies.
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.11 — Current sets normalization
+     ------------------------------------------------------------------------ */
   const currentSets = useMemo(() => {
     const arr = (sets ?? [])
       .filter((s) => s.trackId === track.id)
@@ -611,30 +684,39 @@ function ExerciseCard({
     return arr.map((s) => {
       const raw = String((s as any).setType ?? "");
       const setType: SetKind =
-        raw === "warmup" || raw === "working" || raw === "drop" || raw === "failure" ? (raw as SetKind) : "working";
+        raw === "warmup" || raw === "working" || raw === "drop" || raw === "failure"
+          ? (raw as SetKind)
+          : "working";
       return { ...s, setType };
     });
   }, [sets, track.id]);
 
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.12 — Working index map
+     ------------------------------------------------------------------------ */
   const workingIndexById = useMemo(() => {
     const map = new Map<string, number>();
-  
     let workingIndex = 0;
-  
+
     for (const s of currentSets) {
       const type = ((s.setType as SetKind) ?? "working") as SetKind;
-  
       if (type !== "working") continue;
-  
+
       workingIndex += 1;
       map.set(s.id, workingIndex);
     }
-  
-    return map;
-}, [currentSets]);
 
+    return map;
+  }, [currentSets]);
+
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.13 — Previous session mapping
+     ------------------------------------------------------------------------ */
   const prev = usePrevByWorkingIndex(sessionId, track.id);
 
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.14 — Progression / suggestion state
+     ------------------------------------------------------------------------ */
   const [bestSummary, setBestSummary] = useState<string>("");
   const [suggestion, setSuggestion] = useState<string>("");
   const [prefillWeight, setPrefillWeight] = useState<number | undefined>(undefined);
@@ -665,9 +747,10 @@ function ExerciseCard({
     };
   }, [track.id, track.trackType, repMin, repMax, workingTarget, (track as any).weightJumpDefault, track.rirTargetMin]);
 
-  // --- Breadcrumb 10a (DB writes with guardrails) ----------------------------
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.15 — DB write helper with guardrails
+     ------------------------------------------------------------------------ */
   async function updateSet(id: string, patch: Partial<SetEntryX>) {
-    // Reject obvious fat-finger values rather than silently clamping.
     if ("weight" in patch) {
       const w = patch.weight as any;
       if (w !== undefined && w !== null && Number.isFinite(w) && w > LIMITS.maxWeight) {
@@ -686,7 +769,6 @@ function ExerciseCard({
       if (r !== undefined && r !== null && Number.isFinite(r) && r < 0) patch.reps = 0 as any;
     }
 
-    // ✅ distance guardrail (fat-finger), if present
     if ("distance" in (patch as any)) {
       const d = (patch as any).distance as any;
       if (d !== undefined && d !== null && Number.isFinite(d) && d < 0) (patch as any).distance = 0;
@@ -705,10 +787,6 @@ function ExerciseCard({
       }
     }
 
-    // ✅ RIR sanitation:
-    // - allow decimals (1.5, 2.5, 3.5...)
-    // - blank/NaN -> undefined
-    // - clamp floor at 0
     if ("rir" in patch) {
       const v = patch.rir as any;
       if (v === undefined || v === null) {
@@ -723,6 +801,9 @@ function ExerciseCard({
     await db.sets.update(id, patch as any);
   }
 
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.16 — Add set
+     ------------------------------------------------------------------------ */
   async function addSet() {
     const id = uuid();
     const createdAt = Date.now();
@@ -737,10 +818,15 @@ function ExerciseCard({
       setType: "working",
     };
 
-    // ✅ Prefill weight for loaded movements (reps OR distance), but not time-only.
     const wantsWeight = metricMode === "reps" || metricMode === "distance";
 
-    if (wantsWeight && track.trackingMode === "weightedReps") {
+    if (
+      wantsWeight &&
+      (
+        track.trackingMode === "weightedReps" ||
+        (metricMode === "reps" && track.trackType !== "corrective")
+      )
+    ) {
       if (lastWorkingLike?.weight !== undefined) entry.weight = lastWorkingLike.weight;
       else if (prefillWeight !== undefined) entry.weight = prefillWeight;
     }
@@ -748,17 +834,25 @@ function ExerciseCard({
     await db.sets.add(entry as any);
   }
 
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.17 — Delete set
+     ------------------------------------------------------------------------ */
   async function deleteSet(id: string) {
     await db.sets.delete(id);
   }
 
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.18 — Rest label
+     ------------------------------------------------------------------------ */
   function restLabel(seconds: number) {
     const mm = String(Math.floor(seconds / 60));
     const ss = String(seconds % 60).padStart(2, "0");
     return `${mm}:${ss}`;
   }
 
-  // ✅ Previous formatting helpers (time/distance)
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.19 — Previous formatter
+     ------------------------------------------------------------------------ */
   function formatMMSS(totalSeconds?: number): string {
     const s = Number(totalSeconds);
     if (!Number.isFinite(s) || s < 0) return "";
@@ -771,16 +865,13 @@ function ExerciseCard({
   function formatPrevForMode(se: SetEntryX, workingIndex?: number): string {
     if (se.setType !== "working" || !workingIndex) return "";
 
-    // reps mode uses the existing prev map (weight x reps)
     if (metricMode === "reps") return prev.get(workingIndex) ?? "";
 
-    // time mode: show previous duration (mm:ss) if we can
     if (metricMode === "time") {
       const sec = (se as any).seconds as number | undefined;
       return sec !== undefined ? formatMMSS(sec) : "";
     }
 
-    // distance mode: show previous distance + unit (and weight if present on the row)
     const d = (se as any).distance as number | undefined;
     const u = ((se as any).distanceUnit as string | undefined) ?? "mi";
     const w = se.weight as number | undefined;
@@ -788,12 +879,13 @@ function ExerciseCard({
     if (d === undefined) return "";
     const distTxt = `${d} ${u}`;
 
-    // Only include weight if the movement is weight-based
     if (track.trackingMode === "weightedReps" && w !== undefined) return `${w} lbs • ${distTxt}`;
     return distTxt;
   }
 
-  // --- Breadcrumb 10b (Cues modal: ✅ DB wired + copy + edit link) -----------
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.20 — Cues modal
+     ------------------------------------------------------------------------ */
   function CuesModal({
     open,
     title,
@@ -807,7 +899,6 @@ function ExerciseCard({
     setupCues: string[];
     executionCues: string[];
   }) {
-    // close on ESC
     useEffect(() => {
       if (!open) return;
       const onKey = (e: KeyboardEvent) => {
@@ -817,7 +908,6 @@ function ExerciseCard({
       return () => window.removeEventListener("keydown", onKey);
     }, [open, onClose]);
 
-    // lock background scroll while open
     useEffect(() => {
       if (!open) return;
       const prevOverflow = document.body.style.overflow;
@@ -840,7 +930,6 @@ function ExerciseCard({
         aria-label={`${title} cues`}
         className="modal-overlay"
         onMouseDown={(e) => {
-          // outside click closes
           if (e.target === e.currentTarget) onClose();
         }}
       >
@@ -951,90 +1040,86 @@ function ExerciseCard({
     );
   }
 
-  // ✅ Header labels and visibility
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.21 — Header labels / column semantics
+     ------------------------------------------------------------------------ */
   const weightHeader = metricMode === "time" ? "—" : "Lbs";
   const midHeader = metricMode === "distance" ? "Dist" : metricMode === "time" ? "Time" : "Reps";
-  const rirHeader = metricMode === "reps" && track.trackingMode === "weightedReps" ? "RIR" : "—";
+  const rirHeader = metricMode === "reps" && loadedReps ? "RIR" : "—";
 
-   // ✅ Strong-ish table geometry (keeps distance unit on the same line)
-   const cardScope = useMemo(() => `excard-${track.id}`, [track.id]);
- 
-   // Desktop/tablet columns (existing intent)
-   const gridTemplateColumnsDesktop = useMemo(() => {
-     // 7 columns: Set | Previous | Weight | Mid | RIR | ✓ | X
-     if (metricMode === "distance") return "64px 1.4fr 96px 200px 56px 44px 44px";
-     if (metricMode === "time") return "64px 1.4fr 56px 200px 56px 44px 44px";
-     return "64px 1.4fr 110px 110px 70px 44px 44px";
-   }, [metricMode]);
- 
-   // ✅ iPhone-safe columns (prevents “shrink-to-fit” zoom)
-   const gridTemplateColumnsMobile = useMemo(() => {
-     // Keep fixed columns small enough to fit inside container padding.
-     // Goal: no horizontal overflow -> Safari stops auto-scaling the page.
-     if (metricMode === "distance") return "44px minmax(0,1fr) 56px minmax(0,120px) 40px 32px 32px";
-     if (metricMode === "time") return "44px minmax(0,1fr) 40px minmax(0,120px) 40px 32px 32px";
-     // reps
-     return "44px minmax(0,1fr) 64px 64px 48px 32px 32px";
-   }, [metricMode]);
- 
-   return (
-     <div className="card">
-       {/* Local, scoped layout polish (no global CSS churn) */}
-       <div data-excard-scope={cardScope}>
-         <style>
-           {`
-             [data-excard-scope="${cardScope}"] .set-head,
-             [data-excard-scope="${cardScope}"] .set-row{
-               display: grid;
-               grid-template-columns: ${gridTemplateColumnsDesktop};
-               column-gap: 10px;
-               align-items: center;
-             }
- 
-             /* tighter row height */
-             [data-excard-scope="${cardScope}"] .set-row{
-               padding: 10px 0;
-             }
- 
-             /* header looks lighter + tighter */
-             [data-excard-scope="${cardScope}"] .set-head{
-               font-size: 13px;
-               opacity: 0.75;
-               padding: 6px 0 10px 0;
-             }
- 
-             /* prevent inline “distance input + unit” from wrapping */
-             [data-excard-scope="${cardScope}"] .set-row .row{
-               flex-wrap: nowrap;
-             }
- 
-             /* keep inputs compact inside grid */
-             [data-excard-scope="${cardScope}"] .cell-input{
-               min-width: 0;
-             }
- 
-             /* ✅ iPhone override: smaller columns + smaller gap = no overflow */
-             @media (max-width: 520px){
-               [data-excard-scope="${cardScope}"] .set-head,
-               [data-excard-scope="${cardScope}"] .set-row{
-                 grid-template-columns: ${gridTemplateColumnsMobile};
-                 column-gap: 6px;
-               }
- 
-               /* a touch smaller header text helps */
-               [data-excard-scope="${cardScope}"] .set-head{
-                 font-size: 12px;
-               }
-             }
-           `}
-         </style>
- 
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.22 — Grid geometry
+     ------------------------------------------------------------------------ */
+  const cardScope = useMemo(() => `excard-${track.id}`, [track.id]);
 
+  const gridTemplateColumnsDesktop = useMemo(() => {
+    if (metricMode === "distance") return "64px 1.4fr 96px 200px 56px 44px 44px";
+    if (metricMode === "time") return "64px 1.4fr 56px 200px 56px 44px 44px";
+    return "64px 1.4fr 110px 110px 70px 44px 44px";
+  }, [metricMode]);
+
+  const gridTemplateColumnsMobile = useMemo(() => {
+    if (metricMode === "distance") return "44px minmax(0,1fr) 56px minmax(0,120px) 40px 32px 32px";
+    if (metricMode === "time") return "44px minmax(0,1fr) 40px minmax(0,120px) 40px 32px 32px";
+    return "44px minmax(0,1fr) 64px 64px 48px 32px 32px";
+  }, [metricMode]);
+
+  /* ------------------------------------------------------------------------
+     Breadcrumb 09.23 — Render
+     ------------------------------------------------------------------------ */
+  return (
+    <div className="card">
+      <div data-excard-scope={cardScope}>
+        <style>
+          {`
+            [data-excard-scope="${cardScope}"] .set-head,
+            [data-excard-scope="${cardScope}"] .set-row{
+              display: grid;
+              grid-template-columns: ${gridTemplateColumnsDesktop};
+              column-gap: 10px;
+              align-items: center;
+            }
+
+            [data-excard-scope="${cardScope}"] .set-row{
+              padding: 10px 0;
+            }
+
+            [data-excard-scope="${cardScope}"] .set-head{
+              font-size: 13px;
+              opacity: 0.75;
+              padding: 6px 0 10px 0;
+            }
+
+            [data-excard-scope="${cardScope}"] .set-row .row{
+              flex-wrap: nowrap;
+            }
+
+            [data-excard-scope="${cardScope}"] .cell-input{
+              min-width: 0;
+            }
+
+            @media (max-width: 520px){
+              [data-excard-scope="${cardScope}"] .set-head,
+              [data-excard-scope="${cardScope}"] .set-row{
+                grid-template-columns: ${gridTemplateColumnsMobile};
+                column-gap: 6px;
+              }
+
+              [data-excard-scope="${cardScope}"] .set-head{
+                font-size: 12px;
+              }
+            }
+          `}
+        </style>
+
+        {/* ------------------------------------------------------------------
+           Breadcrumb 09.23.a — Card header
+           ------------------------------------------------------------------ */}
         <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
           <div style={{ minWidth: 0 }}>
             <h3 style={{ marginBottom: 6 }}>{track.displayName}</h3>
 
-            {track.trackType !== "corrective" && track.trackingMode === "weightedReps" && (
+            {track.trackType !== "corrective" && loadedReps && (
               <div className="muted">
                 Rep range:{" "}
                 <b>
@@ -1073,7 +1158,6 @@ function ExerciseCard({
               </div>
             )}
 
-            {/* Cues trigger */}
             <div style={{ marginTop: 10 }} className="row">
               <button className="btn small" type="button" onClick={() => setShowCues(true)} aria-expanded={showCues}>
                 Cues
@@ -1093,7 +1177,6 @@ function ExerciseCard({
               </button>
             </div>
 
-            {/* Modal mount */}
             <CuesModal
               open={showCues}
               title={track.displayName}
@@ -1106,6 +1189,9 @@ function ExerciseCard({
 
         <hr />
 
+        {/* ------------------------------------------------------------------
+           Breadcrumb 09.23.b — Set table header
+           ------------------------------------------------------------------ */}
         <div className="set-table">
           <div className="set-head">
             <div>Set</div>
@@ -1117,109 +1203,107 @@ function ExerciseCard({
             <div></div>
           </div>
 
+          {/* ----------------------------------------------------------------
+             Breadcrumb 09.23.c — Set rows
+             ---------------------------------------------------------------- */}
           {currentSets.length ? (
-           currentSets.map((se) => {
-	     const done = !!se.completedAt;
-	   
-	     const label =
-	       se.setType === "warmup"
-	         ? "W"
-	         : se.setType === "drop"
-	         ? "D"
-	         : se.setType === "failure"
-	         ? "F"
-	         : String(workingIndexById.get(se.id) ?? "");
-	   
-	     const workingIndex = workingIndexById.get(se.id);
-	   
-	     // ✅ Mode-aware Previous
-	     const prevText = se.setType === "working" && workingIndex ? formatPrevForMode(se, workingIndex) : "";
-	   
-	     // reps mode uses weight x reps parsing for ghost placeholders; otherwise blank
-	     const prevParsed =
-	       metricMode === "reps" && se.setType === "working" && workingIndex ? parsePrev(prevText) : {};
-	   
-	     // ✅ Tap Previous => autofill missing fields (reps mode only)
-	     const onTapPrev = () => {
-	       const kind = ((se.setType as SetKind) ?? "working") as SetKind;
-	       if (kind !== "working") return;
-	   
-	       // Only reps mode supports weight+reps autofill right now
-	       if (metricMode !== "reps") return;
-	   
-	       const pw = (prevParsed as any).prevWeight as number | undefined;
-	       const pr = (prevParsed as any).prevReps as number | undefined;
-	   
-	       // Only fill missing values (won’t overwrite what you typed)
-	       if (se.weight === undefined && pw !== undefined) updateSet(se.id, { weight: pw });
-	       if (se.reps === undefined && pr !== undefined) updateSet(se.id, { reps: pr });
-	     };
-	   
-	     return (
-	       <SetRow
-	         key={se.id}
-	         rowDomId={`set-${se.id}`}
-	         se={se}
-	         label={label}
-	         prevText={prevText}
-	         prevParsed={prevParsed}
-	         track={track}
-	         metricMode={metricMode}
-	         done={done}
-	         compact={compact}
-	         onTapPrev={onTapPrev}   // ✅ NEW
-	         onChange={updateSet}
-	         onDelete={deleteSet}
-	         onSetType={async (t) => {
-	           const patch: Partial<SetEntryX> = { setType: t };
-	           if (t === "failure") patch.rir = 0;
-	           if (t === "warmup") patch.rir = undefined; // keep warmups clean
-	           await updateSet(se.id, patch);
-	         }}
-	         onToggleDone={async (next) => {
-	           // ✅ Don’t block checking when RIR is missing.
-	           // Finishing is gated in FinishSessionCard (missingRir).
-	           const kind = ((se.setType as SetKind) ?? "working") as SetKind;
-	   
-	           if (next) {
-	             const patch: Partial<SetEntryX> = { completedAt: Date.now() };
-	             if (kind === "failure") patch.rir = 0;
-	             if (kind === "warmup") patch.rir = undefined;
-	             await updateSet(se.id, patch);
-	   
-	             // ✅ TIMER START (only for non-warmup sets)
-	             if (kind !== "warmup") timer.start(restSec);
-	           } else {
-	             await updateSet(se.id, { completedAt: undefined });
-	           }
-	         }}
-	         onAcceptPrevWeight={() => {
-	           const kind = ((se.setType as SetKind) ?? "working") as SetKind;
-	           if (kind !== "working") return;
-	           if (metricMode !== "reps") return;
-	   
-	           if (se.weight === undefined && (prevParsed as any).prevWeight !== undefined) {
-	             updateSet(se.id, { weight: (prevParsed as any).prevWeight });
-	           }
-	         }}
-	         onAcceptPrevReps={() => {
-	           const kind = ((se.setType as SetKind) ?? "working") as SetKind;
-	           if (kind !== "working") return;
-	           if (metricMode !== "reps") return;
-	   
-	           if (se.reps === undefined && (prevParsed as any).prevReps !== undefined) {
-	             updateSet(se.id, { reps: (prevParsed as any).prevReps });
-	           }
-	         }}
-	       />
-	     );
-           })
+            currentSets.map((se) => {
+              const done = !!se.completedAt;
+
+              const label =
+                se.setType === "warmup"
+                  ? "W"
+                  : se.setType === "drop"
+                  ? "D"
+                  : se.setType === "failure"
+                  ? "F"
+                  : String(workingIndexById.get(se.id) ?? "");
+
+              const workingIndex = workingIndexById.get(se.id);
+
+              const prevText = se.setType === "working" && workingIndex ? formatPrevForMode(se, workingIndex) : "";
+
+              const prevParsed =
+                metricMode === "reps" && se.setType === "working" && workingIndex ? parsePrev(prevText) : {};
+
+              const onTapPrev = () => {
+                const kind = ((se.setType as SetKind) ?? "working") as SetKind;
+                if (kind !== "working") return;
+                if (metricMode !== "reps") return;
+
+                const pw = (prevParsed as any).prevWeight as number | undefined;
+                const pr = (prevParsed as any).prevReps as number | undefined;
+
+                if (se.weight === undefined && pw !== undefined) updateSet(se.id, { weight: pw });
+                if (se.reps === undefined && pr !== undefined) updateSet(se.id, { reps: pr });
+              };
+
+              return (
+                <SetRow
+                  key={se.id}
+                  rowDomId={`set-${se.id}`}
+                  se={se}
+                  label={label}
+                  prevText={prevText}
+                  prevParsed={prevParsed}
+                  track={track}
+                  metricMode={metricMode}
+                  loadedReps={loadedReps}
+                  done={done}
+                  compact={compact}
+                  onTapPrev={onTapPrev}
+                  onChange={updateSet}
+                  onDelete={deleteSet}
+                  onSetType={async (t) => {
+                    const patch: Partial<SetEntryX> = { setType: t };
+                    if (t === "failure") patch.rir = 0;
+                    if (t === "warmup") patch.rir = undefined;
+                    await updateSet(se.id, patch);
+                  }}
+                  onToggleDone={async (next) => {
+                    const kind = ((se.setType as SetKind) ?? "working") as SetKind;
+
+                    if (next) {
+                      const patch: Partial<SetEntryX> = { completedAt: Date.now() };
+                      if (kind === "failure") patch.rir = 0;
+                      if (kind === "warmup") patch.rir = undefined;
+                      await updateSet(se.id, patch);
+
+                      if (kind !== "warmup") timer.start(restSec);
+                    } else {
+                      await updateSet(se.id, { completedAt: undefined });
+                    }
+                  }}
+                  onAcceptPrevWeight={() => {
+                    const kind = ((se.setType as SetKind) ?? "working") as SetKind;
+                    if (kind !== "working") return;
+                    if (metricMode !== "reps") return;
+
+                    if (se.weight === undefined && (prevParsed as any).prevWeight !== undefined) {
+                      updateSet(se.id, { weight: (prevParsed as any).prevWeight });
+                    }
+                  }}
+                  onAcceptPrevReps={() => {
+                    const kind = ((se.setType as SetKind) ?? "working") as SetKind;
+                    if (kind !== "working") return;
+                    if (metricMode !== "reps") return;
+
+                    if (se.reps === undefined && (prevParsed as any).prevReps !== undefined) {
+                      updateSet(se.id, { reps: (prevParsed as any).prevReps });
+                    }
+                  }}
+                />
+              );
+            })
           ) : (
             <div className="muted" style={{ padding: "10px 2px" }}>
               No sets logged yet.
             </div>
           )}
 
+          {/* ----------------------------------------------------------------
+             Breadcrumb 09.23.d — Add set / rest buttons
+             ---------------------------------------------------------------- */}
           <div className="set-add-row" style={{ marginTop: 8 }}>
             <button className="btn small primary" onClick={addSet}>
               + Add Set
@@ -1235,11 +1319,9 @@ function ExerciseCard({
             </div>
           </div>
 
-          {/* =========================================================
-              ✅ TIMER UI (Option B)
-              - Desktop: renders as a normal banner inside the card
-              - Mobile: CSS docks it fixed at bottom of screen
-             ========================================================= */}
+          {/* ----------------------------------------------------------------
+             Breadcrumb 09.23.e — Rest banner
+             ---------------------------------------------------------------- */}
           {timer.running && (
             <div className="rest-banner" role="status" aria-live="polite">
               <div className="rest-banner-inner">
@@ -1272,28 +1354,13 @@ function ExerciseCard({
   );
 }
 
-// --- Breadcrumb 11 ----------------------------------------------------------
-// SetRow (clean row)
-// Adds:
-// - compact ghost placeholders (WORKING only)
-// - focus weight/reps to accept prev value (WORKING only)
-// - checkbox locks row; uncheck unlocks row
-// - completed WORKING sets get green outline (ring) via inline style
-// ✅ MetricMode-aware inputs:
-//    - reps: weight + reps (+ RIR for weightedReps; existing behavior)
-//    - distance: distance + unit (optionally weight for weighted movements), RIR hidden
-//    - time: mm:ss input stored as seconds, RIR hidden
-// ✅ Decimal-safe RIR typing:
-//    - allows ".", "2.", ".5", "2.5"
-//    - commits number on blur/enter
-//
-// Refactor (this iteration):
-// - BC11a: set type + row flags
-// - BC11b: ghost placeholders + ring styles
-// - BC11c: decimal-safe RIR editor state
-// - BC11d: time editor state (mm:ss typing without fighting)
-// - BC11e: render blocks (reps / distance / time)
-// ---------------------------------------------------------------------------
+/* ============================================================================
+   Breadcrumb 10 — SetRow
+   - reps / distance / time rendering
+   - decimal-safe RIR
+   - compact ghosts
+   - loaded-reps aware
+   ============================================================================ */
 function SetRow({
   rowDomId,
   se,
@@ -1302,9 +1369,10 @@ function SetRow({
   prevParsed,
   track,
   metricMode,
+  loadedReps,
   done,
   compact,
-  onTapPrev, // ✅ NEW
+  onTapPrev,
   onChange,
   onDelete,
   onSetType,
@@ -1319,9 +1387,10 @@ function SetRow({
   prevParsed: { prevWeight?: number; prevReps?: number };
   track: Track;
   metricMode: "reps" | "distance" | "time";
+  loadedReps: boolean;
   done: boolean;
   compact: boolean;
-  onTapPrev: () => void; // ✅ NEW
+  onTapPrev: () => void;
   onChange: (id: string, patch: Partial<SetEntryX>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onSetType: (t: SetKind) => Promise<void>;
@@ -1329,7 +1398,9 @@ function SetRow({
   onAcceptPrevWeight: () => void;
   onAcceptPrevReps: () => void;
 }) {
-  // --- Breadcrumb 11a (Set type + row flags) --------------------------------
+  /* ------------------------------------------------------------------------
+     Breadcrumb 10.1 — Row refs / state flags
+     ------------------------------------------------------------------------ */
   const selectRef = useRef<HTMLSelectElement | null>(null);
 
   function openTypePicker() {
@@ -1341,17 +1412,14 @@ function SetRow({
   const isWorking = kind === "working";
   const locked = done;
 
-  // Local widening for distance without requiring immediate db.ts updates
   const distance = (se as any).distance as number | undefined;
-  const distanceUnit = ((se as any).distanceUnit as string | undefined) ?? "mi"; // cardio-friendly default
+  const distanceUnit = ((se as any).distanceUnit as string | undefined) ?? "mi";
 
-  // Weight cell usage:
-  // - reps mode: only when weightedReps (existing behavior)
-  // - distance mode: show weight only when the track is actually weight-based (eg sled/prowler)
-  // - time mode: hide weight by default
   const showWeightInDistance = track.trackingMode === "weightedReps";
 
-  // --- Breadcrumb 11b (Ghost placeholders + ring styles) ---------------------
+  /* ------------------------------------------------------------------------
+     Breadcrumb 10.2 — Ghost placeholders / ring
+     ------------------------------------------------------------------------ */
   const ghostWeight =
     compact && isWorking && se.weight === undefined && prevParsed.prevWeight !== undefined
       ? String(prevParsed.prevWeight)
@@ -1364,7 +1432,6 @@ function SetRow({
 
   const rowClass = "set-row" + (done ? " done" : "") + (kind === "warmup" ? " warmup" : "");
 
-  // Green outline for completed WORKING sets only
   const ringStyle: React.CSSProperties =
     done && isWorking
       ? {
@@ -1374,7 +1441,9 @@ function SetRow({
         }
       : {};
 
-  // --- Breadcrumb 11c (Decimal-safe RIR typing) ------------------------------
+  /* ------------------------------------------------------------------------
+     Breadcrumb 10.3 — Decimal-safe RIR editor
+     ------------------------------------------------------------------------ */
   function normalizeDecimalInput(raw: string): string {
     return (raw ?? "").replace(",", ".").trim();
   }
@@ -1383,10 +1452,7 @@ function SetRow({
     const t = normalizeDecimalInput(raw);
     if (!t) return undefined;
 
-    // allow ".5" -> 0.5
     if (/^\.\d+$/.test(t)) return Math.max(0, Number(`0${t}`));
-
-    // allow "2." -> 2
     if (/^\d+\.$/.test(t)) return Math.max(0, Number(t.slice(0, -1)));
 
     const n = Number(t);
@@ -1400,17 +1466,12 @@ function SetRow({
     setRirText(v === undefined || v === null ? "" : String(v));
   }, [se.id, (se as any).rir]);
 
-  // Show RIR only when it matters:
-  // - reps metricMode
-  // - weightedReps trackingMode
-  // - working sets only
-  // - NOT correctives (your preference)
   const showRir =
-    metricMode === "reps" && track.trackingMode === "weightedReps" && isWorking && track.trackType !== "corrective";
+    metricMode === "reps" && loadedReps && isWorking && track.trackType !== "corrective";
 
-  // --- Breadcrumb 11d (Time editor state: mm:ss typing without fighting) -----
-  // NOTE: This fixes the “can only enter a single digit” feeling by decoupling
-  // the typing string from the formatted seconds display.
+  /* ------------------------------------------------------------------------
+     Breadcrumb 10.4 — Time editor state
+     ------------------------------------------------------------------------ */
   const [timeText, setTimeText] = useState<string>("");
 
   useEffect(() => {
@@ -1418,10 +1479,14 @@ function SetRow({
     setTimeText(sec === undefined || sec === null ? "" : formatSecondsToMMSS(sec));
   }, [se.id, (se as any).seconds]);
 
-  // --- Prev-cell clickability (reps mode only) -------------------------------
+  /* ------------------------------------------------------------------------
+     Breadcrumb 10.5 — Prev cell clickability
+     ------------------------------------------------------------------------ */
   const canTapPrev = !locked && isWorking && metricMode === "reps" && !!(prevText || "").trim();
 
-  // --- Breadcrumb 11e (Render) ----------------------------------------------
+  /* ------------------------------------------------------------------------
+     Breadcrumb 10.6 — Render
+     ------------------------------------------------------------------------ */
   return (
     <div id={rowDomId} className={rowClass} style={ringStyle}>
       <div className="set-badge-wrap">
@@ -1468,12 +1533,12 @@ function SetRow({
         {prevText || "—"}
       </div>
 
-      {/* -------------------------------------------------------------------
-         REPS MODE (existing behavior preserved, with decimal-safe RIR)
-         ------------------------------------------------------------------- */}
+      {/* --------------------------------------------------------------------
+         Breadcrumb 10.6.a — REPS MODE
+         -------------------------------------------------------------------- */}
       {metricMode === "reps" && (
         <>
-          {track.trackingMode === "weightedReps" && (
+          {loadedReps && (
             <>
               <input
                 className="cell-input"
@@ -1503,11 +1568,6 @@ function SetRow({
                 disabled={locked}
               />
 
-              {/* ✅ RIR:
-                  - show ONLY when showRir (working + non-corrective)
-                  - decimals allowed (including ".", "2.", ".5")
-                  - blank allowed (stores undefined)
-                  - commit to DB on blur/enter */}
               {showRir ? (
                 <input
                   className="cell-input"
@@ -1537,7 +1597,7 @@ function SetRow({
             </>
           )}
 
-          {track.trackingMode === "repsOnly" && (
+          {!loadedReps && track.trackingMode === "repsOnly" && (
             <>
               <div className="muted">—</div>
               <input
@@ -1552,7 +1612,7 @@ function SetRow({
             </>
           )}
 
-          {track.trackingMode === "timeSeconds" && (
+          {!loadedReps && track.trackingMode === "timeSeconds" && (
             <>
               <div className="muted">—</div>
               <input
@@ -1568,7 +1628,7 @@ function SetRow({
             </>
           )}
 
-          {track.trackingMode === "breaths" && (
+          {!loadedReps && track.trackingMode === "breaths" && (
             <>
               <div className="muted">—</div>
               <input
@@ -1583,7 +1643,7 @@ function SetRow({
             </>
           )}
 
-          {track.trackingMode === "checkbox" && (
+          {!loadedReps && track.trackingMode === "checkbox" && (
             <>
               <div className="muted">—</div>
               <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1601,12 +1661,9 @@ function SetRow({
         </>
       )}
 
-      {/* -------------------------------------------------------------------
-         DISTANCE MODE
-         - Distance + Unit
-         - Optional weight only when track is weight-based
-         - RIR hidden
-         ------------------------------------------------------------------- */}
+      {/* --------------------------------------------------------------------
+         Breadcrumb 10.6.b — DISTANCE MODE
+         -------------------------------------------------------------------- */}
       {metricMode === "distance" && (
         <>
           {showWeightInDistance ? (
@@ -1658,12 +1715,9 @@ function SetRow({
         </>
       )}
 
-      {/* -------------------------------------------------------------------
-         TIME MODE
-         - mm:ss typing without fighting
-         - commit seconds on blur/enter
-         - Weight hidden + RIR hidden
-         ------------------------------------------------------------------- */}
+      {/* --------------------------------------------------------------------
+         Breadcrumb 10.6.c — TIME MODE
+         -------------------------------------------------------------------- */}
       {metricMode === "time" && (
         <>
           <div className="muted">—</div>
@@ -1700,6 +1754,9 @@ function SetRow({
         </>
       )}
 
+      {/* --------------------------------------------------------------------
+         Breadcrumb 10.6.d — Completion + delete
+         -------------------------------------------------------------------- */}
       <div className="check-cell">
         <input
           type="checkbox"
@@ -1717,17 +1774,13 @@ function SetRow({
     </div>
   );
 }
-// --- Breadcrumb 12 ----------------------------------------------------------
-// FinishSessionCard (single bottom-only finish)
-//
-// Updated Behavior:
-// - Hide all warnings/review by default
-// - On "Finish session" click:
-//    - If OK -> call onFinish()
-//    - If NOT OK -> reveal warnings + tappable review list (tap to jump)
-// - Rule 2 (RIR): ONLY for non-corrective + weightedReps + metricMode=reps + completed working sets
-// - ✅ Cancel session button next to Finish (deletes sets + session)
-// ---------------------------------------------------------------------------
+
+/* ============================================================================
+   Breadcrumb 11 — FinishSessionCard
+   - bottom-only finish control
+   - review hidden until user taps Finish
+   - finish gate aligned with loaded-reps inference
+   ============================================================================ */
 function FinishSessionCard({
   sessionId,
   tracks,
@@ -1743,15 +1796,20 @@ function FinishSessionCard({
 }) {
   const nav = useNavigate();
 
-  // --- Breadcrumb 12.1 (UI state: hide review until user tries to finish) ---
+  /* ------------------------------------------------------------------------
+     Breadcrumb 11.1 — Review visibility
+     ------------------------------------------------------------------------ */
   const [showReview, setShowReview] = useState(false);
 
-  // --- Breadcrumb 12.2 (Track lookup) ---------------------------------------
+  /* ------------------------------------------------------------------------
+     Breadcrumb 11.2 — Track lookup maps
+     ------------------------------------------------------------------------ */
   const trackById = useMemo(() => new Map(tracks.map((t) => [t.id, t] as const)), [tracks]);
   const trackNameById = useMemo(() => new Map(tracks.map((t) => [t.id, t.displayName] as const)), [tracks]);
 
-  // --- Breadcrumb 12.2b (Exercise lookup for metricMode) --------------------
-  // Back-compat: if exercises don't yet have metricMode, treat as "reps".
+  /* ------------------------------------------------------------------------
+     Breadcrumb 11.3 — Exercise lookup for metric mode
+     ------------------------------------------------------------------------ */
   const exerciseIdsKey = useMemo(() => {
     const ids = Array.from(new Set((tracks ?? []).map((t) => t.exerciseId).filter(Boolean)));
     return ids.join("|");
@@ -1768,70 +1826,67 @@ function FinishSessionCard({
     return m;
   }, [exerciseIdsKey]);
 
-  function metricModeForTrack(tr: Track): "reps" | "distance" | "time" {
-    // Default to "reps" until DB + seeds are updated.
+  function metricModeForTrack(tr: Track): MetricModeX {
     const ex = exerciseById?.get(tr.exerciseId);
     const mm = (ex as any)?.metricMode;
     if (mm === "distance" || mm === "time" || mm === "reps") return mm;
     return "reps";
   }
 
-   // --- Breadcrumb 12.3 (Compute problems) -----------------------------------
-   const review = useMemo(() => {
-     const working = (sets ?? []).filter((s) => (((s.setType as SetKind) ?? "working") as SetKind) === "working");
- 
-     const unchecked = working.filter((s) => !s.completedAt);
- 
-     // Rule 2: require RIR only for:
-     // - completed sets
-     // - NON-corrective tracks
-     // - weightedReps mode
-     // - metricMode === "reps" (distance/time shouldn't be blocked by RIR)
-     // - ✅ extra safety: only if the set has weight+reps (import oddities won't block finishing)
-     // - ✅ extra safety: RIR must be a finite number (reject NaN/Infinity/strings from imports)
-     const missingRir = working.filter((s) => {
-       if (!s.completedAt) return false;
- 
-       const tr = trackById.get(s.trackId);
-       if (!tr) return false;
- 
-       if (tr.trackType === "corrective") return false;
-       if (tr.trackingMode !== "weightedReps") return false;
- 
-       const mm = metricModeForTrack(tr);
-       if (mm !== "reps") return false;
- 
-       const hasWR = typeof (s as any).weight === "number" && typeof (s as any).reps === "number";
-       if (!hasWR) return false;
- 
-       const rir = (s as any).rir;
-       const rirOk = typeof rir === "number" && Number.isFinite(rir);
-       return !rirOk;
-     });
- 
-     const problems = [
-       ...unchecked.map((s) => ({
-         kind: "unchecked" as const,
-         setId: s.id,
-         trackId: s.trackId,
-         label: "Not checked",
-       })),
-       ...missingRir.map((s) => ({
-         kind: "missingRir" as const,
-         setId: s.id,
-         trackId: s.trackId,
-         label: "Missing RIR",
-       })),
-     ];
- 
-     return {
-       uncheckedCount: unchecked.length,
-       missingRirCount: missingRir.length,
-       problems,
-       canFinish: problems.length === 0,
-     };
-  }, [sets, trackById, exerciseById]); // include exerciseById so metricMode updates re-compute
-  // --- Breadcrumb 12.4 (Scroll helper) --------------------------------------
+  /* ------------------------------------------------------------------------
+     Breadcrumb 11.4 — Review computation
+     ------------------------------------------------------------------------ */
+  const review = useMemo(() => {
+    const working = (sets ?? []).filter((s) => (((s.setType as SetKind) ?? "working") as SetKind) === "working");
+
+    const unchecked = working.filter((s) => !s.completedAt);
+
+    const missingRir = working.filter((s) => {
+      if (!s.completedAt) return false;
+
+      const tr = trackById.get(s.trackId);
+      if (!tr) return false;
+
+      const mm = metricModeForTrack(tr);
+      if (!isLoadedRepsTrack(tr, mm)) return false;
+
+      const hasWR =
+        typeof (s as any).weight === "number" &&
+        typeof (s as any).reps === "number";
+
+      if (!hasWR) return false;
+
+      const rir = (s as any).rir;
+      const rirOk = typeof rir === "number" && Number.isFinite(rir);
+      return !rirOk;
+    });
+
+    const problems = [
+      ...unchecked.map((s) => ({
+        kind: "unchecked" as const,
+        setId: s.id,
+        trackId: s.trackId,
+        label: "Not checked",
+      })),
+      ...missingRir.map((s) => ({
+        kind: "missingRir" as const,
+        setId: s.id,
+        trackId: s.trackId,
+        label: "Missing RIR",
+      })),
+    ];
+
+    return {
+      uncheckedCount: unchecked.length,
+      missingRirCount: missingRir.length,
+      problems,
+      canFinish: problems.length === 0,
+    };
+  }, [sets, trackById, exerciseById]);
+
+  /* ------------------------------------------------------------------------
+     Breadcrumb 11.5 — Scroll helper
+     ------------------------------------------------------------------------ */
   function scrollToSet(setId: string, trackId: string) {
     const row = document.getElementById(`set-${setId}`);
     if (row) {
@@ -1842,21 +1897,24 @@ function FinishSessionCard({
     card?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  // --- Breadcrumb 12.5 (Click handler: finish-or-reveal) --------------------
+  /* ------------------------------------------------------------------------
+     Breadcrumb 11.6 — Finish click
+     ------------------------------------------------------------------------ */
   async function onClickFinish() {
     if (review.canFinish) {
       await onFinish();
       return;
     }
-    // reveal only when user tries to finish
     setShowReview(true);
   }
 
+  /* ------------------------------------------------------------------------
+     Breadcrumb 11.7 — Render
+     ------------------------------------------------------------------------ */
   return (
     <div className="card">
       <h3 style={{ marginBottom: 6 }}>Finish</h3>
 
-      {/* Hidden until Finish is clicked */}
       {showReview && !review.canFinish && (
         <>
           <div className="muted" style={{ marginBottom: 10 }}>
@@ -1899,7 +1957,6 @@ function FinishSessionCard({
       )}
 
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        {/* Left group: Finish + Cancel adjacent */}
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
           <button
             className="btn primary"
@@ -1922,8 +1979,9 @@ function FinishSessionCard({
   );
 }
 
-// --- Breadcrumb 13 (Helpers) ------------------------------------------------
-// Per-exercise rest timer
+/* ============================================================================
+   Breadcrumb 12 — Rest timer hook
+   ============================================================================ */
 function useRestTimer() {
   const [running, setRunning] = useState(false);
   const [remainingSec, setRemainingSec] = useState(0);
@@ -1947,7 +2005,6 @@ function useRestTimer() {
     setRunning(true);
   }
 
-  // ✅ TIMER CONTROL: +/- seconds while running
   function addSeconds(delta: number) {
     setRemainingSec((s) => {
       const next = Math.max(0, Math.floor(s + delta));
@@ -1956,7 +2013,6 @@ function useRestTimer() {
     });
   }
 
-  // ✅ TIMER CONTROL: user can cancel/skip the timer
   function stop() {
     setRunning(false);
     setRemainingSec(0);
@@ -1965,10 +2021,10 @@ function useRestTimer() {
   return { running, remainingSec, start, addSeconds, stop };
 }
 
-// --- Breadcrumb 14 (Helpers) ------------------------------------------------
-// Previous session’s same exercise + same working-set index
-// ✅ Supports reps (weight x reps), time (mm:ss), distance (dist + unit, optional weight)
-// Note: Uses local widening via `any` so db.ts does not need immediate updates.
+/* ============================================================================
+   Breadcrumb 13 — Previous session mapping by working index
+   - supports reps / time / distance
+   ============================================================================ */
 function usePrevByWorkingIndex(currentSessionId: string, trackId: string) {
   const data = useLiveQuery(async () => {
     const recent = (await db.sets.where("trackId").equals(trackId).reverse().sortBy("createdAt")) as SetEntryX[];
@@ -2016,15 +2072,13 @@ function usePrevByWorkingIndex(currentSessionId: string, trackId: string) {
       idx += 1;
 
       const wt = (s as any).weight as number | undefined;
-
-      // reps
       const reps = (s as any).reps as number | undefined;
+
       if (wt !== undefined && reps !== undefined) {
         m.set(idx, `${wt} x ${reps}`);
         continue;
       }
 
-      // time (seconds)
       const seconds = (s as any).seconds as number | undefined;
       if (seconds !== undefined) {
         const t = formatMMSS(seconds);
@@ -2032,7 +2086,6 @@ function usePrevByWorkingIndex(currentSessionId: string, trackId: string) {
         continue;
       }
 
-      // distance
       const distance = (s as any).distance as number | undefined;
       const unit = ((s as any).distanceUnit as string | undefined) ?? "m";
       if (distance !== undefined) {
@@ -2041,8 +2094,6 @@ function usePrevByWorkingIndex(currentSessionId: string, trackId: string) {
         else m.set(idx, distTxt);
         continue;
       }
-
-      // else: no mapping for this working index
     }
 
     return m;
@@ -2050,11 +2101,10 @@ function usePrevByWorkingIndex(currentSessionId: string, trackId: string) {
 
   return map;
 }
-// --- Breadcrumb 15 (Dev-only overlay) --------------------------------------
-// Clean dev HUD:
-// - Collapsed by default into a tiny chip
-// - Tap to expand/collapse
-// - Remembers preference in localStorage
+
+/* ============================================================================
+   Breadcrumb 14 — Dev-only overlay
+   ============================================================================ */
 function DevGymOverlay({
   sessionId,
   sets,
@@ -2102,12 +2152,10 @@ function DevGymOverlay({
     });
   }, [sets, sessionId, trackNameById]);
 
-  // --- collapsed state (persisted) ---
   const storageKey = "devHudCollapsed";
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
       const v = localStorage.getItem(storageKey);
-      // default = collapsed (true)
       return v === null ? true : v === "1";
     } catch {
       return true;
@@ -2120,7 +2168,6 @@ function DevGymOverlay({
     } catch {}
   }, [collapsed]);
 
-  // Tiny chip size when collapsed
   if (collapsed) {
     return (
       <button
@@ -2154,7 +2201,6 @@ function DevGymOverlay({
     );
   }
 
-  // Expanded panel
   return (
     <div
       style={{
@@ -2229,3 +2275,8 @@ function DevGymOverlay({
     </div>
   );
 }
+
+
+/* ========================================================================== */
+/*  End of file: src/pages/GymPage.tsx                                       */
+/* ========================================================================== */
