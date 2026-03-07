@@ -6,3 +6,4 @@ dist
 *.log
 .vscode/
 .idea/
+src/seed/backup.exercises.seed.with_cues.json

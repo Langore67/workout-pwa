@@ -2,7 +2,7 @@
 /* ============================================================================
    wipeHistoryOnly.ts — Clear workout history while keeping catalog/templates
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-06-WIPEHISTORY-02
+   BUILD_ID: 2026-03-06-WIPEHISTORY-03
 
    Clears (if present)
    - sessions
@@ -22,6 +22,7 @@
    ============================================================================ */
 
 import { db } from "./db";
+import { addAppLog } from "./appLog";
 
 async function clearTableIfExists(name: string): Promise<void> {
   const t = db.tables.find((x) => x.name === name);
@@ -44,5 +45,11 @@ export async function wipeWorkoutHistoryOnly(): Promise<void> {
     // Derived / cached PR tables
     await clearTableIfExists("trackPrs");
     await clearTableIfExists("prs"); // legacy fallback if older table still exists
+  });
+
+  await addAppLog({
+    type: "wipe",
+    level: "info",
+    message: "Wiped workout history only",
   });
 }

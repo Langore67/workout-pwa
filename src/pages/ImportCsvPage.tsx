@@ -12,6 +12,7 @@ import {
   normalizeName,
 } from "../db";
 import { uuid } from "../utils";
+import { addAppLog } from "../appLog";
 
 /**
  * Imports journal CSV
@@ -240,11 +241,24 @@ export default function ImportCsvPage() {
       liftRows.map((r) => normalizeExerciseName(String(r.exercise || ""))).filter((x) => x.length > 0)
     );
 
-    setPreview({
-      totalRows: rows.length,
-      liftRows: liftRows.length,
-      uniqueExercises: uniqueExercises.size,
-    });
+        setPreview({
+          totalRows: rows.length,
+          liftRows: liftRows.length,
+          uniqueExercises: uniqueExercises.size,
+        });
+    
+        await addAppLog({
+          type: "import",
+          level: "info",
+          message: "Parsed CSV for preview",
+          detailsJson: JSON.stringify({
+            fileName: file.name,
+            totalRows: rows.length,
+            liftRows: liftRows.length,
+            uniqueExercises: uniqueExercises.size,
+          }),
+        });
+    
     setStatus("Parsed ✓ Ready to import.");
   }
 
@@ -264,13 +278,25 @@ export default function ImportCsvPage() {
     const siIds = await db.sessionItems.where("sessionId").anyOf(rec.sessionIds).primaryKeys();
     if (siIds.length) await db.sessionItems.bulkDelete(siIds as string[]);
 
-    await db.sessions.bulkDelete(rec.sessionIds);
-
-    clearLastImport();
-    setLastImport(null);
-
-    setStatus(
-      `Rollback complete ✓ Deleted ${rec.sessionIds.length} sessions, ${siIds.length} session items, ${setIds.length} sets. (Tracks/Exercises left intact.)`
+        await db.sessions.bulkDelete(rec.sessionIds);
+    
+        clearLastImport();
+        setLastImport(null);
+    
+        await addAppLog({
+          type: "import",
+          level: "warn",
+          message: "Rolled back last import",
+          detailsJson: JSON.stringify({
+            importId: rec.importId,
+            sessionCount: rec.sessionIds.length,
+            deletedSessionItems: siIds.length,
+            deletedSets: setIds.length,
+          }),
+        });
+    
+        setStatus(
+          `Rollback complete ✓ Deleted ${rec.sessionIds.length} sessions, ${siIds.length} session items, ${setIds.length} sets. (Tracks/Exercises left intact.)`
     );
   }
 
@@ -474,9 +500,23 @@ export default function ImportCsvPage() {
 
     const summary = `Exercises +${newExercises.length}, Tracks +${newTracks.length}, Sessions +${sessionsToAdd.length}, SessionItems +${sessionItemsToAdd.length}, Sets +${setsToAdd.length}`;
 
-    if (dryRun) {
-      setStatus(`Dry run ✓ Would add: ${summary}`);
-      return;
+        if (dryRun) {
+          await addAppLog({
+            type: "import",
+            level: "info",
+            message: "Completed import dry run",
+            detailsJson: JSON.stringify({
+              fileName: file.name,
+              exercisesAdded: newExercises.length,
+              tracksAdded: newTracks.length,
+              sessionsAdded: sessionsToAdd.length,
+              sessionItemsAdded: sessionItemsToAdd.length,
+              setsAdded: setsToAdd.length,
+            }),
+          });
+    
+          setStatus(`Dry run ✓ Would add: ${summary}`);
+          return;
     }
 
     if (newExercises.length) await db.exercises.bulkAdd(newExercises);
@@ -492,9 +532,24 @@ export default function ImportCsvPage() {
       summary,
     };
 
-    saveLastImport(rec);
-    setLastImport(rec);
-
+        saveLastImport(rec);
+        setLastImport(rec);
+    
+        await addAppLog({
+          type: "import",
+          level: "info",
+          message: "Imported CSV successfully",
+          detailsJson: JSON.stringify({
+            fileName: file.name,
+            exercisesAdded: newExercises.length,
+            tracksAdded: newTracks.length,
+            sessionsAdded: sessionsToAdd.length,
+            sessionItemsAdded: sessionItemsToAdd.length,
+            setsAdded: setsToAdd.length,
+            importId,
+          }),
+        });
+    
     setStatus(`Imported ✓ ${summary}\nSaved rollback handle: ${importId}`);
   }
 

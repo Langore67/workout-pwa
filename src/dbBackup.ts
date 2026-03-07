@@ -8,6 +8,7 @@
 // - uses bulkPut for safer idempotent restore
 
 import { db } from "./db";
+import { addAppLog } from "./appLog";
 
 type BackupMeta = {
   app: string;
@@ -139,6 +140,16 @@ export async function backupDbToDownload() {
 
   const filename = `workoutapp_backup_${isoStamp()}.json`;
   downloadText(filename, JSON.stringify(payload, null, 2));
+  await addAppLog({
+      type: "export",
+      level: "info",
+      message: "Created DB backup",
+      detailsJson: JSON.stringify({
+        filename,
+        tableCount: Object.keys(tables).length,
+      }),
+  });
+  
   return filename;
 }
 
@@ -156,22 +167,33 @@ export async function restoreDbFromJsonText(jsonText: string) {
   const payloadTableNames = Object.keys(payload.tables);
   const restoreOrder = buildRestoreOrder(payloadTableNames);
 
-  await db.transaction("rw", db.tables, async () => {
-    // Clear only live tables in the current DB
-    for (const t of db.tables) {
-      await (t as any).clear();
-    }
-
-    // Restore in explicit order first
-    for (const tableName of restoreOrder) {
-      const table = db.table(tableName);
-      const rows = payload.tables[tableName];
-
-      if (Array.isArray(rows) && rows.length) {
-        await (table as any).bulkPut(rows);
-      }
-    }
-  });
-
-  return true;
+   await db.transaction("rw", db.tables, async () => {
+     // Clear only live tables in the current DB
+     for (const t of db.tables) {
+       await (t as any).clear();
+     }
+ 
+     // Restore in explicit order first
+     for (const tableName of restoreOrder) {
+       const table = db.table(tableName);
+       const rows = payload.tables[tableName];
+ 
+       if (Array.isArray(rows) && rows.length) {
+         await (table as any).bulkPut(rows);
+       }
+     }
+   });
+ 
+   await addAppLog({
+     type: "restore",
+     level: "info",
+     message: "Restored DB from backup JSON",
+     detailsJson: JSON.stringify({
+       tableCount: restoreOrder.length,
+       backupVersion: payload.meta?.backupVersion ?? null,
+       exportedAt: payload.meta?.exportedAt ?? null,
+     }),
+   });
+ 
+   return true;
 }

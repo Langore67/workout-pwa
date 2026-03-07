@@ -27,6 +27,8 @@ import SessionCompletePage from "./pages/SessionCompletePage";
 import SessionDetailPage from "./pages/SessionDetailPage";
 import DevDiagnosticsPage from "./pages/DevDiagnosticsPage";
 import ImportCsvPage from "./pages/ImportCsvPage";
+import HelpPage from "./pages/HelpPage";
+import LogsPage from "./pages/LogsPage";
 
 // Flip this to false at any time to instantly restore baseline behavior.
 const USE_NEW_GYM_PAGE = true;
@@ -108,18 +110,24 @@ export default function App() {
             Walks
           </NavLink>
 
-          <NavLink to="/history" className={({ isActive }) => (isActive ? "active" : "")}>
-            History
-          </NavLink>
-          
           {import.meta.env.DEV && (
-	              <NavLink to="/dev" className={({ isActive }) => (isActive ? "active" : "")}>
-	                Dev
+	    <NavLink to="/dev" className={({ isActive }) => (isActive ? "active" : "")}>
+	      Dev
+	      </NavLink>
+	  )}
+	  
+	            {import.meta.env.DEV && (
+	              <NavLink to="/logs" className={({ isActive }) => (isActive ? "active" : "")}>
+	                Logs
 	              </NavLink>
-          )}       
-
-          <NavLink to="/export" className={({ isActive }) => (isActive ? "active" : "")}>
-            Export
+	            )}
+	  
+	            <NavLink to="/help" className={({ isActive }) => (isActive ? "active" : "")}>
+	              Help
+	            </NavLink>
+	  
+	            <NavLink to="/export" className={({ isActive }) => (isActive ? "active" : "")}>
+	              Export
           </NavLink>
         </div>
       </div>
@@ -148,6 +156,8 @@ export default function App() {
 
             <Route path="/walks" element={<WalksPage />} />
 	    <Route path="/history" element={<HistoryPage />} />
+	    <Route path="/help" element={<HelpPage />} />
+	    <Route path="/logs" element={<LogsPage />} />
 	    <Route path="/import" element={<ImportCsvPage />} />
             <Route path="/export" element={<ExportPage />} />
 

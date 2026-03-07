@@ -326,6 +326,15 @@ export interface AppMeta {
   updatedAt: number;
 }
 
+export interface AppLogEntry {
+  id: UUID;
+  createdAt: number;
+  type: "import" | "export" | "restore" | "wipe" | "system";
+  level: "info" | "warn" | "error";
+  message: string;
+  detailsJson?: string;
+}
+
 /* ============================================================
    Dexie DB
    ============================================================ */
@@ -343,6 +352,7 @@ export class WorkoutDB extends Dexie {
   trackPrs!: Table<TrackPRs, UUID>;
   bodyMetrics!: Table<BodyMetricEntry, UUID>;
   app_meta!: Table<AppMeta, string>;
+  appLogs!: Table<AppLogEntry, UUID>;
 
   constructor() {
     super("workout_mvp_db");
@@ -872,6 +882,34 @@ export class WorkoutDB extends Dexie {
         });
       });
     // ===== END OF v14 =====   
+    
+        // v15
+        this.version(15)
+          .stores({
+            exercises:
+              "id, &normalizedName, name, bodyPart, category, equipment, archivedAt, mergedIntoExerciseId, createdAt",
+            exerciseVariants:
+              "id, exerciseId, [exerciseId+normalizedName], name, archivedAt, mergedIntoVariantId, createdAt",
+            tracks: "id, exerciseId, variantId, trackType, displayName, createdAt",
+            folders: "id, orderIndex, name, archivedAt, createdAt",
+            templates: "id, name, createdAt, folderId, archivedAt, orderIndex, lastPerformedAt",
+            templateItems: "id, templateId, orderIndex, trackId, groupId, createdAt",
+            sessions: "id, startedAt, endedAt, templateId, updatedAt, deletedAt",
+            sessionItems: "id, sessionId, orderIndex, trackId, createdAt",
+            sets: "id, sessionId, trackId, createdAt, setType, completedAt, updatedAt, deletedAt",
+            walks: "id, date, updatedAt, deletedAt",
+            trackPrs: "trackId, updatedAt",
+            bodyMetrics:
+              "id, measuredAt, takenAt, createdAt, weightLb, bodyFatPct, skeletalMuscleMassLb, visceralFatIndex, bodyWaterPct",
+            app_meta: "key, updatedAt",
+            appLogs: "id, createdAt, type, level",
+          })
+          .upgrade(async (tx) => {
+            await tx.table("appLogs").toCollection().modify((r: any) => {
+              if (r.detailsJson === null) r.detailsJson = undefined;
+            });
+          });
+    // ===== END OF v15 =====
     
   }
 }
