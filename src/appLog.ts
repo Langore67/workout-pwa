@@ -11,7 +11,7 @@ export interface AppLogInput {
   detailsJson?: string;
 }
 
-const MAX_APP_LOGS = 100;
+const MAX_APP_LOGS = 500;
 
 export async function addAppLog(input: AppLogInput): Promise<void> {
   const now = Date.now();
@@ -29,12 +29,12 @@ export async function addAppLog(input: AppLogInput): Promise<void> {
 }
 
 export async function trimAppLogs(maxEntries = MAX_APP_LOGS): Promise<void> {
-  const all = await db.appLogs.orderBy("createdAt").toArray();
-  const overflow = all.length - maxEntries;
+  const total = await db.appLogs.count();
+  const overflow = total - maxEntries;
   if (overflow <= 0) return;
 
-  const idsToDelete = all.slice(0, overflow).map((x) => x.id);
-  if (idsToDelete.length) {
-    await db.appLogs.bulkDelete(idsToDelete);
-  }
+  const oldest = await db.appLogs.orderBy("createdAt").limit(overflow).toArray();
+  if (!oldest.length) return;
+
+  await db.appLogs.bulkDelete(oldest.map((x) => x.id));
 }
