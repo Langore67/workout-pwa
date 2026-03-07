@@ -848,7 +848,7 @@ export class WorkoutDB extends Dexie {
         await tx.table("tracks").toCollection().modify((t: any) => {
           if (t.trackType !== "corrective") return;
 
-          const name = normalizeLoose(String(t.displayName ?? ""));
+          const name = normalizeName(String(t.displayName ?? ""));
 
           if (name.includes("crocodile breathing")) {
             t.trackingMode = "breaths";
