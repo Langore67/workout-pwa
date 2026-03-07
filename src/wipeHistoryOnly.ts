@@ -2,20 +2,23 @@
 /* ============================================================================
    wipeHistoryOnly.ts — Clear workout history while keeping catalog/templates
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-02-27-WIPEHISTORY-01
+   BUILD_ID: 2026-03-06-WIPEHISTORY-02
 
    Clears (if present)
    - sessions
    - sets
-   - prs (derived)
-   - walks (optional; included here)
+   - walks
+   - trackPrs
+   - prs (legacy fallback, if present)
 
    Keeps
    - exercises
+   - exerciseVariants
    - tracks
    - templates
    - templateItems
-   - folders (and other catalog/config tables)
+   - folders
+   - and other catalog/config tables
    ============================================================================ */
 
 import { db } from "./db";
@@ -27,18 +30,19 @@ async function clearTableIfExists(name: string): Promise<void> {
 }
 
 /**
- * Wipes ALL workout history while keeping your exercise catalog + templates.
+ * Wipes workout history while keeping the catalog/templates intact.
  */
 export async function wipeWorkoutHistoryOnly(): Promise<void> {
   await db.transaction("rw", db.tables, async () => {
-    // Core history
+    // Core training history
     await clearTableIfExists("sets");
     await clearTableIfExists("sessions");
 
-    // Optional history (comment out if you want to keep walks)
+    // Optional history
     await clearTableIfExists("walks");
 
-    // Derived / cached tables (if your app uses them)
-    await clearTableIfExists("prs");
+    // Derived / cached PR tables
+    await clearTableIfExists("trackPrs");
+    await clearTableIfExists("prs"); // legacy fallback if older table still exists
   });
 }

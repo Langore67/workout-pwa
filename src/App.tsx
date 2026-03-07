@@ -26,6 +26,7 @@ import ExportPage from "./pages/ExportPage";
 import SessionCompletePage from "./pages/SessionCompletePage";
 import SessionDetailPage from "./pages/SessionDetailPage";
 import DevDiagnosticsPage from "./pages/DevDiagnosticsPage";
+import ImportCsvPage from "./pages/ImportCsvPage";
 
 // Flip this to false at any time to instantly restore baseline behavior.
 const USE_NEW_GYM_PAGE = true;
@@ -146,7 +147,8 @@ export default function App() {
             <Route path="/gym-legacy/:sessionId" element={<GymPageLegacy />} />
 
             <Route path="/walks" element={<WalksPage />} />
-            <Route path="/history" element={<HistoryPage />} />
+	    <Route path="/history" element={<HistoryPage />} />
+	    <Route path="/import" element={<ImportCsvPage />} />
             <Route path="/export" element={<ExportPage />} />
 
             {/* Session pipeline */}

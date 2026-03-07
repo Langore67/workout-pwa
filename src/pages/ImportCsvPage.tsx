@@ -9,23 +9,36 @@ import {
   Track,
   TrackType,
   TrackingMode,
+  normalizeName,
 } from "../db";
 import { uuid } from "../utils";
 
 /**
- * Imports master_journal_v6.csv (journal export)
- * Columns: date, session_type, program_day, exercise, set, load, reps, rpe, rir, notes
+ * Imports journal CSV
+ * Columns:
+ * - date
+ * - session_type
+ * - program_day
+ * - exercise
+ * - set
+ * - load
+ * - reps
+ * - rpe
+ * - rir
+ * - notes
+ * - set_type   (optional; supports warmup / working / technique)
  *
  * Writes to Dexie:
- * - exercises (unique by name)
+ * - exercises (unique by normalizedName)
  * - tracks (one per exercise, points to exerciseId)
  * - sessions (Lift only, grouped by date + program_day)
- * - sessionItems (snapshot list so Session Review can display exercises)
- * - sets (warmup vs working inferred)
+ * - sessionItems
+ * - sets
  *
- * Rollback:
- * - deletes sessionItems + sets + sessions from the LAST successful import
- * - tracks/exercises remain
+ * Notes:
+ * - DB supports SetType: warmup | working | drop | failure
+ * - "technique" is not a DB SetType yet, so technique rows are imported as
+ *   working sets and tagged in notes as "technique".
  */
 
 type JournalRow = {
@@ -37,8 +50,9 @@ type JournalRow = {
   load?: string | number;
   reps?: string | number;
   rpe?: string | number;
-  rir?: string | number; // ignored (DB is RPE-only)
+  rir?: string | number;
   notes?: string;
+  set_type?: string;
 };
 
 type LastImportRecord = {
@@ -57,6 +71,7 @@ function saveLastImport(rec: LastImportRecord) {
 function loadLastImport(): LastImportRecord | null {
   const raw = localStorage.getItem(LAST_IMPORT_KEY);
   if (!raw) return null;
+
   try {
     const obj = JSON.parse(raw);
     if (!obj?.importId || !Array.isArray(obj.sessionIds)) return null;
@@ -70,51 +85,66 @@ function clearLastImport() {
   localStorage.removeItem(LAST_IMPORT_KEY);
 }
 
-function parseDateToMs(dateStr: string) {
+function parseDateToMs(dateStr: string): number {
   const [y, m, d] = dateStr.split("-").map((x) => Number(x));
   if (!y || !m || !d) return Date.now();
   return new Date(y, m - 1, d, 9, 0, 0, 0).getTime();
 }
 
-function normalizeExerciseName(name: string) {
+function normalizeExerciseName(name: string): string {
   let s = name.trim();
 
   if (s.toLowerCase().startsWith("warm-up ")) {
     s = s.slice("warm-up ".length).trim();
   }
+
   s = s.replace(/\s*\(warm-up\)\s*/gi, "").trim();
   s = s.replace(/\s+/g, " ").trim();
 
   return s;
 }
 
-function inferSetType(exerciseRaw: string) {
-  const s = (exerciseRaw || "").toLowerCase();
-  if (s.startsWith("warm-up ")) return "warmup" as const;
-  if (s.includes("(warm-up)")) return "warmup" as const;
-  return "working" as const;
+function inferSetType(row: JournalRow): "warmup" | "working" {
+  const explicit = String(row.set_type || "").trim().toLowerCase();
+  if (explicit === "warmup") return "warmup";
+  if (explicit === "working") return "working";
+  if (explicit === "technique") return "working"; // DB does not support "technique" yet
+
+  const notes = String(row.notes || "").toLowerCase();
+  if (notes.includes("set_type=warmup")) return "warmup";
+  if (notes.includes("set_type=technique")) return "working";
+
+  const ex = String(row.exercise || "").toLowerCase();
+  if (ex.startsWith("warm-up ")) return "warmup";
+  if (ex.includes("(warm-up)")) return "warmup";
+
+  return "working";
 }
 
-function num(v: any): number | undefined {
+function num(v: unknown): number | undefined {
   if (v === null || v === undefined) return undefined;
+
   const s = String(v).trim();
   if (!s || s.toLowerCase() === "nan") return undefined;
+
   const n = Number(s);
   return Number.isFinite(n) ? n : undefined;
 }
 
-function parseWeight(loadRaw: any): number | undefined {
+function parseWeight(loadRaw: unknown): number | undefined {
   if (loadRaw === null || loadRaw === undefined) return undefined;
+
   const s = String(loadRaw).trim();
   if (!s || s.toLowerCase() === "nan") return undefined;
 
   if (s.toLowerCase() === "bar") return 45;
   if (s.toLowerCase() === "bw") return 0;
+  if (s.toLowerCase() === "bodyweight") return 0;
 
   const dumbbellMatch = s.match(/^(\d+(\.\d+)?)s$/i);
   if (dumbbellMatch) return Number(dumbbellMatch[1]);
 
-  const assistMatch = s.match(/^(\d+(\.\d+)?)\s*assist$/i);
+  const assistMatch = s.match(/^(-?\d+(\.\d+)?)\s*assist$/i);
   if (assistMatch) return Number(assistMatch[1]);
 
   const totalMatch = s.match(/\((\d+(\.\d+)?)\s*total\)/i);
@@ -128,20 +158,55 @@ function parseWeight(loadRaw: any): number | undefined {
 
 function inferTrackingMode(exerciseName: string): TrackingMode {
   const s = exerciseName.toLowerCase();
+
   if (s.includes("plank") || s.includes("hold")) return "timeSeconds";
   if (s.includes("band") || s.includes("pull-apart") || s.includes("pull apart")) return "repsOnly";
+
   return "weightedReps";
 }
 
 function defaultTrackType(exerciseName: string): TrackType {
   const s = exerciseName.toLowerCase();
-  if (s.includes("breathing") || s.includes("reset") || s.includes("mobility")) return "corrective";
+
+  if (s.includes("breathing") || s.includes("reset") || s.includes("mobility")) {
+    return "corrective";
+  }
+
   return "hypertrophy";
+}
+
+function parseRir(row: JournalRow): number | undefined {
+  const rirVal = num(row.rir);
+  if (rirVal !== undefined) return rirVal;
+
+  const rpeVal = num(row.rpe);
+  if (rpeVal !== undefined) {
+    const rirFromRpe = 10 - rpeVal;
+    return Number.isFinite(rirFromRpe) ? rirFromRpe : undefined;
+  }
+
+  return undefined;
+}
+
+function buildSetNotes(row: JournalRow): string | undefined {
+  const parts: string[] = [];
+  const st = String(row.set_type || "").trim().toLowerCase();
+
+  if (st === "technique") parts.push("technique");
+
+  const noteText = String(row.notes || "").trim();
+  if (noteText) parts.push(noteText);
+
+  return parts.length ? parts.join(" | ") : undefined;
 }
 
 export default function ImportCsvPage() {
   const [status, setStatus] = useState<string>("");
-  const [preview, setPreview] = useState<{ totalRows: number; liftRows: number; uniqueExercises: number } | null>(null);
+  const [preview, setPreview] = useState<{
+    totalRows: number;
+    liftRows: number;
+    uniqueExercises: number;
+  } | null>(null);
   const [dryRun, setDryRun] = useState(true);
   const [fileObj, setFileObj] = useState<File | null>(null);
 
@@ -167,13 +232,19 @@ export default function ImportCsvPage() {
     }
 
     const rows = (parsed.data || []).filter(Boolean);
-    const liftRows = rows.filter((r) => (r.session_type || "").trim().toLowerCase() === "lift" && r.exercise);
+    const liftRows = rows.filter(
+      (r) => String(r.session_type || "").trim().toLowerCase() === "lift" && r.exercise
+    );
 
     const uniqueExercises = new Set(
       liftRows.map((r) => normalizeExerciseName(String(r.exercise || ""))).filter((x) => x.length > 0)
     );
 
-    setPreview({ totalRows: rows.length, liftRows: liftRows.length, uniqueExercises: uniqueExercises.size });
+    setPreview({
+      totalRows: rows.length,
+      liftRows: liftRows.length,
+      uniqueExercises: uniqueExercises.size,
+    });
     setStatus("Parsed ✓ Ready to import.");
   }
 
@@ -187,15 +258,12 @@ export default function ImportCsvPage() {
 
     setStatus(`Rolling back last import (${rec.sessionIds.length} sessions)…`);
 
-    // Delete sets for those sessions
     const setIds = await db.sets.where("sessionId").anyOf(rec.sessionIds).primaryKeys();
     if (setIds.length) await db.sets.bulkDelete(setIds as string[]);
 
-    // Delete sessionItems for those sessions
     const siIds = await db.sessionItems.where("sessionId").anyOf(rec.sessionIds).primaryKeys();
     if (siIds.length) await db.sessionItems.bulkDelete(siIds as string[]);
 
-    // Delete sessions
     await db.sessions.bulkDelete(rec.sessionIds);
 
     clearLastImport();
@@ -222,76 +290,84 @@ export default function ImportCsvPage() {
     }
 
     const rows = (parsed.data || []).filter(Boolean);
-    const liftRows = rows.filter((r) => (r.session_type || "").trim().toLowerCase() === "lift" && r.exercise);
-
-    const exerciseNames = Array.from(
-      new Set(liftRows.map((r) => normalizeExerciseName(String(r.exercise || ""))).filter((x) => x.length > 0))
+    const liftRows = rows.filter(
+      (r) => String(r.session_type || "").trim().toLowerCase() === "lift" && r.exercise
     );
 
-    // Existing Exercises & Tracks
+    const exerciseNames = Array.from(
+      new Set(
+        liftRows.map((r) => normalizeExerciseName(String(r.exercise || ""))).filter((x) => x.length > 0)
+      )
+    );
+
     const existingExercises = await db.exercises.toArray();
     const exerciseByName = new Map<string, Exercise>();
-    for (const ex of existingExercises) exerciseByName.set(ex.name.trim().toLowerCase(), ex);
+    for (const ex of existingExercises) {
+      exerciseByName.set(normalizeName(ex.name), ex);
+      exerciseByName.set(ex.normalizedName, ex);
+    }
 
     const existingTracks = await db.tracks.toArray();
     const trackByDisplay = new Map<string, Track>();
-    for (const t of existingTracks) trackByDisplay.set(t.displayName.trim().toLowerCase(), t);
+    for (const t of existingTracks) {
+      trackByDisplay.set(normalizeName(t.displayName), t);
+    }
 
-    // Create missing Exercises
     const now = Date.now();
+
     const newExercises: Exercise[] = [];
     for (const name of exerciseNames) {
-      const key = name.trim().toLowerCase();
-      if (exerciseByName.has(key)) continue;
+      const normalized = normalizeName(name);
+      if (exerciseByName.has(normalized)) continue;
 
       const ex: Exercise = {
         id: uuid(),
         name,
+        normalizedName: normalized,
         equipmentTags: [],
         createdAt: now,
+        updatedAt: now,
       };
+
       newExercises.push(ex);
-      exerciseByName.set(key, ex);
+      exerciseByName.set(normalized, ex);
     }
 
-    // Create missing Tracks
     const newTracks: Track[] = [];
     for (const name of exerciseNames) {
-      const key = name.trim().toLowerCase();
-      if (trackByDisplay.has(key)) continue;
+      const normalized = normalizeName(name);
+      if (trackByDisplay.has(normalized)) continue;
 
-      const ex = exerciseByName.get(key);
+      const ex = exerciseByName.get(normalized);
       if (!ex) continue;
 
       const t: Track = {
         id: uuid(),
         exerciseId: ex.id,
         displayName: name,
-
         trackType: defaultTrackType(name),
         trackingMode: inferTrackingMode(name),
-
         warmupSetsDefault: 2,
         workingSetsDefault: 3,
         repMin: 6,
         repMax: 12,
         restSecondsDefault: 120,
-
         weightJumpDefault: 5,
         createdAt: now,
       };
 
       newTracks.push(t);
-      trackByDisplay.set(key, t);
+      trackByDisplay.set(normalized, t);
     }
 
-    // Group sessions by date + program_day
     const grouped = new Map<string, JournalRow[]>();
     for (const r of liftRows) {
       const date = String(r.date || "").trim();
       if (!date) continue;
+
       const pd = String(r.program_day || "Lift").trim() || "Lift";
       const key = `${date}__${pd}`;
+
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key)!.push(r);
     }
@@ -303,14 +379,14 @@ export default function ImportCsvPage() {
     const setsToAdd: SetEntry[] = [];
     const createdSessionIds: string[] = [];
 
-    for (const [key, groupRows] of grouped.entries()) {
-      const [date, programDay] = key.split("__");
+    for (const [groupKey, groupRows] of grouped.entries()) {
+      const [date, programDay] = groupKey.split("__");
       const startedAt = parseDateToMs(date);
       const sessionId = uuid();
       createdSessionIds.push(sessionId);
 
       const sessionNotes = Array.from(
-        new Set(groupRows.map((r) => (r.notes ? String(r.notes).trim() : "")).filter((n) => n.length > 0))
+        new Set(groupRows.map((r) => String(r.notes || "").trim()).filter((n) => n.length > 0))
       ).join("\n");
 
       sessionsToAdd.push({
@@ -320,9 +396,9 @@ export default function ImportCsvPage() {
         templateId: undefined,
         templateName: programDay,
         notes: `${importId}\n${sessionNotes}`.trim() || importId,
+        updatedAt: startedAt + 60 * 60 * 1000,
       });
 
-      // Sort rows deterministically
       const sorted = [...groupRows].sort((a, b) => {
         const ea = String(a.exercise || "");
         const eb = String(b.exercise || "");
@@ -330,58 +406,46 @@ export default function ImportCsvPage() {
         return (num(a.set) ?? 0) - (num(b.set) ?? 0);
       });
 
-      // Build sessionItems in first-seen order by normalized exercise/track
       const order: string[] = [];
       const seen = new Set<string>();
 
       for (const r of sorted) {
         const exerciseRaw = String(r.exercise || "").trim();
         const displayName = normalizeExerciseName(exerciseRaw);
-        const track = trackByDisplay.get(displayName.toLowerCase());
+        const track = trackByDisplay.get(normalizeName(displayName));
         if (!track) continue;
 
-        const key = track.id;
-        if (!seen.has(key)) {
-          seen.add(key);
-          order.push(key);
+        if (!seen.has(track.id)) {
+          seen.add(track.id);
+          order.push(track.id);
         }
       }
 
-      // Create sessionItems snapshot using track defaults
       order.forEach((trackId, idx) => {
-        const t = Array.from(trackByDisplay.values()).find((x) => x.id === trackId);
-        if (!t) return;
-
         sessionItemsToAdd.push({
           id: uuid(),
           sessionId,
           orderIndex: idx,
-          trackId: t.id,
+          trackId,
           notes: undefined,
-          warmupSets: t.warmupSetsDefault,
-          workingSets: t.workingSetsDefault,
-          repMin: t.repMin,
-          repMax: t.repMax,
           createdAt: startedAt + idx,
         });
       });
 
-      // Create sets
-      let createdAt = startedAt + 1000; // keep after sessionItems ordering
+      let createdAt = startedAt + 1000;
 
       for (const r of sorted) {
         const exerciseRaw = String(r.exercise || "").trim();
         const displayName = normalizeExerciseName(exerciseRaw);
-        const track = trackByDisplay.get(displayName.toLowerCase());
+        const track = trackByDisplay.get(normalizeName(displayName));
         if (!track) continue;
 
-        const setType = inferSetType(exerciseRaw);
-
+        const setType = inferSetType(r);
         const reps = num(r.reps);
         const weight = parseWeight(r.load);
-        const rpe = num(r.rpe);
+        const rir = parseRir(r);
 
-        const hasAny = reps !== undefined || weight !== undefined || rpe !== undefined;
+        const hasAny = reps !== undefined || weight !== undefined || rir !== undefined;
         if (!hasAny) continue;
 
         const seconds = track.trackingMode === "timeSeconds" ? reps : undefined;
@@ -390,14 +454,21 @@ export default function ImportCsvPage() {
           id: uuid(),
           sessionId,
           trackId: track.id,
-          createdAt: createdAt++,
+          createdAt,
+          completedAt: createdAt,
           setType,
           weight: track.trackingMode === "weightedReps" ? weight : undefined,
-          reps: track.trackingMode === "weightedReps" || track.trackingMode === "repsOnly" ? reps : undefined,
+          reps:
+            track.trackingMode === "weightedReps" || track.trackingMode === "repsOnly"
+              ? reps
+              : undefined,
           seconds,
-          rpe,
-          notes: r.notes ? String(r.notes).trim() : undefined,
+          rir,
+          notes: buildSetNotes(r),
+          updatedAt: createdAt,
         });
+
+        createdAt += 1;
       }
     }
 
@@ -420,6 +491,7 @@ export default function ImportCsvPage() {
       sessionIds: createdSessionIds,
       summary,
     };
+
     saveLastImport(rec);
     setLastImport(rec);
 
