@@ -1,3 +1,18 @@
+// src/pages/ImportCsvPage.tsx
+/* ============================================================================
+   ImportCsvPage.tsx — Journal CSV Import + Preview + Rollback + Logging
+   ----------------------------------------------------------------------------
+   BUILD_ID: 2026-03-07-IMPORTCSV-06
+   FILE: src/pages/ImportCsvPage.tsx
+
+   Changes (IMPORTCSV-06)
+   ✅ Add file/version breadcrumbs
+   ✅ Add alias-aware exercise lookup
+   ✅ Keep preview / dry run / import / rollback logging
+   ✅ Keep warmup + working set support
+   ✅ Keep technique rows mapped to working + tagged in notes
+   ============================================================================ */
+
 import React, { useMemo, useState } from "react";
 import Papa from "papaparse";
 import {
@@ -14,34 +29,9 @@ import {
 import { uuid } from "../utils";
 import { addAppLog } from "../appLog";
 
-/**
- * Imports journal CSV
- * Columns:
- * - date
- * - session_type
- * - program_day
- * - exercise
- * - set
- * - load
- * - reps
- * - rpe
- * - rir
- * - notes
- * - set_type   (optional; supports warmup / working / technique)
- *
- * Writes to Dexie:
- * - exercises (unique by normalizedName)
- * - tracks (one per exercise, points to exerciseId)
- * - sessions (Lift only, grouped by date + program_day)
- * - sessionItems
- * - sets
- *
- * Notes:
- * - DB supports SetType: warmup | working | drop | failure
- * - "technique" is not a DB SetType yet, so technique rows are imported as
- *   working sets and tagged in notes as "technique".
- */
-
+/* ============================================================================
+   Breadcrumb 1 — Types
+   ============================================================================ */
 type JournalRow = {
   date?: string;
   session_type?: string;
@@ -63,8 +53,17 @@ type LastImportRecord = {
   summary: string;
 };
 
+/* ============================================================================
+   Breadcrumb 2 — Constants
+   ============================================================================ */
 const LAST_IMPORT_KEY = "workout_last_import_v2";
+const PAGE_VERSION = "6";
+const BUILD_ID = "2026-03-07-IMPORTCSV-06";
+const FILE_FOOTER = "src/pages/ImportCsvPage.tsx";
 
+/* ============================================================================
+   Breadcrumb 3 — Local storage helpers
+   ============================================================================ */
 function saveLastImport(rec: LastImportRecord) {
   localStorage.setItem(LAST_IMPORT_KEY, JSON.stringify(rec));
 }
@@ -86,6 +85,9 @@ function clearLastImport() {
   localStorage.removeItem(LAST_IMPORT_KEY);
 }
 
+/* ============================================================================
+   Breadcrumb 4 — Parsing / normalization helpers
+   ============================================================================ */
 function parseDateToMs(dateStr: string): number {
   const [y, m, d] = dateStr.split("-").map((x) => Number(x));
   if (!y || !m || !d) return Date.now();
@@ -103,6 +105,28 @@ function normalizeExerciseName(name: string): string {
   s = s.replace(/\s+/g, " ").trim();
 
   return s;
+}
+
+function buildExerciseLookup(exercises: Exercise[]): Map<string, Exercise> {
+  const map = new Map<string, Exercise>();
+
+  for (const ex of exercises) {
+    const canonical = normalizeName(ex.name);
+    if (canonical) map.set(canonical, ex);
+
+    if (ex.normalizedName) {
+      map.set(ex.normalizedName, ex);
+    }
+
+    if (Array.isArray(ex.aliases)) {
+      for (const alias of ex.aliases) {
+        const norm = normalizeName(String(alias || ""));
+        if (norm) map.set(norm, ex);
+      }
+    }
+  }
+
+  return map;
 }
 
 function inferSetType(row: JournalRow): "warmup" | "working" {
@@ -201,6 +225,9 @@ function buildSetNotes(row: JournalRow): string | undefined {
   return parts.length ? parts.join(" | ") : undefined;
 }
 
+/* ============================================================================
+   Breadcrumb 5 — Page
+   ============================================================================ */
 export default function ImportCsvPage() {
   const [status, setStatus] = useState<string>("");
   const [preview, setPreview] = useState<{
@@ -216,6 +243,11 @@ export default function ImportCsvPage() {
   const canImport = useMemo(() => !!preview && !!fileObj, [preview, fileObj]);
   const canRollback = useMemo(() => !!lastImport?.sessionIds?.length, [lastImport]);
 
+  const footer = useMemo(() => `${FILE_FOOTER} • v${PAGE_VERSION} • ${BUILD_ID}`, []);
+
+  /* --------------------------------------------------------------------------
+     Breadcrumb 6 — Preview parse
+     ----------------------------------------------------------------------- */
   async function parseForPreview(file: File) {
     setStatus("Parsing CSV…");
     setPreview(null);
@@ -228,7 +260,18 @@ export default function ImportCsvPage() {
     });
 
     if (parsed.errors?.length) {
-      setStatus(`CSV parse error: ${parsed.errors[0].message}`);
+      const message = `CSV parse error: ${parsed.errors[0].message}`;
+      setStatus(message);
+
+      await addAppLog({
+        type: "import",
+        level: "error",
+        message: "CSV preview parse failed",
+        detailsJson: JSON.stringify({
+          fileName: file.name,
+          error: parsed.errors[0].message,
+        }),
+      });
       return;
     }
 
@@ -241,27 +284,30 @@ export default function ImportCsvPage() {
       liftRows.map((r) => normalizeExerciseName(String(r.exercise || ""))).filter((x) => x.length > 0)
     );
 
-        setPreview({
-          totalRows: rows.length,
-          liftRows: liftRows.length,
-          uniqueExercises: uniqueExercises.size,
-        });
-    
-        await addAppLog({
-          type: "import",
-          level: "info",
-          message: "Parsed CSV for preview",
-          detailsJson: JSON.stringify({
-            fileName: file.name,
-            totalRows: rows.length,
-            liftRows: liftRows.length,
-            uniqueExercises: uniqueExercises.size,
-          }),
-        });
-    
+    setPreview({
+      totalRows: rows.length,
+      liftRows: liftRows.length,
+      uniqueExercises: uniqueExercises.size,
+    });
+
+    await addAppLog({
+      type: "import",
+      level: "info",
+      message: "Parsed CSV for preview",
+      detailsJson: JSON.stringify({
+        fileName: file.name,
+        totalRows: rows.length,
+        liftRows: liftRows.length,
+        uniqueExercises: uniqueExercises.size,
+      }),
+    });
+
     setStatus("Parsed ✓ Ready to import.");
   }
 
+  /* --------------------------------------------------------------------------
+     Breadcrumb 7 — Rollback
+     ----------------------------------------------------------------------- */
   async function rollbackLastImport() {
     const rec = loadLastImport();
     if (!rec || !rec.sessionIds?.length) {
@@ -278,28 +324,31 @@ export default function ImportCsvPage() {
     const siIds = await db.sessionItems.where("sessionId").anyOf(rec.sessionIds).primaryKeys();
     if (siIds.length) await db.sessionItems.bulkDelete(siIds as string[]);
 
-        await db.sessions.bulkDelete(rec.sessionIds);
-    
-        clearLastImport();
-        setLastImport(null);
-    
-        await addAppLog({
-          type: "import",
-          level: "warn",
-          message: "Rolled back last import",
-          detailsJson: JSON.stringify({
-            importId: rec.importId,
-            sessionCount: rec.sessionIds.length,
-            deletedSessionItems: siIds.length,
-            deletedSets: setIds.length,
-          }),
-        });
-    
-        setStatus(
-          `Rollback complete ✓ Deleted ${rec.sessionIds.length} sessions, ${siIds.length} session items, ${setIds.length} sets. (Tracks/Exercises left intact.)`
+    await db.sessions.bulkDelete(rec.sessionIds);
+
+    clearLastImport();
+    setLastImport(null);
+
+    await addAppLog({
+      type: "import",
+      level: "warn",
+      message: "Rolled back last import",
+      detailsJson: JSON.stringify({
+        importId: rec.importId,
+        sessionCount: rec.sessionIds.length,
+        deletedSessionItems: siIds.length,
+        deletedSets: setIds.length,
+      }),
+    });
+
+    setStatus(
+      `Rollback complete ✓ Deleted ${rec.sessionIds.length} sessions, ${siIds.length} session items, ${setIds.length} sets. (Tracks/Exercises left intact.)`
     );
   }
 
+  /* --------------------------------------------------------------------------
+     Breadcrumb 8 — Import
+     ----------------------------------------------------------------------- */
   async function importNow(file: File) {
     setStatus("Importing…");
 
@@ -311,7 +360,18 @@ export default function ImportCsvPage() {
     });
 
     if (parsed.errors?.length) {
-      setStatus(`CSV parse error: ${parsed.errors[0].message}`);
+      const message = `CSV parse error: ${parsed.errors[0].message}`;
+      setStatus(message);
+
+      await addAppLog({
+        type: "import",
+        level: "error",
+        message: "CSV import parse failed",
+        detailsJson: JSON.stringify({
+          fileName: file.name,
+          error: parsed.errors[0].message,
+        }),
+      });
       return;
     }
 
@@ -327,11 +387,7 @@ export default function ImportCsvPage() {
     );
 
     const existingExercises = await db.exercises.toArray();
-    const exerciseByName = new Map<string, Exercise>();
-    for (const ex of existingExercises) {
-      exerciseByName.set(normalizeName(ex.name), ex);
-      exerciseByName.set(ex.normalizedName, ex);
-    }
+    const exerciseByName = buildExerciseLookup(existingExercises);
 
     const existingTracks = await db.tracks.toArray();
     const trackByDisplay = new Map<string, Track>();
@@ -350,6 +406,7 @@ export default function ImportCsvPage() {
         id: uuid(),
         name,
         normalizedName: normalized,
+        aliases: [],
         equipmentTags: [],
         createdAt: now,
         updatedAt: now,
@@ -500,23 +557,23 @@ export default function ImportCsvPage() {
 
     const summary = `Exercises +${newExercises.length}, Tracks +${newTracks.length}, Sessions +${sessionsToAdd.length}, SessionItems +${sessionItemsToAdd.length}, Sets +${setsToAdd.length}`;
 
-        if (dryRun) {
-          await addAppLog({
-            type: "import",
-            level: "info",
-            message: "Completed import dry run",
-            detailsJson: JSON.stringify({
-              fileName: file.name,
-              exercisesAdded: newExercises.length,
-              tracksAdded: newTracks.length,
-              sessionsAdded: sessionsToAdd.length,
-              sessionItemsAdded: sessionItemsToAdd.length,
-              setsAdded: setsToAdd.length,
-            }),
-          });
-    
-          setStatus(`Dry run ✓ Would add: ${summary}`);
-          return;
+    if (dryRun) {
+      await addAppLog({
+        type: "import",
+        level: "info",
+        message: "Completed import dry run",
+        detailsJson: JSON.stringify({
+          fileName: file.name,
+          exercisesAdded: newExercises.length,
+          tracksAdded: newTracks.length,
+          sessionsAdded: sessionsToAdd.length,
+          sessionItemsAdded: sessionItemsToAdd.length,
+          setsAdded: setsToAdd.length,
+        }),
+      });
+
+      setStatus(`Dry run ✓ Would add: ${summary}`);
+      return;
     }
 
     if (newExercises.length) await db.exercises.bulkAdd(newExercises);
@@ -532,27 +589,30 @@ export default function ImportCsvPage() {
       summary,
     };
 
-        saveLastImport(rec);
-        setLastImport(rec);
-    
-        await addAppLog({
-          type: "import",
-          level: "info",
-          message: "Imported CSV successfully",
-          detailsJson: JSON.stringify({
-            fileName: file.name,
-            exercisesAdded: newExercises.length,
-            tracksAdded: newTracks.length,
-            sessionsAdded: sessionsToAdd.length,
-            sessionItemsAdded: sessionItemsToAdd.length,
-            setsAdded: setsToAdd.length,
-            importId,
-          }),
-        });
-    
+    saveLastImport(rec);
+    setLastImport(rec);
+
+    await addAppLog({
+      type: "import",
+      level: "info",
+      message: "Imported CSV successfully",
+      detailsJson: JSON.stringify({
+        fileName: file.name,
+        exercisesAdded: newExercises.length,
+        tracksAdded: newTracks.length,
+        sessionsAdded: sessionsToAdd.length,
+        sessionItemsAdded: sessionItemsToAdd.length,
+        setsAdded: setsToAdd.length,
+        importId,
+      }),
+    });
+
     setStatus(`Imported ✓ ${summary}\nSaved rollback handle: ${importId}`);
   }
 
+  /* --------------------------------------------------------------------------
+     Breadcrumb 9 — Render
+     ----------------------------------------------------------------------- */
   return (
     <div className="card" style={{ maxWidth: 920 }}>
       <h2>Import CSV</h2>
@@ -629,9 +689,17 @@ export default function ImportCsvPage() {
         </div>
       </div>
 
-      <div className="muted" style={{ marginTop: 12, whiteSpace: "pre-wrap" }}>
-        {status}
-      </div>
+      {status && (
+        <div className="muted" style={{ marginTop: 12, whiteSpace: "pre-wrap" }}>
+          {status}
+        </div>
+      )}
+
+      <div style={{ marginTop: 10, fontSize: 12, color: "var(--muted)" }}>{footer}</div>
     </div>
   );
 }
+
+/* ============================================================================
+   End of file: src/pages/ImportCsvPage.tsx
+   ============================================================================ */

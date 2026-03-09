@@ -2,22 +2,17 @@
 /* ============================================================================
    DevDiagnosticsPage.tsx — DEV-only diagnostics + build/version info
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-04-DEV-DIAG-02
+   BUILD_ID: 2026-03-07-DEV-DIAG-03
+   FILE: src/pages/DevDiagnosticsPage.tsx
 
    - Route: /dev
    - Optional: /dev?sid=<sessionId>
    - Dev-only: guarded by import.meta.env.DEV (redirects in prod)
 
-   Versioning strategy (client-visible):
-   - Reads optional Vite env vars (must be prefixed with VITE_ to reach client)
-     VITE_APP_VERSION   (e.g., 0.1.0)
-     VITE_BUILD_ID      (e.g., 2026-03-04-CF-01)
-     VITE_GIT_SHA       (e.g., a08b0c4)
-     VITE_BUILD_TIME    (ISO string)
-     VITE_DEPLOY_URL    (optional)
-   - Also displays mode/base/dev flags.
-
-   NOTE: This file intentionally avoids importing *.tsx extensions.
+   Changes (DEV-DIAG-03)
+   ✅ Add alias sync button + status
+   ✅ Keep session diagnostics
+   ✅ Keep build / SW diagnostics
    ============================================================================ */
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -26,6 +21,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../db";
 import type { Track, SetEntry } from "../db";
 import { BUILD_INFO } from "../buildInfo";
+import aliasRows from "../seed/exercise.aliases.seed.json";
+import { syncExerciseAliasesFromRows } from "../syncExerciseAliases";
 
 type SetKind = "warmup" | "working" | "drop" | "failure";
 type SetEntryX = SetEntry & { setType?: SetKind | string; completedAt?: number };
@@ -53,6 +50,7 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
       return true;
     }
   } catch {}
+
   try {
     const ta = document.createElement("textarea");
     ta.value = text;
@@ -77,9 +75,11 @@ export default function DevDiagnosticsPage() {
   const nav = useNavigate();
   const loc = useLocation();
 
-  // ---------------------------------------------------------------------------
-  // Build / version info (client-visible env vars only)
-  // ---------------------------------------------------------------------------
+  const [aliasSyncStatus, setAliasSyncStatus] = useState<string>("");
+
+  /* --------------------------------------------------------------------------
+     Build / version info
+     ----------------------------------------------------------------------- */
   const buildInfo = useMemo(() => {
     const e = import.meta.env as any;
 
@@ -103,8 +103,11 @@ export default function DevDiagnosticsPage() {
     };
   }, []);
 
-  // Best-effort SW status (PWA sanity check)
+  /* --------------------------------------------------------------------------
+     Service worker status
+     ----------------------------------------------------------------------- */
   const [swStatus, setSwStatus] = useState<string>("unknown");
+
   useEffect(() => {
     let cancelled = false;
 
@@ -114,15 +117,18 @@ export default function DevDiagnosticsPage() {
           if (!cancelled) setSwStatus("not supported");
           return;
         }
+
         const reg = await navigator.serviceWorker.getRegistration();
         if (!reg) {
           if (!cancelled) setSwStatus("no registration");
           return;
         }
+
         const active = reg.active ? "active" : "";
         const waiting = reg.waiting ? "waiting" : "";
         const installing = reg.installing ? "installing" : "";
         const bits = [active, waiting, installing].filter(Boolean).join(", ");
+
         if (!cancelled) setSwStatus(bits || "registered");
       } catch {
         if (!cancelled) setSwStatus("error");
@@ -135,29 +141,29 @@ export default function DevDiagnosticsPage() {
     };
   }, []);
 
-  // ---------------------------------------------------------------------------
-  // Session selection
-  // ---------------------------------------------------------------------------
+  /* --------------------------------------------------------------------------
+     Session selection
+     ----------------------------------------------------------------------- */
   const qs = useMemo(() => new URLSearchParams(loc.search), [loc.search]);
   const sidFromUrl = qs.get("sid") ?? "";
 
   const [selectedSessionId, setSelectedSessionId] = useState<string>(sidFromUrl);
 
   useEffect(() => {
-    // keep state synced if user edits URL
-    if (sidFromUrl && sidFromUrl !== selectedSessionId) setSelectedSessionId(sidFromUrl);
+    if (sidFromUrl && sidFromUrl !== selectedSessionId) {
+      setSelectedSessionId(sidFromUrl);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sidFromUrl]);
 
-  // Recent sessions for dropdown
   const sessions = useLiveQuery(async () => {
     const arr = await db.sessions.orderBy("startedAt").reverse().limit(25).toArray();
     return arr ?? [];
   }, []);
 
-  // Pick a sensible default if none provided
   useEffect(() => {
     if (selectedSessionId) return;
+
     const first = sessions?.[0];
     if (first?.id) {
       setSelectedSessionId(first.id);
@@ -179,8 +185,10 @@ export default function DevDiagnosticsPage() {
     return (arr ?? []) as SetEntryX[];
   }, [selectedSessionId]);
 
-  // Load tracks used in this session
-  const trackIdsKey = useMemo(() => (sets ?? []).map((s) => s.trackId).filter(Boolean).join("|"), [sets]);
+  const trackIdsKey = useMemo(
+    () => (sets ?? []).map((s) => s.trackId).filter(Boolean).join("|"),
+    [sets]
+  );
 
   const tracks = useLiveQuery(async () => {
     const ids = Array.from(new Set((sets ?? []).map((s) => s.trackId).filter(Boolean)));
@@ -189,7 +197,10 @@ export default function DevDiagnosticsPage() {
     return (arr.filter(Boolean) as Track[]) ?? [];
   }, [trackIdsKey]);
 
-  const trackNameById = useMemo(() => new Map((tracks ?? []).map((t) => [t.id, t.displayName] as const)), [tracks]);
+  const trackNameById = useMemo(
+    () => new Map((tracks ?? []).map((t) => [t.id, t.displayName] as const)),
+    [tracks]
+  );
 
   const rows = useMemo(() => {
     const s = (sets ?? []).slice().sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
@@ -222,7 +233,10 @@ export default function DevDiagnosticsPage() {
   }, [sets, trackNameById]);
 
   const issues = useMemo(() => {
-    const badRir = rows.filter((r) => r.rir != null && !(typeof r.rir === "number" && Number.isFinite(r.rir)));
+    const badRir = rows.filter(
+      (r) => r.rir != null && !(typeof r.rir === "number" && Number.isFinite(r.rir))
+    );
+
     const doneButMissingNumbers = rows.filter(
       (r) =>
         r.done &&
@@ -232,6 +246,7 @@ export default function DevDiagnosticsPage() {
         r.seconds == null &&
         r.distance == null
     );
+
     const negativeVals = rows.filter(
       (r) =>
         (typeof r.weight === "number" && r.weight < 0) ||
@@ -255,10 +270,12 @@ export default function DevDiagnosticsPage() {
     nav({ pathname: "/dev", search: next.toString() }, { replace: true });
   }
 
+  /* --------------------------------------------------------------------------
+     Actions
+     ----------------------------------------------------------------------- */
   async function onCopyDebug() {
     const lines: string[] = [];
 
-    // Build info block first (so screenshots/copies immediately identify a deploy)
     lines.push("Workout PWA — DEV DIAGNOSTICS");
     lines.push("");
     lines.push("BUILD");
@@ -284,9 +301,10 @@ export default function DevDiagnosticsPage() {
     lines.push(`sets: ${rows.length}`);
     lines.push("");
 
-    // include last 30 rows, compact
     for (const r of rows.slice(-30)) {
-      const dist = typeof r.distance === "number" ? `${r.distance}${r.unit ? " " + r.unit : ""}` : "";
+      const dist =
+        typeof r.distance === "number" ? `${r.distance}${r.unit ? " " + r.unit : ""}` : "";
+
       lines.push(
         [
           `${r.done ? "✓" : " "}`,
@@ -306,18 +324,32 @@ export default function DevDiagnosticsPage() {
     lines.push("");
     lines.push(`issues: ${issues.total}`);
     if (issues.badRir.length) lines.push(`- badRir: ${issues.badRir.length}`);
-    if (issues.doneButMissingNumbers.length) lines.push(`- doneButMissingNumbers: ${issues.doneButMissingNumbers.length}`);
+    if (issues.doneButMissingNumbers.length) {
+      lines.push(`- doneButMissingNumbers: ${issues.doneButMissingNumbers.length}`);
+    }
     if (issues.negativeVals.length) lines.push(`- negativeVals: ${issues.negativeVals.length}`);
 
     const ok = await copyTextToClipboard(lines.join("\n"));
     if (!ok) window.alert("Could not copy to clipboard in this browser.");
   }
 
+  async function onSyncAliases() {
+    try {
+      setAliasSyncStatus("Syncing aliases…");
+      const result = await syncExerciseAliasesFromRows(aliasRows as any[]);
+      setAliasSyncStatus(
+        `Alias sync complete: rowsRead=${result.rowsRead}, updatedExercises=${result.updatedExercises}, aliasesAdded=${result.aliasesAdded}, missingCanonicals=${result.missingCanonicals}`
+      );
+    } catch (e: any) {
+      setAliasSyncStatus(`Alias sync failed: ${e?.message ?? e}`);
+    }
+  }
+
+  /* --------------------------------------------------------------------------
+     Render
+     ----------------------------------------------------------------------- */
   return (
     <div className="container">
-      {/* ------------------------------------------------------------------ */}
-      {/* Header */}
-      {/* ------------------------------------------------------------------ */}
       <div className="card">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
           <h2 style={{ margin: 0 }}>DEV Diagnostics</h2>
@@ -330,14 +362,15 @@ export default function DevDiagnosticsPage() {
           Dev-only page. Guarded by <code>import.meta.env.DEV</code>.
         </div>
 
-	<div className="muted" style={{ marginTop: 8 }}>
-  	  Version: <b>{BUILD_INFO.version}</b> · Build: <b>{BUILD_INFO.commit}</b> · Built: <b>{BUILD_INFO.builtAt}</b>
-	</div>
+        <div className="muted" style={{ marginTop: 8 }}>
+          Version: <b>{BUILD_INFO.version}</b> · Build: <b>{BUILD_INFO.commit}</b> · Built:{" "}
+          <b>{BUILD_INFO.builtAt}</b>
+        </div>
 
         <hr />
 
         <label>Session</label>
-        <div className="row" style={{ alignItems: "center" }}>
+        <div className="row" style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <select
             value={selectedSessionId}
             onChange={(e) => {
@@ -353,10 +386,28 @@ export default function DevDiagnosticsPage() {
             ))}
           </select>
 
-          <button className="btn small" onClick={onCopyDebug} title="Copy build + recent sets + issues to clipboard">
+          <button
+            className="btn small"
+            onClick={onCopyDebug}
+            title="Copy build + recent sets + issues to clipboard"
+          >
             Copy debug
           </button>
+
+          <button
+            className="btn small"
+            onClick={onSyncAliases}
+            title="Merge alias seed entries into existing exercises"
+          >
+            Sync aliases
+          </button>
         </div>
+
+        {aliasSyncStatus && (
+          <div className="muted" style={{ marginTop: 8 }}>
+            {aliasSyncStatus}
+          </div>
+        )}
 
         {session ? (
           <div className="kv" style={{ marginTop: 8 }}>
@@ -366,9 +417,6 @@ export default function DevDiagnosticsPage() {
         ) : null}
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Build / Version */}
-      {/* ------------------------------------------------------------------ */}
       <div className="card">
         <h3 style={{ marginBottom: 6 }}>Build</h3>
 
@@ -428,9 +476,6 @@ export default function DevDiagnosticsPage() {
         </div>
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Issues */}
-      {/* ------------------------------------------------------------------ */}
       <div className="card">
         <h3 style={{ marginBottom: 6 }}>Issues</h3>
         {issues.total === 0 ? (
@@ -446,9 +491,6 @@ export default function DevDiagnosticsPage() {
         )}
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Live Sets */}
-      {/* ------------------------------------------------------------------ */}
       <div className="card">
         <h3 style={{ marginBottom: 6 }}>Live Sets</h3>
 
@@ -473,7 +515,8 @@ export default function DevDiagnosticsPage() {
           </div>
 
           {(rows ?? []).slice(-60).map((r) => {
-            const dist = typeof r.distance === "number" ? `${r.distance}${r.unit ? " " + r.unit : ""}` : "";
+            const dist =
+              typeof r.distance === "number" ? `${r.distance}${r.unit ? " " + r.unit : ""}` : "";
             const rirOk = r.rir == null || (typeof r.rir === "number" && Number.isFinite(r.rir));
 
             return (
@@ -488,7 +531,10 @@ export default function DevDiagnosticsPage() {
                   borderTop: "1px solid rgba(0,0,0,0.06)",
                 }}
               >
-                <div title={r.id} style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <div
+                  title={r.id}
+                  style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                >
                   {r.done ? "✓ " : ""}
                   {r.track}
                 </div>
@@ -508,3 +554,7 @@ export default function DevDiagnosticsPage() {
     </div>
   );
 }
+
+/* ============================================================================
+   End of file: /src/pages/DevDiagnosticsPage.tsx
+   ============================================================================ */

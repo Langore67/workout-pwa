@@ -1,0 +1,74 @@
+[
+  {
+    "alias": "Three Point Dumbbell Row",
+    "exerciseName": "3-Point Dumbbell Row"
+  },
+  {
+    "alias": "Assisted Pull Up",
+    "exerciseName": "Assisted Pull-Up"
+  },
+  {
+    "alias": "Back Squat",
+    "exerciseName": "Barbell Back Squat"
+  },
+  {
+    "alias": "Barbell Squat",
+    "exerciseName": "Barbell Back Squat"
+  },
+  {
+    "alias": "Deadlift Drill",
+    "exerciseName": "Deadlift Pattern"
+  },
+  {
+    "alias": "Lateral Raise",
+    "exerciseName": "Dumbbell Lateral Raise"
+  },
+  {
+    "alias": "Glute Drive",
+    "exerciseName": "Glute Machine"
+  },
+  {
+    "alias": "Glute Drive Machine",
+    "exerciseName": "Glute Machine"
+  },
+  {
+    "alias": "Hip Thrust Machine",
+    "exerciseName": "Glute Machine"
+  },
+  {
+    "alias": "Machine Glute Drive",
+    "exerciseName": "Glute Machine"
+  },
+  {
+    "alias": "Machine Hip Thrust",
+    "exerciseName": "Glute Machine"
+  },
+  {
+    "alias": "Incline Barbell Press",
+    "exerciseName": "Incline Barbell Bench Press"
+  },
+  {
+    "alias": "Eccentric Hammer Curl Left",
+    "exerciseName": "Left Eccentric Hammer Curl"
+  },
+  {
+    "alias": "Left Hammer Curl Eccentric",
+    "exerciseName": "Left Eccentric Hammer Curl"
+  },
+  {
+    "alias": "Rear Pec Deck",
+    "exerciseName": "Reverse Pec Deck"
+  },
+  {
+    "alias": "Rope Pushdown",
+    "exerciseName": "Rope Triceps Pushdown"
+  },
+  {
+    "alias": "Rope Tricep Pushdown",
+    "exerciseName": "Rope Triceps Pushdown"
+  },
+  {
+    "alias": "Pushdown",
+    "exerciseName": "Triceps Pushdown"
+  }
+]

@@ -1,36 +1,53 @@
 // src/pages/StartPage.tsx
-/* ========================================================================== */
-/*  StartPage.tsx                                                             */
-/*  BUILD_ID: 2026-02-20-SP-05                                                 */
-/* -------------------------------------------------------------------------- */
-/*  Strong-ish Start                                                          */
-/*                                                                            */
-/*  Revision history                                                          */
-/*  - 2026-02-11  UI-01  Initial Strong-ish Start + folder grouping + tile ... */
-/*  - 2026-02-18  SP-02  Folder actions menu on Start: Rename/Delete folder    */
-/*                       (Delete moves templates to Ungrouped)                */
-/*                       Dedicated outside-click close for folder menu         */
-/*  - 2026-02-19  SP-03  Swap tile "..." menu to ActionMenu (Strong-like)      */
-/*                       Removes old tileMenuTemplateId positioning issues     */
-/*  - 2026-02-20  SP-04  Option B: compact Strong-like rows (not tiles)        */
-/*                       Remove redundant Show/Hide label (chevron only)      */
-/*                       Use ActionMenu pattern for folder kebab too           */
-/*  - 2026-02-20  SP-05  True hierarchy: folder-group header + nested children */
-/*                       Ungrouped behaves like a folder (collapsible)         */
-/*                       Uses your new CSS: folder-group/head/body/rail         */
-/* ========================================================================== */
+/* ============================================================================
+   StartPage.tsx — Start hub + template launcher + template hierarchy
+   ----------------------------------------------------------------------------
+   BUILD_ID: 2026-03-08-STARTPAGE-08
+
+   Purpose
+   - Make Start the operational control center
+   - Keep template list as the workout launcher surface
+   - Keep TemplatesPage as the management home
+   - Preserve mesocycles (folders) and grouped template hierarchy
+
+   Changes (STARTPAGE-08)
+   ✅ Repair full file structure after iterative edits
+   ✅ Fix Ungrouped kebab by using explicit open-state logic
+   ✅ Default Ungrouped to open on first load
+   ✅ Keep Continue Session compact ribbon subtitle
+   ✅ Compress Start hub action spacing for mobile
+   ✅ Keep Strong-like child template cards
+   ✅ Preserve existing modal/template launch behavior
+
+   Revision history
+   - 2026-02-11  UI-01  Initial Strong-ish Start + folder grouping + tile ...
+   - 2026-02-18  SP-02  Folder actions menu on Start: Rename/Delete folder
+                       (Delete moves templates to Ungrouped)
+                       Dedicated outside-click close for folder menu
+   - 2026-02-19  SP-03  Swap tile "..." menu to ActionMenu (Strong-like)
+                       Removes old tileMenuTemplateId positioning issues
+   - 2026-02-20  SP-04  Option B: compact Strong-like rows (not tiles)
+                       Remove redundant Show/Hide label (chevron only)
+                       Use ActionMenu pattern for folder kebab too
+   - 2026-02-20  SP-05  True hierarchy: folder-group header + nested children
+                       Ungrouped behaves like a folder (collapsible)
+                       Uses CSS: folder-group / head / body / rail
+   - 2026-03-08  SP-06  Add Start hub action cards above Templates section
+   - 2026-03-08  SP-07  Bundle Start page polish + active session cleanup
+   - 2026-03-08  SP-08  Fix Ungrouped kebab/state + compress Start action spacing
+   ============================================================================ */
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
-import { db, Template, TemplateItem, Track, Folder } from "../db";
+import { db, Template, TemplateItem, Track, Folder, Session } from "../db";
 import { uuid } from "../utils";
 import { Page, Section } from "../components/Page.tsx";
 import { ActionMenu, MenuIcons, MenuItem } from "../components/ActionMenu";
 
-// --- Breadcrumb 1 (0-110) ---------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+/* ============================================================================
+   Breadcrumb 1 — Helpers
+   ============================================================================ */
 
 function fmtAgo(ms?: number) {
   if (!ms) return "—";
@@ -39,6 +56,27 @@ function fmtAgo(ms?: number) {
   if (days < 1) return "Today";
   if (days === 1) return "1 day ago";
   return `${days} days ago`;
+}
+
+function isPausedSession(ms?: number) {
+  if (!ms) return false;
+  const diff = Date.now() - ms;
+  return diff > 2 * 60 * 60 * 1000; // > 2 hours
+}
+
+function fmtDurationSince(ms?: number) {
+  if (!ms) return "";
+  const diff = Math.max(0, Date.now() - ms);
+
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "<1 min";
+  if (mins < 60) return `${mins} min`;
+
+  const hrs = Math.floor(mins / 60);
+  const rem = mins % 60;
+
+  if (rem === 0) return `${hrs} hr`;
+  return `${hrs} hr ${rem} min`;
 }
 
 type TemplatePreviewRow = {
@@ -72,36 +110,39 @@ function lruCompare(a: TemplatePreviewRow, b: TemplatePreviewRow) {
   return a.template.name.localeCompare(b.template.name);
 }
 
-// --- Breadcrumb 2 (110-140) -------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+/* ============================================================================
+   Breadcrumb 2 — Component
+   ============================================================================ */
 
 export default function StartPage() {
   const navigate = useNavigate();
 
-  // --- Breadcrumb 3 (140-220) -----------------------------------------------
-  // DB reads
-  // -------------------------------------------------------------------------
+  /* --------------------------------------------------------------------------
+     Breadcrumb 3 — DB reads
+     ----------------------------------------------------------------------- */
   const folders = useLiveQuery(() => db.folders?.orderBy("orderIndex").toArray(), []);
   const templates = useLiveQuery(() => db.templates.orderBy("name").toArray(), []);
   const templateItems = useLiveQuery(() => db.templateItems.toArray(), []);
   const tracks = useLiveQuery(() => db.tracks.toArray(), []);
   const sessions = useLiveQuery(() => db.sessions.toArray(), []);
 
-  // --- Breadcrumb 4 (220-330) -----------------------------------------------
-  // UI state
-  // -------------------------------------------------------------------------
+  /* --------------------------------------------------------------------------
+     Breadcrumb 4 — UI state
+     ----------------------------------------------------------------------- */
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
 
-  // Folder open/closed persisted (Option B: multiple folders can be open)
   const [openFolderIds, setOpenFolderIds] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem(OPEN_FOLDERS_KEY);
-      if (!raw) return new Set();
+      if (!raw) return new Set([UNGROUPED_KEY]);
+
       const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) return new Set(arr.filter((x) => typeof x === "string"));
+      if (Array.isArray(arr)) {
+        return new Set(arr.filter((x) => typeof x === "string"));
+      }
     } catch {}
-    return new Set();
+
+    return new Set([UNGROUPED_KEY]);
   });
 
   useEffect(() => {
@@ -110,9 +151,9 @@ export default function StartPage() {
     } catch {}
   }, [openFolderIds]);
 
-  // --- Breadcrumb 5 (330-520) -----------------------------------------------
-  // Derived maps
-  // -------------------------------------------------------------------------
+  /* --------------------------------------------------------------------------
+     Breadcrumb 5 — Derived maps
+     ----------------------------------------------------------------------- */
   const itemsByTemplate = useMemo(() => {
     const map = new Map<string, TemplateItem[]>();
     for (const it of templateItems ?? []) {
@@ -137,9 +178,9 @@ export default function StartPage() {
     return map;
   }, [sessions]);
 
-  // --- Breadcrumb 6 (520-610) -----------------------------------------------
-  // Visibility rules for Start (Operational)
-  // -------------------------------------------------------------------------
+  /* --------------------------------------------------------------------------
+     Breadcrumb 6 — Visibility rules
+     ----------------------------------------------------------------------- */
   const visibleFolders = useMemo(() => {
     const all = (folders ?? []) as Folder[];
     return all.filter((f: any) => !(f as any).archivedAt);
@@ -152,9 +193,32 @@ export default function StartPage() {
     return all.filter((t: any) => !(t as any).archivedAt);
   }, [templates]);
 
-  // --- Breadcrumb 7 (610-820) -----------------------------------------------
-  // Build template previews + group into folders
-  // -------------------------------------------------------------------------
+  /* --------------------------------------------------------------------------
+     Breadcrumb 7 — Continue session detection
+     Active session rules:
+     - must not be ended
+     - must not be deleted
+     - must be recent (prevents old imported sessions from appearing as active)
+     ----------------------------------------------------------------------- */
+  const activeSession = useMemo(() => {
+    const all = (sessions ?? []) as Session[];
+    const now = Date.now();
+    const RECENT_WINDOW_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+    const open = all.filter((s: any) => {
+      if ((s as any).deletedAt) return false;
+      if (s.endedAt != null) return false;
+      if (!s.startedAt || !Number.isFinite(s.startedAt)) return false;
+      return now - s.startedAt <= RECENT_WINDOW_MS;
+    });
+
+    if (!open.length) return null;
+    return open.sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))[0] ?? null;
+  }, [sessions]);
+
+  /* --------------------------------------------------------------------------
+     Breadcrumb 8 — Build template previews + group into folders
+     ----------------------------------------------------------------------- */
   const previews: TemplatePreviewRow[] = useMemo(() => {
     const arr: TemplatePreviewRow[] = [];
 
@@ -190,8 +254,9 @@ export default function StartPage() {
 
     for (const row of previews) {
       const fid = (row.template as any).folderId as string | undefined;
-      if (!fid || !folderIdSet.has(fid)) ungrouped.push(row);
-      else {
+      if (!fid || !folderIdSet.has(fid)) {
+        ungrouped.push(row);
+      } else {
         const arr = folderMap.get(fid) ?? [];
         arr.push(row);
         folderMap.set(fid, arr);
@@ -223,9 +288,9 @@ export default function StartPage() {
     return out;
   }, [selectedItems, trackMap]);
 
-  // --- Breadcrumb 8 (820-990) -----------------------------------------------
-  // Template actions (Start = Operational, keep minimal)
-  // -------------------------------------------------------------------------
+  /* --------------------------------------------------------------------------
+     Breadcrumb 9 — Template actions
+     ----------------------------------------------------------------------- */
   async function renameTemplate(t: Template) {
     const next = window.prompt("Rename template:", t.name);
     if (!next) return;
@@ -252,9 +317,9 @@ export default function StartPage() {
     if (selectedTemplateId === t.id) closeModal();
   }
 
-  // --- Breadcrumb 9 (990-1120) ----------------------------------------------
-  // Folder actions (Start = lightweight only)
-  // -------------------------------------------------------------------------
+  /* --------------------------------------------------------------------------
+     Breadcrumb 10 — Folder actions
+     ----------------------------------------------------------------------- */
   async function renameFolder(f: Folder) {
     const next = window.prompt("Rename folder:", f.name);
     if (!next) return;
@@ -289,9 +354,22 @@ export default function StartPage() {
     });
   }
 
-  // --- Breadcrumb 10 (1120-1280) --------------------------------------------
-  // Start session from template
-  // -------------------------------------------------------------------------
+  /* --------------------------------------------------------------------------
+     Breadcrumb 11 — Session starts
+     ----------------------------------------------------------------------- */
+  async function startEmptyWorkout() {
+    const sessionId = uuid();
+    const now = Date.now();
+
+    await db.sessions.add({
+      id: sessionId,
+      templateName: "Ad-hoc",
+      startedAt: now,
+    } as any);
+
+    navigate(`/gym/${sessionId}`);
+  }
+
   async function startFromTemplate(t: Template) {
     const sessionId = uuid();
     const now = Date.now();
@@ -329,10 +407,23 @@ export default function StartPage() {
             : (tr as any).workingSetsDefault ?? 0;
 
         for (let i = 0; i < Math.max(0, warmups); i++) {
-          setRows.push({ id: uuid(), sessionId, trackId: tr.id, setType: "warmup", createdAt: now + tick++ });
+          setRows.push({
+            id: uuid(),
+            sessionId,
+            trackId: tr.id,
+            setType: "warmup",
+            createdAt: now + tick++,
+          });
         }
+
         for (let i = 0; i < Math.max(0, workings); i++) {
-          setRows.push({ id: uuid(), sessionId, trackId: tr.id, setType: "working", createdAt: now + tick++ });
+          setRows.push({
+            id: uuid(),
+            sessionId,
+            trackId: tr.id,
+            setType: "working",
+            createdAt: now + tick++,
+          });
         }
       }
 
@@ -343,9 +434,9 @@ export default function StartPage() {
     navigate(`/gym/${sessionId}`);
   }
 
-  // --- Breadcrumb 11 (1280-1410) --------------------------------------------
-  // Modal open/close + folder toggle
-  // -------------------------------------------------------------------------
+  /* --------------------------------------------------------------------------
+     Breadcrumb 12 — Modal open/close + folder toggle
+     ----------------------------------------------------------------------- */
   function openTemplate(id: string) {
     setSelectedTemplateId(id);
   }
@@ -363,13 +454,71 @@ export default function StartPage() {
     });
   }
 
-  // --- Breadcrumb 12 (1410-1760) --------------------------------------------
-  // Render (hierarchical groups)
-  // -------------------------------------------------------------------------
+  const ungroupedIsOpen = openFolderIds.has(UNGROUPED_KEY);
+
+  const ungroupedMenuItems: MenuItem[] = [
+    {
+      label: ungroupedIsOpen ? "Collapse" : "Expand",
+      icon: MenuIcons.rename, // placeholder icon; behavior is correct
+      onClick: () => toggleFolder(UNGROUPED_KEY),
+    },
+  ];
+
+  /* --------------------------------------------------------------------------
+     Breadcrumb 13 — Render
+     ----------------------------------------------------------------------- */
   return (
     <Page title="Start Workout">
+      {/* Start Hub */}
       <Section>
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <div>
+            <div style={{ fontWeight: 900, fontSize: 22 }}>Start</div>
+            <div className="muted" style={{ marginTop: 4 }}>
+              Resume a workout, start an ad-hoc session, or manage templates.
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            marginTop: 14,
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 4,
+          }}
+        >
+          {activeSession ? (
+            <StartActionCard
+              title="Continue Session"
+              subtitle={`${activeSession.templateName ?? "Ad-hoc"} • ${
+                isPausedSession(activeSession.startedAt) ? "Paused" : fmtDurationSince(activeSession.startedAt)
+              }`}
+              onClick={() => navigate(`/gym/${activeSession.id}`)}
+            />
+          ) : null}
+
+          <StartActionCard
+            title="Start Empty Workout"
+            subtitle="Build a workout on the fly"
+            onClick={startEmptyWorkout}
+          />
+
+          <StartActionCard
+            title="Manage Templates"
+            subtitle="Create, edit, archive, and organize"
+            onClick={() => navigate("/templates")}
+          />
+        </div>
+      </Section>
+
+      {/* Templates Launcher */}
+      <Section>
+        <div
+          id="start-templates-section"
+          className="row"
+          style={{ justifyContent: "space-between", alignItems: "center", gap: 12 }}
+        >
           <div style={{ fontWeight: 900, fontSize: 18 }}>Templates</div>
 
           <button className="btn small" onClick={() => navigate("/templates")}>
@@ -378,7 +527,6 @@ export default function StartPage() {
         </div>
 
         <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
-          {/* Folders */}
           {visibleFolders.map((f) => {
             const rows = grouped.folderMap.get(f.id) ?? [];
             if (!rows.length) return null;
@@ -416,15 +564,14 @@ export default function StartPage() {
             );
           })}
 
-          {/* Ungrouped (behaves like a folder) */}
           {grouped.ungrouped.length ? (
             <FolderGroup
               groupId={UNGROUPED_KEY}
               title="Ungrouped"
               count={grouped.ungrouped.length}
-              isOpen={openFolderIds.has(UNGROUPED_KEY) || openFolderIds.size === 0 /* first run feel */}
+              isOpen={ungroupedIsOpen}
               onToggle={() => toggleFolder(UNGROUPED_KEY)}
-              menuItems={undefined}
+              menuItems={ungroupedMenuItems}
             >
               {grouped.ungrouped.map((row) => (
                 <TemplateRow
@@ -442,7 +589,7 @@ export default function StartPage() {
         </div>
       </Section>
 
-      {/* --- Breadcrumb 13 (Template modal) --------------------------------- */}
+      {/* Template modal */}
       {selectedTemplate && (
         <div className="modal-overlay" role="dialog" aria-modal="true" onMouseDown={closeModal}>
           <div
@@ -472,7 +619,6 @@ export default function StartPage() {
                 </div>
               </div>
 
-              {/* Start modal: keep clean (no management here) */}
               <div style={{ width: 44 }} />
             </div>
 
@@ -518,10 +664,93 @@ export default function StartPage() {
   );
 }
 
-// --- Breadcrumb 14 (FolderGroup) --------------------------------------------
-// Folder container with true hierarchy: header + nested rail children.
-// Kebab moved to RIGHT.
-// ---------------------------------------------------------------------------
+/* ============================================================================
+   Breadcrumb 14 — StartActionCard
+   Small operational card used by the Start hub.
+   Compressed for mobile while preserving strong subtitle rendering.
+   ============================================================================ */
+
+function StartActionCard({
+  title,
+  subtitle,
+  onClick,
+  disabled,
+}: {
+  title: string;
+  subtitle: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className="card clickable"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        textAlign: "left",
+        padding: "8px 12px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+        opacity: disabled ? 0.55 : 1,
+        cursor: disabled ? "not-allowed" : "pointer",
+        border: "none",
+        background: "var(--card, white)",
+      }}
+    >
+      <div style={{ fontWeight: 900, fontSize: 17 }}>{title}</div>
+
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          fontSize: 12,
+          fontWeight: 600,
+          color: "var(--text, #111827)",
+          lineHeight: 1.15,
+          flexWrap: "wrap",
+        }}
+      >
+        {renderStrongSubtitle(subtitle)}
+      </div>
+    </button>
+  );
+}
+
+/* ============================================================================
+   Breadcrumb 14A — Strong subtitle renderer
+   Purpose:
+   - If subtitle includes " • ", split it into title/meta pieces
+   - Render the center dot with lighter visual weight
+   - Preserve plain subtitles for cards that are not session-style
+   ============================================================================ */
+
+function renderStrongSubtitle(subtitle: string) {
+  const parts = subtitle
+    .split(" • ")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  if (parts.length === 2) {
+    return (
+      <>
+        <span>{parts[0]}</span>
+        <span style={{ opacity: 0.38 }}>•</span>
+        <span style={{ color: "var(--muted, #6b7280)", fontWeight: 600 }}>{parts[1]}</span>
+      </>
+    );
+  }
+
+  return <span className="muted">{subtitle}</span>;
+}
+
+/* ============================================================================
+   Breadcrumb 15 — FolderGroup
+   Folder container with true hierarchy: header + nested rail children.
+   Kebab moved to RIGHT.
+   ============================================================================ */
 
 function FolderGroup({
   groupId,
@@ -552,18 +781,18 @@ function FolderGroup({
         }}
         style={{ cursor: "pointer" }}
       >
-        <div className="folder-title" style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
-          {/* Chevron (left) */}
+        <div
+          className="folder-title"
+          style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}
+        >
           <span aria-hidden="true" style={{ width: 18, display: "inline-block", color: "var(--muted)" }}>
             {isOpen ? "▾" : "▸"}
           </span>
 
-          {/* Title + count */}
           <div style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {title} <span className="folder-count">({count})</span>
           </div>
 
-          {/* Kebab (RIGHT) */}
           {menuItems?.length ? (
             <div
               style={{ flex: "0 0 auto" }}
@@ -589,9 +818,14 @@ function FolderGroup({
   );
 }
 
-// --- Breadcrumb 15 (TemplateRow) --------------------------------------------
-// Compact Strong-like row (whole row clickable; kebab moved to RIGHT).
-// ---------------------------------------------------------------------------
+/* ============================================================================
+   Breadcrumb 16 — TemplateRow
+   Strong-like child card treatment:
+   - bolder title
+   - lighter preview copy
+   - kebab top-right
+   - last performed as compact meta
+   ============================================================================ */
 
 function TemplateRow({
   row,
@@ -611,7 +845,7 @@ function TemplateRow({
   const preview = row.exerciseNamesPreview ?? [];
   const top2 = preview.slice(0, 2);
   const remaining = Math.max(0, preview.length - top2.length);
-  const last = row.lastPerformedAt ? fmtAgo(row.lastPerformedAt) : "—";
+  const last = row.lastPerformedAt ? fmtAgo(row.lastPerformedAt) : "Never";
 
   const menuItems: MenuItem[] = [
     { label: "Rename", icon: MenuIcons.rename, onClick: onRename },
@@ -632,46 +866,97 @@ function TemplateRow({
         if (e.key === "Enter" || e.key === " ") onOpen();
       }}
       style={{
-        padding: "10px 12px",
+        padding: "14px 14px",
         display: "flex",
-        alignItems: "center",
+        flexDirection: "column",
         gap: 10,
+        borderRadius: 18,
       }}
     >
-      {/* Main (left) */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 900, wordBreak: "break-word" }}>{row.template.name}</div>
-        <div className="muted" style={{ marginTop: 4, fontSize: 13, minWidth: 0 }}>
-          {top2.length ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minWidth: 0 }}>
-              {top2.map((x, i) => (
-                <span key={`${row.template.id}-p-${i}`} style={{ whiteSpace: "nowrap" }}>
-                  {x}
-                </span>
-              ))}
-              {remaining > 0 ? <span style={{ opacity: 0.85 }}>{`+${remaining}`}</span> : null}
-            </div>
-          ) : (
-            <span>{row.itemCount ? `${row.itemCount} exercise(s)` : "No exercises"}</span>
-          )}
+      {/* Top row */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontWeight: 900,
+              fontSize: 18,
+              lineHeight: 1.15,
+              wordBreak: "break-word",
+            }}
+          >
+            {row.template.name}
+          </div>
+        </div>
+
+        <div
+          style={{ flex: "0 0 auto" }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <ActionMenu theme="dark" ariaLabel="Template actions" items={menuItems} offsetX={6} />
         </div>
       </div>
 
-      {/* Last performed (right, before kebab) */}
-      <div className="muted" style={{ fontSize: 13, flex: "0 0 auto" }}>
-        {last}
+      {/* Exercise preview */}
+      <div
+        className="muted"
+        style={{
+          fontSize: 14,
+          lineHeight: 1.35,
+          minHeight: 40,
+        }}
+      >
+        {top2.length ? (
+          <div style={{ display: "grid", gap: 4 }}>
+            {top2.map((x, i) => (
+              <div
+                key={`${row.template.id}-p-${i}`}
+                style={{
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+                title={x}
+              >
+                {x}
+              </div>
+            ))}
+            {remaining > 0 ? <div style={{ opacity: 0.8 }}>{`+${remaining}`}</div> : null}
+          </div>
+        ) : (
+          <div>No exercises</div>
+        )}
       </div>
 
-      {/* Kebab (RIGHTMOST) */}
+      {/* Bottom meta */}
       <div
-        style={{ flex: "0 0 auto" }}
-        onPointerDown={(e) => e.stopPropagation()}
-        onTouchStart={(e) => e.stopPropagation()}
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
+        className="muted"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+          fontSize: 13,
+        }}
       >
-        <ActionMenu theme="dark" ariaLabel="Template actions" items={menuItems} offsetX={6} />
+        <div style={{ whiteSpace: "nowrap" }}>{last}</div>
+        <div style={{ opacity: 0.7 }}>
+          {row.itemCount} exercise{row.itemCount === 1 ? "" : "s"}
+        </div>
       </div>
     </div>
   );
 }
+
+/* ============================================================================
+   End of file: src/pages/StartPage.tsx
+   ============================================================================ */

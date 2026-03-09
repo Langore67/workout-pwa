@@ -1,17 +1,22 @@
 // src/App.tsx
 /* ============================================================================
-   App.tsx — Routes + Safety Error Boundary
+   App.tsx — Routes + Safety Error Boundary + Top Nav "More" menu
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-02-25-APP-ROUTES-05
+   BUILD_ID: 2026-03-08-APP-ROUTES-07
+   FILE: src/App.tsx
 
-   Changes (APP-ROUTES-05)
-   ✅ Add StrengthPage route (/strength) + nav link
-   ✅ Keep BodyPage route (/body)
-   ✅ Keep single ErrorBoundary wrapping Routes (prevents blank screens)
+   Changes (APP-ROUTES-07)
+   ✅ Add breadcrumb structure throughout file
+   ✅ Replace top-nav Export / Help / Dev with single More menu
+   ✅ Keep Start / Templates / Exercises / History / Progress in primary ribbon
+   ✅ Group Export / Help / Dev under More
+   ✅ Keep DEV Diagnostics route
+   ✅ Keep single ErrorBoundary wrapping Routes
    ✅ Keep USE_NEW_GYM_PAGE switch
+   ✅ Keep all existing routes intact
    ============================================================================ */
 
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { NavLink, Route, Routes, Navigate } from "react-router-dom";
 import StartPage from "./pages/StartPage";
 import TemplatesPage from "./pages/TemplatesPage";
@@ -29,9 +34,19 @@ import DevDiagnosticsPage from "./pages/DevDiagnosticsPage";
 import ImportCsvPage from "./pages/ImportCsvPage";
 import HelpPage from "./pages/HelpPage";
 import LogsPage from "./pages/LogsPage";
+import ProgressPage from "./pages/ProgressPage";
+import MpsPage from "./pages/MpsPage";
+
+/* ============================================================================
+   Breadcrumb 1 — Runtime switches
+   ============================================================================ */
 
 // Flip this to false at any time to instantly restore baseline behavior.
 const USE_NEW_GYM_PAGE = true;
+
+/* ============================================================================
+   Breadcrumb 2 — Error boundary
+   ============================================================================ */
 
 class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -81,94 +96,216 @@ class AppErrorBoundary extends React.Component<
   }
 }
 
+/* ============================================================================
+   Breadcrumb 3 — Top nav with More menu
+   ----------------------------------------------------------------------------
+   Primary ribbon:
+   - Start
+   - Templates
+   - Exercises
+   - History
+   - Progress
+   - More
+
+   More menu:
+   - Export
+   - Help
+   - Dev (dev only)
+   ============================================================================ */
+
+function TopNav() {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function onDocMouseDown(e: MouseEvent) {
+      if (!moreRef.current) return;
+      if (!moreRef.current.contains(e.target as Node)) {
+        setMoreOpen(false);
+      }
+    }
+
+    function onDocKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setMoreOpen(false);
+    }
+
+    document.addEventListener("mousedown", onDocMouseDown);
+    document.addEventListener("keydown", onDocKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown);
+      document.removeEventListener("keydown", onDocKeyDown);
+    };
+  }, []);
+
+  const closeMore = () => setMoreOpen(false);
+
+  return (
+    <div className="nav">
+      <div className="nav-inner" style={{ position: "relative" }}>
+        <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>
+          Start
+        </NavLink>
+      
+        <NavLink to="/exercises" className={({ isActive }) => (isActive ? "active" : "")}>
+          Exercises
+        </NavLink>
+      
+        <NavLink to="/history" className={({ isActive }) => (isActive ? "active" : "")}>
+          History
+        </NavLink>
+      
+        <NavLink to="/progress" className={({ isActive }) => (isActive ? "active" : "")}>
+          Progress
+        </NavLink>
+      
+        <div ref={moreRef} style={{ position: "relative", display: "inline-flex" }}>
+          <button
+            type="button"
+            className={moreOpen ? "active" : ""}
+            aria-haspopup="menu"
+            aria-expanded={moreOpen}
+            onClick={() => setMoreOpen((v) => !v)}
+            style={{
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              font: "inherit",
+              padding: "0",
+              color: "inherit",
+            }}
+          >
+            More ▾
+          </button>
+      
+          {moreOpen ? (
+            <div
+	      role="menu"
+	      aria-label="More"
+	      className="card"
+	      style={{
+	        position: "absolute",
+	        top: "calc(100% + 8px)",
+	        right: 0,
+	        minWidth: 200,
+	        zIndex: 1000,
+	        display: "grid",
+	        gap: 6,
+	        padding: 10,
+	        borderRadius: 14,
+	      }}
+           >
+              <NavLink
+	        to="/export"
+	        className={({ isActive }) => (isActive ? "active" : "")}
+	        onClick={closeMore}
+	        style={{
+	          padding: "8px 10px",
+	          borderRadius: 8,
+	        }}
+	      >
+	        Export
+              </NavLink>
+      
+              <NavLink
+	        to="/help"
+	        className={({ isActive }) => (isActive ? "active" : "")}
+	        onClick={closeMore}
+	        style={{
+	          padding: "8px 10px",
+	          borderRadius: 8,
+	        }}
+                >
+              
+                Help
+              </NavLink>
+      
+              {import.meta.env.DEV && (
+                <NavLink
+		  to="/Dev"
+		  className={({ isActive }) => (isActive ? "active" : "")}
+		  onClick={closeMore}
+		  style={{
+		    padding: "8px 10px",
+		    borderRadius: 8,
+		  }}
+                 >
+                  Dev
+                </NavLink>
+              )}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================================
+   Breadcrumb 4 — App shell
+   ============================================================================ */
+
 export default function App() {
   return (
     <>
-      <div className="nav">
-        <div className="nav-inner">
-          <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>
-            Start
-          </NavLink>
-
-          <NavLink to="/templates" className={({ isActive }) => (isActive ? "active" : "")}>
-            Templates
-          </NavLink>
-
-          <NavLink to="/exercises" className={({ isActive }) => (isActive ? "active" : "")}>
-            Exercises
-          </NavLink>
-
-          <NavLink to="/strength" className={({ isActive }) => (isActive ? "active" : "")}>
-            Strength
-          </NavLink>
-
-          <NavLink to="/body" className={({ isActive }) => (isActive ? "active" : "")}>
-            Body
-          </NavLink>
-
-          <NavLink to="/walks" className={({ isActive }) => (isActive ? "active" : "")}>
-            Walks
-          </NavLink>
-
-          {import.meta.env.DEV && (
-	    <NavLink to="/dev" className={({ isActive }) => (isActive ? "active" : "")}>
-	      Dev
-	      </NavLink>
-	  )}
-	  
-	            {import.meta.env.DEV && (
-	              <NavLink to="/logs" className={({ isActive }) => (isActive ? "active" : "")}>
-	                Logs
-	              </NavLink>
-	            )}
-	  
-	            <NavLink to="/help" className={({ isActive }) => (isActive ? "active" : "")}>
-	              Help
-	            </NavLink>
-	  
-	            <NavLink to="/export" className={({ isActive }) => (isActive ? "active" : "")}>
-	              Export
-          </NavLink>
-        </div>
-      </div>
+      <TopNav />
 
       <div className="container">
         <AppErrorBoundary>
           <Routes>
-            {/* Start (canonical) */}
+            {/* =================================================================
+                Breadcrumb 4A — Start
+               ================================================================= */}
             <Route path="/" element={<StartPage />} />
-
-            {/* Alias: /start -> / */}
             <Route path="/start" element={<Navigate to="/" replace />} />
 
+            {/* =================================================================
+                Breadcrumb 4B — Core pages
+               ================================================================= */}
             <Route path="/templates" element={<TemplatesPage />} />
             <Route path="/exercises" element={<ExercisesPage />} />
+            <Route path="/history" element={<HistoryPage />} />
 
-            {/* NEW: Strength */}
+            {/* =================================================================
+                Breadcrumb 4C — Progress hub + detail pages
+               ================================================================= */}
+            <Route path="/progress" element={<ProgressPage />} />
             <Route path="/strength" element={<StrengthPage />} />
-
-            {/* Body */}
             <Route path="/body" element={<BodyPage />} />
+            <Route path="/walks" element={<WalksPage />} />
+            <Route path="/mps" element={<MpsPage />} />
 
-            {/* Gym */}
-            <Route path="/gym/:sessionId" element={USE_NEW_GYM_PAGE ? <GymPage /> : <GymPageLegacy />} />
+            {/* =================================================================
+                Breadcrumb 4D — Gym
+               ================================================================= */}
+            <Route
+              path="/gym/:sessionId"
+              element={USE_NEW_GYM_PAGE ? <GymPage /> : <GymPageLegacy />}
+            />
             <Route path="/gym-legacy/:sessionId" element={<GymPageLegacy />} />
 
-            <Route path="/walks" element={<WalksPage />} />
-	    <Route path="/history" element={<HistoryPage />} />
-	    <Route path="/help" element={<HelpPage />} />
-	    <Route path="/logs" element={<LogsPage />} />
-	    <Route path="/import" element={<ImportCsvPage />} />
+            {/* =================================================================
+                Breadcrumb 4E — Utilities
+               ================================================================= */}
+            <Route path="/help" element={<HelpPage />} />
+            <Route path="/logs" element={<LogsPage />} />
+            <Route path="/import" element={<ImportCsvPage />} />
             <Route path="/export" element={<ExportPage />} />
 
-            {/* Session pipeline */}
+            {/* =================================================================
+                Breadcrumb 4F — Session pipeline
+               ================================================================= */}
             <Route path="/complete/:sessionId" element={<SessionCompletePage />} />
             <Route path="/session/:sessionId" element={<SessionDetailPage />} />
 
-	   {/* DEV Diagnostics (dev-only; page redirects to / in prod) */}
-           <Route path="/dev" element={<DevDiagnosticsPage />} />
+            {/* =================================================================
+                Breadcrumb 4G — DEV diagnostics
+               ================================================================= */}
+            <Route path="/dev" element={<DevDiagnosticsPage />} />
 
-            {/* Safety net */}
+            {/* =================================================================
+                Breadcrumb 4H — Safety net
+               ================================================================= */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AppErrorBoundary>

@@ -1,14 +1,20 @@
 // src/strength/strength.ts
 /* ========================================================================== */
 /*  strength.ts                                                               */
-/*  BUILD_ID: 2026-02-26-STRENGTH-08                                           */
+/*  BUILD_ID: 2026-03-08-STRENGTH-09                                          */
+/*  FILE: src/strength/strength.ts                                            */
 /* -------------------------------------------------------------------------- */
 /*  Strength Index                                                            */
 /*                                                                            */
-/*  Adds (STRENGTH-08)                                                        */
-/*  ✅ computeStrengthIndexAt(endAtMs, windowDays)                             */
-/*  ✅ computeStrengthTrend(weeks, windowDays) — REAL snapshots                */
-/*  ✅ Trend sorted most-recent-first                                          */
+/*  Changes (STRENGTH-09)                                                     */
+/*  ✅ Upgrade per-pattern scoring from "single best set" to blended signal    */
+/*  ✅ Add scored E1RM cap for rep-range stability (default max reps = 12)     */
+/*  ✅ Add working-strength component (best N scored working sets average)      */
+/*  ✅ Add exposure component (hard-set / completed-set signal)                */
+/*  ✅ Preserve existing computeStrengthIndex* API                             */
+/*  ✅ Keep legacy relativeIndex (linear BW) for compatibility                 */
+/*  ✅ Add normalizedIndex using allometric scaling (BW^0.67)                  */
+/*  ✅ Add richer pattern detail for future MPS / debug / UI                   */
 /*                                                                            */
 /*  Revision history                                                          */
 /*  - 2026-02-25  STRENGTH-01  Initial computeStrengthIndex() scaffold         */
@@ -16,21 +22,39 @@
 /*  - 2026-02-26  STRENGTH-06  BW: use BodyPage schema (takenAt/weightLb)      */
 /*  - 2026-02-26  STRENGTH-07  BW: accept weightLb/weight + takenAt/date/...   */
 /*  - 2026-02-26  STRENGTH-08  Trend: computeStrengthIndexAt + computeTrend    */
+/*  - 2026-03-08  STRENGTH-09  Blended pattern score + normalized strength     */
 /* ========================================================================== */
 
 import { db } from "../db";
+
+/* -------------------------------------------------------------------------- */
+/* Breadcrumb 1 — Types                                                       */
+/* -------------------------------------------------------------------------- */
 
 export type StrengthPattern = "squat" | "hinge" | "push" | "pull";
 
 export interface PatternScore {
   pattern: StrengthPattern;
-  absolute: number; // best e1RM for pattern
-  relative: number; // best e1RM / bodyweight
+
+  // Core components
+  topSet: number; // best scored e1RM in window
+  working: number; // avg of best working e1RMs in window
+  exposure: number; // 0..1 readiness / exposure signal
+
+  // Outputs
+  absolute: number; // blended pattern score
+  relative: number; // legacy linear absolute / BW
+  normalized: number; // allometric absolute / BW^0.67
+
+  // Debug / observability
+  hardSets: number;
+  completedWorkingSets: number;
 }
 
 export interface StrengthIndexResult {
   absoluteIndex: number;
-  relativeIndex: number;
+  relativeIndex: number; // legacy linear relative score for compatibility
+  normalizedIndex: number; // preferred relative score for MPS / bodyweight changes
   patterns: PatternScore[];
   bodyweight: number; // BW used for relative index (5-day avg if available)
   bodyweightDaysUsed: number; // distinct days used (<= 5). 0 means fallback.
@@ -42,12 +66,30 @@ export type StrengthTrendRow = {
   bodyweight: number;
   bodyweightDaysUsed: number;
   absoluteIndex: number;
-  relativeIndex: number;
+  relativeIndex: number; // legacy linear
+  normalizedIndex: number; // preferred relative trend
 };
 
 /* -------------------------------------------------------------------------- */
-/* Breadcrumb 1 — E1RM                                                        */
+/* Breadcrumb 2 — Constants / tuning knobs                                    */
 /* -------------------------------------------------------------------------- */
+
+const MAX_SCORING_REPS = 12;
+const WORKING_SET_AVG_COUNT = 3;
+const TARGET_HARD_SETS_PER_PATTERN = 6;
+
+// Blended score weights
+const TOP_WEIGHT = 0.55;
+const WORKING_WEIGHT = 0.30;
+const EXPOSURE_WEIGHT = 0.15;
+
+// Allometric exponent for bodyweight normalization
+const BW_EXPONENT = 0.67;
+
+/* -------------------------------------------------------------------------- */
+/* Breadcrumb 3 — E1RM helpers                                                */
+/* -------------------------------------------------------------------------- */
+
 export function computeE1RM(weight: number, reps: number) {
   const w = Number(weight);
   const r = Number(reps);
@@ -55,9 +97,36 @@ export function computeE1RM(weight: number, reps: number) {
   return w * (1 + r / 30);
 }
 
+export function computeScoredE1RM(weight: number, reps: number) {
+  const w = Number(weight);
+  const r = Number(reps);
+  if (!Number.isFinite(w) || !Number.isFinite(r) || w <= 0 || r <= 0) return 0;
+  if (r > MAX_SCORING_REPS) return 0;
+  return computeE1RM(w, r);
+}
+
+function normalizeByBodyweight(value: number, bodyweight: number) {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  const bw = Number(bodyweight);
+  if (!Number.isFinite(bw) || bw <= 0) return 0;
+  return value / Math.pow(bw, BW_EXPONENT);
+}
+
+function avgTopN(values: number[], n: number) {
+  const clean = values.filter((x) => Number.isFinite(x) && x > 0).sort((a, b) => b - a).slice(0, n);
+  if (!clean.length) return 0;
+  return clean.reduce((a, b) => a + b, 0) / clean.length;
+}
+
+function clamp01(x: number) {
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
+}
+
 /* -------------------------------------------------------------------------- */
-/* Breadcrumb 2 — Pattern classification                                       */
+/* Breadcrumb 4 — Pattern classification                                      */
 /* -------------------------------------------------------------------------- */
+
 const EXERCISE_ID_OVERRIDES: Record<string, StrengthPattern> = {
   // Optional: pin specific UUIDs once you know them.
 };
@@ -81,14 +150,16 @@ function patternFromName(name: string): StrengthPattern | undefined {
     n.includes("romanian") ||
     n.includes("good morning") ||
     n.includes("hip hinge")
-  )
+  ) {
     return "hinge";
+  }
 
   if (
     (n.includes("bench") || n.includes("press") || n.includes("overhead") || n.includes("incline")) &&
     !n.includes("leg press")
-  )
+  ) {
     return "push";
+  }
 
   if (
     n.includes("row") ||
@@ -98,18 +169,20 @@ function patternFromName(name: string): StrengthPattern | undefined {
     n.includes("pull-up") ||
     n.includes("chin") ||
     n.includes("lat pull")
-  )
+  ) {
     return "pull";
+  }
 
   return undefined;
 }
 
 /* -------------------------------------------------------------------------- */
-/* Breadcrumb 3 — Bodyweight (5-day rolling avg)                               */
-/*   - Prefer BodyPage table: db.bodyMetrics                                   */
-/*   - Accept schema variants: weightLb | weight, takenAt | date | createdAt   */
-/*   - Support "as-of" computations (endAtMs) for trend snapshots              */
+/* Breadcrumb 5 — Bodyweight (5-day rolling avg)                              */
+/*   - Prefer BodyPage table: db.bodyMetrics                                  */
+/*   - Accept schema variants: weightLb | weight, takenAt | date | createdAt  */
+/*   - Support "as-of" computations (endAtMs) for trend snapshots             */
 /* -------------------------------------------------------------------------- */
+
 function dayKey(ms: number): string {
   const d = new Date(ms);
   const y = d.getFullYear();
@@ -142,11 +215,8 @@ function readRowWeightLb(r: any): number {
 }
 
 async function loadRecentRows(table: any, endAtMs: number): Promise<any[]> {
-  // Pull a chunk of recent rows. Try indexed order first; fallback to toArray+sort.
-  // We filter to <= endAtMs to make "as-of" snapshots stable.
   try {
     if (typeof table.orderBy === "function") {
-      // Try takenAt index first. If not indexed, this can throw.
       const arr = await table.orderBy("takenAt").reverse().limit(300).toArray();
       return (arr ?? []).filter((r: any) => readRowTimeMs(r) <= endAtMs);
     }
@@ -180,7 +250,6 @@ async function getBodyweightRollingAvgAt(
   const rows = await loadRecentRows(table, endAtMs);
   if (!rows.length) return { avg: 200, daysUsed: 0 };
 
-  // Latest entry per DISTINCT day (up to N days)
   const latestPerDay = new Map<string, number>();
 
   for (const r of rows) {
@@ -201,18 +270,72 @@ async function getBodyweightRollingAvgAt(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Breadcrumb 4 — Core computation (as-of endAtMs)                             */
+/* Breadcrumb 6 — Pattern accumulation                                        */
 /* -------------------------------------------------------------------------- */
+
+type PatternAccumulator = {
+  top: number;
+  working: number[];
+  hardSets: number;
+  completedWorkingSets: number;
+};
+
+function makeAccumulator(): Record<StrengthPattern, PatternAccumulator> {
+  return {
+    squat: { top: 0, working: [], hardSets: 0, completedWorkingSets: 0 },
+    hinge: { top: 0, working: [], hardSets: 0, completedWorkingSets: 0 },
+    push: { top: 0, working: [], hardSets: 0, completedWorkingSets: 0 },
+    pull: { top: 0, working: [], hardSets: 0, completedWorkingSets: 0 },
+  };
+}
+
+function isHardSet(setRow: any) {
+  const rir = Number(setRow?.rir);
+  if (Number.isFinite(rir)) return rir <= 3;
+  // Fallback: completed working set counts as general exposure, but not hard exposure.
+  return false;
+}
+
+function buildPatternScore(pattern: StrengthPattern, acc: PatternAccumulator, bodyweight: number): PatternScore {
+  const topSet = acc.top;
+  const working = avgTopN(acc.working, WORKING_SET_AVG_COUNT);
+
+  // Prefer true hard sets when available; otherwise fall back to completed working set signal.
+  const exposureBase =
+    acc.hardSets > 0
+      ? acc.hardSets / TARGET_HARD_SETS_PER_PATTERN
+      : acc.completedWorkingSets / TARGET_HARD_SETS_PER_PATTERN;
+
+  const exposure = clamp01(exposureBase);
+
+  const absolute =
+    topSet * TOP_WEIGHT +
+    working * WORKING_WEIGHT +
+    topSet * exposure * EXPOSURE_WEIGHT;
+
+  const relative = bodyweight > 0 ? absolute / bodyweight : 0;
+  const normalized = normalizeByBodyweight(absolute, bodyweight);
+
+  return {
+    pattern,
+    topSet: Number.isFinite(topSet) ? topSet : 0,
+    working: Number.isFinite(working) ? working : 0,
+    exposure,
+    absolute: Number.isFinite(absolute) ? absolute : 0,
+    relative: Number.isFinite(relative) ? relative : 0,
+    normalized: Number.isFinite(normalized) ? normalized : 0,
+    hardSets: acc.hardSets,
+    completedWorkingSets: acc.completedWorkingSets,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Breadcrumb 7 — Core computation (as-of endAtMs)                            */
+/* -------------------------------------------------------------------------- */
+
 export async function computeStrengthIndexAt(endAtMs: number, windowDays = 28): Promise<StrengthIndexResult> {
   const endAt = Number(endAtMs);
   const cutoff = endAt - windowDays * 24 * 60 * 60 * 1000;
-
-  const bestByPattern: Record<StrengthPattern, number> = {
-    squat: 0,
-    hinge: 0,
-    push: 0,
-    pull: 0,
-  };
 
   const bw = await getBodyweightRollingAvgAt(endAt, 5);
   const bodyweight = bw.avg;
@@ -222,14 +345,15 @@ export async function computeStrengthIndexAt(endAtMs: number, windowDays = 28): 
   const sessionIds = sessions.map((s: any) => s.id).filter(Boolean);
 
   if (!sessionIds.length) {
-    const patterns: PatternScore[] = (Object.keys(bestByPattern) as StrengthPattern[]).map((p) => ({
-      pattern: p,
-      absolute: 0,
-      relative: 0,
-    }));
+    const emptyAcc = makeAccumulator();
+    const patterns: PatternScore[] = (Object.keys(emptyAcc) as StrengthPattern[]).map((p) =>
+      buildPatternScore(p, emptyAcc[p], bodyweight)
+    );
+
     return {
       absoluteIndex: 0,
       relativeIndex: 0,
+      normalizedIndex: 0,
       patterns,
       bodyweight,
       bodyweightDaysUsed: bw.daysUsed,
@@ -248,28 +372,30 @@ export async function computeStrengthIndexAt(endAtMs: number, windowDays = 28): 
   );
 
   if (!working.length) {
-    const patterns: PatternScore[] = (Object.keys(bestByPattern) as StrengthPattern[]).map((p) => ({
-      pattern: p,
-      absolute: 0,
-      relative: 0,
-    }));
+    const emptyAcc = makeAccumulator();
+    const patterns: PatternScore[] = (Object.keys(emptyAcc) as StrengthPattern[]).map((p) =>
+      buildPatternScore(p, emptyAcc[p], bodyweight)
+    );
+
     return {
       absoluteIndex: 0,
       relativeIndex: 0,
+      normalizedIndex: 0,
       patterns,
       bodyweight,
       bodyweightDaysUsed: bw.daysUsed,
     };
   }
 
-  // PERF: batch load tracks
+  /* ------------------------------------------------------------------------ */
+  /* Breadcrumb 7A — Batch load tracks / exercises                            */
+  /* ------------------------------------------------------------------------ */
   const trackIds = Array.from(new Set(working.map((s) => s.trackId).filter(Boolean)));
   const tracksArr: any[] = await db.tracks.bulkGet(trackIds);
 
   const trackById = new Map<string, any>();
   for (const t of tracksArr) if (t?.id) trackById.set(t.id, t);
 
-  // Batch load exercises (for name heuristic)
   const exerciseIds = Array.from(new Set(tracksArr.map((t) => t?.exerciseId).filter(Boolean))) as string[];
   const exercisesArr: any[] = await db.exercises.bulkGet(exerciseIds);
 
@@ -285,6 +411,11 @@ export async function computeStrengthIndexAt(endAtMs: number, windowDays = 28): 
     return patternFromName(name);
   }
 
+  /* ------------------------------------------------------------------------ */
+  /* Breadcrumb 7B — Accumulate per-pattern strength signal                    */
+  /* ------------------------------------------------------------------------ */
+  const acc = makeAccumulator();
+
   for (const s of working) {
     const track = trackById.get(s.trackId);
     if (!track) continue;
@@ -295,22 +426,33 @@ export async function computeStrengthIndexAt(endAtMs: number, windowDays = 28): 
     const pattern = patternFast(exId);
     if (!pattern) continue;
 
-    const e1rm = computeE1RM(s.weight, s.reps);
-    if (e1rm > bestByPattern[pattern]) bestByPattern[pattern] = e1rm;
+    const scored = computeScoredE1RM(s.weight, s.reps);
+    if (scored <= 0) continue;
+
+    const bucket = acc[pattern];
+    bucket.completedWorkingSets += 1;
+
+    if (scored > bucket.top) bucket.top = scored;
+    bucket.working.push(scored);
+
+    if (isHardSet(s)) bucket.hardSets += 1;
   }
 
-  const patterns: PatternScore[] = (Object.keys(bestByPattern) as StrengthPattern[]).map((p) => ({
-    pattern: p,
-    absolute: bestByPattern[p],
-    relative: bodyweight > 0 ? bestByPattern[p] / bodyweight : 0,
-  }));
+  /* ------------------------------------------------------------------------ */
+  /* Breadcrumb 7C — Build pattern outputs                                     */
+  /* ------------------------------------------------------------------------ */
+  const patterns: PatternScore[] = (Object.keys(acc) as StrengthPattern[]).map((p) =>
+    buildPatternScore(p, acc[p], bodyweight)
+  );
 
   const absoluteIndex = patterns.reduce((sum, p) => sum + p.absolute, 0) / patterns.length;
   const relativeIndex = patterns.reduce((sum, p) => sum + p.relative, 0) / patterns.length;
+  const normalizedIndex = patterns.reduce((sum, p) => sum + p.normalized, 0) / patterns.length;
 
   return {
     absoluteIndex: Number.isFinite(absoluteIndex) ? absoluteIndex : 0,
     relativeIndex: Number.isFinite(relativeIndex) ? relativeIndex : 0,
+    normalizedIndex: Number.isFinite(normalizedIndex) ? normalizedIndex : 0,
     patterns,
     bodyweight,
     bodyweightDaysUsed: bw.daysUsed,
@@ -318,15 +460,17 @@ export async function computeStrengthIndexAt(endAtMs: number, windowDays = 28): 
 }
 
 /* -------------------------------------------------------------------------- */
-/* Breadcrumb 5 — Default: "now" computation (existing API)                    */
+/* Breadcrumb 8 — Default: "now" computation (existing API)                   */
 /* -------------------------------------------------------------------------- */
+
 export async function computeStrengthIndex(windowDays = 28): Promise<StrengthIndexResult> {
   return computeStrengthIndexAt(Date.now(), windowDays);
 }
 
 /* -------------------------------------------------------------------------- */
-/* Breadcrumb 6 — Trend (last N weeks), most recent first                      */
+/* Breadcrumb 9 — Trend (last N weeks), most recent first                     */
 /* -------------------------------------------------------------------------- */
+
 function fmtWeekLabel(ms: number): string {
   const d = new Date(ms);
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -340,7 +484,7 @@ function startOfDay(ms: number): number {
 
 export async function computeStrengthTrend(weeks = 12, windowDays = 28): Promise<StrengthTrendRow[]> {
   const n = Math.max(1, Math.min(52, Math.floor(Number(weeks) || 12)));
-  const end0 = startOfDay(Date.now()) + 23 * 60 * 60 * 1000 + 59 * 60 * 1000 + 59 * 1000; // end of today
+  const end0 = startOfDay(Date.now()) + 23 * 60 * 60 * 1000 + 59 * 60 * 1000 + 59 * 1000;
 
   const rows: StrengthTrendRow[] = [];
 
@@ -355,10 +499,10 @@ export async function computeStrengthTrend(weeks = 12, windowDays = 28): Promise
       bodyweightDaysUsed: r.bodyweightDaysUsed,
       absoluteIndex: r.absoluteIndex,
       relativeIndex: r.relativeIndex,
+      normalizedIndex: r.normalizedIndex,
     });
   }
 
-  // Most recent week at top
   rows.sort((a, b) => b.weekEndMs - a.weekEndMs);
   return rows;
 }
