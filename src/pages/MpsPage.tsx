@@ -34,7 +34,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { db } from "../db";
-import { computeStrengthTrend } from "../strength/strength";
+import { computeStrengthTrend } from "../strength/Strength";
 
 /* ============================================================================
    Breadcrumb 1 — Types
