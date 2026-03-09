@@ -70,8 +70,13 @@ export type Equipment =
 /* ============================================================
    Helpers
    ============================================================ */
+
 export function normalizeName(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, " ");
+  return String(name || "")
+    .toLowerCase()
+    .replace(/[-_]/g, " ")   // treat hyphen/underscore as spaces
+    .replace(/\s+/g, " ")    // collapse multiple spaces
+    .trim();
 }
 
 function shortId(id: string): string {

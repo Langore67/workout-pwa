@@ -36,6 +36,7 @@ import HelpPage from "./pages/HelpPage";
 import LogsPage from "./pages/LogsPage";
 import ProgressPage from "./pages/ProgressPage";
 import MpsPage from "./pages/MpsPage";
+import PasteWorkoutPage from "./pages/PasteWorkoutPage";
 
 /* ============================================================================
    Breadcrumb 1 — Runtime switches
@@ -178,63 +179,74 @@ function TopNav() {
             More ▾
           </button>
       
-          {moreOpen ? (
-            <div
-	      role="menu"
-	      aria-label="More"
-	      className="card"
-	      style={{
-	        position: "absolute",
-	        top: "calc(100% + 8px)",
-	        right: 0,
-	        minWidth: 200,
-	        zIndex: 1000,
-	        display: "grid",
-	        gap: 6,
-	        padding: 10,
-	        borderRadius: 14,
-	      }}
-           >
-              <NavLink
-	        to="/export"
-	        className={({ isActive }) => (isActive ? "active" : "")}
-	        onClick={closeMore}
-	        style={{
-	          padding: "8px 10px",
-	          borderRadius: 8,
-	        }}
-	      >
-	        Export
-              </NavLink>
-      
-              <NavLink
-	        to="/help"
-	        className={({ isActive }) => (isActive ? "active" : "")}
-	        onClick={closeMore}
-	        style={{
-	          padding: "8px 10px",
-	          borderRadius: 8,
-	        }}
-                >
-              
-                Help
-              </NavLink>
-      
-              {import.meta.env.DEV && (
-                <NavLink
-		  to="/Dev"
-		  className={({ isActive }) => (isActive ? "active" : "")}
-		  onClick={closeMore}
-		  style={{
-		    padding: "8px 10px",
-		    borderRadius: 8,
-		  }}
-                 >
-                  Dev
-                </NavLink>
-              )}
-            </div>
-          ) : null}
+{moreOpen ? (
+  <div
+    role="menu"
+    aria-label="More"
+    className="card"
+    style={{
+      position: "absolute",
+      top: "calc(100% + 8px)",
+      right: 0,
+      minWidth: 200,
+      zIndex: 1000,
+      display: "grid",
+      gap: 6,
+      padding: 10,
+      borderRadius: 14,
+    }}
+  >
+    <NavLink
+      to="/paste-workout"
+      className={({ isActive }) => (isActive ? "active" : "")}
+      onClick={closeMore}
+      style={{
+        padding: "8px 10px",
+        borderRadius: 8,
+      }}
+    >
+      Paste Workout
+    </NavLink>
+
+    <NavLink
+      to="/export"
+      className={({ isActive }) => (isActive ? "active" : "")}
+      onClick={closeMore}
+      style={{
+        padding: "8px 10px",
+        borderRadius: 8,
+      }}
+    >
+      Export
+    </NavLink>
+
+    <NavLink
+      to="/help"
+      className={({ isActive }) => (isActive ? "active" : "")}
+      onClick={closeMore}
+      style={{
+        padding: "8px 10px",
+        borderRadius: 8,
+      }}
+    >
+      Help
+    </NavLink>
+
+    {import.meta.env.DEV && (
+      <NavLink
+        to="/Dev"
+        className={({ isActive }) => (isActive ? "active" : "")}
+        onClick={closeMore}
+        style={{
+          padding: "8px 10px",
+          borderRadius: 8,
+        }}
+      >
+        Dev
+      </NavLink>
+    )}
+  </div>
+) : null}
         </div>
       </div>
     </div>
@@ -291,6 +303,7 @@ export default function App() {
             <Route path="/logs" element={<LogsPage />} />
             <Route path="/import" element={<ImportCsvPage />} />
             <Route path="/export" element={<ExportPage />} />
+            <Route path="/paste-workout" element={<PasteWorkoutPage />} />
 
             {/* =================================================================
                 Breadcrumb 4F — Session pipeline
