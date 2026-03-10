@@ -142,25 +142,36 @@ function TopNav() {
   const closeMore = () => setMoreOpen(false);
 
   return (
-    <div className="nav">
-      <div className="nav-inner" style={{ position: "relative" }}>
+    <div className="nav" style={{ position: "relative", zIndex: 2000, overflow: "visible" }}>
+      <div
+        className="nav-inner"
+        style={{ position: "relative", overflow: "visible", zIndex: 2001 }}
+      >
         <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>
           Start
         </NavLink>
-      
+
         <NavLink to="/exercises" className={({ isActive }) => (isActive ? "active" : "")}>
           Exercises
         </NavLink>
-      
+
         <NavLink to="/history" className={({ isActive }) => (isActive ? "active" : "")}>
           History
         </NavLink>
-      
+
         <NavLink to="/progress" className={({ isActive }) => (isActive ? "active" : "")}>
           Progress
         </NavLink>
-      
-        <div ref={moreRef} style={{ position: "relative", display: "inline-flex" }}>
+
+        <div
+          ref={moreRef}
+          style={{
+            position: "relative",
+            display: "inline-flex",
+            overflow: "visible",
+            zIndex: 2002,
+          }}
+        >
           <button
             type="button"
             className={moreOpen ? "active" : ""}
@@ -178,75 +189,75 @@ function TopNav() {
           >
             More ▾
           </button>
-      
-{moreOpen ? (
-  <div
-    role="menu"
-    aria-label="More"
-    className="card"
-    style={{
-      position: "absolute",
-      top: "calc(100% + 8px)",
-      right: 0,
-      minWidth: 200,
-      zIndex: 1000,
-      display: "grid",
-      gap: 6,
-      padding: 10,
-      borderRadius: 14,
-    }}
-  >
-    <NavLink
-      to="/paste-workout"
-      className={({ isActive }) => (isActive ? "active" : "")}
-      onClick={closeMore}
-      style={{
-        padding: "8px 10px",
-        borderRadius: 8,
-      }}
-    >
-      Paste Workout
-    </NavLink>
 
-    <NavLink
-      to="/export"
-      className={({ isActive }) => (isActive ? "active" : "")}
-      onClick={closeMore}
-      style={{
-        padding: "8px 10px",
-        borderRadius: 8,
-      }}
-    >
-      Export
-    </NavLink>
+          {moreOpen ? (
+            <div
+              role="menu"
+              aria-label="More"
+              className="card"
+              style={{
+                position: "absolute",
+                top: "calc(100% + 8px)",
+                right: 0,
+                minWidth: 200,
+                zIndex: 9999,
+                display: "grid",
+                gap: 6,
+                padding: 10,
+                borderRadius: 14,
+              }}
+            >
+              <NavLink
+                to="/paste-workout"
+                className={({ isActive }) => (isActive ? "active" : "")}
+                onClick={closeMore}
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                }}
+              >
+                Paste Workout
+              </NavLink>
 
-    <NavLink
-      to="/help"
-      className={({ isActive }) => (isActive ? "active" : "")}
-      onClick={closeMore}
-      style={{
-        padding: "8px 10px",
-        borderRadius: 8,
-      }}
-    >
-      Help
-    </NavLink>
+              <NavLink
+                to="/export"
+                className={({ isActive }) => (isActive ? "active" : "")}
+                onClick={closeMore}
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                }}
+              >
+                Export
+              </NavLink>
 
-    {import.meta.env.DEV && (
-      <NavLink
-        to="/Dev"
-        className={({ isActive }) => (isActive ? "active" : "")}
-        onClick={closeMore}
-        style={{
-          padding: "8px 10px",
-          borderRadius: 8,
-        }}
-      >
-        Dev
-      </NavLink>
-    )}
-  </div>
-) : null}
+              <NavLink
+                to="/help"
+                className={({ isActive }) => (isActive ? "active" : "")}
+                onClick={closeMore}
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                }}
+              >
+                Help
+              </NavLink>
+
+              {import.meta.env.DEV && (
+                <NavLink
+                  to="/Dev"
+                  className={({ isActive }) => (isActive ? "active" : "")}
+                  onClick={closeMore}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                  }}
+                >
+                  Dev
+                </NavLink>
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
