@@ -37,6 +37,7 @@ import LogsPage from "./pages/LogsPage";
 import ProgressPage from "./pages/ProgressPage";
 import MpsPage from "./pages/MpsPage";
 import PasteWorkoutPage from "./pages/PasteWorkoutPage";
+import PerformanceDashboardPage from "./pages/PerformanceDashboardPage";
 
 /* ============================================================================
    Breadcrumb 1 — Runtime switches
@@ -219,6 +220,18 @@ function TopNav() {
                 Paste Workout
               </NavLink>
 
+	    <NavLink
+              to="/performance"
+              className={({ isActive }) => (isActive ? "active" : "")}
+              onClick={closeMore}
+              style={{
+                padding: "8px 10px",
+                borderRadius: 8,
+              }}
+             >
+              Performance
+              </NavLink>
+
               <NavLink
                 to="/export"
                 className={({ isActive }) => (isActive ? "active" : "")}
@@ -293,6 +306,7 @@ export default function App() {
                 Breadcrumb 4C — Progress hub + detail pages
                ================================================================= */}
             <Route path="/progress" element={<ProgressPage />} />
+            <Route path="/performance" element={<PerformanceDashboardPage />} />
             <Route path="/strength" element={<StrengthPage />} />
             <Route path="/body" element={<BodyPage />} />
             <Route path="/walks" element={<WalksPage />} />

@@ -2,7 +2,7 @@
 /* ============================================================================
    PasteWorkoutPage.tsx — Paste Coach Workout -> Preview -> Import -> Rollback
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-09-PASTEWORKOUT-02
+   BUILD_ID: 2026-03-10-PASTEWORKOUT-03
    FILE: src/pages/PasteWorkoutPage.tsx
 
    Purpose
@@ -14,7 +14,7 @@
    - Reuse existing exercise / track matching via normalizeName()
    - Block accidental duplicate session imports for the same day + program day
 
-   Supported input format (MVP)
+   Supported input format (MVP+)
    ----------------------------------------------------------------------------
    Session: Upper A
    Date: 2026-03-09
@@ -42,15 +42,20 @@
    work 75x9 @3
    work 70x8 @2
 
+   Additional supported set variants
+   - work BWx12
+   - work BWx12/side
+   - work BWx30s
+   - work BWx30s/side
+   - work 15x12/side @3
+   - technique 65x10 notes
+   - test 95x12 @4 notes
+   - cardio 15 min Zone 1 treadmill
+
    Notes
    - Exercise line = plain text line that is not metadata and not a set line
-   - Set line supports:
-       warmup 45x10
-       work 135x9 @2.5 notes
-       technique 65x10 notes
-       test 95x12 @4 notes
-       cardio 15 min Zone 1 treadmill
    - technique / test / cardio are imported as working sets with a tag in notes
+   - /side is preserved in notes as "per-side" for now
    - Duplicate guard blocks import when the same program day already exists on
      the same calendar date
    ============================================================================ */
@@ -81,7 +86,10 @@ type ParsedSet = {
   setKind: ParsedSetKind;
   weight?: number;
   reps?: number;
+  seconds?: number;
   rir?: number;
+  isBodyweight?: boolean;
+  isPerSide?: boolean;
   notes?: string;
 };
 
@@ -126,8 +134,8 @@ type PreviewSummary = {
    ============================================================================ */
 
 const LAST_IMPORT_KEY = "workout_last_paste_import_v1";
-const PAGE_VERSION = "2";
-const BUILD_ID = "2026-03-09-PASTEWORKOUT-02";
+const PAGE_VERSION = "3";
+const BUILD_ID = "2026-03-10-PASTEWORKOUT-03";
 const FILE_FOOTER = "src/pages/PasteWorkoutPage.tsx";
 
 const SAMPLE_TEXT = `Session: Upper A
@@ -231,12 +239,16 @@ function sameCalendarDay(ms: number, dateStr: string): boolean {
   return d.getFullYear() === dt.y && d.getMonth() === dt.m - 1 && d.getDate() === dt.d;
 }
 
-async function findExistingSessionForProgramDay(programDay: string, dateStr: string): Promise<Session | null> {
+async function findExistingSessionForProgramDay(
+  programDay: string,
+  dateStr: string
+): Promise<Session | null> {
   const sessions = await db.sessions.toArray();
 
   const match =
     sessions.find((s) => {
-      const sameName = normalizeName(String(s.templateName || "")) === normalizeName(programDay);
+      const sameName =
+        normalizeName(String(s.templateName || "")) === normalizeName(programDay);
       const sameDay = sameCalendarDay(s.startedAt, dateStr);
       return sameName && sameDay;
     }) || null;
@@ -248,12 +260,18 @@ function normalizeExerciseDisplayName(name: string): string {
   return name.replace(/\s+/g, " ").trim();
 }
 
-function inferTrackingMode(exerciseName: string, hasWeight: boolean, hasReps: boolean): TrackingMode {
+function inferTrackingMode(
+  exerciseName: string,
+  hasWeight: boolean,
+  hasReps: boolean
+): TrackingMode {
   const s = exerciseName.toLowerCase();
 
   if (s.includes("plank") || s.includes("hold")) return "timeSeconds";
   if (!hasWeight && hasReps) return "repsOnly";
-  if (s.includes("band") || s.includes("pull-apart") || s.includes("pull apart")) return "repsOnly";
+  if (s.includes("band") || s.includes("pull-apart") || s.includes("pull apart")) {
+    return "repsOnly";
+  }
 
   return "weightedReps";
 }
@@ -261,11 +279,23 @@ function inferTrackingMode(exerciseName: string, hasWeight: boolean, hasReps: bo
 function defaultTrackType(exerciseName: string): TrackType {
   const s = exerciseName.toLowerCase();
 
-  if (s.includes("breathing") || s.includes("reset") || s.includes("mobility")) {
+  if (
+    s.includes("breathing") ||
+    s.includes("reset") ||
+    s.includes("mobility") ||
+    s.includes("stretch") ||
+    s.includes("clamshell") ||
+    s.includes("clams")
+  ) {
     return "corrective";
   }
 
-  if (s.includes("walk") || s.includes("bike") || s.includes("cardio") || s.includes("treadmill")) {
+  if (
+    s.includes("walk") ||
+    s.includes("bike") ||
+    s.includes("cardio") ||
+    s.includes("treadmill")
+  ) {
     return "cardio";
   }
 
@@ -299,23 +329,33 @@ function parseSetLine(line: string): ParsedSet | null {
   }
 
   const m = trimmed.match(
-    /^(warmup|work|technique|test)\s+(-?\d+(\.\d+)?)x(\d+)(?:\s+@(\d+(\.\d+)?))?(?:\s+(.*))?$/i
+    /^(warmup|work|technique|test)\s+(BW|-?\d+(?:\.\d+)?)x(\d+)(s)?(?:\/(side))?(?:\s+@(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
   );
 
   if (!m) return null;
 
   const kindRaw = m[1].toLowerCase() as ParsedSetKind;
-  const weight = Number(m[2]);
-  const reps = Number(m[4]);
-  const rir = m[5] !== undefined ? Number(m[5]) : undefined;
+  const weightRaw = m[2];
+  const countRaw = m[3];
+  const isSeconds = !!m[4];
+  const isPerSide = !!m[5];
+  const rirRaw = m[6];
   const notes = m[7]?.trim() || undefined;
+
+  const isBodyweight = /^bw$/i.test(weightRaw);
+  const weight = isBodyweight ? 0 : Number(weightRaw);
+  const count = Number(countRaw);
+  const rir = rirRaw !== undefined ? Number(rirRaw) : undefined;
 
   return {
     rawLine: line,
     setKind: kindRaw,
     weight: Number.isFinite(weight) ? weight : undefined,
-    reps: Number.isFinite(reps) ? reps : undefined,
+    reps: !isSeconds && Number.isFinite(count) ? count : undefined,
+    seconds: isSeconds && Number.isFinite(count) ? count : undefined,
     rir: rir !== undefined && Number.isFinite(rir) ? rir : undefined,
+    isBodyweight,
+    isPerSide,
     notes,
   };
 }
@@ -384,8 +424,12 @@ function parseWorkoutText(text: string): ParsedWorkout {
   if (!programDay) warnings.push("Missing Session: line");
   if (!date) warnings.push("Missing Date: line");
   if (date && !parseDateOnly(date)) warnings.push("Date must be YYYY-MM-DD");
-  if (start && !normalizeTimeString(start)) warnings.push("Start time should look like HH:mm");
-  if (end && !normalizeTimeString(end)) warnings.push("End time should look like HH:mm");
+  if (start && !normalizeTimeString(start)) {
+    warnings.push("Start time should look like HH:mm");
+  }
+  if (end && !normalizeTimeString(end)) {
+    warnings.push("End time should look like HH:mm");
+  }
 
   for (const ex of exercises) {
     if (!ex.sets.length) warnings.push(`Exercise has no parsed sets: ${ex.exercise}`);
@@ -412,11 +456,16 @@ export default function PasteWorkoutPage() {
   const [dryRun, setDryRun] = useState<boolean>(true);
   const [parsed, setParsed] = useState<ParsedWorkout | null>(null);
   const [preview, setPreview] = useState<PreviewSummary | null>(null);
-  const [lastImport, setLastImport] = useState<LastPasteImportRecord | null>(() => loadLastImport());
+  const [lastImport, setLastImport] = useState<LastPasteImportRecord | null>(() =>
+    loadLastImport()
+  );
 
   const canImport = useMemo(() => !!parsed && !!preview, [parsed, preview]);
   const canRollback = useMemo(() => !!lastImport?.sessionIds?.length, [lastImport]);
-  const footer = useMemo(() => `${FILE_FOOTER} • v${PAGE_VERSION} • ${BUILD_ID}`, []);
+  const footer = useMemo(
+    () => `${FILE_FOOTER} • v${PAGE_VERSION} • ${BUILD_ID}`,
+    []
+  );
 
   /* --------------------------------------------------------------------------
      Breadcrumb 6 — Preview parse + dry run summary
@@ -429,13 +478,15 @@ export default function PasteWorkoutPage() {
     const exerciseKeys = new Set(existingExercises.map((e) => normalizeName(e.name)));
     const trackKeys = new Set(existingTracks.map((t) => normalizeName(t.displayName)));
 
+    const importableExercises = parsedWorkout.exercises.filter((ex) => ex.sets.length > 0);
+
     let wouldAddExercises = 0;
     let wouldAddTracks = 0;
     let wouldAddSessions = 0;
     let wouldAddSessionItems = 0;
     let wouldAddSets = 0;
 
-    for (const ex of parsedWorkout.exercises) {
+    for (const ex of importableExercises) {
       const norm = normalizeName(ex.exercise);
 
       if (!exerciseKeys.has(norm)) {
@@ -448,13 +499,11 @@ export default function PasteWorkoutPage() {
         trackKeys.add(norm);
       }
 
-      if (ex.sets.length > 0) {
-        wouldAddSessionItems += 1;
-        wouldAddSets += ex.sets.length;
-      }
+      wouldAddSessionItems += 1;
+      wouldAddSets += ex.sets.length;
     }
 
-    if (parsedWorkout.exercises.some((x) => x.sets.length > 0)) {
+    if (importableExercises.length > 0) {
       wouldAddSessions = 1;
     }
 
@@ -533,7 +582,10 @@ export default function PasteWorkoutPage() {
     const setIds = await db.sets.where("sessionId").anyOf(rec.sessionIds).primaryKeys();
     if (setIds.length) await db.sets.bulkDelete(setIds as string[]);
 
-    const siIds = await db.sessionItems.where("sessionId").anyOf(rec.sessionIds).primaryKeys();
+    const siIds = await db.sessionItems
+      .where("sessionId")
+      .anyOf(rec.sessionIds)
+      .primaryKeys();
     if (siIds.length) await db.sessionItems.bulkDelete(siIds as string[]);
 
     await db.sessions.bulkDelete(rec.sessionIds);
@@ -579,7 +631,9 @@ export default function PasteWorkoutPage() {
     }
 
     if (preview.duplicateSessionFound) {
-      setStatus(`Import blocked: Session already exists for ${parsed.programDay} on ${parsed.date}.`);
+      setStatus(
+        `Import blocked: Session already exists for ${parsed.programDay} on ${parsed.date}.`
+      );
       return;
     }
 
@@ -607,9 +661,10 @@ export default function PasteWorkoutPage() {
     }
 
     const now = Date.now();
+    const importableExercises = parsed.exercises.filter((ex) => ex.sets.length > 0);
 
     const newExercises: Exercise[] = [];
-    for (const ex of parsed.exercises) {
+    for (const ex of importableExercises) {
       const norm = normalizeName(ex.exercise);
       if (exerciseByName.has(norm)) continue;
 
@@ -628,22 +683,25 @@ export default function PasteWorkoutPage() {
     }
 
     const newTracks: Track[] = [];
-    for (const ex of parsed.exercises) {
+    for (const ex of importableExercises) {
       const norm = normalizeName(ex.exercise);
       if (trackByDisplay.has(norm)) continue;
 
       const exercise = exerciseByName.get(norm);
       if (!exercise) continue;
 
-      const hasWeight = ex.sets.some((s) => s.weight !== undefined);
+      const hasWeight = ex.sets.some((s) => s.weight !== undefined && s.weight > 0);
       const hasReps = ex.sets.some((s) => s.reps !== undefined);
+      const hasSeconds = ex.sets.some((s) => s.seconds !== undefined);
 
       const t: Track = {
         id: uuid(),
         exerciseId: exercise.id,
         displayName: ex.exercise,
         trackType: defaultTrackType(ex.exercise),
-        trackingMode: inferTrackingMode(ex.exercise, hasWeight, hasReps),
+        trackingMode: hasSeconds
+          ? "timeSeconds"
+          : inferTrackingMode(ex.exercise, hasWeight, hasReps),
         warmupSetsDefault: 2,
         workingSetsDefault: 3,
         repMin: 6,
@@ -659,24 +717,31 @@ export default function PasteWorkoutPage() {
 
     const importId = `paste_import_${new Date().toISOString()}`;
     const startedAt = dateTimeToMs(parsed.date, parsed.start);
-    const endedAt = parsed.end ? dateTimeToMs(parsed.date, parsed.end) : startedAt + 60 * 60 * 1000;
+    const endedAt = parsed.end
+      ? dateTimeToMs(parsed.date, parsed.end)
+      : startedAt + 60 * 60 * 1000;
 
     const sessionId = uuid();
     const createdSessionIds = [sessionId];
 
     const sessionNotesParts = [importId, "source=paste-workout"];
     if (parsed.warnings.length) sessionNotesParts.push(`warnings=${parsed.warnings.length}`);
-    if (parsed.failedLines.length) sessionNotesParts.push(`failedLines=${parsed.failedLines.length}`);
+    if (parsed.failedLines.length) {
+      sessionNotesParts.push(`failedLines=${parsed.failedLines.length}`);
+    }
+
+    const safeEndedAt =
+      endedAt >= startedAt ? endedAt : startedAt + 60 * 60 * 1000;
 
     const sessionsToAdd: Session[] = [
       {
         id: sessionId,
         startedAt,
-        endedAt: endedAt >= startedAt ? endedAt : startedAt + 60 * 60 * 1000,
+        endedAt: safeEndedAt,
         templateId: undefined,
         templateName: parsed.programDay,
         notes: sessionNotesParts.join("\n"),
-        updatedAt: endedAt >= startedAt ? endedAt : startedAt + 60 * 60 * 1000,
+        updatedAt: safeEndedAt,
       },
     ];
 
@@ -686,9 +751,7 @@ export default function PasteWorkoutPage() {
     let orderIndex = 0;
     let createdAt = startedAt + 1000;
 
-    for (const ex of parsed.exercises) {
-      if (!ex.sets.length) continue;
-
+    for (const ex of importableExercises) {
       const track = trackByDisplay.get(normalizeName(ex.exercise));
       if (!track) continue;
 
@@ -704,10 +767,16 @@ export default function PasteWorkoutPage() {
       orderIndex += 1;
 
       for (const set of ex.sets) {
-        const dbSetType: "warmup" | "working" = set.setKind === "warmup" ? "warmup" : "working";
+        const dbSetType: "warmup" | "working" =
+          set.setKind === "warmup" ? "warmup" : "working";
 
         const seconds =
-          track.trackingMode === "timeSeconds" && set.reps !== undefined ? set.reps : undefined;
+          track.trackingMode === "timeSeconds" ? set.seconds : undefined;
+
+        const mergedNotes =
+          [buildSetNotes(set), set.isPerSide ? "per-side" : undefined]
+            .filter(Boolean)
+            .join(" | ") || undefined;
 
         setsToAdd.push({
           id: uuid(),
@@ -723,7 +792,7 @@ export default function PasteWorkoutPage() {
               : undefined,
           seconds,
           rir: set.rir,
-          notes: buildSetNotes(set),
+          notes: mergedNotes,
           updatedAt: createdAt,
         });
 
@@ -800,22 +869,28 @@ export default function PasteWorkoutPage() {
     <div className="card" style={{ maxWidth: 980 }}>
       <h2>Paste Workout</h2>
       <p className="muted">
-        Paste coach-formatted workout text, preview the parse, then dry run or import directly into{" "}
-        <b>Exercises</b> + <b>Tracks</b> + <b>Sessions</b> + <b>SessionItems</b> + <b>Sets</b>.
+        Paste coach-formatted workout text, preview the parse, then dry run or import
+        directly into <b>Exercises</b> + <b>Tracks</b> + <b>Sessions</b> +{" "}
+        <b>SessionItems</b> + <b>Sets</b>.
       </p>
 
       <hr />
 
       <div className="row" style={{ gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={dryRun}
+            onChange={(e) => setDryRun(e.target.checked)}
+          />
           Dry run (don’t write to DB)
         </label>
 
         <div className="muted" style={{ marginLeft: "auto" }}>
           {lastImport ? (
             <>
-              Last paste import: <b>{new Date(lastImport.createdAt).toLocaleString()}</b> • {lastImport.summary}
+              Last paste import: <b>{new Date(lastImport.createdAt).toLocaleString()}</b> •{" "}
+              {lastImport.summary}
             </>
           ) : (
             <>
@@ -862,7 +937,11 @@ export default function PasteWorkoutPage() {
         <button className="btn primary" disabled={!canImport} onClick={importParsedWorkout}>
           {dryRun ? "Run Dry Import" : "Import Now"}
         </button>
-        <button className="btn danger" disabled={!canRollback || dryRun} onClick={rollbackLastImport}>
+        <button
+          className="btn danger"
+          disabled={!canRollback || dryRun}
+          onClick={rollbackLastImport}
+        >
           Rollback last import
         </button>
       </div>
@@ -948,7 +1027,9 @@ export default function PasteWorkoutPage() {
               <div className="muted" style={{ whiteSpace: "pre-wrap" }}>
                 <b>Warnings</b>
                 {"\n"}
-                {parsed.warnings.map((w, i) => `• ${w}${i < parsed.warnings.length - 1 ? "\n" : ""}`)}
+                {parsed.warnings.map(
+                  (w, i) => `• ${w}${i < parsed.warnings.length - 1 ? "\n" : ""}`
+                )}
               </div>
             </>
           )}
@@ -959,7 +1040,9 @@ export default function PasteWorkoutPage() {
               <div className="muted" style={{ whiteSpace: "pre-wrap" }}>
                 <b>Failed lines</b>
                 {"\n"}
-                {parsed.failedLines.map((w, i) => `• ${w}${i < parsed.failedLines.length - 1 ? "\n" : ""}`)}
+                {parsed.failedLines.map(
+                  (w, i) => `• ${w}${i < parsed.failedLines.length - 1 ? "\n" : ""}`
+                )}
               </div>
             </>
           )}
@@ -977,7 +1060,9 @@ export default function PasteWorkoutPage() {
                   <div style={{ display: "grid", gap: 6 }}>
                     {ex.sets.map((s, idx) => (
                       <div key={`${ex.exercise}-${idx}`} className="muted">
-                        {s.setKind} • {s.weight ?? "—"} x {s.reps ?? "—"}
+                        {s.setKind} • {s.isBodyweight ? "BW" : s.weight ?? "—"} x{" "}
+                        {s.seconds !== undefined ? `${s.seconds}s` : s.reps ?? "—"}
+                        {s.isPerSide ? " /side" : ""}
                         {s.rir !== undefined ? ` @${s.rir}` : ""}
                         {s.notes ? ` • ${s.notes}` : ""}
                       </div>
