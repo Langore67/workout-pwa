@@ -1,18 +1,36 @@
-/* BUILD_ID: 2026-03-10-DASH-IRONFORGE-01 */
+/* BUILD_ID: 2026-03-11-DASH-IRONFORGE-04 */
 /* ============================================================================
    FILE: src/pages/PerformanceDashboardPage.tsx
-   PURPOSE: IronForge-native Performance Dashboard mock page
+   PURPOSE: IronForge-native Performance Dashboard page
    ----------------------------------------------------------------------------
    Notes
    - Uses IronForge's existing styles.css primitives: card, btn, badge, muted,
      row, grid, container
    - No shadcn/ui
    - No lucide-react
-   - No recharts yet (chart panels are placeholders)
-   - Keeps the North Star information architecture while matching app styling
+   - Recharts enabled for Strength Signal line chart
+   - Strength Signal supports a Dexie-backed selector bridge with fallback
    ============================================================================ */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  db,
+  type Exercise,
+  type Track,
+  type Session,
+  type SetEntry,
+  type BodyMetricEntry,
+} from "../db";
+
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from "recharts";
 
 /* ============================================================================
    Breadcrumb 1 — Types
@@ -55,6 +73,7 @@ type DashboardViewModel = {
   heroSummary: string;
   flagshipBody: string;
   heroStats: Array<{ label: string; value: string }>;
+  strengthChartPoints: Array<{ week: string; value: number }>;
   charts: {
     strength: ChartViewModel;
     bodyComp: ChartViewModel;
@@ -62,6 +81,56 @@ type DashboardViewModel = {
   };
   insights: InsightViewModel[];
   actions: string[];
+  debug: {
+    dataSource: "Real DB" | "Mock Fallback";
+    exercisesCounted: number;
+    currentSignal: string;
+    topComposite: string;
+    composites: Array<{ movement: string; score: string; exerciseCount: number }>;
+    topExercises: Array<{ label: string; changePct: string; score: string }>;
+  };
+};
+
+type SignalSet = {
+  date: string;
+  weight: number;
+  reps: number;
+  rir?: number;
+};
+
+type ExerciseHistory = {
+  exerciseId: string;
+  label: string;
+  movement: "push" | "pull" | "squat" | "hinge" | "lunge" | "carry" | "core";
+  baselineE1RM: number;
+  sessions: SignalSet[];
+};
+
+type ExerciseSignal = {
+  exerciseId: string;
+  label: string;
+  movement: ExerciseHistory["movement"];
+  latestE1RM: number;
+  baselineE1RM: number;
+  baselineAvgE1RM: number;
+  recentAvgE1RM: number;
+  changePct: number;
+  normalizedScore: number;
+};
+
+type CompositeSignal = {
+  movement: ExerciseHistory["movement"];
+  score: number;
+  exerciseCount: number;
+};
+
+type StrengthSignalResult = {
+  score: number;
+  trend: TrendDirection;
+  exerciseSignals: ExerciseSignal[];
+  composites: CompositeSignal[];
+  chartPoints: Array<{ week: string; value: number }>;
+  summary: string;
 };
 
 /* ============================================================================
@@ -77,11 +146,736 @@ const PHASE_TABS: Array<{ phase: DashboardPhase; tone: string }> = [
 const TIME_RANGES: DashboardRange[] = ["4W", "8W", "12W", "YTD", "ALL"];
 
 /* ============================================================================
-   Breadcrumb 3 — View-model builder (mock for now)
-   Replace with selectors / Dexie-backed logic later.
+   Breadcrumb 3 — Strength Signal model + view-model builder
    ============================================================================ */
 
-function buildDashboardViewModel(phase: DashboardPhase, range: DashboardRange): DashboardViewModel {
+/* ============================================================================
+   Breadcrumb 3A — Temporary mock history
+   ----------------------------------------------------------------------------
+   Fallback when DB data is sparse or unavailable.
+   ============================================================================ */
+
+const MOCK_EXERCISE_HISTORY: ExerciseHistory[] = [
+  {
+    exerciseId: "back-squat",
+    label: "Back Squat",
+    movement: "squat",
+    baselineE1RM: 225,
+    sessions: [
+      { date: "2026-01-12", weight: 155, reps: 12, rir: 3 },
+      { date: "2026-01-19", weight: 165, reps: 10, rir: 3 },
+      { date: "2026-01-26", weight: 175, reps: 10, rir: 2.5 },
+      { date: "2026-02-02", weight: 185, reps: 8, rir: 2 },
+    ],
+  },
+  {
+    exerciseId: "bench-press",
+    label: "Bench Press",
+    movement: "push",
+    baselineE1RM: 185,
+    sessions: [
+      { date: "2026-01-12", weight: 115, reps: 10, rir: 3 },
+      { date: "2026-01-19", weight: 120, reps: 10, rir: 3 },
+      { date: "2026-01-26", weight: 125, reps: 9, rir: 2.5 },
+      { date: "2026-02-02", weight: 130, reps: 8, rir: 2 },
+    ],
+  },
+  {
+    exerciseId: "barbell-row",
+    label: "Barbell Row",
+    movement: "pull",
+    baselineE1RM: 145,
+    sessions: [
+      { date: "2026-01-12", weight: 95, reps: 12, rir: 4 },
+      { date: "2026-01-19", weight: 105, reps: 12, rir: 3.5 },
+      { date: "2026-01-26", weight: 115, reps: 10, rir: 3 },
+      { date: "2026-02-02", weight: 125, reps: 10, rir: 2 },
+    ],
+  },
+  {
+    exerciseId: "rdl",
+    label: "Romanian Deadlift",
+    movement: "hinge",
+    baselineE1RM: 215,
+    sessions: [
+      { date: "2026-01-12", weight: 115, reps: 12, rir: 3.5 },
+      { date: "2026-01-19", weight: 125, reps: 12, rir: 3 },
+      { date: "2026-01-26", weight: 135, reps: 10, rir: 3 },
+      { date: "2026-02-02", weight: 145, reps: 10, rir: 2.5 },
+    ],
+  },
+  {
+    exerciseId: "pull-up",
+    label: "Pull-Up",
+    movement: "pull",
+    baselineE1RM: 110,
+    sessions: [
+      { date: "2026-01-12", weight: 0, reps: 6, rir: 3 },
+      { date: "2026-01-19", weight: 0, reps: 7, rir: 3 },
+      { date: "2026-01-26", weight: 0, reps: 8, rir: 2 },
+      { date: "2026-02-02", weight: 10, reps: 6, rir: 2 },
+    ],
+  },
+];
+
+function calcE1RM(weight: number, reps: number) {
+  return weight * (1 + reps / 30);
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function average(values: number[]) {
+  if (!values.length) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function trendFromChange(changePct: number): TrendDirection {
+  if (changePct >= 5) return "improving";
+  if (changePct <= -3) return "declining";
+  if (changePct > -3 && changePct < 2) return "stable";
+  return "watch";
+}
+
+function scoreFromPctChange(changePct: number) {
+  return clamp(5 + changePct / 4, 0, 10);
+}
+
+function computeExerciseSignal(exercise: ExerciseHistory): ExerciseSignal {
+  const rawE1rms = exercise.sessions.map((session) => calcE1RM(session.weight, session.reps));
+  const e1rms = rawE1rms.filter((v) => Number.isFinite(v) && v > 0);
+
+  const safeBaseline =
+    Number.isFinite(exercise.baselineE1RM) && exercise.baselineE1RM > 0
+      ? exercise.baselineE1RM
+      : 1;
+
+  const latestE1RM = e1rms.length > 0 ? e1rms[e1rms.length - 1] : safeBaseline;
+
+  const baselineWindow = e1rms.slice(0, Math.min(2, e1rms.length));
+  const recentWindow = e1rms.slice(Math.max(0, e1rms.length - 2));
+
+  const baselineAvgRaw = average(baselineWindow);
+  const recentAvgRaw = average(recentWindow);
+
+  const baselineAvgE1RM =
+    Number.isFinite(baselineAvgRaw) && baselineAvgRaw > 0 ? baselineAvgRaw : safeBaseline;
+
+  const recentAvgE1RM =
+    Number.isFinite(recentAvgRaw) && recentAvgRaw > 0 ? recentAvgRaw : latestE1RM;
+
+  const changePctRaw = ((recentAvgE1RM - baselineAvgE1RM) / baselineAvgE1RM) * 100;
+  const changePct = Number.isFinite(changePctRaw) ? changePctRaw : 0;
+
+  const normalizedScoreRaw = scoreFromPctChange(changePct);
+  const normalizedScore = Number.isFinite(normalizedScoreRaw) ? normalizedScoreRaw : 5;
+
+  return {
+    exerciseId: exercise.exerciseId,
+    label: exercise.label,
+    movement: exercise.movement,
+    latestE1RM: round2(latestE1RM),
+    baselineE1RM: round2(safeBaseline),
+    baselineAvgE1RM: round2(baselineAvgE1RM),
+    recentAvgE1RM: round2(recentAvgE1RM),
+    changePct: round2(changePct),
+    normalizedScore: round2(normalizedScore),
+  };
+}
+
+function computeCompositeSignals(exerciseSignals: ExerciseSignal[]): CompositeSignal[] {
+  const byMovement = new Map<ExerciseHistory["movement"], ExerciseSignal[]>();
+
+  exerciseSignals.forEach((item) => {
+    if (!Number.isFinite(item.normalizedScore)) return;
+    const bucket = byMovement.get(item.movement) ?? [];
+    bucket.push(item);
+    byMovement.set(item.movement, bucket);
+  });
+
+  return Array.from(byMovement.entries())
+    .map(([movement, items]) => {
+      if (!items.length) return null;
+
+      const avgRaw = items.reduce((sum, item) => sum + item.normalizedScore, 0) / items.length;
+      const score = Number.isFinite(avgRaw) ? round2(avgRaw) : 5;
+
+      return {
+        movement,
+        exerciseCount: items.length,
+        score,
+      } satisfies CompositeSignal;
+    })
+    .filter((x): x is CompositeSignal => Boolean(x));
+}
+
+function buildStrengthChartPoints(history: ExerciseHistory[]) {
+  const safeHistory = history.length > 0 ? history : MOCK_EXERCISE_HISTORY;
+  const maxSessions = Math.max(...safeHistory.map((exercise) => exercise.sessions.length));
+  const points: Array<{ week: string; value: number }> = [];
+
+  for (let i = 0; i < maxSessions; i += 1) {
+    const scores: number[] = [];
+
+    safeHistory.forEach((exercise) => {
+      const sessionSlice = exercise.sessions.slice(0, i + 1);
+      if (!sessionSlice.length) return;
+
+      const e1rms = sessionSlice
+        .map((session) => calcE1RM(session.weight, session.reps))
+        .filter((v) => Number.isFinite(v) && v > 0);
+
+      if (!e1rms.length) return;
+
+      const safeBaseline =
+        Number.isFinite(exercise.baselineE1RM) && exercise.baselineE1RM > 0
+          ? exercise.baselineE1RM
+          : 1;
+
+      const baselineWindow = e1rms.slice(0, Math.min(2, e1rms.length));
+      const recentWindow = e1rms.slice(Math.max(0, e1rms.length - 2));
+
+      const baselineAvgRaw = average(baselineWindow);
+      const recentAvgRaw = average(recentWindow);
+
+      const baselineAvg =
+        Number.isFinite(baselineAvgRaw) && baselineAvgRaw > 0 ? baselineAvgRaw : safeBaseline;
+
+      const recentAvg =
+        Number.isFinite(recentAvgRaw) && recentAvgRaw > 0 ? recentAvgRaw : baselineAvg;
+
+      const changePctRaw = ((recentAvg - baselineAvg) / baselineAvg) * 100;
+      const changePct = Number.isFinite(changePctRaw) ? changePctRaw : 0;
+
+      scores.push(scoreFromPctChange(changePct));
+    });
+
+    points.push({
+      week: `W${i + 1}`,
+      value: round2(scores.length > 0 ? average(scores) : 5),
+    });
+  }
+
+  return points;
+}
+
+/* ============================================================================
+   Breadcrumb 3B — IronForge selector bridge
+   ----------------------------------------------------------------------------
+   Reads Dexie workout history and converts it into ExerciseHistory[] for the
+   Strength Signal engine.
+   ============================================================================ */
+
+/* ============================================================================
+   Breadcrumb 3B.1 — Selector input contracts
+   ----------------------------------------------------------------------------
+   Defines the data shapes used by the dashboard selector bridge.
+   ============================================================================ */
+
+type IronForgeStrengthSignalOptions = {
+  includedExerciseIds?: string[];
+  range?: DashboardRange;
+};
+
+type DbStrengthSource = {
+  exercises: Exercise[];
+  tracks: Track[];
+  sessions: Session[];
+  sets: SetEntry[];
+  bodyMetrics: BodyMetricEntry[];
+};
+
+type StrengthMovement = ExerciseHistory["movement"] | "exclude";
+
+/* ============================================================================
+   Breadcrumb 3B.2 — Movement classification rules
+   ----------------------------------------------------------------------------
+   Controls which exercises are eligible for Strength Signal and which movement
+   bucket they belong to.
+   ============================================================================ */
+
+function classifyMovementPattern(exercise: Exercise, track: Track): StrengthMovement {
+  const name = `${exercise.name} ${track.displayName}`.toLowerCase();
+
+  // -----------------------------
+  // Explicit exclusions first
+  // -----------------------------
+  const excludeTerms = [
+    "lateral raise",
+    "lat raise",
+    "rear delt",
+    "reverse pec deck",
+    "rear pec deck",
+    "face pull",
+    "pull apart",
+    "pull-apart",
+    "pec deck",
+    "fly",
+    "curl",
+    "pushdown",
+    "push down",
+    "tricep extension",
+    "kickback",
+    "leg extension",
+    "leg curl",
+    "hamstring curl",
+    "calf raise",
+    "shrug",
+    "wall sit",
+    "mobility",
+    "corrective",
+    "breathing",
+    "dorsiflexion",
+  ];
+
+  if (excludeTerms.some((term) => name.includes(term))) {
+    return "exclude";
+  }
+
+  // -----------------------------
+  // Squat pattern
+  // -----------------------------
+  if (
+    name.includes("back squat") ||
+    name.includes("front squat") ||
+    name.includes("box squat") ||
+    name.includes("safety bar squat") ||
+    name.includes("goblet squat") ||
+    name.includes("leg press") ||
+    name.includes("hack squat") ||
+    name.includes("smith squat")
+  ) {
+    return "squat";
+  }
+
+  // -----------------------------
+  // Hinge pattern
+  // -----------------------------
+  if (
+    name.includes("deadlift") ||
+    name.includes("romanian deadlift") ||
+    name.includes(" rdl") ||
+    name.startsWith("rdl") ||
+    name.includes("trap bar deadlift") ||
+    name.includes("hip thrust") ||
+    name.includes("glute bridge") ||
+    name.includes("good morning")
+  ) {
+    return "hinge";
+  }
+
+  // -----------------------------
+  // Push pattern
+  // -----------------------------
+  if (
+    name.includes("bench press") ||
+    name.includes("incline press") ||
+    name.includes("decline press") ||
+    name.includes("overhead press") ||
+    name.includes("shoulder press") ||
+    name.includes("chest press") ||
+    name.includes("dip")
+  ) {
+    return "push";
+  }
+
+  // -----------------------------
+  // Pull pattern
+  // -----------------------------
+  if (
+    name.includes("pull-up") ||
+    name.includes("pull up") ||
+    name.includes("chin-up") ||
+    name.includes("chin up") ||
+    name.includes("pulldown") ||
+    name.includes("pull down") ||
+    name.includes("barbell row") ||
+    name.includes("pendlay row") ||
+    name.includes("dumbbell row") ||
+    name.includes("3-point row") ||
+    name.includes("3 point row") ||
+    name.includes("chest-supported row") ||
+    name.includes("chest supported row") ||
+    name.includes("seated cable row") ||
+    name.includes("machine row") ||
+    name.includes("cable row")
+  ) {
+    return "pull";
+  }
+
+  return "exclude";
+}
+
+function shouldIncludeInStrengthSignal(exercise: Exercise, track: Track): boolean {
+  return classifyMovementPattern(exercise, track) !== "exclude";
+}
+
+function inferMovement(exercise: Exercise, track: Track): ExerciseHistory["movement"] {
+  const movement = classifyMovementPattern(exercise, track);
+  return movement === "exclude" ? "core" : movement;
+}
+
+/* ============================================================================
+   Breadcrumb 3B.3 — Range helpers + bodyweight helpers
+   ----------------------------------------------------------------------------
+   Controls time-window filtering and effective load handling for bodyweight
+   movements like pull-ups and dips.
+   ============================================================================ */
+
+function rangeStartMs(range: DashboardRange, now = Date.now()): number | undefined {
+  const day = 24 * 60 * 60 * 1000;
+
+  if (range === "4W") return now - 28 * day;
+  if (range === "8W") return now - 56 * day;
+  if (range === "12W") return now - 84 * day;
+  if (range === "YTD") {
+    const d = new Date(now);
+    return new Date(d.getFullYear(), 0, 1).getTime();
+  }
+
+  return undefined;
+}
+
+function nearestBodyweightLb(bodyMetrics: BodyMetricEntry[], atMs: number): number | undefined {
+  const usable = bodyMetrics
+    .filter((m) => typeof m.weightLb === "number")
+    .map((m) => ({
+      at: m.measuredAt ?? m.takenAt ?? m.createdAt,
+      weightLb: m.weightLb as number,
+    }))
+    .sort((a, b) => a.at - b.at);
+
+  if (!usable.length) return undefined;
+
+  let chosen = usable[0].weightLb;
+  for (const item of usable) {
+    if (item.at <= atMs) chosen = item.weightLb;
+    if (item.at > atMs) break;
+  }
+  return chosen;
+}
+
+function calcEffectiveWeightLb(
+  set: SetEntry,
+  exercise: Exercise,
+  track: Track,
+  bodyMetrics: BodyMetricEntry[],
+  sessionAt: number,
+): number | undefined {
+  const explicit = typeof set.weight === "number" ? set.weight : undefined;
+  const name = `${exercise.name} ${track.displayName}`.toLowerCase();
+
+  const looksBodyweight =
+    exercise.equipment === "Bodyweight" ||
+    exercise.category === "Bodyweight" ||
+    name.includes("pull up") ||
+    name.includes("pull-up") ||
+    name.includes("chin up") ||
+    name.includes("chin-up") ||
+    name.includes("dip");
+
+  if (!looksBodyweight) return explicit;
+
+  const bw = nearestBodyweightLb(bodyMetrics, sessionAt);
+  if (typeof bw !== "number") return explicit;
+
+  return bw + (explicit ?? 0);
+}
+
+/* ============================================================================
+   Breadcrumb 3B.4 — Dexie source loader
+   ----------------------------------------------------------------------------
+   Pulls the raw dashboard source data from Dexie for the requested time range.
+   ============================================================================ */
+
+async function loadStrengthSource(range: DashboardRange): Promise<DbStrengthSource> {
+  const startMs = rangeStartMs(range);
+
+  const [exercises, tracks, sessions, sets, bodyMetrics] = await Promise.all([
+    db.exercises.toArray(),
+    db.tracks.toArray(),
+    startMs
+      ? db.sessions.where("startedAt").aboveOrEqual(startMs).toArray()
+      : db.sessions.toArray(),
+    db.sets.toArray(),
+    db.bodyMetrics.toArray(),
+  ]);
+
+  return { exercises, tracks, sessions, sets, bodyMetrics };
+}
+
+/* ============================================================================
+   Breadcrumb 3B.5 — Exercise history builder
+   ----------------------------------------------------------------------------
+   Converts raw Dexie rows into ExerciseHistory[] by:
+   - filtering to eligible strength movements
+   - keeping best working set per exercise per session
+   - mapping sets into dated signal exposures
+   ============================================================================ */
+
+function buildExerciseHistoryFromDb(
+  source: DbStrengthSource,
+  options?: IronForgeStrengthSignalOptions,
+): ExerciseHistory[] {
+  const included = new Set(options?.includedExerciseIds ?? []);
+  const exerciseById = new Map(source.exercises.map((e) => [e.id, e]));
+  const trackById = new Map(source.tracks.map((t) => [t.id, t]));
+  const sessionById = new Map(
+    source.sessions
+      .filter((s) => !s.deletedAt)
+      .map((s) => [s.id, s]),
+  );
+
+  const perExerciseSessionBest = new Map<
+    string,
+    {
+      exerciseId: string;
+      label: string;
+      movement: ExerciseHistory["movement"];
+      items: Array<{ at: number; weight: number; reps: number; rir?: number }>;
+    }
+  >();
+
+  for (const set of source.sets) {
+    if (set.deletedAt) continue;
+    if (set.setType !== "working") continue;
+    if (!set.completedAt) continue;
+    if (typeof set.reps !== "number" || set.reps <= 0) continue;
+
+    const track = trackById.get(set.trackId);
+    if (!track) continue;
+
+    const exercise = exerciseById.get(track.exerciseId);
+    if (!exercise) continue;
+
+    if (included.size && !included.has(exercise.id)) continue;
+    if (!shouldIncludeInStrengthSignal(exercise, track)) continue;
+
+    const session = sessionById.get(set.sessionId);
+    if (!session) continue;
+
+    const at = session.startedAt ?? set.completedAt ?? set.createdAt;
+    const effectiveWeight = calcEffectiveWeightLb(
+      set,
+      exercise,
+      track,
+      source.bodyMetrics,
+      at,
+    );
+
+    if (typeof effectiveWeight !== "number" || !Number.isFinite(effectiveWeight)) continue;
+    if (effectiveWeight <= 0) continue;
+
+    const currentE1RM = calcE1RM(effectiveWeight, set.reps);
+    if (!Number.isFinite(currentE1RM) || currentE1RM <= 0) continue;
+
+    const bucketKey = exercise.id;
+    const existing =
+      perExerciseSessionBest.get(bucketKey) ??
+      {
+        exerciseId: exercise.id,
+        label: track.displayName || exercise.name,
+        movement: inferMovement(exercise, track),
+        items: [],
+      };
+
+    const sameSessionIdx = existing.items.findIndex((x) => x.at === at);
+
+    if (sameSessionIdx === -1) {
+      existing.items.push({
+        at,
+        weight: effectiveWeight,
+        reps: set.reps,
+        rir: set.rir,
+      });
+    } else {
+      const prev = existing.items[sameSessionIdx];
+      const prevE1RM = calcE1RM(prev.weight, prev.reps);
+
+      if (currentE1RM > prevE1RM) {
+        existing.items[sameSessionIdx] = {
+          at,
+          weight: effectiveWeight,
+          reps: set.reps,
+          rir: set.rir,
+        };
+      }
+    }
+
+    perExerciseSessionBest.set(bucketKey, existing);
+  }
+
+  return Array.from(perExerciseSessionBest.values())
+    .map((entry) => {
+      const sessions = entry.items
+        .sort((a, b) => a.at - b.at)
+        .map((item) => ({
+          date: new Date(item.at).toISOString().slice(0, 10),
+          weight: item.weight,
+          reps: item.reps,
+          rir: item.rir,
+        }));
+
+      if (sessions.length < 2) return null;
+
+      const baselineE1RM = calcE1RM(sessions[0].weight, sessions[0].reps);
+      if (!Number.isFinite(baselineE1RM) || baselineE1RM <= 0) return null;
+
+      return {
+        exerciseId: entry.exerciseId,
+        label: entry.label,
+        movement: entry.movement,
+        baselineE1RM,
+        sessions,
+      } satisfies ExerciseHistory;
+    })
+    .filter((x): x is ExerciseHistory => Boolean(x));
+}
+
+/* ============================================================================
+   Breadcrumb 3B.6 — Fallback + Strength Signal orchestration
+   ----------------------------------------------------------------------------
+   Provides fallback history, computes the signal, and builds the dashboard
+   view model consumed by the UI.
+   ============================================================================ */
+
+function getExerciseHistoryForStrengthSignalFallback(): ExerciseHistory[] {
+  return MOCK_EXERCISE_HISTORY;
+}
+
+function computeStrengthSignal(
+  phase: DashboardPhase,
+  _range: DashboardRange,
+  exerciseHistory: ExerciseHistory[],
+): StrengthSignalResult {
+  const safeHistory = exerciseHistory.length >= 2 ? exerciseHistory : MOCK_EXERCISE_HISTORY;
+
+  const exerciseSignals = safeHistory
+    .map(computeExerciseSignal)
+    .filter(
+      (item) =>
+        Number.isFinite(item.latestE1RM) &&
+        Number.isFinite(item.baselineAvgE1RM) &&
+        Number.isFinite(item.recentAvgE1RM) &&
+        Number.isFinite(item.changePct) &&
+        Number.isFinite(item.normalizedScore),
+    );
+
+  const composites = computeCompositeSignals(exerciseSignals);
+
+  /* ==========================================================================
+     Breadcrumb 3B.6A — Movement weighting
+     ----------------------------------------------------------------------------
+     Makes the flagship Strength Signal reflect larger system-strength patterns
+     more strongly than smaller upper-body changes.
+     ========================================================================== */
+  const MOVEMENT_WEIGHTS: Record<ExerciseHistory["movement"], number> = {
+    squat: 3,
+    hinge: 3,
+    push: 2,
+    pull: 2,
+    lunge: 1,
+    carry: 1,
+    core: 0,
+  };
+
+  const weightedItems = composites.filter(
+    (item) =>
+      Number.isFinite(item.score) &&
+      (MOVEMENT_WEIGHTS[item.movement] ?? 0) > 0,
+  );
+
+  const totalWeight = weightedItems.reduce(
+    (sum, item) => sum + (MOVEMENT_WEIGHTS[item.movement] ?? 0),
+    0,
+  );
+
+  const rawScore =
+    totalWeight > 0
+      ? weightedItems.reduce(
+          (sum, item) => sum + item.score * (MOVEMENT_WEIGHTS[item.movement] ?? 0),
+          0,
+        ) / totalWeight
+      : 5;
+
+  const score = Number.isFinite(rawScore) ? round2(rawScore) : 5;
+
+  const avgChangePct =
+    exerciseSignals.length > 0
+      ? exerciseSignals.reduce((sum, item) => sum + item.changePct, 0) / exerciseSignals.length
+      : 0;
+
+  const safeAvgChangePct = Number.isFinite(avgChangePct) ? avgChangePct : 0;
+
+  const chartPointsRaw = buildStrengthChartPoints(safeHistory);
+  const chartPoints = chartPointsRaw.map((point) => ({
+    week: point.week,
+    value: Number.isFinite(point.value) ? point.value : 5,
+  }));
+
+  const summary =
+    phase === "CUT"
+      ? "Strength Signal is rising on a rolling 2-session basis while cutting, which supports muscle preservation."
+      : phase === "MAINTAIN"
+        ? "Strength Signal is stable-to-rising on a rolling 2-session basis, which supports performance stability."
+        : "Strength Signal is rising on a rolling 2-session basis, which supports productive growth quality.";
+
+  return {
+    score,
+    trend: trendFromChange(safeAvgChangePct),
+    exerciseSignals,
+    composites,
+    chartPoints,
+    summary,
+  };
+}
+function analyzeStrengthChart(points: Array<{ week: string; value: number }>) {
+  if (!points.length) {
+    return {
+      start: 0,
+      current: 0,
+      changePct: 0,
+      high: 0,
+      low: 0,
+    };
+  }
+
+  const values = points.map((p) => p.value);
+  const start = values[0];
+  const current = values[values.length - 1];
+  const high = Math.max(...values);
+  const low = Math.min(...values);
+  const changePct = start > 0 ? ((current - start) / start) * 100 : 0;
+
+  return {
+    start: round2(start),
+    current: round2(current),
+    changePct: round2(changePct),
+    high: round2(high),
+    low: round2(low),
+  };
+}
+
+function buildDashboardViewModel(
+  phase: DashboardPhase,
+  range: DashboardRange,
+  exerciseHistory: ExerciseHistory[],
+): DashboardViewModel {
+  const usingFallback = exerciseHistory.length < 2;
+  const sourceHistory = usingFallback ? MOCK_EXERCISE_HISTORY : exerciseHistory;
+  const strengthSignal = computeStrengthSignal(phase, range, sourceHistory);
+  const strengthAnalysis = analyzeStrengthChart(strengthSignal.chartPoints);
+
+  const topComposite =
+    strengthSignal.composites
+      .slice()
+      .sort((a, b) => b.score - a.score)[0]?.movement ?? "—";
+
   const flagship = {
     CUT: {
       title: "Muscle Preservation",
@@ -90,7 +884,6 @@ function buildDashboardViewModel(phase: DashboardPhase, range: DashboardRange): 
       summary:
         "CUT mode is active. Success means waist trending down, body weight gradually down, and Strength Signal holding steady or rising.",
       body: "Strength is improving while waist circumference is declining. This is the pattern you want during a fat-loss phase.",
-      strength: "6.78",
       weight: "196.9 lb",
       waist: "38.6 in",
     },
@@ -101,7 +894,6 @@ function buildDashboardViewModel(phase: DashboardPhase, range: DashboardRange): 
       summary:
         "MAINTAIN mode is active. Success means body weight and waist staying relatively stable while Strength Signal holds steady or rises gradually.",
       body: "Performance is holding steady with controlled body composition. This is the pattern you want while consolidating gains.",
-      strength: "6.62",
       weight: "199.8 lb",
       waist: "39.8 in",
     },
@@ -112,7 +904,6 @@ function buildDashboardViewModel(phase: DashboardPhase, range: DashboardRange): 
       summary:
         "BULK mode is active. Success means body weight rising gradually, waist staying controlled, and Strength Signal trending upward.",
       body: "Strength and training capacity are climbing while waist gain remains controlled. This is the pattern you want during a productive bulk.",
-      strength: "7.04",
       weight: "203.1 lb",
       waist: "40.4 in",
     },
@@ -121,13 +912,14 @@ function buildDashboardViewModel(phase: DashboardPhase, range: DashboardRange): 
   return {
     activePhase: phase,
     activeRange: range,
+    strengthChartPoints: strengthSignal.chartPoints,
     flagshipTitle: flagship.title,
     flagshipScore: flagship.score,
     flagshipBadge: flagship.badge,
     heroSummary: flagship.summary,
     flagshipBody: flagship.body,
     heroStats: [
-      { label: "Strength Signal", value: flagship.strength },
+      { label: "Strength Signal", value: strengthSignal.score.toFixed(2) },
       { label: "Body Weight", value: flagship.weight },
       { label: "Waist", value: flagship.waist },
       { label: range === "ALL" ? "All-Time View" : "Range", value: range },
@@ -137,21 +929,25 @@ function buildDashboardViewModel(phase: DashboardPhase, range: DashboardRange): 
         id: "strength",
         title: "Strength Signal",
         subtitle: `Weekly trend • ${range}`,
-        direction: "improving",
+        direction: strengthSignal.trend,
         analysisRows: [
-          { label: "Source", value: "Composite strength signal" },
-          { label: "Current Value", value: flagship.strength },
-          {
-            label: "Weeks Measured",
-            value: range === "4W" ? "4" : range === "8W" ? "8" : range === "12W" ? "12" : "12+",
-          },
-        ],
-        interpretation:
-          phase === "CUT"
-            ? "Strength has risen while body composition improves."
-            : phase === "MAINTAIN"
-              ? "Strength is holding or rising gently, which is what you want during maintenance."
-              : "Strength is trending upward, supporting a productive growth phase.",
+	  { label: "Formula", value: "Rolling 2-session composite strength" },
+	  { label: "Start Value", value: strengthAnalysis.start.toFixed(2) },
+	  { label: "Current Value", value: strengthAnalysis.current.toFixed(2) },
+	  {
+	    label: "Overall Change",
+	    value: `${strengthAnalysis.changePct > 0 ? "+" : ""}${strengthAnalysis.changePct}%`,
+	  },
+	  { label: "Highest Value", value: strengthAnalysis.high.toFixed(2) },
+	  { label: "Lowest Value", value: strengthAnalysis.low.toFixed(2) },
+	  { label: "Exercises Included", value: String(strengthSignal.exerciseSignals.length) },
+	  { label: "Top Composite", value: topComposite },
+	  {
+	    label: "Weeks Measured",
+	    value: range === "4W" ? "4" : range === "8W" ? "8" : range === "12W" ? "12" : "12+",
+	  },
+],
+        interpretation: strengthSignal.summary,
       },
       bodyComp: {
         id: "bodyComp",
@@ -163,7 +959,12 @@ function buildDashboardViewModel(phase: DashboardPhase, range: DashboardRange): 
           { label: "Waist", value: flagship.waist },
           {
             label: "Goal Fit",
-            value: phase === "BULK" ? "Gain / controlled" : phase === "MAINTAIN" ? "Stable" : "Loss / favorable",
+            value:
+              phase === "BULK"
+                ? "Gain / controlled"
+                : phase === "MAINTAIN"
+                  ? "Stable"
+                  : "Loss / favorable",
           },
         ],
         interpretation:
@@ -182,7 +983,12 @@ function buildDashboardViewModel(phase: DashboardPhase, range: DashboardRange): 
           { label: "Starting Volume", value: "38,100 lb" },
           {
             label: "Current Volume",
-            value: phase === "BULK" ? "46,400 lb" : phase === "MAINTAIN" ? "40,600 lb" : "43,400 lb",
+            value:
+              phase === "BULK"
+                ? "46,400 lb"
+                : phase === "MAINTAIN"
+                  ? "40,600 lb"
+                  : "43,400 lb",
           },
           { label: "Spike Risk", value: phase === "BULK" ? "Moderate" : "Low" },
         ],
@@ -200,8 +1006,12 @@ function buildDashboardViewModel(phase: DashboardPhase, range: DashboardRange): 
         title: "Top-Line Signal",
         status: phase === "CUT" ? "Strong" : phase === "MAINTAIN" ? "Stable" : "Productive",
         confidence: "High",
-        body: "This summarizes the dashboard into a fast coaching read without hiding the analytics.",
-        evidence: ["Strength Signal", "Body Weight", "Waist"],
+        body: strengthSignal.summary,
+        evidence: strengthSignal.exerciseSignals
+          .slice()
+          .sort((a, b) => b.changePct - a.changePct)
+          .slice(0, 3)
+          .map((item) => `${item.label} ${item.changePct > 0 ? "+" : ""}${item.changePct}% (roll)`),
         action:
           phase === "CUT"
             ? "Stay the course."
@@ -220,10 +1030,34 @@ function buildDashboardViewModel(phase: DashboardPhase, range: DashboardRange): 
       },
     ],
     actions: [
-      "Lock the v1 Strength Signal formula before wiring Dexie data.",
-      "Move phase logic into dedicated rules modules.",
-      "Back indicator membership with stable exercise IDs, not labels.",
+      "Next: replace the fallback flow with fully real chart rendering.",
+      "Next: make the rolling window user-configurable.",
+      "Next: let the user select which exercises contribute to Strength Signal.",
+      "Next: plot the real strengthSignal.chartPoints in the chart card.",
     ],
+    debug: {
+      dataSource: usingFallback ? "Mock Fallback" : "Real DB",
+      exercisesCounted: strengthSignal.exerciseSignals.length,
+      currentSignal: strengthSignal.score.toFixed(2),
+      topComposite,
+      composites: strengthSignal.composites
+        .slice()
+        .sort((a, b) => b.score - a.score)
+        .map((item) => ({
+          movement: item.movement,
+          score: item.score.toFixed(2),
+          exerciseCount: item.exerciseCount,
+        })),
+      topExercises: strengthSignal.exerciseSignals
+        .slice()
+        .sort((a, b) => b.changePct - a.changePct)
+        .slice(0, 5)
+        .map((item) => ({
+          label: item.label,
+          changePct: `${item.changePct > 0 ? "+" : ""}${item.changePct.toFixed(2)}%`,
+          score: item.normalizedScore.toFixed(2),
+        })),
+    },
   };
 }
 
@@ -242,21 +1076,51 @@ function badgeClassForTrend(direction: TrendDirection) {
   return direction === "improving" ? "badge green" : "badge";
 }
 
-function ChartPlaceholder({ title }: { title: string }) {
+function ChartPlaceholder({
+  title,
+  data,
+}: {
+  title: string;
+  data?: Array<{ week: string; value: number }>;
+}) {
+  if (!data || data.length === 0) {
+    return (
+      <div className="dashboard-chart" style={{ minHeight: 220 }}>
+        {title} chart placeholder
+      </div>
+    );
+  }
+
   return (
-    <div
-      className="card"
-      style={{
-        minHeight: 220,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "var(--muted)",
-        borderStyle: "dashed",
-        background: "#fafafa",
-      }}
-    >
-      {title} chart placeholder
+    <div className="dashboard-chart" style={{ height: 240 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+
+          <XAxis
+            dataKey="week"
+            interval={0}
+            minTickGap={0}
+            tick={{ fontSize: 12 }}
+          />
+
+          <YAxis
+            domain={[0, 10]}
+            tick={{ fontSize: 12 }}
+          />
+
+          <Tooltip />
+
+          <Line
+            type="monotone"
+            dataKey="value"
+            stroke="var(--accent)"
+            strokeWidth={3}
+            dot={{ r: 4 }}
+            activeDot={{ r: 6 }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   );
 }
@@ -274,19 +1138,35 @@ function AnalysisRows({ rows }: { rows: AnalysisRow[] }) {
   );
 }
 
-function SectionHeader({ title, subtitle, right }: { title: string; subtitle: string; right?: React.ReactNode }) {
+function SectionHeader({
+  title,
+  subtitle,
+  right,
+}: {
+  title: string;
+  subtitle: string;
+  right?: React.ReactNode;
+}) {
   return (
-    <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+    <div style={{ display: "grid", gap: 8, marginBottom: 4 }}>
       <div>
         <h2 style={{ margin: 0 }}>{title}</h2>
-        <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>{subtitle}</div>
+        <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+          {subtitle}
+        </div>
       </div>
-      {right}
+      {right ? <div>{right}</div> : null}
     </div>
   );
 }
 
-function PhaseControl({ activePhase, onChange }: { activePhase: DashboardPhase; onChange: (phase: DashboardPhase) => void }) {
+function PhaseControl({
+  activePhase,
+  onChange,
+}: {
+  activePhase: DashboardPhase;
+  onChange: (phase: DashboardPhase) => void;
+}) {
   return (
     <div className="row">
       {PHASE_TABS.map((tab) => {
@@ -307,9 +1187,23 @@ function PhaseControl({ activePhase, onChange }: { activePhase: DashboardPhase; 
   );
 }
 
-function TimeRangeControl({ activeRange, onChange }: { activeRange: DashboardRange; onChange: (range: DashboardRange) => void }) {
+function TimeRangeControl({
+  activeRange,
+  onChange,
+}: {
+  activeRange: DashboardRange;
+  onChange: (range: DashboardRange) => void;
+}) {
   return (
-    <div className="row">
+    <div
+      className="row dashboard-range-scroll"
+      style={{
+        overflowX: "auto",
+        flexWrap: "nowrap",
+        WebkitOverflowScrolling: "touch",
+        scrollbarWidth: "none",
+      }}
+    >
       {TIME_RANGES.map((range) => {
         const active = range === activeRange;
         return (
@@ -318,6 +1212,7 @@ function TimeRangeControl({ activeRange, onChange }: { activeRange: DashboardRan
             type="button"
             className={`btn small ${active ? "primary" : ""}`}
             onClick={() => onChange(range)}
+            style={{ flex: "0 0 auto" }}
           >
             {range}
           </button>
@@ -328,25 +1223,46 @@ function TimeRangeControl({ activeRange, onChange }: { activeRange: DashboardRan
 }
 
 function TrendBadge({ direction }: { direction: TrendDirection }) {
-  return <span className={badgeClassForTrend(direction)}>{iconForTrend(direction)} {direction}</span>;
+  return (
+    <span className={badgeClassForTrend(direction)}>
+      {iconForTrend(direction)} {direction}
+    </span>
+  );
 }
 
-function ChartCard({ chart }: { chart: ChartViewModel }) {
+function ChartCard({
+  chart,
+  chartPoints,
+}: {
+  chart: ChartViewModel;
+  chartPoints?: Array<{ week: string; value: number }>;
+}) {
   return (
     <div className="card">
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+      <div
+        className="row"
+        style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}
+      >
         <div>
           <h3 style={{ margin: 0 }}>{chart.title}</h3>
-          <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>{chart.subtitle}</div>
+          <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+            {chart.subtitle}
+          </div>
         </div>
         <TrendBadge direction={chart.direction} />
       </div>
 
-      <ChartPlaceholder title={chart.title} />
+      <ChartPlaceholder
+        title={chart.title}
+        data={chart.id === "strength" ? chartPoints : undefined}
+      />
 
-      <div className="grid two" style={{ marginTop: 12 }}>
+      <div className="grid two dashboard-analysis" style={{ marginTop: 12 }}>
         <div className="card">
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div
+            className="row"
+            style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}
+          >
             <strong>Analysis</strong>
             <TrendBadge direction={chart.direction} />
           </div>
@@ -354,7 +1270,10 @@ function ChartCard({ chart }: { chart: ChartViewModel }) {
         </div>
 
         <div className="card">
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div
+            className="row"
+            style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}
+          >
             <strong>Coach Interpretation</strong>
             <TrendBadge direction={chart.direction} />
           </div>
@@ -372,16 +1291,62 @@ function ChartCard({ chart }: { chart: ChartViewModel }) {
 export default function PerformanceDashboardPage() {
   const [activePhase, setActivePhase] = useState<DashboardPhase>("CUT");
   const [activeRange, setActiveRange] = useState<DashboardRange>("8W");
+  const [exerciseHistory, setExerciseHistory] = useState<ExerciseHistory[]>(
+    getExerciseHistoryForStrengthSignalFallback(),
+  );
+  const [showDebug, setShowDebug] = useState(false);
 
-  const vm = useMemo(() => buildDashboardViewModel(activePhase, activeRange), [activePhase, activeRange]);
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const source = await loadStrengthSource(activeRange);
+        const realHistory = buildExerciseHistoryFromDb(source, { range: activeRange });
+
+        if (!cancelled && realHistory.length >= 2) {
+          setExerciseHistory(realHistory);
+        } else if (!cancelled) {
+          setExerciseHistory(getExerciseHistoryForStrengthSignalFallback());
+        }
+      } catch (err) {
+        console.error("PerformanceDashboardPage strength selector failed:", err);
+        if (!cancelled) {
+          setExerciseHistory(getExerciseHistoryForStrengthSignalFallback());
+        }
+      }
+    }
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeRange]);
+
+  const vm = useMemo(
+    () => buildDashboardViewModel(activePhase, activeRange, exerciseHistory),
+    [activePhase, activeRange, exerciseHistory],
+  );
 
   return (
     <div className="list">
-      <div className="grid two">
+      <div className="dashboard-hero">
         <div className="card">
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div
+            className="row"
+            style={{ justifyContent: "space-between", alignItems: "flex-start" }}
+          >
             <div>
-              <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5 }}>
+              <div
+                className="muted"
+                style={{
+                  fontSize: 12,
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                }}
+              >
                 IronForge
               </div>
               <h2 style={{ marginTop: 6 }}>Performance Dashboard</h2>
@@ -404,43 +1369,59 @@ export default function PerformanceDashboardPage() {
           </div>
 
           <div className="grid two dashboard-hero-stats" style={{ marginTop: 12 }}>
-	    {vm.heroStats.map((stat) => (
-	      <div key={stat.label} className="card dashboard-stat">
-	        <div className="muted dashboard-stat-label">
-	          {stat.label}
-	        </div>
-	  
-	        <div className="dashboard-stat-value">
-	          {stat.value}
-	        </div>
-	      </div>
-	    ))}
-</div>
+            {vm.heroStats.map((stat) => (
+              <div key={stat.label} className="card dashboard-stat">
+                <div className="muted dashboard-stat-label">{stat.label}</div>
+                <div className="dashboard-stat-value">{stat.value}</div>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="card">
           <div className="row" style={{ alignItems: "center", gap: 10 }}>
             <span className="badge green">✓ flagship</span>
             <div>
-              <div className="muted" style={{ fontSize: 12, textTransform: "uppercase", fontWeight: 700 }}>
+              <div
+                className="muted"
+                style={{ fontSize: 12, textTransform: "uppercase", fontWeight: 700 }}
+              >
                 Flagship Signal
               </div>
               <h2 style={{ marginTop: 6 }}>{vm.flagshipTitle}</h2>
             </div>
           </div>
 
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end", marginTop: 14 }}>
+          <div
+            className="row"
+            style={{ justifyContent: "space-between", alignItems: "flex-end", marginTop: 14 }}
+          >
             <div>
               <div className="dashboard-flagship-score">{vm.flagshipScore}</div>
-              <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>out of 100</div>
+              <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+                out of 100
+              </div>
             </div>
-            <span className={vm.flagshipBadge === "Strong" || vm.flagshipBadge === "Productive" ? "badge green" : "badge"}>
+            <span
+              className={
+                vm.flagshipBadge === "Strong" || vm.flagshipBadge === "Productive"
+                  ? "badge green"
+                  : "badge"
+              }
+            >
               {vm.flagshipBadge}
             </span>
           </div>
 
           <div style={{ marginTop: 14 }}>
-            <div style={{ width: "100%", height: 10, background: "#e5e7eb", borderRadius: 999 }}>
+            <div
+              style={{
+                width: "100%",
+                height: 10,
+                background: "#e5e7eb",
+                borderRadius: 999,
+              }}
+            >
               <div
                 style={{
                   width: `${vm.flagshipScore}%`,
@@ -468,7 +1449,10 @@ export default function PerformanceDashboardPage() {
             />
           </div>
 
-          <ChartCard chart={vm.charts.strength} />
+          <ChartCard
+	    chart={vm.charts.strength}
+	    chartPoints={vm.strengthChartPoints}
+          />
           <ChartCard chart={vm.charts.bodyComp} />
           <ChartCard chart={vm.charts.volume} />
         </div>
@@ -482,17 +1466,28 @@ export default function PerformanceDashboardPage() {
           </div>
 
           {vm.insights.map((item) => (
-            <div key={item.id} className="card">
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div key={item.id} className="card dashboard-insight">
+              <div
+                className="row"
+                style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}
+              >
                 <h3 style={{ margin: 0 }}>{item.title}</h3>
                 <div className="row">
-                  <span className={item.status === "Strong" || item.status === "Productive" ? "badge green" : "badge"}>
+                  <span
+                    className={
+                      item.status === "Strong" || item.status === "Productive"
+                        ? "badge green"
+                        : "badge"
+                    }
+                  >
                     {item.status}
                   </span>
                   <span className="badge">{item.confidence}</span>
                 </div>
               </div>
+
               <div style={{ fontSize: 14, lineHeight: 1.5 }}>{item.body}</div>
+
               <div className="list" style={{ marginTop: 10 }}>
                 {item.evidence.map((evidenceItem) => (
                   <div key={evidenceItem} className="card">
@@ -500,6 +1495,7 @@ export default function PerformanceDashboardPage() {
                   </div>
                 ))}
               </div>
+
               {item.action ? (
                 <div className="card" style={{ marginTop: 10, fontWeight: 700 }}>
                   {item.action}
@@ -509,10 +1505,86 @@ export default function PerformanceDashboardPage() {
           ))}
 
           <div className="card">
+            <div
+              className="row"
+              style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}
+            >
+              <h3 style={{ margin: 0 }}>Strength Signal Debug</h3>
+              <button
+                type="button"
+                className="btn small"
+                onClick={() => setShowDebug((v) => !v)}
+              >
+                {showDebug ? "Hide Debug" : "Show Debug"}
+              </button>
+            </div>
+
+            <div className="kv">
+              <span>Data Source</span>
+              <span style={{ color: "var(--text)", fontWeight: 700 }}>{vm.debug.dataSource}</span>
+            </div>
+
+            <div className="kv" style={{ marginTop: 8 }}>
+              <span>Exercises Counted</span>
+              <span style={{ color: "var(--text)", fontWeight: 700 }}>
+                {vm.debug.exercisesCounted}
+              </span>
+            </div>
+
+            <div className="kv" style={{ marginTop: 8 }}>
+              <span>Current Signal</span>
+              <span style={{ color: "var(--text)", fontWeight: 700 }}>
+                {vm.debug.currentSignal}
+              </span>
+            </div>
+
+            <div className="kv" style={{ marginTop: 8 }}>
+              <span>Top Composite</span>
+              <span style={{ color: "var(--text)", fontWeight: 700 }}>
+                {vm.debug.topComposite}
+              </span>
+            </div>
+
+            {showDebug ? (
+              <div className="list" style={{ marginTop: 12 }}>
+                <div className="card">
+                  <strong>Composite Scores</strong>
+                  <div className="list" style={{ marginTop: 10 }}>
+                    {vm.debug.composites.map((item) => (
+                      <div key={item.movement} className="kv">
+                        <span>
+                          {item.movement} ({item.exerciseCount})
+                        </span>
+                        <span style={{ color: "var(--text)", fontWeight: 700 }}>
+                          {item.score}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="card">
+                  <strong>Top Exercise Signals</strong>
+                  <div className="list" style={{ marginTop: 10 }}>
+                    {vm.debug.topExercises.map((item) => (
+                      <div key={item.label} className="kv">
+                        <span>{item.label}</span>
+                        <span style={{ color: "var(--text)", fontWeight: 700 }}>
+                          {item.changePct} • {item.score}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="card">
             <h3>Build Priorities</h3>
             <div className="list">
               {vm.actions.map((action) => (
-                <div key={action} className="card">
+                <div key={action} className="card dashboard-priority">
                   {action}
                 </div>
               ))}
