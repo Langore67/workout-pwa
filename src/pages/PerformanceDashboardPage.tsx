@@ -30,6 +30,8 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
+  Brush,
+  Label,
 } from "recharts";
 
 /* ============================================================================
@@ -314,10 +316,15 @@ function computeCompositeSignals(exerciseSignals: ExerciseSignal[]): CompositeSi
     .filter((x): x is CompositeSignal => Boolean(x));
 }
 
-function buildStrengthChartPoints(history: ExerciseHistory[]) {
+function buildStrengthChartPoints(
+  history: ExerciseHistory[],
+  range: DashboardRange,
+): Array<{ week: string; value: number }> {
   const safeHistory = history.length > 0 ? history : MOCK_EXERCISE_HISTORY;
-  const maxSessions = Math.max(...safeHistory.map((exercise) => exercise.sessions.length));
-  const points: Array<{ week: string; value: number }> = [];
+  const expectedPoints = getExpectedPointCount(range);
+
+  const maxSessions = Math.max(...safeHistory.map((exercise) => exercise.sessions.length), 0);
+  const rawPoints: Array<{ week: string; value: number }> = [];
 
   for (let i = 0; i < maxSessions; i += 1) {
     const scores: number[] = [];
@@ -355,13 +362,32 @@ function buildStrengthChartPoints(history: ExerciseHistory[]) {
       scores.push(scoreFromPctChange(changePct));
     });
 
-    points.push({
+    rawPoints.push({
       week: `W${i + 1}`,
       value: round2(scores.length > 0 ? average(scores) : 5),
     });
   }
 
-  return points;
+  if (!expectedPoints || rawPoints.length <= expectedPoints) {
+    return rawPoints;
+  }
+
+  const bucketed: Array<{ week: string; value: number }> = [];
+  const bucketSize = rawPoints.length / expectedPoints;
+
+  for (let i = 0; i < expectedPoints; i += 1) {
+    const start = Math.floor(i * bucketSize);
+    const end = Math.floor((i + 1) * bucketSize);
+    const slice = rawPoints.slice(start, Math.max(start + 1, end));
+    const value = average(slice.map((p) => p.value));
+
+    bucketed.push({
+      week: `W${i + 1}`,
+      value: round2(value),
+    });
+  }
+
+  return bucketed;
 }
 
 /* ============================================================================
@@ -526,6 +552,18 @@ function inferMovement(exercise: Exercise, track: Track): ExerciseHistory["movem
    Controls time-window filtering and effective load handling for bodyweight
    movements like pull-ups and dips.
    ============================================================================ */
+   
+   function getExpectedPointCount(range: DashboardRange): number | undefined {
+     if (range === "4W") return 4;
+     if (range === "8W") return 8;
+     if (range === "12W") return 12;
+     return undefined;
+}
+   
+   
+   
+   
+   
 
 function rangeStartMs(range: DashboardRange, now = Date.now()): number | undefined {
   const day = 24 * 60 * 60 * 1000;
@@ -812,7 +850,7 @@ function computeStrengthSignal(
 
   const safeAvgChangePct = Number.isFinite(avgChangePct) ? avgChangePct : 0;
 
-  const chartPointsRaw = buildStrengthChartPoints(safeHistory);
+  const chartPointsRaw = buildStrengthChartPoints(safeHistory, _range);
   const chartPoints = chartPointsRaw.map((point) => ({
     week: point.week,
     value: Number.isFinite(point.value) ? point.value : 5,
@@ -1062,7 +1100,7 @@ function buildDashboardViewModel(
 }
 
 /* ============================================================================
-   Breadcrumb 4 — Small UI helpers
+   Breadcrumb 4 — Small UI helpers Chart Components
    ============================================================================ */
 
 function iconForTrend(direction: TrendDirection) {
@@ -1076,12 +1114,63 @@ function badgeClassForTrend(direction: TrendDirection) {
   return direction === "improving" ? "badge green" : "badge";
 }
 
-function ChartPlaceholder({
+
+/* ============================================================================
+   Breadcrumb 4B — Strength Chart Tooltip
+   ----------------------------------------------------------------------------
+   Custom tooltip for Recharts Strength Signal graph
+   ============================================================================ */
+
+function StrengthChartTooltip({ active, payload, label }: any) {
+  if (!active || !payload || payload.length === 0) return null;
+
+  const value = Number(payload[0].value ?? 0);
+
+  let interpretation = "Stable";
+  if (value >= 8) interpretation = "Exceptional";
+  else if (value >= 6) interpretation = "Improving";
+  else if (value < 4) interpretation = "Declining";
+
+  return (
+    <div
+      style={{
+        background: "white",
+        border: "1px solid #e5e7eb",
+        padding: 10,
+        borderRadius: 6,
+        fontSize: 13,
+        boxShadow: "0 4px 10px rgba(0,0,0,0.08)",
+      }}
+    >
+      <div style={{ fontWeight: 700 }}>{label}</div>
+
+      <div style={{ marginTop: 4 }}>
+        Strength Signal: <strong>{value.toFixed(2)}</strong>
+      </div>
+
+      <div className="muted" style={{ marginTop: 4 }}>
+        {interpretation}
+      </div>
+    </div>
+  );
+}
+
+function TrendChartCard({
   title,
+  yLabel = title,
+  xLabel = "Week",
   data,
+  domain = [0, 10],
+  ticks = [0, 2, 4, 6, 8, 10],
+  showBrush = true,
 }: {
   title: string;
+  yLabel?: string;
+  xLabel?: string;
   data?: Array<{ week: string; value: number }>;
+  domain?: [number, number];
+  ticks?: number[];
+  showBrush?: boolean;
 }) {
   if (!data || data.length === 0) {
     return (
@@ -1091,40 +1180,149 @@ function ChartPlaceholder({
     );
   }
 
+  const shouldShowBrush = showBrush && data.length > 8;
+
+  const [brushWindow, setBrushWindow] = useState(() => ({
+    startIndex: Math.max(0, data.length - 8),
+    endIndex: data.length - 1,
+  }));
+
+  const brushResetKey = data.map((d) => d.week).join("|");
+  
+  useEffect(() => {
+    setBrushWindow({
+      startIndex: Math.max(0, data.length - 8),
+      endIndex: data.length - 1,
+    });
+}, [brushResetKey]);
+
+ const visibleData = shouldShowBrush
+   ? data.slice(brushWindow.startIndex, brushWindow.endIndex + 1)
+   : data;
+ 
+ const values = visibleData.map(d => d.value);
+ 
+ const min = Math.min(...values);
+ const max = Math.max(...values);
+ 
+ const range = Math.max(max - min, 1);
+ 
+ const paddedMin = Math.floor(min - range * 0.2);
+const paddedMax = Math.ceil(max + range * 0.2);
+
   return (
-    <div className="dashboard-chart" style={{ height: 240 }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+    <div
+      className="dashboard-chart"
+      style={{
+        minHeight: 286,
+        width: "100%",
+      }}
+    >
+      <div style={{ width: "100%", minWidth: 0 }}>
+        <div style={{ width: "100%", height: 228, minWidth: 0 }}>
+          <ResponsiveContainer width="100%" height={228}>
+            <LineChart
+              data={visibleData}
+              margin={{ top: 8, right: 16, left: -14, bottom: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
 
-          <XAxis
-            dataKey="week"
-            interval={0}
-            minTickGap={0}
-            tick={{ fontSize: 12 }}
-          />
+              <XAxis
+                dataKey="week"
+                height={30}
+                interval={0}
+                padding={{ left: 0, right: 8 }}
+                tick={{ fontSize: 12, fill: "var(--muted)" }}
+              />
 
-          <YAxis
-            domain={[0, 10]}
-            tick={{ fontSize: 12 }}
-          />
+              <YAxis
+	        domain={[paddedMin, paddedMax]}
+	        tick={{ fontSize: 12, fill: "var(--muted)" }}
+              >
+                <Label
+                  value={yLabel}
+                  angle={-90}
+                  position="insideLeft"
+                  offset={32}
+                  style={{
+                    fontSize: 12,
+                    fill: "var(--muted)",
+                    textAnchor: "middle",
+                  }}
+                />
+              </YAxis>
 
-          <Tooltip />
+              <Tooltip content={<StrengthChartTooltip />} />
 
-          <Line
-            type="monotone"
-            dataKey="value"
-            stroke="var(--accent)"
-            strokeWidth={3}
-            dot={{ r: 4 }}
-            activeDot={{ r: 6 }}
-          />
-        </LineChart>
-      </ResponsiveContainer>
+              <Line
+                type="monotone"
+                dataKey="value"
+                stroke="var(--accent)"
+                strokeWidth={3}
+                dot={{ r: 4 }}
+                activeDot={{ r: 6 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div
+          style={{
+            textAlign: "center",
+            fontSize: 12,
+            color: "var(--muted)",
+            lineHeight: 1,
+            marginTop: -2,
+            marginBottom: 2,
+          }}
+        >
+          {xLabel}
+        </div>
+
+        {shouldShowBrush ? (
+          <div
+            style={{
+              width: "100%",
+              height: 22,
+              minWidth: 0,
+              paddingLeft: 60,
+              paddingRight: 22,
+            }}
+          >
+            <ResponsiveContainer width="100%" height={22}>
+              <LineChart
+                data={data}
+                margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
+              >
+                <Brush
+                  dataKey="week"
+                  height={14}
+                  travellerWidth={10}
+                  stroke="var(--accent)"
+                  startIndex={brushWindow.startIndex}
+                  endIndex={brushWindow.endIndex}
+                  onChange={(next) => {
+                    if (
+                      next &&
+                      typeof next.startIndex === "number" &&
+                      typeof next.endIndex === "number"
+                    ) {
+                      setBrushWindow({
+                        startIndex: next.startIndex,
+                        endIndex: next.endIndex,
+                      });
+                    }
+                  }}
+                  tickFormatter={() => ""}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
-
 function AnalysisRows({ rows }: { rows: AnalysisRow[] }) {
   return (
     <div style={{ display: "grid", gap: 8 }}>
@@ -1252,7 +1450,7 @@ function ChartCard({
         <TrendBadge direction={chart.direction} />
       </div>
 
-      <ChartPlaceholder
+      <TrendChartCard
         title={chart.title}
         data={chart.id === "strength" ? chartPoints : undefined}
       />
