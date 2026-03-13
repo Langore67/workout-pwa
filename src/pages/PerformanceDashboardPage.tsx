@@ -32,6 +32,7 @@ import {
   CartesianGrid,
   Brush,
   Label,
+  ReferenceLine,
 } from "recharts";
 
 /* ============================================================================
@@ -52,6 +53,7 @@ type ChartViewModel = {
   title: string;
   subtitle: string;
   direction: TrendDirection;
+  momentumMessage?: string;
   analysisRows: AnalysisRow[];
   interpretation: string;
 };
@@ -149,12 +151,6 @@ const TIME_RANGES: DashboardRange[] = ["4W", "8W", "12W", "YTD", "ALL"];
 
 /* ============================================================================
    Breadcrumb 3 — Strength Signal model + view-model builder
-   ============================================================================ */
-
-/* ============================================================================
-   Breadcrumb 3A — Temporary mock history
-   ----------------------------------------------------------------------------
-   Fallback when DB data is sparse or unavailable.
    ============================================================================ */
 
 const MOCK_EXERCISE_HISTORY: ExerciseHistory[] = [
@@ -316,6 +312,13 @@ function computeCompositeSignals(exerciseSignals: ExerciseSignal[]): CompositeSi
     .filter((x): x is CompositeSignal => Boolean(x));
 }
 
+function getExpectedPointCount(range: DashboardRange): number | undefined {
+  if (range === "4W") return 4;
+  if (range === "8W") return 8;
+  if (range === "12W") return 12;
+  return undefined;
+}
+
 function buildStrengthChartPoints(
   history: ExerciseHistory[],
   range: DashboardRange,
@@ -390,19 +393,6 @@ function buildStrengthChartPoints(
   return bucketed;
 }
 
-/* ============================================================================
-   Breadcrumb 3B — IronForge selector bridge
-   ----------------------------------------------------------------------------
-   Reads Dexie workout history and converts it into ExerciseHistory[] for the
-   Strength Signal engine.
-   ============================================================================ */
-
-/* ============================================================================
-   Breadcrumb 3B.1 — Selector input contracts
-   ----------------------------------------------------------------------------
-   Defines the data shapes used by the dashboard selector bridge.
-   ============================================================================ */
-
 type IronForgeStrengthSignalOptions = {
   includedExerciseIds?: string[];
   range?: DashboardRange;
@@ -418,19 +408,9 @@ type DbStrengthSource = {
 
 type StrengthMovement = ExerciseHistory["movement"] | "exclude";
 
-/* ============================================================================
-   Breadcrumb 3B.2 — Movement classification rules
-   ----------------------------------------------------------------------------
-   Controls which exercises are eligible for Strength Signal and which movement
-   bucket they belong to.
-   ============================================================================ */
-
 function classifyMovementPattern(exercise: Exercise, track: Track): StrengthMovement {
   const name = `${exercise.name} ${track.displayName}`.toLowerCase();
 
-  // -----------------------------
-  // Explicit exclusions first
-  // -----------------------------
   const excludeTerms = [
     "lateral raise",
     "lat raise",
@@ -463,9 +443,6 @@ function classifyMovementPattern(exercise: Exercise, track: Track): StrengthMove
     return "exclude";
   }
 
-  // -----------------------------
-  // Squat pattern
-  // -----------------------------
   if (
     name.includes("back squat") ||
     name.includes("front squat") ||
@@ -479,9 +456,6 @@ function classifyMovementPattern(exercise: Exercise, track: Track): StrengthMove
     return "squat";
   }
 
-  // -----------------------------
-  // Hinge pattern
-  // -----------------------------
   if (
     name.includes("deadlift") ||
     name.includes("romanian deadlift") ||
@@ -495,9 +469,6 @@ function classifyMovementPattern(exercise: Exercise, track: Track): StrengthMove
     return "hinge";
   }
 
-  // -----------------------------
-  // Push pattern
-  // -----------------------------
   if (
     name.includes("bench press") ||
     name.includes("incline press") ||
@@ -510,9 +481,6 @@ function classifyMovementPattern(exercise: Exercise, track: Track): StrengthMove
     return "push";
   }
 
-  // -----------------------------
-  // Pull pattern
-  // -----------------------------
   if (
     name.includes("pull-up") ||
     name.includes("pull up") ||
@@ -545,25 +513,6 @@ function inferMovement(exercise: Exercise, track: Track): ExerciseHistory["movem
   const movement = classifyMovementPattern(exercise, track);
   return movement === "exclude" ? "core" : movement;
 }
-
-/* ============================================================================
-   Breadcrumb 3B.3 — Range helpers + bodyweight helpers
-   ----------------------------------------------------------------------------
-   Controls time-window filtering and effective load handling for bodyweight
-   movements like pull-ups and dips.
-   ============================================================================ */
-   
-   function getExpectedPointCount(range: DashboardRange): number | undefined {
-     if (range === "4W") return 4;
-     if (range === "8W") return 8;
-     if (range === "12W") return 12;
-     return undefined;
-}
-   
-   
-   
-   
-   
 
 function rangeStartMs(range: DashboardRange, now = Date.now()): number | undefined {
   const day = 24 * 60 * 60 * 1000;
@@ -625,12 +574,6 @@ function calcEffectiveWeightLb(
   return bw + (explicit ?? 0);
 }
 
-/* ============================================================================
-   Breadcrumb 3B.4 — Dexie source loader
-   ----------------------------------------------------------------------------
-   Pulls the raw dashboard source data from Dexie for the requested time range.
-   ============================================================================ */
-
 async function loadStrengthSource(range: DashboardRange): Promise<DbStrengthSource> {
   const startMs = rangeStartMs(range);
 
@@ -646,15 +589,6 @@ async function loadStrengthSource(range: DashboardRange): Promise<DbStrengthSour
 
   return { exercises, tracks, sessions, sets, bodyMetrics };
 }
-
-/* ============================================================================
-   Breadcrumb 3B.5 — Exercise history builder
-   ----------------------------------------------------------------------------
-   Converts raw Dexie rows into ExerciseHistory[] by:
-   - filtering to eligible strength movements
-   - keeping best working set per exercise per session
-   - mapping sets into dated signal exposures
-   ============================================================================ */
 
 function buildExerciseHistoryFromDb(
   source: DbStrengthSource,
@@ -775,20 +709,13 @@ function buildExerciseHistoryFromDb(
     .filter((x): x is ExerciseHistory => Boolean(x));
 }
 
-/* ============================================================================
-   Breadcrumb 3B.6 — Fallback + Strength Signal orchestration
-   ----------------------------------------------------------------------------
-   Provides fallback history, computes the signal, and builds the dashboard
-   view model consumed by the UI.
-   ============================================================================ */
-
 function getExerciseHistoryForStrengthSignalFallback(): ExerciseHistory[] {
   return MOCK_EXERCISE_HISTORY;
 }
 
 function computeStrengthSignal(
   phase: DashboardPhase,
-  _range: DashboardRange,
+  range: DashboardRange,
   exerciseHistory: ExerciseHistory[],
 ): StrengthSignalResult {
   const safeHistory = exerciseHistory.length >= 2 ? exerciseHistory : MOCK_EXERCISE_HISTORY;
@@ -806,12 +733,6 @@ function computeStrengthSignal(
 
   const composites = computeCompositeSignals(exerciseSignals);
 
-  /* ==========================================================================
-     Breadcrumb 3B.6A — Movement weighting
-     ----------------------------------------------------------------------------
-     Makes the flagship Strength Signal reflect larger system-strength patterns
-     more strongly than smaller upper-body changes.
-     ========================================================================== */
   const MOVEMENT_WEIGHTS: Record<ExerciseHistory["movement"], number> = {
     squat: 3,
     hinge: 3,
@@ -850,7 +771,7 @@ function computeStrengthSignal(
 
   const safeAvgChangePct = Number.isFinite(avgChangePct) ? avgChangePct : 0;
 
-  const chartPointsRaw = buildStrengthChartPoints(safeHistory, _range);
+  const chartPointsRaw = buildStrengthChartPoints(safeHistory, range);
   const chartPoints = chartPointsRaw.map((point) => ({
     week: point.week,
     value: Number.isFinite(point.value) ? point.value : 5,
@@ -872,6 +793,7 @@ function computeStrengthSignal(
     summary,
   };
 }
+
 function analyzeStrengthChart(points: Array<{ week: string; value: number }>) {
   if (!points.length) {
     return {
@@ -899,15 +821,27 @@ function analyzeStrengthChart(points: Array<{ week: string; value: number }>) {
   };
 }
 
+function buildMomentumMessage(changePct: number) {
+  if (changePct > 5) return "Momentum building.";
+  if (changePct > 0) return "Momentum improving.";
+  if (changePct > -5) return "Momentum softening slightly.";
+  return "Momentum has dipped recently.";
+}
+
 function buildDashboardViewModel(
   phase: DashboardPhase,
   range: DashboardRange,
   exerciseHistory: ExerciseHistory[],
 ): DashboardViewModel {
+
   const usingFallback = exerciseHistory.length < 2;
   const sourceHistory = usingFallback ? MOCK_EXERCISE_HISTORY : exerciseHistory;
+
   const strengthSignal = computeStrengthSignal(phase, range, sourceHistory);
+
   const strengthAnalysis = analyzeStrengthChart(strengthSignal.chartPoints);
+
+  const momentumMessage = buildMomentumMessage(strengthAnalysis.changePct);
 
   const topComposite =
     strengthSignal.composites
@@ -968,23 +902,24 @@ function buildDashboardViewModel(
         title: "Strength Signal",
         subtitle: `Weekly trend • ${range}`,
         direction: strengthSignal.trend,
+        momentumMessage,
         analysisRows: [
-	  { label: "Formula", value: "Rolling 2-session composite strength" },
-	  { label: "Start Value", value: strengthAnalysis.start.toFixed(2) },
-	  { label: "Current Value", value: strengthAnalysis.current.toFixed(2) },
-	  {
-	    label: "Overall Change",
-	    value: `${strengthAnalysis.changePct > 0 ? "+" : ""}${strengthAnalysis.changePct}%`,
-	  },
-	  { label: "Highest Value", value: strengthAnalysis.high.toFixed(2) },
-	  { label: "Lowest Value", value: strengthAnalysis.low.toFixed(2) },
-	  { label: "Exercises Included", value: String(strengthSignal.exerciseSignals.length) },
-	  { label: "Top Composite", value: topComposite },
-	  {
-	    label: "Weeks Measured",
-	    value: range === "4W" ? "4" : range === "8W" ? "8" : range === "12W" ? "12" : "12+",
-	  },
-],
+          { label: "Formula", value: "Rolling 2-session composite strength" },
+          { label: "Start Value", value: strengthAnalysis.start.toFixed(2) },
+          { label: "Current Value", value: strengthAnalysis.current.toFixed(2) },
+          {
+            label: "Overall Change",
+            value: `${strengthAnalysis.changePct > 0 ? "+" : ""}${strengthAnalysis.changePct}%`,
+          },
+          { label: "Highest Value", value: strengthAnalysis.high.toFixed(2) },
+          { label: "Lowest Value", value: strengthAnalysis.low.toFixed(2) },
+          { label: "Exercises Included", value: String(strengthSignal.exerciseSignals.length) },
+          { label: "Top Composite", value: topComposite },
+          {
+            label: "Weeks Measured",
+            value: range === "4W" ? "4" : range === "8W" ? "8" : range === "12W" ? "12" : "12+",
+          },
+        ],
         interpretation: strengthSignal.summary,
       },
       bodyComp: {
@@ -1099,10 +1034,6 @@ function buildDashboardViewModel(
   };
 }
 
-/* ============================================================================
-   Breadcrumb 4 — Small UI helpers Chart Components
-   ============================================================================ */
-
 function iconForTrend(direction: TrendDirection) {
   if (direction === "improving") return "↗";
   if (direction === "stable") return "→";
@@ -1113,13 +1044,6 @@ function iconForTrend(direction: TrendDirection) {
 function badgeClassForTrend(direction: TrendDirection) {
   return direction === "improving" ? "badge green" : "badge";
 }
-
-
-/* ============================================================================
-   Breadcrumb 4B — Strength Chart Tooltip
-   ----------------------------------------------------------------------------
-   Custom tooltip for Recharts Strength Signal graph
-   ============================================================================ */
 
 function StrengthChartTooltip({ active, payload, label }: any) {
   if (!active || !payload || payload.length === 0) return null;
@@ -1137,23 +1061,30 @@ function StrengthChartTooltip({ active, payload, label }: any) {
         background: "white",
         border: "1px solid #e5e7eb",
         padding: 10,
-        borderRadius: 6,
+        borderRadius: 8,
         fontSize: 13,
         boxShadow: "0 4px 10px rgba(0,0,0,0.08)",
       }}
     >
-      <div style={{ fontWeight: 700 }}>{label}</div>
-
+      <div style={{ fontWeight: 700 }}>
+        Week {String(label ?? "").replace(/^W/i, "")}
+      </div>
       <div style={{ marginTop: 4 }}>
         Strength Signal: <strong>{value.toFixed(2)}</strong>
       </div>
-
       <div className="muted" style={{ marginTop: 4 }}>
-        {interpretation}
+        Trend: {interpretation}
       </div>
     </div>
   );
 }
+
+/* ============================================================================
+   Breadcrumb 4 — UI helpers + chart components
+   ----------------------------------------------------------------------------
+   Restores the small presentational components used by the dashboard page.
+   Keep this block together so the page is easier to maintain.
+   ============================================================================ */
 
 function TrendChartCard({
   title,
@@ -1163,6 +1094,7 @@ function TrendChartCard({
   domain = [0, 10],
   ticks = [0, 2, 4, 6, 8, 10],
   showBrush = true,
+  range,
 }: {
   title: string;
   yLabel?: string;
@@ -1171,44 +1103,113 @@ function TrendChartCard({
   domain?: [number, number];
   ticks?: number[];
   showBrush?: boolean;
+  range: DashboardRange;
 }) {
-  if (!data || data.length === 0) {
+  const safeData = data ?? [];
+  const hasData = safeData.length > 0;
+  const shouldShowBrush = hasData && showBrush && safeData.length > 8;
+
+  function getInitialBrushWindow(length: number) {
+    if (length <= 0) {
+      return { startIndex: 0, endIndex: 0 };
+    }
+
+    if (range === "4W" || range === "8W" || range === "12W") {
+      return { startIndex: 0, endIndex: length - 1 };
+    }
+
+    const visibleCount = 8;
+    return {
+      startIndex: Math.max(0, length - visibleCount),
+      endIndex: length - 1,
+    };
+  }
+
+  const [brushWindow, setBrushWindow] = useState(() =>
+    getInitialBrushWindow(safeData.length)
+  );
+
+  const brushResetKey = safeData.map((d) => d.week).join("|");
+
+  useEffect(() => {
+    setBrushWindow(getInitialBrushWindow(safeData.length));
+  }, [brushResetKey, safeData.length, range]);
+
+  const visibleData = useMemo(() => {
+    return shouldShowBrush
+      ? safeData.slice(brushWindow.startIndex, brushWindow.endIndex + 1)
+      : safeData;
+  }, [safeData, brushWindow, shouldShowBrush]);
+
+  if (!hasData) {
     return (
-      <div className="dashboard-chart" style={{ minHeight: 220 }}>
-        {title} chart placeholder
+      <div
+        className="dashboard-chart"
+        style={{
+          minHeight: 286,
+          width: "100%",
+          display: "grid",
+          placeItems: "center",
+          color: "var(--muted)",
+          fontSize: 14,
+        }}
+      >
+        No chart data yet
       </div>
     );
   }
 
-  const shouldShowBrush = showBrush && data.length > 8;
+  const values = visibleData
+    .map((d) => d.value)
+    .filter((v) => Number.isFinite(v));
 
-  const [brushWindow, setBrushWindow] = useState(() => ({
-    startIndex: Math.max(0, data.length - 8),
-    endIndex: data.length - 1,
-  }));
+  let yDomain: [number, number] = domain;
+  let yTicks: number[] = ticks;
 
-  const brushResetKey = data.map((d) => d.week).join("|");
-  
-  useEffect(() => {
-    setBrushWindow({
-      startIndex: Math.max(0, data.length - 8),
-      endIndex: data.length - 1,
-    });
-}, [brushResetKey]);
+  if (values.length > 0) {
+    const min = Math.min(...values);
+    const max = Math.max(...values);
 
- const visibleData = shouldShowBrush
-   ? data.slice(brushWindow.startIndex, brushWindow.endIndex + 1)
-   : data;
- 
- const values = visibleData.map(d => d.value);
- 
- const min = Math.min(...values);
- const max = Math.max(...values);
- 
- const range = Math.max(max - min, 1);
- 
- const paddedMin = Math.floor(min - range * 0.2);
-const paddedMax = Math.ceil(max + range * 0.2);
+    const rangeSize = Math.max(max - min, 0.75);
+    const rawPad = rangeSize * 0.2;
+
+    let paddedMin = min - rawPad;
+    let paddedMax = max + rawPad;
+
+    if (paddedMin === paddedMax) {
+      paddedMin -= 0.5;
+      paddedMax += 0.5;
+    }
+
+    const span = paddedMax - paddedMin;
+
+    let step = span / 4;
+    if (step <= 0.5) step = 0.5;
+    else if (step <= 1) step = 1;
+    else step = Math.ceil(step);
+
+    const niceMin = Math.floor(paddedMin / step) * step;
+    const niceMax = Math.ceil(paddedMax / step) * step;
+    
+    let finalMin = niceMin;
+    let finalMax = niceMax;
+    
+    // Keep a little breathing room below the baseline so it does not sit on the X axis.
+    if (finalMin > 4) {
+      finalMin = 4;
+    }
+    
+    yDomain = [round2(finalMin), round2(finalMax)];
+    
+    const builtTicks: number[] = [];
+    for (let v = finalMin; v <= finalMax + step * 0.25; v += step) {
+      builtTicks.push(round2(v));
+}
+
+    yTicks = builtTicks.length >= 2 ? builtTicks : ticks;
+  }
+
+  const showBaseline = 5 - yDomain[0] >= 0.75;
 
   return (
     <div
@@ -1219,31 +1220,46 @@ const paddedMax = Math.ceil(max + range * 0.2);
       }}
     >
       <div style={{ width: "100%", minWidth: 0 }}>
-        <div style={{ width: "100%", height: 228, minWidth: 0 }}>
-          <ResponsiveContainer width="100%" height={228}>
+        <div style={{ width: "100%", height: 260, minWidth: 0 }}>
+          <ResponsiveContainer width="100%" height={260}>
             <LineChart
               data={visibleData}
-              margin={{ top: 8, right: 16, left: -14, bottom: 0 }}
+              margin={{ top: 10, right: 24, left: 12, bottom: 8 }}
             >
-              <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+              <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
 
               <XAxis
                 dataKey="week"
-                height={30}
-                interval={0}
-                padding={{ left: 0, right: 8 }}
+                height={34}
+                interval="preserveStartEnd"
+                minTickGap={30}
+                padding={{ left: 8, right: 8 }}
                 tick={{ fontSize: 12, fill: "var(--muted)" }}
-              />
+              >
+                <Label
+                  value={xLabel}
+                  position="insideBottom"
+                  offset={-2}
+                  style={{
+                    fontSize: 12,
+                    fill: "var(--muted)",
+                    textAnchor: "middle",
+                  }}
+                />
+              </XAxis>
 
               <YAxis
-	        domain={[paddedMin, paddedMax]}
-	        tick={{ fontSize: 12, fill: "var(--muted)" }}
+                domain={yDomain}
+                ticks={yTicks}
+                width={44}
+                tick={{ fontSize: 12, fill: "var(--muted)" }}
+                tickMargin={6}
               >
                 <Label
                   value={yLabel}
                   angle={-90}
                   position="insideLeft"
-                  offset={32}
+                  offset={-2}
                   style={{
                     fontSize: 12,
                     fill: "var(--muted)",
@@ -1253,6 +1269,21 @@ const paddedMax = Math.ceil(max + range * 0.2);
               </YAxis>
 
               <Tooltip content={<StrengthChartTooltip />} />
+
+              {showBaseline && (
+                <ReferenceLine
+                  y={5}
+                  stroke="var(--muted)"
+                  strokeDasharray="4 4"
+                  opacity={0.35}
+                  label={{
+                    value: "Base",
+                    position: "insideRight",
+                    fill: "var(--muted)",
+                    fontSize: 11,
+                  }}
+                />
+              )}
 
               <Line
                 type="monotone"
@@ -1266,32 +1297,20 @@ const paddedMax = Math.ceil(max + range * 0.2);
           </ResponsiveContainer>
         </div>
 
-        <div
-          style={{
-            textAlign: "center",
-            fontSize: 12,
-            color: "var(--muted)",
-            lineHeight: 1,
-            marginTop: -2,
-            marginBottom: 2,
-          }}
-        >
-          {xLabel}
-        </div>
-
         {shouldShowBrush ? (
           <div
             style={{
               width: "100%",
-              height: 22,
+              height: 28,
               minWidth: 0,
-              paddingLeft: 60,
-              paddingRight: 22,
+              paddingLeft: 52,
+              paddingRight: 20,
+              marginTop: 8,
             }}
           >
-            <ResponsiveContainer width="100%" height={22}>
+            <ResponsiveContainer width="100%" height={24}>
               <LineChart
-                data={data}
+                data={safeData}
                 margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
               >
                 <Brush
@@ -1323,6 +1342,7 @@ const paddedMax = Math.ceil(max + range * 0.2);
     </div>
   );
 }
+
 function AnalysisRows({ rows }: { rows: AnalysisRow[] }) {
   return (
     <div style={{ display: "grid", gap: 8 }}>
@@ -1431,9 +1451,11 @@ function TrendBadge({ direction }: { direction: TrendDirection }) {
 function ChartCard({
   chart,
   chartPoints,
+  range,
 }: {
   chart: ChartViewModel;
   chartPoints?: Array<{ week: string; value: number }>;
+  range: DashboardRange;
 }) {
   return (
     <div className="card">
@@ -1446,13 +1468,22 @@ function ChartCard({
           <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
             {chart.subtitle}
           </div>
+
+          {chart.momentumMessage && (
+            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+              {chart.momentumMessage}
+            </div>
+          )}
         </div>
         <TrendBadge direction={chart.direction} />
       </div>
 
       <TrendChartCard
         title={chart.title}
-        data={chart.id === "strength" ? chartPoints : undefined}
+        yLabel={chart.title}
+        xLabel="Week"
+        data={chart.id === "strength" ? chartPoints : []}
+        range={range}
       />
 
       <div className="grid two dashboard-analysis" style={{ marginTop: 12 }}>
@@ -1481,10 +1512,6 @@ function ChartCard({
     </div>
   );
 }
-
-/* ============================================================================
-   Breadcrumb 5 — Main page
-   ============================================================================ */
 
 export default function PerformanceDashboardPage() {
   const [activePhase, setActivePhase] = useState<DashboardPhase>("CUT");
@@ -1650,9 +1677,10 @@ export default function PerformanceDashboardPage() {
           <ChartCard
 	    chart={vm.charts.strength}
 	    chartPoints={vm.strengthChartPoints}
-          />
-          <ChartCard chart={vm.charts.bodyComp} />
-          <ChartCard chart={vm.charts.volume} />
+	    range={activeRange}
+	  />
+	  <ChartCard chart={vm.charts.bodyComp} range={activeRange} />
+          <ChartCard chart={vm.charts.volume} range={activeRange} />
         </div>
 
         <div className="list">

@@ -2,7 +2,7 @@
 /* ============================================================================
    PasteWorkoutPage.tsx — Paste Coach Workout -> Preview -> Import -> Rollback
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-10-PASTEWORKOUT-03
+   BUILD_ID: 2026-03-13-PASTEWORKOUT-05
    FILE: src/pages/PasteWorkoutPage.tsx
 
    Purpose
@@ -48,14 +48,17 @@
    - work BWx30s
    - work BWx30s/side
    - work 15x12/side @3
+   - warmup Barx10
    - technique 65x10 notes
    - test 95x12 @4 notes
    - cardio 15 min Zone 1 treadmill
 
    Notes
    - Exercise line = plain text line that is not metadata and not a set line
+   - Section headers like "Correctives" or "# Main Lifts" are ignored
    - technique / test / cardio are imported as working sets with a tag in notes
    - /side is preserved in notes as "per-side" for now
+   - "Bar" is interpreted as 45 lb
    - Duplicate guard blocks import when the same program day already exists on
      the same calendar date
    ============================================================================ */
@@ -129,13 +132,21 @@ type PreviewSummary = {
   duplicateSessionId?: string;
 };
 
+type ResultTone = "info" | "success" | "warn";
+
+type ResultStyle = {
+  border: string;
+  background: string;
+  accent: string;
+};
+
 /* ============================================================================
    Breadcrumb 2 — Constants
    ============================================================================ */
 
 const LAST_IMPORT_KEY = "workout_last_paste_import_v1";
-const PAGE_VERSION = "3";
-const BUILD_ID = "2026-03-10-PASTEWORKOUT-03";
+const PAGE_VERSION = "5";
+const BUILD_ID = "2026-03-13-PASTEWORKOUT-05";
 const FILE_FOOTER = "src/pages/PasteWorkoutPage.tsx";
 
 const SAMPLE_TEXT = `Session: Upper A
@@ -195,6 +206,23 @@ function clearLastImport() {
 
 function isBlank(line: string): boolean {
   return !line.trim();
+}
+
+function isSectionHeader(line: string): boolean {
+  const s = line.trim().toLowerCase();
+
+  return [
+    "correctives",
+    "mobility",
+    "activation",
+    "warmup",
+    "warmups",
+    "main lifts",
+    "accessories",
+    "finisher",
+    "finishers",
+    "cooldown",
+  ].includes(s);
 }
 
 function normalizeTimeString(s: string): string | undefined {
@@ -315,6 +343,28 @@ function buildSetNotes(set: ParsedSet): string | undefined {
   return parts.length ? parts.join(" | ") : undefined;
 }
 
+function parseWeightToken(
+  token: string
+): {
+  weight?: number;
+  isBodyweight?: boolean;
+} | null {
+  const t = token.trim().toLowerCase();
+
+  if (t === "bw") {
+    return { weight: 0, isBodyweight: true };
+  }
+
+  if (t === "bar") {
+    return { weight: 45, isBodyweight: false };
+  }
+
+  const n = Number(t);
+  if (!Number.isFinite(n)) return null;
+
+  return { weight: n, isBodyweight: false };
+}
+
 function parseSetLine(line: string): ParsedSet | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
@@ -329,7 +379,7 @@ function parseSetLine(line: string): ParsedSet | null {
   }
 
   const m = trimmed.match(
-    /^(warmup|work|technique|test)\s+(BW|-?\d+(?:\.\d+)?)x(\d+)(s)?(?:\/(side))?(?:\s+@(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+    /^(warmup|work|technique|test)\s+(BW|Bar|-?\d+(?:\.\d+)?)x(\d+)(s)?(?:\/(side))?(?:\s+@(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
   );
 
   if (!m) return null;
@@ -342,19 +392,20 @@ function parseSetLine(line: string): ParsedSet | null {
   const rirRaw = m[6];
   const notes = m[7]?.trim() || undefined;
 
-  const isBodyweight = /^bw$/i.test(weightRaw);
-  const weight = isBodyweight ? 0 : Number(weightRaw);
+  const parsedWeight = parseWeightToken(weightRaw);
+  if (!parsedWeight) return null;
+
   const count = Number(countRaw);
   const rir = rirRaw !== undefined ? Number(rirRaw) : undefined;
 
   return {
     rawLine: line,
     setKind: kindRaw,
-    weight: Number.isFinite(weight) ? weight : undefined,
+    weight: parsedWeight.weight,
     reps: !isSeconds && Number.isFinite(count) ? count : undefined,
     seconds: isSeconds && Number.isFinite(count) ? count : undefined,
     rir: rir !== undefined && Number.isFinite(rir) ? rir : undefined,
-    isBodyweight,
+    isBodyweight: !!parsedWeight.isBodyweight,
     isPerSide,
     notes,
   };
@@ -383,24 +434,33 @@ function parseWorkoutText(text: string): ParsedWorkout {
     const sessionMatch = line.match(/^session\s*:\s*(.+)$/i);
     if (sessionMatch) {
       programDay = sessionMatch[1].trim();
+      currentExercise = null;
       continue;
     }
 
     const dateMatch = line.match(/^date\s*:\s*(.+)$/i);
     if (dateMatch) {
       date = dateMatch[1].trim();
+      currentExercise = null;
       continue;
     }
 
     const startMatch = line.match(/^start\s*:\s*(.+)$/i);
     if (startMatch) {
       start = startMatch[1].trim();
+      currentExercise = null;
       continue;
     }
 
     const endMatch = line.match(/^end\s*:\s*(.+)$/i);
     if (endMatch) {
       end = endMatch[1].trim();
+      currentExercise = null;
+      continue;
+    }
+
+    if (isSectionHeader(line) || line.startsWith("#")) {
+      currentExercise = null;
       continue;
     }
 
@@ -466,6 +526,56 @@ export default function PasteWorkoutPage() {
     () => `${FILE_FOOTER} • v${PAGE_VERSION} • ${BUILD_ID}`,
     []
   );
+
+  const topResultTitle = useMemo(() => {
+    if (!status) return "";
+
+    const s = status.toLowerCase();
+
+    if (dryRun && s.includes("dry run")) return "Dry Run Result";
+    if (!dryRun && s.includes("imported")) return "Import Complete";
+    if (s.includes("parsing")) return "Parsing";
+    if (s.includes("parsed")) return "Preview Ready";
+    if (s.includes("rollback")) return "Rollback";
+    if (s.includes("blocked")) return "Import Blocked";
+
+    return "Status";
+  }, [status, dryRun]);
+
+  const topResultTone = useMemo<ResultTone>(() => {
+    const s = status.toLowerCase();
+
+    if (s.includes("blocked") || s.includes("failed")) return "warn";
+    if (s.includes("imported") || s.includes("parsed") || s.includes("dry run ✓")) {
+      return "success";
+    }
+
+    return "info";
+  }, [status]);
+
+  const topResultStyles = useMemo<ResultStyle>(() => {
+    if (topResultTone === "success") {
+      return {
+        border: "1px solid var(--line)",
+        background: "var(--card)",
+        accent: "✓",
+      };
+    }
+
+    if (topResultTone === "warn") {
+      return {
+        border: "1px solid var(--line)",
+        background: "var(--card)",
+        accent: "!",
+      };
+    }
+
+    return {
+      border: "1px solid var(--line)",
+      background: "var(--card)",
+      accent: "…",
+    };
+  }, [topResultTone]);
 
   /* --------------------------------------------------------------------------
      Breadcrumb 6 — Preview parse + dry run summary
@@ -886,17 +996,8 @@ export default function PasteWorkoutPage() {
           Dry run (don’t write to DB)
         </label>
 
-        <div className="muted" style={{ marginLeft: "auto" }}>
-          {lastImport ? (
-            <>
-              Last paste import: <b>{new Date(lastImport.createdAt).toLocaleString()}</b> •{" "}
-              {lastImport.summary}
-            </>
-          ) : (
-            <>
-              Last paste import: <b>none</b>
-            </>
-          )}
+        <div className="muted" style={{ marginLeft: "auto", fontSize: 13 }}>
+          {dryRun ? "Preview mode only" : "DB write enabled"}
         </div>
       </div>
 
@@ -935,7 +1036,7 @@ export default function PasteWorkoutPage() {
           Parse Preview
         </button>
         <button className="btn primary" disabled={!canImport} onClick={importParsedWorkout}>
-          {dryRun ? "Run Dry Import" : "Import Now"}
+          {dryRun ? "Run Dry Import (No DB Write)" : "Import Now"}
         </button>
         <button
           className="btn danger"
@@ -945,6 +1046,131 @@ export default function PasteWorkoutPage() {
           Rollback last import
         </button>
       </div>
+
+      {status && (
+        <div
+          style={{
+            marginTop: 14,
+            padding: 14,
+            borderRadius: 14,
+            border: topResultStyles.border,
+            background: topResultStyles.background,
+            display: "grid",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 999,
+                  border: "1px solid var(--line)",
+                  display: "grid",
+                  placeItems: "center",
+                  fontWeight: 700,
+                  color: "var(--text)",
+                  flex: "0 0 auto",
+                }}
+              >
+                {topResultStyles.accent}
+              </div>
+
+              <div>
+                <div style={{ fontWeight: 700 }}>{topResultTitle}</div>
+                <div className="muted" style={{ fontSize: 13 }}>
+                  {dryRun
+                    ? "No data will be written while Dry run is checked."
+                    : "Changes can be written to the database."}
+                </div>
+              </div>
+            </div>
+
+            {preview && (
+              <div className="muted" style={{ fontSize: 13 }}>
+                {preview.duplicateSessionFound ? "Duplicate detected" : "Ready for next step"}
+              </div>
+            )}
+          </div>
+
+          <div className="muted" style={{ whiteSpace: "pre-wrap" }}>
+            {status}
+          </div>
+
+          {(status.toLowerCase().includes("dry run") ||
+            status.toLowerCase().includes("imported")) &&
+            preview && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                  gap: 10,
+                }}
+              >
+                <div className="card" style={{ padding: 10 }}>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    Exercises
+                  </div>
+                  <div style={{ fontWeight: 700 }}>{preview.wouldAddExercises}</div>
+                </div>
+
+                <div className="card" style={{ padding: 10 }}>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    Tracks
+                  </div>
+                  <div style={{ fontWeight: 700 }}>{preview.wouldAddTracks}</div>
+                </div>
+
+                <div className="card" style={{ padding: 10 }}>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    Sessions
+                  </div>
+                  <div style={{ fontWeight: 700 }}>{preview.wouldAddSessions}</div>
+                </div>
+
+                <div className="card" style={{ padding: 10 }}>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    SessionItems
+                  </div>
+                  <div style={{ fontWeight: 700 }}>{preview.wouldAddSessionItems}</div>
+                </div>
+
+                <div className="card" style={{ padding: 10 }}>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    Sets
+                  </div>
+                  <div style={{ fontWeight: 700 }}>{preview.wouldAddSets}</div>
+                </div>
+              </div>
+            )}
+
+          {lastImport && (
+            <div
+              style={{
+                marginTop: 2,
+                paddingTop: 10,
+                borderTop: "1px solid var(--line)",
+              }}
+            >
+              <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                Last paste import
+              </div>
+              <div className="muted" style={{ fontSize: 13 }}>
+                <b>{new Date(lastImport.createdAt).toLocaleString()}</b> • {lastImport.summary}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {parsed && preview && (
         <>
@@ -1051,15 +1277,15 @@ export default function PasteWorkoutPage() {
 
           <h3 style={{ marginTop: 0 }}>Parsed exercises</h3>
           <div style={{ display: "grid", gap: 12 }}>
-            {parsed.exercises.map((ex) => (
-              <div key={ex.exercise} className="card" style={{ padding: 12 }}>
+            {parsed.exercises.map((ex, exIdx) => (
+              <div key={`${ex.exercise}-${exIdx}`} className="card" style={{ padding: 12 }}>
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>{ex.exercise}</div>
                 {!ex.sets.length ? (
                   <div className="muted">No parsed sets</div>
                 ) : (
                   <div style={{ display: "grid", gap: 6 }}>
                     {ex.sets.map((s, idx) => (
-                      <div key={`${ex.exercise}-${idx}`} className="muted">
+                      <div key={`${ex.exercise}-${exIdx}-${idx}`} className="muted">
                         {s.setKind} • {s.isBodyweight ? "BW" : s.weight ?? "—"} x{" "}
                         {s.seconds !== undefined ? `${s.seconds}s` : s.reps ?? "—"}
                         {s.isPerSide ? " /side" : ""}
@@ -1073,12 +1299,6 @@ export default function PasteWorkoutPage() {
             ))}
           </div>
         </>
-      )}
-
-      {status && (
-        <div className="muted" style={{ marginTop: 12, whiteSpace: "pre-wrap" }}>
-          {status}
-        </div>
       )}
 
       <div style={{ marginTop: 10, fontSize: 12, color: "var(--muted)" }}>{footer}</div>
