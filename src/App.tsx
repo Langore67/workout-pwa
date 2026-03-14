@@ -220,19 +220,7 @@ function TopNav() {
                 Paste Workout
               </NavLink>
 
-	    <NavLink
-              to="/performance"
-              className={({ isActive }) => (isActive ? "active" : "")}
-              onClick={closeMore}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 8,
-              }}
-             >
-              Performance
-              </NavLink>
-
-              <NavLink
+	     <NavLink
                 to="/export"
                 className={({ isActive }) => (isActive ? "active" : "")}
                 onClick={closeMore}

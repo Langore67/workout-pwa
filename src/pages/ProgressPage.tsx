@@ -129,10 +129,26 @@ export default function ProgressPage() {
       </div>
 
       {/* ======================================================================
-          Breadcrumb 2B — Core analytics section
+          Breadcrumb 2B — Featured dashboard
          ==================================================================== */}
       <div style={{ marginBottom: 10, fontWeight: 800, fontSize: 14 }}>
-        Core Analytics
+        Overview
+      </div>
+      
+            <div style={{ marginBottom: 20 }}>
+        <ProgressTile
+          eyebrow="Overview"
+          title="Performance"
+          subtitle="Big-picture coaching view across strength, body composition, and training trends."
+          onClick={() => nav("/performance")}
+        />
+      </div>
+
+      {/* ======================================================================
+          Breadcrumb 2C — Detailed views
+         ==================================================================== */}
+      <div style={{ marginBottom: 10, fontWeight: 800, fontSize: 14 }}>
+        Detailed Views
       </div>
 
       <div
@@ -142,7 +158,7 @@ export default function ProgressPage() {
           gap: 14,
         }}
       >
-        <ProgressTile
+      <ProgressTile
           eyebrow="Performance"
           title="Strength"
           subtitle="Estimated 1RM, trend snapshots, and lifting performance."
