@@ -1,28 +1,29 @@
 // src/pages/ProgressPage.tsx
 /* ============================================================================
-   ProgressPage.tsx — Progress hub (Strength / Body / Walks / MPS)
+   ProgressPage.tsx — Analytics home for Progress
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-08-PROGRESS-02
+   BUILD_ID: 2026-03-14-PROGRESS-03
    FILE: src/pages/ProgressPage.tsx
 
    Purpose
-   - Provide a cleaner analytics hub
-   - Replace multiple top-nav entries with a single Progress section
-   - Host current and future body-composition / performance analytics
-   - Position MPS as a premium coaching-style feature
+   - Serve as the analytics home inside Progress
+   - Feature Performance as the primary overview destination
+   - Organize Strength / Body / Walks / Muscle Preservation as drill-down views
+   - Keep implementation read-only / navigation-only
 
    Navigation targets
+   - /performance
    - /strength
    - /body
    - /walks
    - /mps
 
-   Changes (PROGRESS-02)
-   ✅ Add breadcrumb structure throughout
-   ✅ Upgrade page hierarchy and spacing
-   ✅ Improve tile styling and click affordance
-   ✅ Add section labels for stronger UX
-   ✅ Keep implementation read-only / navigation-only
+   Changes (PROGRESS-03)
+   ✅ Promote Performance to the featured overview destination
+   ✅ Add stronger page hierarchy: Header → Overview → Detailed Views
+   ✅ Rename featured tile from "Performance Dashboard" to "Performance"
+   ✅ Keep Progress as the analytics hub
+   ✅ Keep implementation simple and navigation-only
    ============================================================================ */
 
 import React from "react";
@@ -57,6 +58,7 @@ function ProgressTile({
         textAlign: "left",
         border: "none",
         background: "var(--card, white)",
+        transition: "transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease",
       }}
     >
       <div
@@ -73,13 +75,35 @@ function ProgressTile({
 
       <div
         style={{
-          fontWeight: 900,
-          fontSize: 18,
-          lineHeight: 1.15,
-          color: "var(--text, #111827)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
         }}
       >
-        {title}
+        <div
+          style={{
+            fontWeight: 900,
+            fontSize: 18,
+            lineHeight: 1.15,
+            color: "var(--text, #111827)",
+          }}
+        >
+          {title}
+        </div>
+
+        <div
+          aria-hidden="true"
+          style={{
+            fontSize: 18,
+            fontWeight: 800,
+            color: "var(--muted)",
+            lineHeight: 1,
+            flexShrink: 0,
+          }}
+        >
+          →
+        </div>
       </div>
 
       <div
@@ -96,7 +120,17 @@ function ProgressTile({
 }
 
 /* ============================================================================
-   Breadcrumb 2 — Page
+   Breadcrumb 2 — Small section label helper
+   ============================================================================ */
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 10, fontWeight: 800, fontSize: 14 }}>{children}</div>
+  );
+}
+
+/* ============================================================================
+   Breadcrumb 3 — Page
    ============================================================================ */
 
 export default function ProgressPage() {
@@ -105,7 +139,7 @@ export default function ProgressPage() {
   return (
     <div className="container">
       {/* ======================================================================
-          Breadcrumb 2A — Header
+          Breadcrumb 3A — Page header
          ==================================================================== */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div
@@ -129,13 +163,11 @@ export default function ProgressPage() {
       </div>
 
       {/* ======================================================================
-          Breadcrumb 2B — Featured dashboard
+          Breadcrumb 3B — Featured overview destination
          ==================================================================== */}
-      <div style={{ marginBottom: 10, fontWeight: 800, fontSize: 14 }}>
-        Overview
-      </div>
-      
-            <div style={{ marginBottom: 20 }}>
+      <SectionLabel>Overview</SectionLabel>
+
+      <div style={{ marginBottom: 20 }}>
         <ProgressTile
           eyebrow="Overview"
           title="Performance"
@@ -145,11 +177,9 @@ export default function ProgressPage() {
       </div>
 
       {/* ======================================================================
-          Breadcrumb 2C — Detailed views
+          Breadcrumb 3C — Detailed drill-down destinations
          ==================================================================== */}
-      <div style={{ marginBottom: 10, fontWeight: 800, fontSize: 14 }}>
-        Detailed Views
-      </div>
+      <SectionLabel>Detailed Views</SectionLabel>
 
       <div
         style={{
@@ -158,7 +188,7 @@ export default function ProgressPage() {
           gap: 14,
         }}
       >
-      <ProgressTile
+        <ProgressTile
           eyebrow="Performance"
           title="Strength"
           subtitle="Estimated 1RM, trend snapshots, and lifting performance."
@@ -169,7 +199,7 @@ export default function ProgressPage() {
           eyebrow="Body Composition"
           title="Body"
           subtitle="Weight, body fat, lean mass, and body-composition tracking."
-          onClick={() => nav("/body")}
+          onClick={() => nav("/body-composition")}
         />
 
         <ProgressTile

@@ -1,8 +1,32 @@
+// src/pages/WalksPage.tsx
+/* ============================================================================
+   WalksPage.tsx — Walking log and history
+   ----------------------------------------------------------------------------
+   BUILD_ID: 2026-03-14-WALKS-02
+   FILE: src/pages/WalksPage.tsx
+
+   Purpose
+   - Track walking / conditioning volume inside the Progress system
+   - Support simple manual walk logging
+   - Keep history lightweight and easy to manage
+   - Leave room for future MapMyWalk or external integrations
+
+   Changes (WALKS-02)
+   ✅ Add Progress-system breadcrumb header
+   ✅ Add page title + subtitle for analytics-suite consistency
+   ✅ Preserve existing Add Walk modal flow
+   ✅ Preserve walk history table and delete actions
+   ============================================================================ */
+
 import React, { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, WalkEntry } from "../db";
 import { uuid } from "../utils";
 import { Page, Section } from "../components/Page.tsx";
+
+/* ============================================================================
+   Breadcrumb 1 — Page
+   ============================================================================ */
 
 export default function WalksPage() {
   const walks = useLiveQuery(() => db.walks.orderBy("date").reverse().toArray(), []);
@@ -18,6 +42,33 @@ export default function WalksPage() {
         </button>
       }
     >
+      {/* ======================================================================
+          Breadcrumb 1A — Progress-system page header
+         ==================================================================== */}
+      <Section>
+        <div className="card" style={{ marginBottom: 12, padding: 14 }}>
+          <div
+            className="muted"
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              marginBottom: 8,
+            }}
+          >
+            Progress / Walks
+          </div>
+
+          <h2 style={{ marginTop: 0, marginBottom: 8 }}>Walks</h2>
+
+          <div className="muted" style={{ lineHeight: 1.45 }}>
+            Daily steps, distance, and conditioning volume.
+          </div>
+        </div>
+      </Section>
+
+      {/* ======================================================================
+          Breadcrumb 1B — Walks content
+         ==================================================================== */}
       <div className="sections-two">
         <Section
           title="Log"
@@ -88,6 +139,10 @@ export default function WalksPage() {
     </Page>
   );
 }
+
+/* ============================================================================
+   Breadcrumb 2 — Add Walk modal
+   ============================================================================ */
 
 function AddWalkModal({ onClose }: { onClose: () => void }) {
   const [durationMin, setDurationMin] = useState(30);
@@ -193,3 +248,7 @@ function AddWalkModal({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
+
+/* ============================================================================
+   End of file: src/pages/WalksPage.tsx
+   ============================================================================ */

@@ -2,7 +2,7 @@
 /* ============================================================================
    MpsPage.tsx — Muscle Preservation Signal
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-08-MPS-03
+   BUILD_ID: 2026-03-14-MPS-04
    FILE: src/pages/MpsPage.tsx
 
    Purpose
@@ -15,6 +15,7 @@
    - Use lean mass / body fat as supporting context
    - Detect "bad cuts" automatically
    - Surface coaching-style interpretation rather than raw metrics only
+   - Align page structure with the broader Progress analytics suite
 
    Inputs
    - strength.ts normalizedIndex trend
@@ -30,6 +31,12 @@
    Safe
    - Read-only
    - No DB writes
+
+   Changes (MPS-04)
+   ✅ Add Progress-system breadcrumb header
+   ✅ Add page title + subtitle for analytics-suite consistency
+   ✅ Preserve current MPS status, bad-cut detection, and interpretation flow
+   ✅ Keep read-only behavior intact
    ============================================================================ */
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -137,13 +144,24 @@ function pickBodyTable(): any | null {
   const anyDb: any = db as any;
 
   const preferred = anyDb.bodyMetrics;
-  if (preferred && (typeof preferred.toArray === "function" || typeof preferred.orderBy === "function")) {
+  if (
+    preferred &&
+    (typeof preferred.toArray === "function" || typeof preferred.orderBy === "function")
+  ) {
     return preferred;
   }
 
-  const candidates = [anyDb.bodyLogs, anyDb.body, anyDb.bodyEntries, anyDb.bodyweights].filter(Boolean);
+  const candidates = [
+    anyDb.bodyLogs,
+    anyDb.body,
+    anyDb.bodyEntries,
+    anyDb.bodyweights,
+  ].filter(Boolean);
+
   for (const t of candidates) {
-    if (t && (typeof t.toArray === "function" || typeof t.orderBy === "function")) return t;
+    if (t && (typeof t.toArray === "function" || typeof t.orderBy === "function")) {
+      return t;
+    }
   }
 
   return null;
@@ -159,7 +177,12 @@ function mapBodyRow(row: any): BodySnapshot | null {
     waistIn: readNum(row?.waistIn ?? row?.waist ?? row?.waist_inches),
     leanMassLb: readNum(row?.leanMassLb ?? row?.leanMass ?? row?.lean_mass_lb),
     bodyFatPct: readNum(row?.bodyFatPct ?? row?.bodyFat ?? row?.body_fat_pct),
-    smmLb: readNum(row?.smmLb ?? row?.smm ?? row?.skeletalMuscleMass ?? row?.skeletal_muscle_mass_lb),
+    smmLb: readNum(
+      row?.smmLb ??
+        row?.smm ??
+        row?.skeletalMuscleMass ??
+        row?.skeletal_muscle_mass_lb,
+    ),
     visceralFat: readNum(row?.visceralFat ?? row?.visceralFatIndex ?? row?.visceral_fat),
     bodyWaterPct: readNum(row?.bodyWaterPct ?? row?.bodyWater ?? row?.body_water_pct),
   };
@@ -243,19 +266,29 @@ function buildMpsModel(args: {
       : undefined;
 
   const weightDelta14 =
-    Number.isFinite(weightNow) && Number.isFinite(weightPrev14) ? weightNow! - weightPrev14! : undefined;
+    Number.isFinite(weightNow) && Number.isFinite(weightPrev14)
+      ? weightNow! - weightPrev14!
+      : undefined;
 
   const waistDelta14 =
-    Number.isFinite(waistNow) && Number.isFinite(waistPrev14) ? waistNow! - waistPrev14! : undefined;
+    Number.isFinite(waistNow) && Number.isFinite(waistPrev14)
+      ? waistNow! - waistPrev14!
+      : undefined;
 
   const leanMassDelta14 =
-    Number.isFinite(leanMassNow) && Number.isFinite(leanMassPrev14) ? leanMassNow! - leanMassPrev14! : undefined;
+    Number.isFinite(leanMassNow) && Number.isFinite(leanMassPrev14)
+      ? leanMassNow! - leanMassPrev14!
+      : undefined;
 
   const bodyFatDelta14 =
-    Number.isFinite(bodyFatNow) && Number.isFinite(bodyFatPrev14) ? bodyFatNow! - bodyFatPrev14! : undefined;
+    Number.isFinite(bodyFatNow) && Number.isFinite(bodyFatPrev14)
+      ? bodyFatNow! - bodyFatPrev14!
+      : undefined;
 
   const waistToHeightRatio =
-    Number.isFinite(waistNow) && Number.isFinite(heightIn) && heightIn! > 0 ? waistNow! / heightIn! : undefined;
+    Number.isFinite(waistNow) && Number.isFinite(heightIn) && heightIn! > 0
+      ? waistNow! / heightIn!
+      : undefined;
 
   const hasStrength =
     Number.isFinite(normalizedStrengthNow) &&
@@ -297,7 +330,7 @@ function buildMpsModel(args: {
     return {
       state: "partial",
       title: "Partial Signal",
-      note: "Add waist measurements to improve confidence. Right now the preservation signal is incomplete.",
+      note: "Waist history is still building. Current waist data exists, but there is not yet enough older waist history to support the 14-day comparison.",
       badCut: false,
       normalizedStrengthNow,
       normalizedStrengthPrev14,
@@ -535,7 +568,11 @@ export default function MpsPage() {
           loadHeightIn(),
         ]);
 
-        const now = startOfDay(Date.now()) + 23 * 60 * 60 * 1000 + 59 * 60 * 1000 + 59 * 1000;
+        const now =
+          startOfDay(Date.now()) +
+          23 * 60 * 60 * 1000 +
+          59 * 60 * 1000 +
+          59 * 1000;
         const prev14 = daysAgo(now, 14);
         const prev90 = daysAgo(now, 90);
 
@@ -543,10 +580,13 @@ export default function MpsPage() {
         const prevStrength14 =
           trend.find((r) => r.weekEndMs <= prev14) ?? trend[trend.length - 1];
 
-        const best90Candidates = trend.filter((r) => r.weekEndMs >= prev90 && Number.isFinite(r.normalizedIndex));
+        const best90Candidates = trend.filter(
+          (r) => r.weekEndMs >= prev90 && Number.isFinite(r.normalizedIndex),
+        );
         const best90Strength =
-          best90Candidates.sort((a, b) => (b.normalizedIndex ?? 0) - (a.normalizedIndex ?? 0))[0] ??
-          currentStrength;
+          best90Candidates.sort(
+            (a, b) => (b.normalizedIndex ?? 0) - (a.normalizedIndex ?? 0),
+          )[0] ?? currentStrength;
 
         const currentBody = pickLatestAtOrBefore(bodyRows, now);
         const prevBody14 = pickLatestAtOrBefore(bodyRows, prev14);
@@ -593,7 +633,29 @@ export default function MpsPage() {
   return (
     <div className="container">
       {/* ======================================================================
-          Breadcrumb 6A — Header
+          Breadcrumb 6A — Progress-system page header
+         ==================================================================== */}
+      <div className="card" style={{ marginBottom: 12, padding: 14 }}>
+        <div
+          className="muted"
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            marginBottom: 8,
+          }}
+        >
+          Progress / Muscle Preservation
+        </div>
+
+        <h2 style={{ marginTop: 0, marginBottom: 8 }}>Muscle Preservation</h2>
+
+        <div className="muted" style={{ lineHeight: 1.45 }}>
+          Strength signal during fat loss, using MPS and body trends.
+        </div>
+      </div>
+
+      {/* ======================================================================
+          Breadcrumb 6B — Existing page header
          ==================================================================== */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div
@@ -617,7 +679,7 @@ export default function MpsPage() {
       </div>
 
       {/* ======================================================================
-          Breadcrumb 6B — Status card
+          Breadcrumb 6C — Status card
          ==================================================================== */}
       <div
         className="card"
@@ -650,7 +712,7 @@ export default function MpsPage() {
       </div>
 
       {/* ======================================================================
-          Breadcrumb 6C — Bad cut detection
+          Breadcrumb 6D — Bad cut detection
          ==================================================================== */}
       {model?.badCut ? (
         <div
@@ -674,22 +736,16 @@ export default function MpsPage() {
             Bad Cut Detection
           </div>
 
-          <div style={{ fontWeight: 900, fontSize: 22, lineHeight: 1.1 }}>
-            Warning
-          </div>
+          <div style={{ fontWeight: 900, fontSize: 22, lineHeight: 1.1 }}>Warning</div>
 
-          <div style={{ marginTop: 8, lineHeight: 1.45 }}>
-            {model.badCutNote}
-          </div>
+          <div style={{ marginTop: 8, lineHeight: 1.45 }}>{model.badCutNote}</div>
         </div>
       ) : null}
 
       {/* ======================================================================
-          Breadcrumb 6D — Core metrics
+          Breadcrumb 6E — Core metrics
          ==================================================================== */}
-      <div style={{ marginBottom: 10, fontWeight: 800, fontSize: 14 }}>
-        Core Signal
-      </div>
+      <div style={{ marginBottom: 10, fontWeight: 800, fontSize: 14 }}>Core Signal</div>
 
       <div
         style={{
@@ -708,7 +764,9 @@ export default function MpsPage() {
         <MetricCard
           label="Vs 90d Best"
           value={fmtSigned(model?.normalizedVsBest90Pct, 1, "%")}
-          helper={model?.normalizedBest90 != null ? `best ${fmtNum(model.normalizedBest90, 3)}` : "—"}
+          helper={
+            model?.normalizedBest90 != null ? `best ${fmtNum(model.normalizedBest90, 3)}` : "—"
+          }
         />
 
         <MetricCard
@@ -725,7 +783,7 @@ export default function MpsPage() {
       </div>
 
       {/* ======================================================================
-          Breadcrumb 6E — Supporting body composition
+          Breadcrumb 6F — Supporting body composition
          ==================================================================== */}
       <div style={{ marginBottom: 10, fontWeight: 800, fontSize: 14 }}>
         Supporting Context
@@ -759,7 +817,7 @@ export default function MpsPage() {
       </div>
 
       {/* ======================================================================
-          Breadcrumb 6F — Interpretation
+          Breadcrumb 6G — Interpretation
          ==================================================================== */}
       <div className="card">
         <div
@@ -776,10 +834,11 @@ export default function MpsPage() {
         </div>
 
         <div className="muted" style={{ lineHeight: 1.55 }}>
-          This signal uses a dual-anchor model. The 14-day comparison acts as the short-term coaching signal,
-          while the 90-day best normalized strength acts as a reserve check. Waist is the main short-term body
-          confirmation signal. Lean mass and body-fat trends provide supporting context, and waist-to-height
-          ratio serves as a slower structural indicator.
+          This signal uses a dual-anchor model. The 14-day comparison acts as the short-term
+          coaching signal, while the 90-day best normalized strength acts as a reserve check.
+          Waist is the main short-term body confirmation signal. Lean mass and body-fat trends
+          provide supporting context, and waist-to-height ratio serves as a slower structural
+          indicator.
         </div>
       </div>
     </div>
