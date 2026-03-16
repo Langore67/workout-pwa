@@ -2,18 +2,16 @@
 /* ============================================================================
    App.tsx — Routes + Safety Error Boundary + Top Nav "More" menu
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-08-APP-ROUTES-07
+   BUILD_ID: 2026-03-15-APP-ROUTES-08
    FILE: src/App.tsx
 
-   Changes (APP-ROUTES-07)
-   ✅ Add breadcrumb structure throughout file
-   ✅ Replace top-nav Export / Help / Dev with single More menu
-   ✅ Keep Start / Templates / Exercises / History / Progress in primary ribbon
-   ✅ Group Export / Help / Dev under More
-   ✅ Keep DEV Diagnostics route
+   Changes (APP-ROUTES-08)
+   ✅ Add BodyCompositionPage route
+   ✅ Keep BodyPage as body entry / logging page
+   ✅ Keep Progress as analytics hub
+   ✅ Keep all existing routes intact
    ✅ Keep single ErrorBoundary wrapping Routes
    ✅ Keep USE_NEW_GYM_PAGE switch
-   ✅ Keep all existing routes intact
    ============================================================================ */
 
 import React, { useEffect, useRef, useState } from "react";
@@ -22,6 +20,7 @@ import StartPage from "./pages/StartPage";
 import TemplatesPage from "./pages/TemplatesPage";
 import ExercisesPage from "./pages/ExercisesPage";
 import BodyPage from "./pages/BodyPage";
+import BodyCompositionPage from "./pages/BodyCompositionPage";
 import StrengthPage from "./pages/StrengthPage";
 import GymPage from "./pages/GymPage";
 import GymPageLegacy from "./pages/GymPageLegacy";
@@ -220,7 +219,7 @@ function TopNav() {
                 Paste Workout
               </NavLink>
 
-	     <NavLink
+              <NavLink
                 to="/export"
                 className={({ isActive }) => (isActive ? "active" : "")}
                 onClick={closeMore}
@@ -297,6 +296,7 @@ export default function App() {
             <Route path="/performance" element={<PerformanceDashboardPage />} />
             <Route path="/strength" element={<StrengthPage />} />
             <Route path="/body" element={<BodyPage />} />
+            <Route path="/body-composition" element={<BodyCompositionPage />} />
             <Route path="/walks" element={<WalksPage />} />
             <Route path="/mps" element={<MpsPage />} />
 

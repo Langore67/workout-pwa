@@ -2,7 +2,7 @@
 /* ============================================================================
    PasteWorkoutPage.tsx — Paste Coach Workout -> Preview -> Import -> Rollback
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-13-PASTEWORKOUT-05
+   BUILD_ID: 2026-03-16-PASTEWORKOUT-06
    FILE: src/pages/PasteWorkoutPage.tsx
 
    Purpose
@@ -52,6 +52,8 @@
    - technique 65x10 notes
    - test 95x12 @4 notes
    - cardio 15 min Zone 1 treadmill
+   - work 50x40m
+   - work 15min
 
    Notes
    - Exercise line = plain text line that is not metadata and not a set line
@@ -59,6 +61,8 @@
    - technique / test / cardio are imported as working sets with a tag in notes
    - /side is preserved in notes as "per-side" for now
    - "Bar" is interpreted as 45 lb
+   - Distance sets are preserved in notes for now (e.g. "40m")
+   - Time-only sets are imported into seconds when possible
    - Duplicate guard blocks import when the same program day already exists on
      the same calendar date
    ============================================================================ */
@@ -145,8 +149,8 @@ type ResultStyle = {
    ============================================================================ */
 
 const LAST_IMPORT_KEY = "workout_last_paste_import_v1";
-const PAGE_VERSION = "5";
-const BUILD_ID = "2026-03-13-PASTEWORKOUT-05";
+const PAGE_VERSION = "6";
+const BUILD_ID = "2026-03-16-PASTEWORKOUT-06";
 const FILE_FOOTER = "src/pages/PasteWorkoutPage.tsx";
 
 const SAMPLE_TEXT = `Session: Upper A
@@ -173,7 +177,15 @@ Assisted Pull Up
 warmup 90x6 activation
 work 80x10 @3
 work 75x9 @3
-work 70x8 @2`;
+work 70x8 @2
+
+Farmer Carry
+work 50x40m
+work 50x40m
+work 50x40m
+
+Treadmill Walk (Z1)
+work 15min`;
 
 /* ============================================================================
    Breadcrumb 3 — Local storage helpers
@@ -365,6 +377,34 @@ function parseWeightToken(
   return { weight: n, isBodyweight: false };
 }
 
+function durationToSeconds(valueRaw: string, unitRaw: string): number | undefined {
+  const value = Number(valueRaw);
+  if (!Number.isFinite(value)) return undefined;
+
+  const unit = unitRaw.toLowerCase();
+
+  if (["s", "sec", "secs", "second", "seconds"].includes(unit)) {
+    return Math.round(value);
+  }
+
+  if (["min", "mins", "minute", "minutes"].includes(unit)) {
+    return Math.round(value * 60);
+  }
+
+  if (["hr", "hrs", "hour", "hours"].includes(unit)) {
+    return Math.round(value * 3600);
+  }
+
+  return undefined;
+}
+
+function previewDurationToken(seconds: number): string {
+  if (!Number.isFinite(seconds)) return "—";
+  if (seconds % 3600 === 0) return `${seconds / 3600}hr`;
+  if (seconds % 60 === 0) return `${seconds / 60}min`;
+  return `${seconds}s`;
+}
+
 function parseSetLine(line: string): ParsedSet | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
@@ -378,37 +418,138 @@ function parseSetLine(line: string): ParsedSet | null {
     };
   }
 
-  const m = trimmed.match(
+  /* ------------------------------------------------------------------------
+     Breadcrumb — Standard weighted / BW / bar sets
+     Examples
+     - work 125x7 @2
+     - work BWx12/side
+     - work BWx30s
+     - warmup Barx10
+     --------------------------------------------------------------------- */
+  const standardMatch = trimmed.match(
     /^(warmup|work|technique|test)\s+(BW|Bar|-?\d+(?:\.\d+)?)x(\d+)(s)?(?:\/(side))?(?:\s+@(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
   );
 
-  if (!m) return null;
+  if (standardMatch) {
+    const kindRaw = standardMatch[1].toLowerCase() as ParsedSetKind;
+    const weightRaw = standardMatch[2];
+    const countRaw = standardMatch[3];
+    const isSeconds = !!standardMatch[4];
+    const isPerSide = !!standardMatch[5];
+    const rirRaw = standardMatch[6];
+    const notes = standardMatch[7]?.trim() || undefined;
 
-  const kindRaw = m[1].toLowerCase() as ParsedSetKind;
-  const weightRaw = m[2];
-  const countRaw = m[3];
-  const isSeconds = !!m[4];
-  const isPerSide = !!m[5];
-  const rirRaw = m[6];
-  const notes = m[7]?.trim() || undefined;
+    const parsedWeight = parseWeightToken(weightRaw);
+    if (!parsedWeight) return null;
 
-  const parsedWeight = parseWeightToken(weightRaw);
-  if (!parsedWeight) return null;
+    const count = Number(countRaw);
+    const rir = rirRaw !== undefined ? Number(rirRaw) : undefined;
 
-  const count = Number(countRaw);
-  const rir = rirRaw !== undefined ? Number(rirRaw) : undefined;
+    return {
+      rawLine: line,
+      setKind: kindRaw,
+      weight: parsedWeight.weight,
+      reps: !isSeconds && Number.isFinite(count) ? count : undefined,
+      seconds: isSeconds && Number.isFinite(count) ? count : undefined,
+      rir: rir !== undefined && Number.isFinite(rir) ? rir : undefined,
+      isBodyweight: !!parsedWeight.isBodyweight,
+      isPerSide,
+      notes,
+    };
+  }
 
-  return {
-    rawLine: line,
-    setKind: kindRaw,
-    weight: parsedWeight.weight,
-    reps: !isSeconds && Number.isFinite(count) ? count : undefined,
-    seconds: isSeconds && Number.isFinite(count) ? count : undefined,
-    rir: rir !== undefined && Number.isFinite(rir) ? rir : undefined,
-    isBodyweight: !!parsedWeight.isBodyweight,
-    isPerSide,
-    notes,
-  };
+  /* ------------------------------------------------------------------------
+     Breadcrumb — Distance sets
+     Examples
+     - work 50x40m
+     - work 50x40yd
+     Notes
+     - For MVP, preserve distance in notes and store numeric count in reps
+     --------------------------------------------------------------------- */
+  const distanceMatch = trimmed.match(
+    /^(warmup|work|technique|test)\s+(BW|Bar|-?\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(m|meter|meters|ft|yd)(?:\/(side))?(?:\s+@(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+  );
+
+  if (distanceMatch) {
+    const kindRaw = distanceMatch[1].toLowerCase() as ParsedSetKind;
+    const weightRaw = distanceMatch[2];
+    const distanceRaw = distanceMatch[3];
+    const unitRaw = distanceMatch[4];
+    const isPerSide = !!distanceMatch[5];
+    const rirRaw = distanceMatch[6];
+    const notesRaw = distanceMatch[7]?.trim() || "";
+
+    const parsedWeight = parseWeightToken(weightRaw);
+    if (!parsedWeight) return null;
+
+    const distanceNum = Number(distanceRaw);
+    const rir = rirRaw !== undefined ? Number(rirRaw) : undefined;
+
+    const noteParts = [`${distanceRaw}${unitRaw}`];
+    if (notesRaw) noteParts.push(notesRaw);
+
+    return {
+      rawLine: line,
+      setKind: kindRaw,
+      weight: parsedWeight.weight,
+      reps: Number.isFinite(distanceNum) ? distanceNum : undefined,
+      rir: rir !== undefined && Number.isFinite(rir) ? rir : undefined,
+      isBodyweight: !!parsedWeight.isBodyweight,
+      isPerSide,
+      notes: noteParts.join(" | "),
+    };
+  }
+
+  /* ------------------------------------------------------------------------
+     Breadcrumb — Time-only sets
+     Examples
+     - work 15min
+     - work 30s
+     - work 15min @2
+     - work 30s/side
+     --------------------------------------------------------------------- */
+  const timeOnlyMatch = trimmed.match(
+    /^(warmup|work|technique|test)\s+(\d+(?:\.\d+)?)(s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours)(?:\/(side))?(?:\s+@(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+  );
+
+  if (timeOnlyMatch) {
+    const kindRaw = timeOnlyMatch[1].toLowerCase() as ParsedSetKind;
+    const durationRaw = timeOnlyMatch[2];
+    const unitRaw = timeOnlyMatch[3];
+    const isPerSide = !!timeOnlyMatch[4];
+    const rirRaw = timeOnlyMatch[5];
+    const notesRaw = timeOnlyMatch[6]?.trim() || "";
+
+    const seconds = durationToSeconds(durationRaw, unitRaw);
+    const rir = rirRaw !== undefined ? Number(rirRaw) : undefined;
+
+    const noteParts = [`${durationRaw}${unitRaw}`];
+    if (notesRaw) noteParts.push(notesRaw);
+
+    return {
+      rawLine: line,
+      setKind: kindRaw,
+      seconds,
+      rir: rir !== undefined && Number.isFinite(rir) ? rir : undefined,
+      isPerSide,
+      notes: noteParts.join(" | "),
+    };
+  }
+
+  return null;
+}
+
+function formatParsedSetPreview(set: ParsedSet): string {
+  const prefix = `${set.setKind} • `;
+
+  const base =
+    set.seconds !== undefined && (set.weight === undefined || set.weight === 0)
+      ? `${previewDurationToken(set.seconds)}`
+      : `${set.isBodyweight ? "BW" : set.weight ?? "—"} x ${
+          set.seconds !== undefined ? previewDurationToken(set.seconds) : set.reps ?? "—"
+        }`;
+
+  return `${prefix}${base}${set.isPerSide ? " /side" : ""}${set.rir !== undefined ? ` @${set.rir}` : ""}${set.notes ? ` • ${set.notes}` : ""}`;
 }
 
 function parseWorkoutText(text: string): ParsedWorkout {
@@ -471,6 +612,20 @@ function parseWorkoutText(text: string): ParsedWorkout {
       } else {
         currentExercise.sets.push(parsedSet);
       }
+      continue;
+    }
+
+    /* ----------------------------------------------------------------------
+       Breadcrumb — Guard unsupported set-like lines
+       Why this matters
+       - Prevent lines like "work 50x40m" or "work 15min" from becoming fake
+         exercise titles when a future format is not yet supported
+       ------------------------------------------------------------------- */
+    if (/^(warmup|work|technique|test|cardio)\b/i.test(line)) {
+      warnings.push(
+        `Unsupported set format under ${currentExercise?.exercise ?? "unknown exercise"}: ${line}`
+      );
+      failedLines.push(raw);
       continue;
     }
 
@@ -1286,11 +1441,7 @@ export default function PasteWorkoutPage() {
                   <div style={{ display: "grid", gap: 6 }}>
                     {ex.sets.map((s, idx) => (
                       <div key={`${ex.exercise}-${exIdx}-${idx}`} className="muted">
-                        {s.setKind} • {s.isBodyweight ? "BW" : s.weight ?? "—"} x{" "}
-                        {s.seconds !== undefined ? `${s.seconds}s` : s.reps ?? "—"}
-                        {s.isPerSide ? " /side" : ""}
-                        {s.rir !== undefined ? ` @${s.rir}` : ""}
-                        {s.notes ? ` • ${s.notes}` : ""}
+                        {formatParsedSetPreview(s)}
                       </div>
                     ))}
                   </div>

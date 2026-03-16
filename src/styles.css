@@ -1289,3 +1289,38 @@ textarea:focus-visible{
 .dashboard-range-scroll::-webkit-scrollbar{
   display:none;
 }
+/* =========================================================
+   Breadcrumb S19 (CHARTS) — Remove browser focus outline on Recharts SVG
+   - Fixes the black rectangle that appears after clicking a chart/data point
+   - Scoped to Recharts only so the rest of the app keeps normal focus styles
+   ========================================================= */
+
+.recharts-wrapper:focus,
+.recharts-surface:focus{
+  outline: none;
+}
+
+/* Fallback: some browsers focus deeper SVG/layer elements */
+.recharts-wrapper *:focus,
+.recharts-surface *:focus{
+  outline: none;
+}
+/* ============================================================================
+   Breadcrumb S19 — Chart focus outline cleanup
+   Remove browser focus ring around Recharts surfaces on tap/click
+   ============================================================================ */
+
+.dashboard-chart:focus,
+.dashboard-chart *:focus,
+.recharts-wrapper:focus,
+.recharts-wrapper *:focus,
+.recharts-surface:focus,
+.recharts-surface *:focus {
+  outline: none !important;
+}
+
+.dashboard-chart,
+.recharts-wrapper,
+.recharts-surface {
+  -webkit-tap-highlight-color: transparent;
+}
