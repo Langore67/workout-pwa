@@ -130,6 +130,39 @@ function normalizeTrackingMode(raw: any): CanonMode {
   return "unknown";
 }
 
+function inferDisplayMode(track: Track, rows: SetEntry[]): CanonMode {
+  const normalized = normalizeTrackingMode((track as any).trackingMode);
+
+  const hasSeconds = rows.some(
+    (se) => se.seconds !== undefined && se.seconds !== null
+  );
+
+  const hasPositiveWeight = rows.some(
+    (se) =>
+      se.weight !== undefined &&
+      se.weight !== null &&
+      Number.isFinite(se.weight) &&
+      se.weight > 0
+  );
+
+  const hasReps = rows.some(
+    (se) => se.reps !== undefined && se.reps !== null
+  );
+
+  // Let actual row data win over stale track metadata.
+  if (hasSeconds) return "timeSeconds";
+  if (hasPositiveWeight && hasReps) return "weightedReps";
+  if (hasReps) return "repsOnly";
+
+  return normalized;
+}
+
+
+
+
+
+
+
 /* =============================================================================
    Breadcrumb 2 — Component: SessionDetailPage (screen)
    ============================================================================= */
@@ -508,10 +541,16 @@ export default function SessionDetailPage() {
                 </div>
               )}
 
-              {workingRows.length ? (
-                <ReadOnlySetTable track={track} rows={workingRows} tableTestId={`working-table:${track.id}`} />
-              ) : (
-                <p className="muted">No logged sets.</p>
+                            {workingRows.length ? (
+	                      <ReadOnlySetTable
+	                        track={track}
+	                        rows={workingRows}
+	                        tableTestId={`working-table:${track.id}`}
+	                      />
+	                    ) : showWarmups && bucket.warmup.length ? (
+	                      <p className="muted">Warm-up only.</p>
+	                    ) : (
+	                      <p className="muted">No logged sets.</p>
               )}
             </div>
           </div>
@@ -540,7 +579,7 @@ function ReadOnlySetTable({
   rows: SetEntry[];
   tableTestId?: string;
 }) {
-  const mode = normalizeTrackingMode((track as any).trackingMode);
+    const mode = inferDisplayMode(track, rows);
 
   const headers: string[] = (() => {
     switch (mode) {
@@ -569,41 +608,54 @@ function ReadOnlySetTable({
     const badge = se.setType === "drop" ? "DROP" : se.setType === "failure" ? "FAIL" : undefined;
 
     switch (mode) {
-      case "weightedReps": {
-        const w = se.weight ?? "—";
-        const r = se.reps ?? "—";
-        const rir = (se as any).rir ?? "—"; // DB has rir; keep runtime safe
-
-        return (
-          <>
-            <td style={{ textAlign: "right" }} data-testid={`set-weight:${se.id}`}>
-              {w}
-            </td>
-            <td style={{ textAlign: "right" }} data-testid={`set-reps:${se.id}`}>
-              {r}
-              {badge && (
-                <span
-                  className="muted"
-                  style={{
-                    marginLeft: 8,
-                    fontSize: 12,
-                    border: "1px solid var(--line)",
-                    padding: "2px 6px",
-                    borderRadius: 999,
-                    verticalAlign: "middle",
-                  }}
-                  data-testid={`set-badge:${se.id}`}
-                >
-                  {badge}
-                </span>
-              )}
-            </td>
-            <td style={{ textAlign: "right" }} data-testid={`set-rir:${se.id}`}>
-              {rir}
-            </td>
-          </>
-        );
-      }
+            case "weightedReps": {
+	      const hasPositiveWeight =
+	        typeof se.weight === "number" &&
+	        Number.isFinite(se.weight) &&
+	        se.weight > 0;
+	    
+	      const w = hasPositiveWeight ? se.weight : "BW";
+	    
+	      const r =
+	        se.reps !== undefined && se.reps !== null
+	          ? se.reps
+	          : "—";
+	    
+	      const rir =
+	        (se as any).rir !== undefined && (se as any).rir !== null
+	          ? (se as any).rir
+	          : "—";
+	    
+	      return (
+	        <>
+	          <td style={{ textAlign: "right" }} data-testid={`set-weight:${se.id}`}>
+	            {w}
+	          </td>
+	          <td style={{ textAlign: "right" }} data-testid={`set-reps:${se.id}`}>
+	            {r}
+	            {badge && (
+	              <span
+	                className="muted"
+	                style={{
+	                  marginLeft: 8,
+	                  fontSize: 12,
+	                  border: "1px solid var(--line)",
+	                  padding: "2px 6px",
+	                  borderRadius: 999,
+	                  verticalAlign: "middle",
+	                }}
+	                data-testid={`set-badge:${se.id}`}
+	              >
+	                {badge}
+	              </span>
+	            )}
+	          </td>
+	          <td style={{ textAlign: "right" }} data-testid={`set-rir:${se.id}`}>
+	            {rir}
+	          </td>
+	        </>
+	      );
+             }
 
       case "repsOnly":
         return (
@@ -629,15 +681,26 @@ function ReadOnlySetTable({
       case "checkbox":
         return <td data-testid={`set-done:${se.id}`}>{(se.reps ?? 0) === 1 ? "Yes" : "No"}</td>;
 
-      default:
-        // Fallback: try to show weight/reps/rir if present
-        return (
-          <>
-            <td style={{ textAlign: "right" }}>{se.weight ?? "—"}</td>
-            <td style={{ textAlign: "right" }}>{se.reps ?? "—"}</td>
-            <td style={{ textAlign: "right" }}>{(se as any).rir ?? "—"}</td>
-          </>
-        );
+            default:
+	      return (
+	        <>
+	          <td style={{ textAlign: "right" }}>
+	            {typeof se.weight === "number" &&
+	             Number.isFinite(se.weight) &&
+	             se.weight > 0
+	              ? se.weight
+	              : "BW"}
+	          </td>
+	          <td style={{ textAlign: "right" }}>
+	            {se.reps !== undefined && se.reps !== null ? se.reps : "—"}
+	          </td>
+	          <td style={{ textAlign: "right" }}>
+	            {(se as any).rir !== undefined && (se as any).rir !== null
+	              ? (se as any).rir
+	              : "—"}
+	          </td>
+	        </>
+              );
     }
   }
 

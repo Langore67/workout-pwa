@@ -2,7 +2,7 @@
 /* ============================================================================
    PasteWorkoutPage.tsx — Paste Coach Workout -> Preview -> Import -> Rollback
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-16-PASTEWORKOUT-06
+   BUILD_ID: 2026-03-17-PASTEWORKOUT-08
    FILE: src/pages/PasteWorkoutPage.tsx
 
    Purpose
@@ -30,18 +30,6 @@
    work 145x6 @2 full ROM
    work 150x3 @1 deeper range
 
-   Incline DB Press
-   warmup 45x10
-   work 55x9 @1 setup awkward
-   work 50x7 @1.5
-   work 40x10 @2
-
-   Assisted Pull Up
-   warmup 90x6 activation
-   work 80x10 @3
-   work 75x9 @3
-   work 70x8 @2
-
    Additional supported set variants
    - work BWx12
    - work BWx12/side
@@ -54,6 +42,8 @@
    - cardio 15 min Zone 1 treadmill
    - work 50x40m
    - work 15min
+   - warmup x15
+   - warmup x6/side
 
    Notes
    - Exercise line = plain text line that is not metadata and not a set line
@@ -63,6 +53,9 @@
    - "Bar" is interpreted as 45 lb
    - Distance sets are preserved in notes for now (e.g. "40m")
    - Time-only sets are imported into seconds when possible
+   - Loadless rep-only sets import as repsOnly
+   - Existing tracks may be upgraded when parsed data clearly indicates a better
+     tracking mode (e.g. stale timeSeconds -> weightedReps)
    - Duplicate guard blocks import when the same program day already exists on
      the same calendar date
    ============================================================================ */
@@ -149,43 +142,54 @@ type ResultStyle = {
    ============================================================================ */
 
 const LAST_IMPORT_KEY = "workout_last_paste_import_v1";
-const PAGE_VERSION = "6";
-const BUILD_ID = "2026-03-16-PASTEWORKOUT-06";
+const PAGE_VERSION = "8";
+const BUILD_ID = "2026-03-17-PASTEWORKOUT-08";
 const FILE_FOOTER = "src/pages/PasteWorkoutPage.tsx";
 
-const SAMPLE_TEXT = `Session: Upper A
-Date: 2026-03-09
-Start: 08:20
-End: 10:17
+const SAMPLE_TEXT = `Session: Lower A
+Date: 2026-03-17
+Start: 07:45
+End: 09:18
 
-Bench Press
+Clamshell
+warmup BWx15/side
+warmup BWx15/side
+
+Locked Clams
+warmup BWx15/side
+warmup BWx15/side
+
+Glute Bridge
+warmup BWx15
+
+Knee to Wall
+warmup BWx12/side
+warmup BWx12/side
+
+Banded Pull-Aparts
+warmup x15
+warmup x15
+
+Dead Hang
+warmup 40sec
+warmup 40sec
+
+Y Shoulder Wall Slides
+warmup x10
+warmup x10
+
+90/90 Hip Rotation
+warmup x6/side
+
+Hamstring Walkouts
+warmup x6
+warmup x6
+
+Good Morning
 warmup 45x10
-warmup 95x8
-warmup 115x5
-warmup 125x3
-work 135x9 @2.5 full ROM
-work 145x6 @2 full ROM
-work 150x3 @1 deeper range
-
-Incline DB Press
-warmup 45x10
-work 55x9 @1 setup awkward
-work 50x7 @1.5
-work 40x10 @2
-
-Assisted Pull Up
-warmup 90x6 activation
-work 80x10 @3
-work 75x9 @3
-work 70x8 @2
-
-Farmer Carry
-work 50x40m
-work 50x40m
-work 50x40m
-
-Treadmill Walk (Z1)
-work 15min`;
+work 95x10 @5
+work 105x10 @4
+work 105x10 @4`;
 
 /* ============================================================================
    Breadcrumb 3 — Local storage helpers
@@ -307,13 +311,34 @@ function inferTrackingMode(
 ): TrackingMode {
   const s = exerciseName.toLowerCase();
 
-  if (s.includes("plank") || s.includes("hold")) return "timeSeconds";
+  if (s.includes("plank") || s.includes("hold") || s.includes("hang")) return "timeSeconds";
   if (!hasWeight && hasReps) return "repsOnly";
   if (s.includes("band") || s.includes("pull-apart") || s.includes("pull apart")) {
     return "repsOnly";
   }
 
   return "weightedReps";
+}
+
+function inferBetterTrackingModeFromParsedSets(
+  exerciseName: string,
+  sets: ParsedSet[]
+): TrackingMode {
+  const hasWeightedLoad = sets.some(
+    (s) => s.weight !== undefined && Number.isFinite(s.weight) && s.weight > 0
+  );
+  const hasReps = sets.some(
+    (s) => s.reps !== undefined && Number.isFinite(s.reps) && s.reps > 0
+  );
+  const hasSeconds = sets.some(
+    (s) => s.seconds !== undefined && Number.isFinite(s.seconds) && s.seconds > 0
+  );
+
+  if (hasWeightedLoad && hasReps) return "weightedReps";
+  if (!hasWeightedLoad && hasReps) return "repsOnly";
+  if (hasSeconds) return "timeSeconds";
+
+  return inferTrackingMode(exerciseName, hasWeightedLoad, hasReps);
 }
 
 function defaultTrackType(exerciseName: string): TrackType {
@@ -325,7 +350,11 @@ function defaultTrackType(exerciseName: string): TrackType {
     s.includes("mobility") ||
     s.includes("stretch") ||
     s.includes("clamshell") ||
-    s.includes("clams")
+    s.includes("clams") ||
+    s.includes("wall slide") ||
+    s.includes("hip rotation") ||
+    s.includes("walkout") ||
+    s.includes("knee to wall")
   ) {
     return "corrective";
   }
@@ -334,7 +363,8 @@ function defaultTrackType(exerciseName: string): TrackType {
     s.includes("walk") ||
     s.includes("bike") ||
     s.includes("cardio") ||
-    s.includes("treadmill")
+    s.includes("treadmill") ||
+    s.includes("hang")
   ) {
     return "cardio";
   }
@@ -420,11 +450,6 @@ function parseSetLine(line: string): ParsedSet | null {
 
   /* ------------------------------------------------------------------------
      Breadcrumb — Standard weighted / BW / bar sets
-     Examples
-     - work 125x7 @2
-     - work BWx12/side
-     - work BWx30s
-     - warmup Barx10
      --------------------------------------------------------------------- */
   const standardMatch = trimmed.match(
     /^(warmup|work|technique|test)\s+(BW|Bar|-?\d+(?:\.\d+)?)x(\d+)(s)?(?:\/(side))?(?:\s+@(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
@@ -460,11 +485,6 @@ function parseSetLine(line: string): ParsedSet | null {
 
   /* ------------------------------------------------------------------------
      Breadcrumb — Distance sets
-     Examples
-     - work 50x40m
-     - work 50x40yd
-     Notes
-     - For MVP, preserve distance in notes and store numeric count in reps
      --------------------------------------------------------------------- */
   const distanceMatch = trimmed.match(
     /^(warmup|work|technique|test)\s+(BW|Bar|-?\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(m|meter|meters|ft|yd)(?:\/(side))?(?:\s+@(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
@@ -502,37 +522,60 @@ function parseSetLine(line: string): ParsedSet | null {
 
   /* ------------------------------------------------------------------------
      Breadcrumb — Time-only sets
-     Examples
-     - work 15min
-     - work 30s
-     - work 15min @2
-     - work 30s/side
      --------------------------------------------------------------------- */
-  const timeOnlyMatch = trimmed.match(
-    /^(warmup|work|technique|test)\s+(\d+(?:\.\d+)?)(s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours)(?:\/(side))?(?:\s+@(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+    const timeOnlyMatch = trimmed.match(
+      /^(warmup|work|technique|test)\s+(\d+(?:\.\d+)?)(s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours)(?:\/(side))?(?:\s+@(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+    );
+  
+    if (timeOnlyMatch) {
+      const kindRaw = timeOnlyMatch[1].toLowerCase() as ParsedSetKind;
+      const durationRaw = timeOnlyMatch[2];
+      const unitRaw = timeOnlyMatch[3];
+      const isPerSide = !!timeOnlyMatch[4];
+      const rirRaw = timeOnlyMatch[5];
+      const notesRaw = timeOnlyMatch[6]?.trim() || undefined;
+  
+      const seconds = durationToSeconds(durationRaw, unitRaw);
+      const rir = rirRaw !== undefined ? Number(rirRaw) : undefined;
+  
+      return {
+        rawLine: line,
+        setKind: kindRaw,
+        seconds,
+        rir: rir !== undefined && Number.isFinite(rir) ? rir : undefined,
+        isPerSide,
+        notes: notesRaw,
+      };
+  }
+
+  /* ------------------------------------------------------------------------
+     Breadcrumb — Loadless rep-only sets
+     Examples
+     - warmup x15
+     - warmup x6/side
+     - work x12 @3
+     --------------------------------------------------------------------- */
+  const repsOnlyNoLoadMatch = trimmed.match(
+    /^(warmup|work|technique|test)\s+x(\d+)(?:\/(side))?(?:\s+@(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
   );
 
-  if (timeOnlyMatch) {
-    const kindRaw = timeOnlyMatch[1].toLowerCase() as ParsedSetKind;
-    const durationRaw = timeOnlyMatch[2];
-    const unitRaw = timeOnlyMatch[3];
-    const isPerSide = !!timeOnlyMatch[4];
-    const rirRaw = timeOnlyMatch[5];
-    const notesRaw = timeOnlyMatch[6]?.trim() || "";
+  if (repsOnlyNoLoadMatch) {
+    const kindRaw = repsOnlyNoLoadMatch[1].toLowerCase() as ParsedSetKind;
+    const repsRaw = repsOnlyNoLoadMatch[2];
+    const isPerSide = !!repsOnlyNoLoadMatch[3];
+    const rirRaw = repsOnlyNoLoadMatch[4];
+    const notesRaw = repsOnlyNoLoadMatch[5]?.trim() || undefined;
 
-    const seconds = durationToSeconds(durationRaw, unitRaw);
+    const reps = Number(repsRaw);
     const rir = rirRaw !== undefined ? Number(rirRaw) : undefined;
-
-    const noteParts = [`${durationRaw}${unitRaw}`];
-    if (notesRaw) noteParts.push(notesRaw);
 
     return {
       rawLine: line,
       setKind: kindRaw,
-      seconds,
+      reps: Number.isFinite(reps) ? reps : undefined,
       rir: rir !== undefined && Number.isFinite(rir) ? rir : undefined,
       isPerSide,
-      notes: noteParts.join(" | "),
+      notes: notesRaw,
     };
   }
 
@@ -542,14 +585,45 @@ function parseSetLine(line: string): ParsedSet | null {
 function formatParsedSetPreview(set: ParsedSet): string {
   const prefix = `${set.setKind} • `;
 
-  const base =
-    set.seconds !== undefined && (set.weight === undefined || set.weight === 0)
-      ? `${previewDurationToken(set.seconds)}`
-      : `${set.isBodyweight ? "BW" : set.weight ?? "—"} x ${
-          set.seconds !== undefined ? previewDurationToken(set.seconds) : set.reps ?? "—"
-        }`;
+  // Cardio note-only preview
+  if (set.setKind === "cardio") {
+    return `${prefix}${String(set.notes || "").trim() || "—"}`;
+  }
 
-  return `${prefix}${base}${set.isPerSide ? " /side" : ""}${set.rir !== undefined ? ` @${set.rir}` : ""}${set.notes ? ` • ${set.notes}` : ""}`;
+  const hasPositiveWeight =
+    typeof set.weight === "number" &&
+    Number.isFinite(set.weight) &&
+    set.weight > 0;
+
+  const isTimeOnly =
+    set.seconds !== undefined && !hasPositiveWeight;
+
+  const loadLabel = hasPositiveWeight ? String(set.weight) : "BW";
+
+  const base = isTimeOnly
+    ? previewDurationToken(set.seconds as number)
+    : `${loadLabel} x ${
+        set.seconds !== undefined
+          ? previewDurationToken(set.seconds)
+          : set.reps ?? "—"
+      }`;
+
+  const notesText = String(set.notes || "").trim();
+
+  const shouldHideDuplicateDurationNote =
+    isTimeOnly &&
+    !!notesText &&
+    normalizeName(notesText) ===
+      normalizeName(previewDurationToken(set.seconds as number));
+
+  const suffixNotes =
+    notesText && !shouldHideDuplicateDurationNote
+      ? ` • ${notesText}`
+      : "";
+
+  return `${prefix}${base}${set.isPerSide ? " /side" : ""}${
+    set.rir !== undefined ? ` @${set.rir}` : ""
+  }${suffixNotes}`;
 }
 
 function parseWorkoutText(text: string): ParsedWorkout {
@@ -615,12 +689,6 @@ function parseWorkoutText(text: string): ParsedWorkout {
       continue;
     }
 
-    /* ----------------------------------------------------------------------
-       Breadcrumb — Guard unsupported set-like lines
-       Why this matters
-       - Prevent lines like "work 50x40m" or "work 15min" from becoming fake
-         exercise titles when a future format is not yet supported
-       ------------------------------------------------------------------- */
     if (/^(warmup|work|technique|test|cardio)\b/i.test(line)) {
       warnings.push(
         `Unsupported set format under ${currentExercise?.exercise ?? "unknown exercise"}: ${line}`
@@ -948,25 +1016,49 @@ export default function PasteWorkoutPage() {
     }
 
     const newTracks: Track[] = [];
+    const tracksToUpdate: Track[] = [];
+
     for (const ex of importableExercises) {
       const norm = normalizeName(ex.exercise);
-      if (trackByDisplay.has(norm)) continue;
+      const existingTrack = trackByDisplay.get(norm);
+
+      const desiredTrackingMode = inferBetterTrackingModeFromParsedSets(
+        ex.exercise,
+        ex.sets
+      );
+
+            if (existingTrack) {
+              const shouldUpgradeTrackingMode =
+                existingTrack.trackingMode !== desiredTrackingMode;
+      
+              if (shouldUpgradeTrackingMode) {
+                const updatedTrack: Track = {
+                  ...existingTrack,
+                  trackingMode: desiredTrackingMode,
+                  trackType:
+                    desiredTrackingMode === "weightedReps"
+                      ? existingTrack.trackType === "cardio"
+                        ? "hypertrophy"
+                        : existingTrack.trackType
+                      : existingTrack.trackType,
+                };
+      
+                tracksToUpdate.push(updatedTrack);
+                trackByDisplay.set(norm, updatedTrack);
+              }
+      
+              continue;
+      }
 
       const exercise = exerciseByName.get(norm);
       if (!exercise) continue;
-
-      const hasWeight = ex.sets.some((s) => s.weight !== undefined && s.weight > 0);
-      const hasReps = ex.sets.some((s) => s.reps !== undefined);
-      const hasSeconds = ex.sets.some((s) => s.seconds !== undefined);
 
       const t: Track = {
         id: uuid(),
         exerciseId: exercise.id,
         displayName: ex.exercise,
         trackType: defaultTrackType(ex.exercise),
-        trackingMode: hasSeconds
-          ? "timeSeconds"
-          : inferTrackingMode(ex.exercise, hasWeight, hasReps),
+        trackingMode: desiredTrackingMode,
         warmupSetsDefault: 2,
         workingSetsDefault: 3,
         repMin: 6,
@@ -1065,7 +1157,7 @@ export default function PasteWorkoutPage() {
       }
     }
 
-    const summary = `Exercises +${newExercises.length}, Tracks +${newTracks.length}, Sessions +${sessionsToAdd.length}, SessionItems +${sessionItemsToAdd.length}, Sets +${setsToAdd.length}`;
+    const summary = `Exercises +${newExercises.length}, Tracks +${newTracks.length}, TrackUpdates +${tracksToUpdate.length}, Sessions +${sessionsToAdd.length}, SessionItems +${sessionItemsToAdd.length}, Sets +${setsToAdd.length}`;
 
     if (dryRun) {
       await addAppLog({
@@ -1079,6 +1171,7 @@ export default function PasteWorkoutPage() {
           duplicateSessionId: preview.duplicateSessionId,
           exercisesAdded: newExercises.length,
           tracksAdded: newTracks.length,
+          trackUpdates: tracksToUpdate.length,
           sessionsAdded: sessionsToAdd.length,
           sessionItemsAdded: sessionItemsToAdd.length,
           setsAdded: setsToAdd.length,
@@ -1091,6 +1184,7 @@ export default function PasteWorkoutPage() {
 
     if (newExercises.length) await db.exercises.bulkAdd(newExercises);
     if (newTracks.length) await db.tracks.bulkAdd(newTracks);
+    if (tracksToUpdate.length) await db.tracks.bulkPut(tracksToUpdate);
     if (sessionsToAdd.length) await db.sessions.bulkAdd(sessionsToAdd);
     if (sessionItemsToAdd.length) await db.sessionItems.bulkAdd(sessionItemsToAdd);
     if (setsToAdd.length) await db.sets.bulkAdd(setsToAdd);
@@ -1116,6 +1210,7 @@ export default function PasteWorkoutPage() {
         duplicateSessionId: preview.duplicateSessionId,
         exercisesAdded: newExercises.length,
         tracksAdded: newTracks.length,
+        trackUpdates: tracksToUpdate.length,
         sessionsAdded: sessionsToAdd.length,
         sessionItemsAdded: sessionItemsToAdd.length,
         setsAdded: setsToAdd.length,
