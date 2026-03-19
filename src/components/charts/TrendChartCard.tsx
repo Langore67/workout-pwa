@@ -374,12 +374,29 @@ export default function TrendChartCard({
   const statSecondary =
     isSingleSeries
       ? showHoverReadout
-        ? hover.secondary
-        : latestLabel
-      : "";
+        ? ` ${hover.secondary}`
+        : ` ${latestLabel}`
+    : "";
 
-  const compactMetaLine =
-    isSingleSeries && !showHoverReadout ? compactMetaParts.join(" • ") : "";
+  const compactMetaLine = (() => {
+    if (!isSingleSeries || !data?.length) return "";
+  
+    const first = data[0]?.value;
+    const last = data[data.length - 1]?.value;
+  
+    if (first == null || last == null) return "";
+  
+    const delta = last - first;
+    const sign = delta > 0 ? "+" : "";
+    const absDelta = Math.abs(delta).toFixed(1);
+  
+    const direction =
+      delta > 0.5 ? "↑" :
+      delta < -0.5 ? "↓" :
+      "→";
+  
+    return `Weight ${direction} ${sign}${absDelta} lb over last ${data.length} check-ins`;
+})();
 
   if (!data.length) {
     return (
@@ -430,7 +447,7 @@ export default function TrendChartCard({
               </div>
             ) : null}
           </div>
-
+  
           {!hideHeaderBadge && series.length > 1 ? (
             <div
               className="shrink-0 rounded-full border border-[var(--line)] px-2.5 py-1 text-xs text-[var(--muted)]"
@@ -441,27 +458,29 @@ export default function TrendChartCard({
           ) : null}
         </div>
       </div>
-
+  
       {resolvedReadoutMode === "statRow" ? (
         <div className="mb-3">
           {compactMetaLine ? (
-            <div className="mt-1 mb-2 text-xs text-[var(--muted)]">
+            <div className="mt-1 mb-2 text-[10px] text-[var(--muted)] opacity-80">
               {compactMetaLine}
             </div>
           ) : null}
-
-          <div className="flex items-end justify-between gap-3">
-            <div
-              className="text-[28px] font-black leading-none text-[var(--text)]"
-              style={{ letterSpacing: -0.4 }}
+  
+          <div className="flex items-baseline gap-2">
+            <span
+              className="text-[26px] font-semibold text-[var(--text)] leading-none"
+              style={{ letterSpacing: -0.3 }}
             >
               {statPrimary}
-            </div>
-
-            <div className="text-[11px] text-[var(--muted)]">{statSecondary}</div>
+            </span>
+  
+            <span className="text-[13px] text-[var(--muted)] opacity-75 leading-none">
+              {statSecondary}
+            </span>
           </div>
         </div>
-      ) : null}
+    ) : null}
 
       <div
         className="mt-2"

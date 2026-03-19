@@ -33,6 +33,7 @@ import { useNavigate } from "react-router-dom";
 import { db } from "../db";
 import { Page, Section } from "../components/Page.tsx";
 import TrendChartCard from "../components/charts/TrendChartCard";
+import PhaseQualityCard from "../components/phase/PhaseQualityCard";
 import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTypes";
 import { formatInches, formatLbs } from "../components/charts/chartFormatters";
 import {
@@ -46,6 +47,10 @@ import {
   getBodyCompConfidenceLabel,
   getFluidBalanceNote,
 } from "../body/bodyCalculations";
+import {
+  computeStrengthTrend,
+  type StrengthTrendRow,
+} from "../strength/Strength";
 
 type Mode = "cut" | "maintain" | "bulk";
 
@@ -82,6 +87,67 @@ type ProfileGoalData = {
   targetWeightLb?: string;
   targetBodyFatPct?: string;
 };
+
+type PhaseQualityStrengthResult = {
+  strengthDelta?: number;
+  strengthLabel: string;
+};
+
+function computeStrengthDeltaFromTrend(
+  trend: StrengthTrendRow[],
+  mode: Mode
+): PhaseQualityStrengthResult {
+  const sorted = (trend ?? [])
+    .slice()
+    .filter((r) =>
+      mode === "bulk"
+        ? Number.isFinite(r.absoluteIndex)
+        : Number.isFinite(r.relativeIndex)
+    )
+    .sort((a, b) => a.weekEndMs - b.weekEndMs);
+
+  const recent = sorted.slice(-4);
+
+  if (recent.length < 2) {
+    return {
+      strengthDelta: undefined,
+      strengthLabel:
+        mode === "bulk"
+          ? "Absolute strength trend needs more weekly data"
+          : "Relative strength trend needs more weekly data",
+    };
+  }
+
+  const first = recent[0];
+  const last = recent[recent.length - 1];
+
+  const firstValue =
+    mode === "bulk" ? first.absoluteIndex : first.relativeIndex;
+  const lastValue =
+    mode === "bulk" ? last.absoluteIndex : last.relativeIndex;
+
+  if (!Number.isFinite(firstValue) || !Number.isFinite(lastValue)) {
+    return {
+      strengthDelta: undefined,
+      strengthLabel:
+        mode === "bulk"
+          ? "Absolute strength trend unavailable"
+          : "Relative strength trend unavailable",
+    };
+  }
+
+  return {
+    strengthDelta: lastValue - firstValue,
+    strengthLabel:
+      mode === "bulk"
+        ? `Using Absolute Strength trend • last ${recent.length} weekly points`
+        : `Using Relative Strength trend • last ${recent.length} weekly points`,
+  };
+}
+
+
+
+
 
 function loadProfileGoals(): {
   targetWeightLb?: number;
@@ -458,6 +524,7 @@ function SnapshotTile({
 export default function BodyCompositionPage() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>(() => loadMode());
+  const [strengthTrend, setStrengthTrend] = useState<StrengthTrendRow[]>([]);
 
   const rows = useLiveQuery(async () => {
     try {
@@ -474,6 +541,28 @@ export default function BodyCompositionPage() {
   React.useEffect(() => {
     saveMode(mode);
   }, [mode]);
+
+  React.useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        const trend = await computeStrengthTrend(12, 28);
+        if (!alive) return;
+        setStrengthTrend(Array.isArray(trend) ? trend : []);
+      } catch {
+        if (!alive) return;
+        setStrengthTrend([]);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+
+
 
     /* ==========================================================================
        Breadcrumb 3A — Derived data
@@ -570,11 +659,62 @@ export default function BodyCompositionPage() {
       };
   }, [rows, profileGoals]);
 
-  const summary = modeSummary(mode);
-  const phaseSignal = useMemo(
-    () => computePhaseSignal(chartRows.slice(-10), mode),
-    [chartRows, mode]
+    const summary = modeSummary(mode);
+    const phaseSignal = useMemo(
+      () => computePhaseSignal(chartRows.slice(-10), mode),
+      [chartRows, mode]
+    );
+  
+    const phaseQualityStrength = useMemo(
+      () => computeStrengthDeltaFromTrend(strengthTrend, mode),
+      [strengthTrend, mode]
   );
+
+/* ============================================================================
+   Breadcrumb 3C — Phase Quality Inputs (derived deltas)
+   ============================================================================ */
+
+  const phaseQualityInputs = useMemo(() => {
+    const window = chartRows.slice(-10);
+
+    if (window.length < 3) {
+      return {
+        strengthDelta: phaseQualityStrength.strengthDelta,
+        strengthLabel: phaseQualityStrength.strengthLabel,
+        sampleCount: window.length,
+      };
+    }
+
+    const first = window[0];
+    const last = window[window.length - 1];
+
+    const weightDelta =
+      (pickWeightLb(last) ?? 0) - (pickWeightLb(first) ?? 0);
+
+    const waistDelta =
+      (pickWaistIn(last) ?? 0) - (pickWaistIn(first) ?? 0);
+
+    const correctedLeanDelta =
+      (getCorrectedLeanMassLb(last as any) ?? 0) -
+      (getCorrectedLeanMassLb(first as any) ?? 0);
+
+    const correctedBodyFatDelta =
+      (getCorrectedBodyFatPct(last as any) ?? 0) -
+      (getCorrectedBodyFatPct(first as any) ?? 0);
+
+    return {
+      weightDelta,
+      waistDelta,
+      correctedLeanDelta,
+      correctedBodyFatDelta,
+      strengthDelta: phaseQualityStrength.strengthDelta,
+      strengthLabel: phaseQualityStrength.strengthLabel,
+      sampleCount: window.length,
+    };
+  }, [chartRows, phaseQualityStrength]);
+
+
+
 
   /* ==========================================================================
      Breadcrumb 3B — Chart config map
@@ -1089,6 +1229,38 @@ export default function BodyCompositionPage() {
         </div>
       </Section>
 
+
+{/* =====================================================================
+    Breadcrumb 4G — Phase Quality (NEW)
+   ================================================================== */}
+<Section>
+  <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>
+    Phase Quality
+  </div>
+  <div className="muted" style={{ marginBottom: 6 }}>
+    Direction + composition + strength combined into a single quality signal.
+  </div>
+
+  {phaseQualityInputs.strengthLabel ? (
+    <div className="muted" style={{ marginBottom: 12, fontSize: 12 }}>
+      Strength: {phaseQualityInputs.strengthLabel}
+    </div>
+  ) : null}
+
+  <PhaseQualityCard
+    mode={mode}
+    weightDelta={phaseQualityInputs.weightDelta}
+    waistDelta={phaseQualityInputs.waistDelta}
+    correctedLeanDelta={phaseQualityInputs.correctedLeanDelta}
+    correctedBodyFatDelta={phaseQualityInputs.correctedBodyFatDelta}
+    strengthDelta={phaseQualityInputs.strengthDelta}
+    sampleCount={phaseQualityInputs.sampleCount}
+  />
+</Section>
+
+
+
+
       {/* =====================================================================
           Breadcrumb 4G — Trend charts
          ================================================================== */}
@@ -1123,6 +1295,6 @@ export default function BodyCompositionPage() {
 }
 
     
-           {/* =====================================================================
-               End of file: src/pages/BodyCompositionPage.tsx
-            ================================================================== */}
+     /* ============================================================================
+        End of file: src/pages/BodyCompositionPage.tsx
+   ============================================================================ */
