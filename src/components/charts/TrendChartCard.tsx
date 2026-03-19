@@ -2,25 +2,14 @@
 /* ============================================================================
    TrendChartCard.tsx — Shared reusable trend chart card
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-16-CHARTS-09
+   BUILD_ID: 2026-03-18-CHARTS-11
    FILE: src/components/charts/TrendChartCard.tsx
 
    Purpose
-   - Provide one shared chart wrapper for Strength, MPS, and future Body Comp
+   - Provide one shared chart wrapper for Strength, MPS, Body, and Body Comp
    - Standardize chart card layout, tooltip usage, axis setup, hover behavior,
      paging behavior, and y-domain handling
    - Reduce code drift by centralizing common chart logic in one place
-
-   Current responsibilities
-   - Render a consistent card shell for trend charts
-   - Show a 12-point visible data window by default
-   - Page older/newer through the dataset in fixed windows
-   - Compute a stable padded y-axis domain from the full dataset
-   - Render one or more line series from config
-   - Use a compact stat row for current/hovered single-series values
-   - Optionally render a linear trend line for single-series charts
-   - Use shared tooltip content for multi-series charts
-   - Hide legend automatically when only one series is present
    ============================================================================ */
 
 import { useEffect, useMemo, useState } from "react";
@@ -37,20 +26,14 @@ import {
 
 import ChartTooltipContent from "./ChartTooltipContent";
 import { getPaddedDomain, getSeriesValues } from "./chartDomain";
-import type { ChartDatum, TrendChartCardProps } from "./chartTypes";
+import type {
+  ChartDatum,
+  ReadoutMode,
+  TrendChartCardProps,
+} from "./chartTypes";
 
 /* ============================================================================
-   Breadcrumb 1 — Compact label helpers
-   ============================================================================ */
-
-function getCompactSeriesLabel(label: string): string {
-  if (label === "Relative Strength") return "Rel Str";
-  if (label === "Absolute Strength") return "Abs Str";
-  return label;
-}
-
-/* ============================================================================
-   Breadcrumb 2 — Hover readout state
+   Breadcrumb 1 — Hover readout state
    ============================================================================ */
 
 type HoverReadoutState = {
@@ -66,7 +49,7 @@ const EMPTY_HOVER: HoverReadoutState = {
 };
 
 /* ============================================================================
-   Breadcrumb 3 — Tooltip bridge types
+   Breadcrumb 2 — Tooltip bridge types
    ============================================================================ */
 
 type TooltipPayloadItem = {
@@ -86,7 +69,7 @@ type TooltipBridgeProps = {
 };
 
 /* ============================================================================
-   Breadcrumb 4 — Single-series hover bridge
+   Breadcrumb 3 — Single-series hover bridge
    ============================================================================ */
 
 function SingleSeriesHoverBridge({
@@ -114,28 +97,21 @@ function SingleSeriesHoverBridge({
       valueFormatter?.(numeric, s.key) ??
       (numeric == null ? "—" : `${numeric}`);
 
+    const displayLabel = s.shortLabel || s.label;
     const title = labelFormatter ? labelFormatter(label ?? "", datum) : label ?? "";
 
     onHoverChange({
       active: true,
-      primary: `${getCompactSeriesLabel(s.label)} ${formatted}`,
+      primary: `${displayLabel} ${formatted}`,
       secondary: title,
     });
-  }, [
-    active,
-    label,
-    payload,
-    series,
-    labelFormatter,
-    valueFormatter,
-    onHoverChange,
-  ]);
+  }, [active, label, payload, series, labelFormatter, valueFormatter, onHoverChange]);
 
   return null;
 }
 
 /* ============================================================================
-   Breadcrumb 5 — Trend line helpers
+   Breadcrumb 4 — Trend line helpers
    ============================================================================ */
 
 function buildTrendLineData(
@@ -181,6 +157,42 @@ function buildTrendLineData(
 }
 
 /* ============================================================================
+   Breadcrumb 5 — Readout helpers
+   ============================================================================ */
+
+function resolveReadoutMode(
+  readoutMode: ReadoutMode | undefined,
+  isSingleSeries: boolean
+): "statRow" | "tooltipOnly" | "none" {
+  if (readoutMode === "statRow") return "statRow";
+  if (readoutMode === "tooltipOnly") return "tooltipOnly";
+  if (readoutMode === "none") return "none";
+  return isSingleSeries ? "statRow" : "tooltipOnly";
+}
+
+function formatDelta(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  if (value > 0) return `+${value.toFixed(1)}`;
+  if (value < 0) return `${value.toFixed(1)}`;
+  return "0.0";
+}
+
+function formatSignedLikeBase(
+  value: number | null,
+  formatter?: (value: number | null | undefined) => string
+): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+
+  const absText = formatter
+    ? formatter(Math.abs(value))
+    : Math.abs(value).toFixed(1);
+
+  if (value > 0) return `+${absText}`;
+  if (value < 0) return `-${absText}`;
+  return absText;
+}
+
+/* ============================================================================
    Breadcrumb 6 — Shared trend chart wrapper
    ============================================================================ */
 
@@ -191,27 +203,28 @@ export default function TrendChartCard({
   series,
   xKey = "label",
   height = 280,
+  windowSize = 12,
   yDomainMode = "auto",
   showTrendLine = false,
+  readoutMode = "auto",
+  headerBadgeText,
+  hideHeaderBadge = false,
+  hideWindowSummary = false,
+  hideDeltaSummary = false,
   valueFormatter,
   xLabelFormatter,
   tooltipLabelFormatter,
   emptyMessage = "Not enough data yet.",
 }: TrendChartCardProps) {
-  void title;
-  void subtitle;
+  const safeWindowSize = Math.max(1, windowSize);
 
-  const WINDOW_SIZE = 12;
-
-  const [windowEndIndex, setWindowEndIndex] = useState(
-    Math.max(0, data.length - 1)
-  );
+  const [windowEndIndex, setWindowEndIndex] = useState(Math.max(0, data.length - 1));
+  const [hover, setHover] = useState<HoverReadoutState>(EMPTY_HOVER);
+  const [hasUserInteracted, setHasUserInteracted] = useState(false);
 
   useEffect(() => {
     setWindowEndIndex(data.length ? data.length - 1 : 0);
   }, [data.length]);
-
-  const [hover, setHover] = useState<HoverReadoutState>(EMPTY_HOVER);
 
   const setHoverSafe = (next: HoverReadoutState) => {
     setHover((prev) => {
@@ -226,20 +239,22 @@ export default function TrendChartCard({
     });
   };
 
-  const windowStartIndex = Math.max(0, windowEndIndex - (WINDOW_SIZE - 1));
+  const windowStartIndex = Math.max(0, windowEndIndex - (safeWindowSize - 1));
 
   const visibleData = useMemo(() => {
     return data.slice(windowStartIndex, windowEndIndex + 1);
   }, [data, windowStartIndex, windowEndIndex]);
 
+  useEffect(() => {
+    setHover(EMPTY_HOVER);
+    setHasUserInteracted(false);
+  }, [windowStartIndex, windowEndIndex, data.length]);
+
+  const isSingleSeries = series.length === 1;
+  const resolvedReadoutMode = resolveReadoutMode(readoutMode, isSingleSeries);
+
   const canPageOlder = windowStartIndex > 0;
   const canPageNewer = windowEndIndex < data.length - 1;
-  const isSingleSeries = series.length === 1;
-
-  const yDomain = useMemo(() => {
-    const values = getSeriesValues(data, series);
-    return getPaddedDomain(values, yDomainMode);
-  }, [data, series, yDomainMode]);
 
   const trendKey = isSingleSeries ? `__trend_${series[0].key}` : "__trend";
 
@@ -247,6 +262,11 @@ export default function TrendChartCard({
     if (!showTrendLine || !isSingleSeries) return visibleData;
     return buildTrendLineData(visibleData, series[0].key, trendKey);
   }, [showTrendLine, isSingleSeries, visibleData, series, trendKey]);
+
+  const yDomain = useMemo(() => {
+    const values = getSeriesValues(visibleData, series);
+    return getPaddedDomain(values, yDomainMode);
+  }, [visibleData, series, yDomainMode]);
 
   const latestDatum = data.length ? data[data.length - 1] : undefined;
   const latestSeries = series[0];
@@ -256,6 +276,33 @@ export default function TrendChartCard({
       ? typeof latestDatum[latestSeries.key] === "number"
         ? (latestDatum[latestSeries.key] as number)
         : null
+      : null;
+
+  const firstVisibleDatum = visibleData.length ? visibleData[0] : undefined;
+  const lastVisibleDatum = visibleData.length
+    ? visibleData[visibleData.length - 1]
+    : undefined;
+
+  const firstVisibleNumeric =
+    firstVisibleDatum && latestSeries
+      ? typeof firstVisibleDatum[latestSeries.key] === "number"
+        ? (firstVisibleDatum[latestSeries.key] as number)
+        : null
+      : null;
+
+  const lastVisibleNumeric =
+    lastVisibleDatum && latestSeries
+      ? typeof lastVisibleDatum[latestSeries.key] === "number"
+        ? (lastVisibleDatum[latestSeries.key] as number)
+        : null
+      : null;
+
+  const visibleDelta =
+    firstVisibleNumeric != null &&
+    lastVisibleNumeric != null &&
+    Number.isFinite(firstVisibleNumeric) &&
+    Number.isFinite(lastVisibleNumeric)
+      ? lastVisibleNumeric - firstVisibleNumeric
       : null;
 
   const latestFormatted =
@@ -268,38 +315,156 @@ export default function TrendChartCard({
       String(latestDatum[xKey] ?? "")
     : "";
 
+  const latestDisplayLabel = latestSeries
+    ? latestSeries.shortLabel || latestSeries.label
+    : "";
+
+  const firstVisibleLabel = firstVisibleDatum
+    ? tooltipLabelFormatter?.(String(firstVisibleDatum[xKey] ?? ""), firstVisibleDatum) ??
+      String(firstVisibleDatum[xKey] ?? "")
+    : "";
+
+  const lastVisibleLabel = lastVisibleDatum
+    ? tooltipLabelFormatter?.(String(lastVisibleDatum[xKey] ?? ""), lastVisibleDatum) ??
+      String(lastVisibleDatum[xKey] ?? "")
+    : "";
+
+  const deltaFormatted = latestSeries?.formatter
+    ? formatSignedLikeBase(visibleDelta, latestSeries.formatter)
+    : valueFormatter
+      ? formatSignedLikeBase(visibleDelta, (v) => valueFormatter(v, latestSeries?.key))
+      : formatDelta(visibleDelta);
+
+  const deltaSummary =
+    isSingleSeries
+      ? `Delta: ${
+          visibleDelta == null || !Number.isFinite(visibleDelta) ? "—" : deltaFormatted
+        }`
+      : "";
+
+  const visibleCount = visibleData.length;
+  const totalCount = data.length;
+
+  const autoWindowBadgeText =
+    totalCount > safeWindowSize
+      ? `${visibleCount} pts • ${windowStartIndex + 1}–${windowEndIndex + 1} of ${totalCount}`
+      : `${visibleCount} pts`;
+
+  const resolvedHeaderBadgeText = headerBadgeText ?? autoWindowBadgeText;
+
+  const compactMetaParts: string[] = [];
+  if (visibleCount > 0) compactMetaParts.push(`${visibleCount} pts`);
+  if (!hideWindowSummary && firstVisibleLabel && lastVisibleLabel) {
+    compactMetaParts.push(`${firstVisibleLabel} → ${lastVisibleLabel}`);
+  }
+  if (!hideDeltaSummary && deltaSummary) {
+    compactMetaParts.push(deltaSummary.replace(/^Delta:\s*/i, "Δ "));
+  }
+
+  const showHoverReadout =
+    hasUserInteracted && hover.active && !!hover.primary;
+
   const statPrimary =
     isSingleSeries && latestSeries
-      ? hover.active
-        ? hover.primary
-        : `${getCompactSeriesLabel(latestSeries.label)} ${latestFormatted}`
+      ? showHoverReadout
+        ? hover.primary.replace(new RegExp(`^${latestDisplayLabel}\\s+`), "")
+        : `${latestFormatted}`
       : "";
 
   const statSecondary =
     isSingleSeries
-      ? hover.active
+      ? showHoverReadout
         ? hover.secondary
         : latestLabel
       : "";
 
+  const compactMetaLine =
+    isSingleSeries && !showHoverReadout ? compactMetaParts.join(" • ") : "";
+
   if (!data.length) {
     return (
       <div className="rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-sm">
-        <div className="text-sm text-[var(--muted)]">{emptyMessage}</div>
+        <div className="mb-3">
+          <div className="text-base font-semibold text-[var(--text)]">{title}</div>
+          {subtitle ? (
+            <div className="mt-0.5 text-sm text-[var(--muted)]">{subtitle}</div>
+          ) : null}
+        </div>
+
+        <div
+          className="flex items-center justify-center rounded-xl border border-dashed border-[var(--line)] bg-[var(--bg)]/40 px-4 text-center"
+          style={{
+            width: "100%",
+            height,
+            minHeight: height,
+          }}
+        >
+          <div style={{ maxWidth: 320 }}>
+            <div
+              className="text-sm font-semibold text-[var(--text)]"
+              style={{ marginBottom: 6 }}
+            >
+              No chart data yet
+            </div>
+            <div className="text-sm text-[var(--muted)]">{emptyMessage}</div>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-sm">
-      {isSingleSeries ? (
-        <div className="mb-2 flex items-baseline justify-between">
-          <div className="text-sm font-semibold text-[var(--text)]">{statPrimary}</div>
-          <div className="text-xs text-[var(--muted)]">{statSecondary}</div>
+      <div className="mb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div
+              className="text-[18px] font-black text-[var(--text)]"
+              style={{ letterSpacing: -0.2 }}
+            >
+              {title}
+            </div>
+            {subtitle ? (
+              <div className="mt-0.5 text-[13px] font-medium text-[var(--muted)]">
+                {subtitle}
+              </div>
+            ) : null}
+          </div>
+
+          {!hideHeaderBadge && series.length > 1 ? (
+            <div
+              className="shrink-0 rounded-full border border-[var(--line)] px-2.5 py-1 text-xs text-[var(--muted)]"
+              title="Visible chart window"
+            >
+              {resolvedHeaderBadgeText}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      {resolvedReadoutMode === "statRow" ? (
+        <div className="mb-3">
+          {compactMetaLine ? (
+            <div className="mt-1 mb-2 text-xs text-[var(--muted)]">
+              {compactMetaLine}
+            </div>
+          ) : null}
+
+          <div className="flex items-end justify-between gap-3">
+            <div
+              className="text-[28px] font-black leading-none text-[var(--text)]"
+              style={{ letterSpacing: -0.4 }}
+            >
+              {statPrimary}
+            </div>
+
+            <div className="text-[11px] text-[var(--muted)]">{statSecondary}</div>
+          </div>
         </div>
       ) : null}
 
       <div
+        className="mt-2"
         style={{
           width: "100%",
           height,
@@ -311,16 +476,25 @@ export default function TrendChartCard({
           <LineChart
             data={chartData}
             margin={{ top: 8, right: 20, left: 0, bottom: 12 }}
+            onMouseMove={() => setHasUserInteracted(true)}
+            onMouseEnter={() => setHasUserInteracted(true)}
+            onClick={() => setHasUserInteracted(true)}
+            onMouseLeave={() => {
+              setHoverSafe(EMPTY_HOVER);
+              setHasUserInteracted(false);
+            }}
           >
             <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+
             <XAxis
               dataKey={xKey}
               tickFormatter={xLabelFormatter}
               minTickGap={24}
             />
+
             <YAxis domain={yDomain} width={44} />
 
-            {isSingleSeries ? (
+            {resolvedReadoutMode === "statRow" ? (
               <Tooltip
                 offset={0}
                 allowEscapeViewBox={{ x: true, y: true }}
@@ -334,12 +508,12 @@ export default function TrendChartCard({
                   />
                 }
               />
-            ) : (
+            ) : resolvedReadoutMode === "none" ? null : (
               <Tooltip
                 offset={18}
                 allowEscapeViewBox={{ x: true, y: true }}
                 cursor={{ stroke: "var(--line2)", strokeWidth: 1 }}
-                wrapperStyle={{ zIndex: 20, pointerEvents: "none", maxWidth: 120 }}
+                wrapperStyle={{ zIndex: 20, pointerEvents: "none", maxWidth: 140 }}
                 content={
                   <ChartTooltipContent
                     series={series}
@@ -384,14 +558,14 @@ export default function TrendChartCard({
         </ResponsiveContainer>
       </div>
 
-      {data.length > WINDOW_SIZE ? (
+      {data.length > safeWindowSize ? (
         <div className="mt-2 flex items-center justify-end gap-2">
           <button
             type="button"
             aria-label="Show older data"
             onClick={() =>
               setWindowEndIndex((prev) =>
-                Math.max(WINDOW_SIZE - 1, prev - WINDOW_SIZE)
+                Math.max(safeWindowSize - 1, prev - safeWindowSize)
               )
             }
             disabled={!canPageOlder}
@@ -405,7 +579,7 @@ export default function TrendChartCard({
             aria-label="Show newer data"
             onClick={() =>
               setWindowEndIndex((prev) =>
-                Math.min(data.length - 1, prev + WINDOW_SIZE)
+                Math.min(data.length - 1, prev + safeWindowSize)
               )
             }
             disabled={!canPageNewer}

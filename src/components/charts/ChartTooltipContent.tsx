@@ -2,25 +2,24 @@
 /* ============================================================================
    ChartTooltipContent.tsx — Shared tooltip content for IronForge charts
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-15-CHARTS-04
+   BUILD_ID: 2026-03-17-CHARTS-12
    FILE: src/components/charts/ChartTooltipContent.tsx
 
    Purpose
    - Render one shared tooltip body for IronForge charts
-   - Support compact single-series formatting for Strength charts
+   - Support compact single-series formatting when needed
    - Snap tooltip placement left/right when the active point is near chart edges
 
    Behavior
-   - Single-series charts render:
-       1.19 Rel Str
-       Mar 8
-   - Multi-series charts keep the stacked row format
+   - Single-series charts can render a compact two-line tooltip
+   - Multi-series charts use a stacked row format
    - Tooltip attempts to sit under the active vertical hover line
    - Tooltip shifts inward near chart boundaries to avoid clipping
 
    Notes
-   - This is an MVP edge-aware tooltip improvement
-   - Uses coordinate + viewBox values supplied by Recharts Tooltip internals
+   - TrendChartCard now uses a hover bridge for most single-series charts
+   - This component still supports both single- and multi-series cases
+   - Shared tooltip logic should stay generic and avoid chart-specific naming
    ============================================================================ */
 
 import type { ChartDatum, ChartSeriesConfig } from "./chartTypes";
@@ -57,24 +56,7 @@ type ChartTooltipContentProps = {
 };
 
 /* ============================================================================
-   Breadcrumb 1 — Label shortening
-   ----------------------------------------------------------------------------
-   What this section does
-   - Converts long series names into compact chart-friendly labels
-
-   Why this matters
-   - Shorter labels reduce clutter in tight chart spaces
-   - Strength hover labels read much better in compact form
-   ============================================================================ */
-
-function getShortSeriesLabel(label: string): string {
-  if (label === "Relative Strength") return "Rel Str";
-  if (label === "Absolute Strength") return "Abs Str";
-  return label;
-}
-
-/* ============================================================================
-   Breadcrumb 2 — Edge-aware positioning
+   Breadcrumb 1 — Edge-aware positioning
    ----------------------------------------------------------------------------
    What this section does
    - Computes a tooltip wrapper position relative to the active point
@@ -96,9 +78,9 @@ function getTooltipPosition(
   const boxX = viewBox?.x ?? 0;
   const boxWidth = viewBox?.width ?? 0;
 
-  /* Compact tooltip footprint for MVP */
-  const tooltipWidth = 92;
-  const tooltipHeight = 34;
+  /* Slightly roomier footprint for shared chart reuse */
+  const tooltipWidth = 140;
+  const tooltipHeight = 40;
 
   /* Default: center under the hover line */
   let left = x - tooltipWidth / 2;
@@ -108,10 +90,9 @@ function getTooltipPosition(
   const maxLeft = boxX + boxWidth - tooltipWidth - 8;
 
   if (boxWidth > 0) {
-    /* Stronger edge snapping */
-    if (x < boxX + 40) {
+    if (x < boxX + 48) {
       left = boxX + 8;
-    } else if (x > boxX + boxWidth - 40) {
+    } else if (x > boxX + boxWidth - 48) {
       left = boxX + boxWidth - tooltipWidth - 8;
     } else {
       if (left < minLeft) left = minLeft;
@@ -131,7 +112,7 @@ function getTooltipPosition(
 }
 
 /* ============================================================================
-   Breadcrumb 3 — Shared tooltip component
+   Breadcrumb 2 — Shared tooltip component
    ----------------------------------------------------------------------------
    What this section does
    - Renders compact single-series tooltip content
@@ -159,14 +140,10 @@ export default function ChartTooltipContent({
   const wrapperStyle = getTooltipPosition(coordinate, viewBox);
 
   /* ==========================================================================
-     Breadcrumb 4 — Compact single-series tooltip
+     Breadcrumb 3 — Compact single-series tooltip
      --------------------------------------------------------------------------
      What this section does
-     - Uses a compact two-line layout for single-series charts
-
-     Example
-     - 1.19 Rel Str
-     - Mar 8
+     - Uses a compact two-line layout for single-series charts when needed
      ========================================================================== */
 
   if (series.length === 1) {
@@ -179,13 +156,13 @@ export default function ChartTooltipContent({
       valueFormatter?.(numeric, s.key) ??
       (numeric == null ? "—" : `${numeric}`);
 
-    const shortLabel = getShortSeriesLabel(s.label);
+    const compactLabel = s.shortLabel || s.label;
 
     return (
       <div style={wrapperStyle}>
         <div className="rounded-lg border border-[var(--line)] bg-[var(--card)] px-2 py-1 shadow-md">
           <div className="text-[10px] font-semibold leading-tight text-[var(--text)]">
-            {formatted} {shortLabel}
+            {formatted} {compactLabel}
           </div>
           <div className="mt-0.5 text-[10px] leading-tight text-[var(--muted)]">
             {title}
@@ -196,13 +173,13 @@ export default function ChartTooltipContent({
   }
 
   /* ==========================================================================
-     Breadcrumb 5 — Multi-series tooltip
+     Breadcrumb 4 — Multi-series tooltip
      --------------------------------------------------------------------------
      What this section does
      - Preserves the stacked row layout for charts with multiple series
 
      Why this matters
-     - Future Weight/Waist and ICW/ECW charts need row clarity
+     - Future multi-series charts need row clarity more than compact labeling
      ========================================================================== */
 
   return (
@@ -222,7 +199,7 @@ export default function ChartTooltipContent({
 
             return (
               <div key={s.key} className="flex items-center justify-between gap-3 text-[10px]">
-                <span className="text-[var(--muted)]">{getShortSeriesLabel(s.label)}</span>
+                <span className="text-[var(--muted)]">{s.label}</span>
                 <span className="font-medium text-[var(--text)]">{formatted}</span>
               </div>
             );

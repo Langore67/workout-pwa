@@ -37,6 +37,7 @@ import ProgressPage from "./pages/ProgressPage";
 import MpsPage from "./pages/MpsPage";
 import PasteWorkoutPage from "./pages/PasteWorkoutPage";
 import PerformanceDashboardPage from "./pages/PerformanceDashboardPage";
+import ProfilePage from "./pages/ProfilePage";
 
 /* ============================================================================
    Breadcrumb 1 — Runtime switches
@@ -208,6 +209,18 @@ function TopNav() {
               }}
             >
               <NavLink
+	        to="/profile"
+	        className={({ isActive }) => (isActive ? "active" : "")}
+	        onClick={closeMore}
+	        style={{
+	          padding: "8px 10px",
+	          borderRadius: 8,
+	        }}
+	      >
+	        Profile
+             </NavLink>
+              
+              <NavLink
                 to="/paste-workout"
                 className={({ isActive }) => (isActive ? "active" : "")}
                 onClick={closeMore}
@@ -317,6 +330,7 @@ export default function App() {
             <Route path="/import" element={<ImportCsvPage />} />
             <Route path="/export" element={<ExportPage />} />
             <Route path="/paste-workout" element={<PasteWorkoutPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
 
             {/* =================================================================
                 Breadcrumb 4F — Session pipeline

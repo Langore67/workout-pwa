@@ -20,6 +20,7 @@
    - v14 Normalize corrective track trackingMode by exercise name heuristics
    - v15 Add appLogs table for import/export/restore/wipe/system events
    - v16 Add bodyMetrics.leanMassLb
+   - v17 Add bodyMetrics.bodyFatMassLb, icwLb, ecwLb, mineralMassLb
    ============================================================================ */
 
 import Dexie, { Table } from "dexie";
@@ -286,10 +287,16 @@ export interface BodyMetricEntry {
   weightLb?: number;
   waistIn?: number;
   bodyFatPct?: number;
+  bodyFatMassLb?: number;
   leanMassLb?: number;
   skeletalMuscleMassLb?: number;
   visceralFatIndex?: number;
   bodyWaterPct?: number;
+
+  icwLb?: number;
+  ecwLb?: number;
+  mineralMassLb?: number;
+
   notes?: string;
   createdAt: number;
 }
@@ -966,6 +973,57 @@ export class WorkoutDB extends Dexie {
             });
           });
     // ===== END OF v16 =====
+        // v17
+        this.version(17)
+          .stores({
+            exercises:
+              "id, &normalizedName, name, bodyPart, category, equipment, archivedAt, mergedIntoExerciseId, createdAt",
+            exerciseVariants:
+              "id, exerciseId, [exerciseId+normalizedName], name, archivedAt, mergedIntoVariantId, createdAt",
+            tracks: "id, exerciseId, variantId, trackType, displayName, createdAt",
+            folders: "id, orderIndex, name, archivedAt, createdAt",
+            templates: "id, name, createdAt, folderId, archivedAt, orderIndex, lastPerformedAt",
+            templateItems: "id, templateId, orderIndex, trackId, groupId, createdAt",
+            sessions: "id, startedAt, endedAt, templateId, updatedAt, deletedAt",
+            sessionItems: "id, sessionId, orderIndex, trackId, createdAt",
+            sets: "id, sessionId, trackId, createdAt, setType, completedAt, updatedAt, deletedAt",
+            walks: "id, date, updatedAt, deletedAt",
+            trackPrs: "trackId, updatedAt",
+            bodyMetrics:
+              "id, measuredAt, takenAt, createdAt, weightLb, waistIn, bodyFatPct, bodyFatMassLb, leanMassLb, skeletalMuscleMassLb, visceralFatIndex, bodyWaterPct, icwLb, ecwLb, mineralMassLb",
+            app_meta: "key, updatedAt",
+            appLogs: "id, createdAt, type, level",
+          })
+          .upgrade(async (tx) => {
+            await tx.table("bodyMetrics").toCollection().modify((m: any) => {
+              if (m.weightLb === null) m.weightLb = undefined;
+              if (m.waistIn === null) m.waistIn = undefined;
+              if (m.bodyFatPct === null) m.bodyFatPct = undefined;
+              if (m.bodyFatMassLb === null) m.bodyFatMassLb = undefined;
+              if (m.leanMassLb === null) m.leanMassLb = undefined;
+              if (m.skeletalMuscleMassLb === null) m.skeletalMuscleMassLb = undefined;
+              if (m.visceralFatIndex === null) m.visceralFatIndex = undefined;
+              if (m.bodyWaterPct === null) m.bodyWaterPct = undefined;
+              if (m.icwLb === null) m.icwLb = undefined;
+              if (m.ecwLb === null) m.ecwLb = undefined;
+              if (m.mineralMassLb === null) m.mineralMassLb = undefined;
+              if (m.notes === null) m.notes = undefined;
+              if (m.measuredAt === null) m.measuredAt = undefined;
+              if (m.takenAt === null) m.takenAt = undefined;
+              if (m.createdAt === null) m.createdAt = undefined;
+    
+              const measured = typeof m.measuredAt === "number" ? m.measuredAt : undefined;
+              const taken = typeof m.takenAt === "number" ? m.takenAt : undefined;
+    
+              if (!taken && measured) m.takenAt = measured;
+              if (!measured && taken) m.measuredAt = taken;
+    
+              if (m.createdAt === undefined) {
+                m.createdAt = m.measuredAt ?? m.takenAt ?? Date.now();
+              }
+            });
+          });
+    // ===== END OF v17 =====
   }
 }
 
