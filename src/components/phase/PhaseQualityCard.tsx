@@ -305,20 +305,38 @@ function QuadrantCell({
   active: boolean;
   tone: "good" | "watch" | "bad" | "neutral";
 }) {
+  const activeBorder =
+    tone === "good"
+      ? "rgba(22, 163, 74, 0.55)"
+      : tone === "watch"
+        ? "rgba(245, 158, 11, 0.55)"
+        : tone === "bad"
+          ? "rgba(239, 68, 68, 0.75)"
+          : "var(--line)";
+
+  const activeBg =
+    tone === "good"
+      ? "rgba(22, 163, 74, 0.06)"
+      : tone === "watch"
+        ? "rgba(245, 158, 11, 0.06)"
+        : tone === "bad"
+          ? "rgba(239, 68, 68, 0.05)"
+          : "rgba(0,0,0,0.02)";
+
   return (
     <div
       style={{
-        border: `1px solid ${active ? toneColor(tone) : "var(--line)"}`,
-        background: active ? "rgba(0,0,0,0.02)" : "transparent",
+        border: `1px solid ${active ? activeBorder : "var(--line)"}`,
+        background: active ? activeBg : "transparent",
         borderRadius: 10,
         padding: 12,
         minHeight: 84,
-        boxShadow: active ? "0 0 0 1px rgba(0,0,0,0.02)" : "none",
+        boxShadow: active ? "0 1px 4px rgba(0,0,0,0.05)" : "none",
       }}
     >
       <div
         style={{
-          fontWeight: active ? 900 : 800,
+          fontWeight: active ? 900 : 700,
           fontSize: 14,
           lineHeight: 1.15,
           marginBottom: subtitle ? 6 : 0,
@@ -336,6 +354,7 @@ function QuadrantCell({
             fontSize: 12,
             lineHeight: 1.25,
             whiteSpace: "pre-line",
+            opacity: active ? 0.95 : 0.9,
           }}
         >
           {subtitle}
@@ -355,23 +374,36 @@ function StatusChip({
   tone: "good" | "watch" | "bad" | "neutral";
 }) {
   return (
-    <div className="card" style={{ padding: 10, minHeight: 72 }}>
+    <div
+      className="card"
+      style={{
+        padding: 10,
+        minHeight: 72,
+        border: "1px solid var(--line)",
+        boxShadow: "none",
+      }}
+    >
       <div
         className="muted"
         style={{
           fontSize: 11,
           fontWeight: 700,
-          letterSpacing: 0.5,
+          letterSpacing: 0.4,
           marginBottom: 6,
+          lineHeight: 1.15,
+          minHeight: 30,
+          display: "flex",
+          alignItems: "flex-start",
         }}
       >
         {label}
-      </div>
+</div>
 
       <div
         style={{
           fontWeight: 900,
-          fontSize: 16,
+          fontSize: 15,
+          lineHeight: 1.15,
           color: toneColor(tone),
         }}
       >
@@ -380,7 +412,6 @@ function StatusChip({
     </div>
   );
 }
-
 /* ============================================================================
    Breadcrumb 7 — Component
    ============================================================================ */
@@ -719,12 +750,12 @@ export default function PhaseQualityCard({
          ================================================================== */}
       {mode === "cut" || mode === "bulk" ? (
         <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 8,
-            marginBottom: 12,
-          }}
+	  style={{
+	    display: "grid",
+	    gridTemplateColumns: "1fr 1fr",
+	    gap: 8,
+	    marginBottom: 10,
+	  }}
         >
           {derived.cells.map((cell) => (
             <QuadrantCell
@@ -766,19 +797,32 @@ export default function PhaseQualityCard({
          ================================================================== */}
       <div style={{ marginBottom: 12 }}>
         <div
+          className="muted"
           style={{
-            fontWeight: 900,
-            fontSize: 18,
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: 0.5,
             marginBottom: 4,
           }}
         >
-          You are here: {derived.quadrantLabel}
+          CURRENT
         </div>
-
-        <div className="muted" style={{ lineHeight: 1.4 }}>
+      
+        <div
+          style={{
+            fontWeight: 900,
+            fontSize: 18,
+            lineHeight: 1.15,
+            marginBottom: 6,
+          }}
+        >
+          {derived.quadrantLabel}
+        </div>
+      
+        <div className="muted" style={{ lineHeight: 1.35 }}>
           {derived.quadrantNote}
         </div>
-      </div>
+</div>
 
       {/* =====================================================================
           Breadcrumb 7D — Modifier cards
@@ -804,34 +848,36 @@ export default function PhaseQualityCard({
       {/* =====================================================================
           Breadcrumb 7E — Final status
          ================================================================== */}
-      <div
-        style={{
-          borderTop: "1px solid var(--line)",
-          paddingTop: 10,
-        }}
-      >
-        <div
-          className="muted"
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: 0.5,
-            marginBottom: 4,
-          }}
-        >
-          STATUS
-        </div>
-
-        <div
-          style={{
-            fontWeight: 900,
-            fontSize: 20,
-            color: toneColor(activeTone),
-          }}
-        >
-          {derived.finalStatus}
-        </div>
-      </div>
+     <div
+       style={{
+         borderTop: "1px solid var(--line)",
+         paddingTop: 12,
+         marginTop: 2,
+       }}
+     >
+       <div
+         className="muted"
+         style={{
+           fontSize: 11,
+           fontWeight: 700,
+           letterSpacing: 0.5,
+           marginBottom: 6,
+         }}
+       >
+         STATUS
+       </div>
+     
+       <div
+         style={{
+           fontWeight: 900,
+           fontSize: 20,
+           lineHeight: 1.15,
+           color: toneColor(activeTone),
+         }}
+       >
+         {derived.finalStatus}
+       </div>
+</div>
     </div>
   );
 }

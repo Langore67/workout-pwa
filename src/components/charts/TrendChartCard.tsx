@@ -486,12 +486,13 @@ export default function TrendChartCard({
         className="mt-2"
         style={{
           width: "100%",
+          minWidth: 0,
           height,
           minHeight: height,
           position: "relative",
         }}
       >
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={height}>
           <LineChart
             data={chartData}
             margin={{ top: 8, right: 20, left: 0, bottom: 12 }}
