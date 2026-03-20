@@ -2,7 +2,7 @@
 /* ============================================================================
    PerformanceDashboardPage.tsx
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-16-DASH-IRONFORGE-07
+   BUILD_ID: 2026-03-16-DASH-IRONFORGE-08
    FILE: src/pages/PerformanceDashboardPage.tsx
 
    Purpose
@@ -29,9 +29,9 @@
    ============================================================================ */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Page, Section } from "../components/Page.tsx";
 import TrendChartCard from "../components/charts/TrendChartCard";
+import HubPageHeader from "../components/layout/HubPageHeader";
 import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTypes";
 import { formatLbs } from "../components/charts/chartFormatters";
 import {
@@ -1905,7 +1905,6 @@ function DashboardChartCard({
    ============================================================================ */
 
 export default function PerformanceDashboardPage() {
-  const navigate = useNavigate();
 
   const [activePhase, setActivePhase] = useState<DashboardPhase>("CUT");
   const [activeRange, setActiveRange] = useState<DashboardRange>("8W");
@@ -2036,62 +2035,20 @@ export default function PerformanceDashboardPage() {
     []
   );
 
-  return (
-    <Page title="Performance">
-      {/* ======================================================================
-          Breadcrumb 8A — Compact top header
-         ==================================================================== */}
-      <Section>
-        <div
-          className="row"
-          style={{
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 6,
-          }}
-        >
-          <h2 style={{ margin: 0 }}>Performance</h2>
-
-          <div
-            className="muted"
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: "pointer",
-              padding: "4px 6px",
-              borderRadius: 6,
-            }}
-            onClick={() => navigate("/progress")}
-          >
-            ← Progress
-          </div>
-        </div>
-      </Section>
-
-      {/* ======================================================================
-          Breadcrumb 8B — Page breadcrumb + header card
-         ==================================================================== */}
-      <Section>
-        <div className="card" style={{ marginBottom: 12, padding: 14 }}>
-          <div
-            className="muted"
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              marginBottom: 8,
-            }}
-          >
-            Progress / Performance
-          </div>
-
-          <div className="muted" style={{ lineHeight: 1.45 }}>
-            Big-picture coaching view across strength, body composition, and training trends.
-          </div>
-
-          <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
-            Current body metrics as of {bodySnapshot.asOfLabel}
-          </div>
-        </div>
+    return (
+    <Page>
+          {/* ======================================================================
+              Breadcrumb 8A + 8B — Shared hub header
+             ==================================================================== */}
+          <Section>
+            <HubPageHeader
+              hubLabel="Progress"
+              hubRoute="/progress"
+              pageTitle="Performance"
+              subtitle="Big-picture coaching view across strength, body composition, and training trends."
+              metaLine={`Current body metrics as of ${bodySnapshot.asOfLabel}`}
+              showDetailCard={true}
+            />
       </Section>
 
       {/* ======================================================================
