@@ -1,7 +1,7 @@
 // src/pages/StrengthPage.tsx
 /* ========================================================================== */
 /*  StrengthPage.tsx                                                          */
-/*  BUILD_ID: 2026-03-14-STRENGTHPAGE-06                                      */
+/*  BUILD_ID: 2026-03-17-STRENGTHPAGE-07                                      */
 /*  FILE: src/pages/StrengthPage.tsx                                          */
 /* -------------------------------------------------------------------------- */
 /*  Purpose                                                                   */
@@ -9,16 +9,16 @@
 /*  - Show absolute + relative strength indices                               */
 /*  - Show pattern scores and weekly trend snapshots                          */
 /*                                                                            */
-/*  Changes (STRENGTHPAGE-06)                                                 */
+/*  Changes (STRENGTHPAGE-07)                                                 */
+/*  ✅ Align Relative Strength chart with shared chart contract               */
+/*  ✅ Add shortLabel support for compact shared chart readouts               */
+/*  ✅ Remove old showBrush prop usage after chart paging refactor            */
+/*  ✅ Preserve dashboard, pattern scores, and weekly trend table             */
+/*                                                                            */
+/*  Prior version (STRENGTHPAGE-06)                                           */
 /*  ✅ Repair page structure after shared chart extraction                    */
 /*  ✅ Add Relative Strength Trend shared chart                               */
 /*  ✅ Preserve dashboard, pattern scores, and weekly trend table             */
-/*  ✅ Preserve mode toggle persistence and trend calculations                */
-/* -------------------------------------------------------------------------- */
-/*  Prior version (STRENGTHPAGE-05)                                           */
-/*  ✅ Add Progress-system breadcrumb header                                  */
-/*  ✅ Add page title + subtitle for analytics-suite consistency              */
-/*  ✅ Keep existing dashboard, pattern scores, and trend table intact        */
 /*  ✅ Preserve mode toggle persistence and trend calculations                */
 /* ========================================================================== */
 
@@ -251,8 +251,9 @@ export default function StrengthPage() {
       {
         key: "value",
         label: "Relative Strength",
+        shortLabel: "Rel Str",
         formatter: formatTwoDecimals,
-        stroke: "#3b82f6", // blue test color
+        stroke: "var(--accent)",
       },
     ],
     [],
@@ -291,8 +292,8 @@ export default function StrengthPage() {
         <div className="card" style={{ padding: 14 }}>
           <div style={{ fontWeight: 900, fontSize: 18 }}>Strength Index</div>
           <div className="muted" style={{ marginTop: 6 }}>
-            Window: last <b>{windowDays}</b> days • Completed working sets only • e1RM
-            {" "} (Epley)
+            Window: last <b>{windowDays}</b> days • Completed working sets only • e1RM{" "}
+            (Epley)
           </div>
 
           <hr style={{ marginTop: 12 }} />
@@ -471,8 +472,10 @@ export default function StrengthPage() {
                 subtitle="Weekly snapshots of bodyweight-normalized strength"
                 data={relativeChartData}
                 series={relativeStrengthSeries}
-                showBrush={relativeChartData.length > 12}
+                windowSize={12}
                 yDomainMode="auto"
+                showTrendLine={true}
+                readoutMode="statRow"
                 valueFormatter={(value) => {
                   if (value == null || !Number.isFinite(value)) return "—";
                   return value.toFixed(2);

@@ -64,6 +64,19 @@ type ChartViewModel = {
   momentumMessage?: string;
   analysisRows: AnalysisRow[];
   interpretation: string;
+
+  /* strength-only optional supporting detail */
+  topMovers?: Array<{
+    label: string;
+    changePct: number;
+    score: number;
+  }>;
+
+  movementBreakdown?: Array<{
+    movement: string;
+    score: number;
+    exerciseCount: number;
+  }>;
 };
 
 type InsightViewModel = {
@@ -847,12 +860,17 @@ function computeCompositeSignals(exerciseSignals: ExerciseSignal[]): CompositeSi
   return Array.from(byMovement.entries())
     .map(([movement, items]) => {
       if (!items.length) return null;
-      const avgRaw = items.reduce((sum, item) => sum + item.normalizedScore, 0) / items.length;
-      const score = Number.isFinite(avgRaw) ? round2(avgRaw) : 5;
+
+      const best = items
+        .slice()
+        .sort((a, b) => b.normalizedScore - a.normalizedScore)[0];
+
+      if (!best || !Number.isFinite(best.normalizedScore)) return null;
+
       return {
         movement,
         exerciseCount: items.length,
-        score,
+        score: round2(best.normalizedScore),
       } satisfies CompositeSignal;
     })
     .filter((x): x is CompositeSignal => Boolean(x));
@@ -1078,20 +1096,55 @@ function calcEffectiveWeightLb(
   return bw + (explicit ?? 0);
 }
 
-async function loadStrengthSource(range: DashboardRange): Promise<DbStrengthSource> {
-  const startMs = rangeStartMs(range);
-
+async function loadStrengthSource(): Promise<DbStrengthSource> {
   const [exercises, tracks, sessions, sets, bodyMetrics] = await Promise.all([
     db.exercises.toArray(),
     db.tracks.toArray(),
-    startMs
-      ? db.sessions.where("startedAt").aboveOrEqual(startMs).toArray()
-      : db.sessions.toArray(),
+    db.sessions.toArray(),
     db.sets.toArray(),
     db.bodyMetrics.toArray(),
   ]);
 
   return { exercises, tracks, sessions, sets, bodyMetrics };
+}
+
+function rangeStartDate(range: DashboardRange, now = Date.now()): Date | undefined {
+  const startMs = rangeStartMs(range, now);
+  if (!startMs) return undefined;
+  return new Date(startMs);
+}
+
+function filterExerciseHistoryByRange(
+  history: ExerciseHistory[],
+  range: DashboardRange,
+  now = Date.now()
+): ExerciseHistory[] {
+  if (range === "ALL") return history;
+
+  const startDate = rangeStartDate(range, now);
+  if (!startDate) return history;
+
+  const filtered = history
+    .map((exercise) => {
+      const sessions = exercise.sessions.filter((session) => {
+        const at = new Date(`${session.date}T00:00:00`).getTime();
+        return Number.isFinite(at) && at >= startDate.getTime();
+      });
+
+      if (sessions.length < 2) return null;
+
+      const baselineE1RM = calcE1RM(sessions[0].weight, sessions[0].reps);
+      if (!Number.isFinite(baselineE1RM) || baselineE1RM <= 0) return null;
+
+      return {
+        ...exercise,
+        baselineE1RM,
+        sessions,
+      } satisfies ExerciseHistory;
+    })
+    .filter((x): x is ExerciseHistory => Boolean(x));
+
+  return filtered;
 }
 
 function buildExerciseHistoryFromDb(source: DbStrengthSource): ExerciseHistory[] {
@@ -1100,6 +1153,10 @@ function buildExerciseHistoryFromDb(source: DbStrengthSource): ExerciseHistory[]
   const sessionById = new Map(
     source.sessions.filter((s) => !s.deletedAt).map((s) => [s.id, s])
   );
+
+
+
+
 
   const perExerciseSessionBest = new Map<
     string,
@@ -1208,7 +1265,7 @@ function computeStrengthSignal(
   range: DashboardRange,
   exerciseHistory: ExerciseHistory[]
 ): StrengthSignalResult {
-  const safeHistory = exerciseHistory.length >= 2 ? exerciseHistory : MOCK_EXERCISE_HISTORY;
+const safeHistory = exerciseHistory.length >= 2 ? exerciseHistory : MOCK_EXERCISE_HISTORY;
 
   const exerciseSignals = safeHistory
     .map(computeExerciseSignal)
@@ -1374,6 +1431,23 @@ function buildDashboardViewModel(
           { label: "Top Composite", value: topComposite },
         ],
         interpretation: strengthSignal.summary,
+        topMovers: strengthSignal.exerciseSignals
+          .slice()
+          .sort((a, b) => b.changePct - a.changePct)
+          .slice(0, 5)
+          .map((item) => ({
+            label: item.label.replace(/—\s*hypertrophy/i, "").trim(),
+            changePct: item.changePct,
+            score: item.normalizedScore,
+          })),
+        movementBreakdown: strengthSignal.composites
+          .slice()
+          .sort((a, b) => b.score - a.score)
+          .map((item) => ({
+            movement: item.movement,
+            score: item.score,
+            exerciseCount: item.exerciseCount,
+          })),
       },
 
       bodyWeight: {
@@ -1454,7 +1528,6 @@ function buildDashboardViewModel(
         confidence: primarySignal.confidence,
         body: primarySignal.body,
         evidence: primarySignal.bullets,
-        
         action:
           phase === "CUT"
             ? "Stay focused on fat loss quality while protecting strength."
@@ -1528,6 +1601,104 @@ function AnalysisRows({ rows }: { rows: AnalysisRow[] }) {
           <span style={{ color: "var(--text)", fontWeight: 700 }}>{row.value}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+function StrengthTopMovers({
+  items,
+}: {
+  items: Array<{ label: string; changePct: number; score: number }>;
+}) {
+  if (!items.length) {
+    return <div className="muted">Not enough exercise history yet.</div>;
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {items.map((item) => (
+        <div
+          key={item.label}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr auto",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <span
+            className="muted"
+            style={{
+              fontSize: 13,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={item.label}
+          >
+            {item.label}
+          </span>
+
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              textAlign: "right",
+              fontVariantNumeric: "tabular-nums",
+              color:
+                item.changePct > 0
+                  ? "#16a34a"
+                  : item.changePct < 0
+                    ? "#dc2626"
+                    : "var(--text)",
+            }}
+          >
+            {item.changePct > 0 ? "+" : ""}
+            {item.changePct.toFixed(2)}%
+            <span style={{ opacity: 0.65, marginLeft: 6 }}>
+              {item.score.toFixed(2)}
+            </span>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StrengthMovementBreakdown({
+  items,
+}: {
+  items: Array<{ movement: string; score: number; exerciseCount: number }>;
+}) {
+  if (!items.length) {
+    return <div className="muted">No composite movement data yet.</div>;
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {items.map((item) => (
+        <div key={item.movement} className="kv">
+          <span style={{ textTransform: "capitalize" }}>
+            {item.movement} ({item.exerciseCount})
+          </span>
+          <span style={{ fontWeight: 700, color: "var(--text)" }}>
+            {item.score.toFixed(2)}
+          </span>
+        </div>
+      ))}
+
+      <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+        <div className="muted" style={{ fontSize: 13, lineHeight: 1.4 }}>
+          {getMovementInsight(items)}
+        </div>
+
+        <div style={{ fontSize: 13, lineHeight: 1.4 }}>
+          <span className="muted">Action: </span>
+          <span style={{ color: "var(--text)", fontWeight: 600 }}>
+            {getMovementAction(items)}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1697,6 +1868,34 @@ function DashboardChartCard({
           <div style={{ fontSize: 14, lineHeight: 1.5 }}>{chart.interpretation}</div>
         </div>
       </div>
+
+      {chart.id === "strength" && (
+        <div className="grid two dashboard-analysis" style={{ marginTop: 12 }}>
+          <div className="card">
+            <div
+              className="row"
+              style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}
+            >
+              <strong>Top Movers</strong>
+              <span className="badge">Drivers</span>
+            </div>
+
+            <StrengthTopMovers items={chart.topMovers ?? []} />
+          </div>
+
+          <div className="card">
+            <div
+              className="row"
+              style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}
+            >
+              <strong>Movement Breakdown</strong>
+              <span className="badge">Composites</span>
+            </div>
+
+            <StrengthMovementBreakdown items={chart.movementBreakdown ?? []} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1719,7 +1918,7 @@ export default function PerformanceDashboardPage() {
 
     async function load() {
       try {
-        const source = await loadStrengthSource(activeRange);
+        const source = await loadStrengthSource();
         const realHistory = buildExerciseHistoryFromDb(source);
 
         if (!cancelled) {
@@ -1745,7 +1944,7 @@ export default function PerformanceDashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeRange]);
+  }, []);
 
   const bodySnapshot = useMemo(
     () => buildCurrentBodySnapshot(dbSource?.bodyMetrics ?? []),
@@ -1946,120 +2145,120 @@ export default function PerformanceDashboardPage() {
             </div>
           </div>
 
-                    <div className="card">
-	              <div
-	                className="card"
-	                style={{
-	                  borderColor: "rgba(34, 197, 94, 0.22)",
-	                  background: "rgba(34, 197, 94, 0.035)",
-	                }}
-	              >
-	                <div
-	                  className="row"
-	                  style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}
-	                >
-	                  <div>
-	                    <div className="row" style={{ alignItems: "center", gap: 10 }}>
-	                      <span className="badge green">✓ flagship</span>
-	                      <div
-	                        className="muted"
-	                        style={{ fontSize: 12, textTransform: "uppercase", fontWeight: 700 }}
-	                      >
-	                        Flagship Signal
-	                      </div>
-	                    </div>
-	  
-	                    <h2 style={{ marginTop: 10, marginBottom: 0 }}>{vm.flagshipTitle}</h2>
-	                  </div>
-	  
-	                  <span
-	                    className={
-	                      vm.flagshipBadge === "Strong" || vm.flagshipBadge === "Productive"
-	                        ? "badge green"
-	                        : "badge"
-	                    }
-	                  >
-	                    {vm.flagshipBadge}
-	                  </span>
-	                </div>
-	  
-	                <div
-	                  className="row"
-	                  style={{ justifyContent: "space-between", alignItems: "flex-end", marginTop: 16 }}
-	                >
-	                  <div>
-	                    <div className="dashboard-flagship-score">{vm.flagshipScore}</div>
-	                    <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-	                      out of 100
-	                    </div>
-	                  </div>
-	                </div>
-	  
-	                <div style={{ marginTop: 14 }}>
-	                  <div
-	                    style={{
-	                      width: "100%",
-	                      height: 10,
-	                      background: "#e5e7eb",
-	                      borderRadius: 999,
-	                      overflow: "hidden",
-	                    }}
-	                  >
-	                    <div
-	                      style={{
-	                        width: `${vm.flagshipScore}%`,
-	                        height: "100%",
-	                        background: "var(--accent)",
-	                        borderRadius: 999,
-	                      }}
-	                    />
-	                  </div>
-	                </div>
-	  
-	                <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
-	                  {vm.insights[0]?.evidence?.slice(0, 3).map((bullet) => {
-			    let icon = "✓";
-			    let color = "var(--accent)";
-			  
-			    const text = bullet.toLowerCase();
-			  
-			    if (text.includes("rising during cut") || text.includes("building")) {
-			      icon = "⚠";
-			      color = "#f59e0b"; // amber
-			    }
-			  
-			    if (text.includes("needs correction") || text.includes("declining")) {
-			      icon = "✕";
-			      color = "#ef4444"; // red
-			    }
-			  
-			    return (
-			      <div
-			        key={bullet}
-			        className="row"
-			        style={{ alignItems: "center", gap: 10 }}
-			      >
-			        <span
-			          style={{
-			            color,
-			            fontSize: 16,
-			            lineHeight: 1,
-			            fontWeight: 700,
-			          }}
-			        >
-			          {icon}
-			        </span>
-			  
-			        <span style={{ fontSize: 14, lineHeight: 1.4 }}>{bullet}</span>
-			      </div>
-			    );
-                          })}
-	                </div>
-	              </div>
-	  
-	              <div className="card" style={{ marginTop: 12 }}>
-	                <div style={{ fontSize: 14, lineHeight: 1.5 }}>{vm.flagshipBody}</div>
-	              </div>
+          <div className="card">
+            <div
+              className="card"
+              style={{
+                borderColor: "rgba(34, 197, 94, 0.22)",
+                background: "rgba(34, 197, 94, 0.035)",
+              }}
+            >
+              <div
+                className="row"
+                style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}
+              >
+                <div>
+                  <div className="row" style={{ alignItems: "center", gap: 10 }}>
+                    <span className="badge green">✓ flagship</span>
+                    <div
+                      className="muted"
+                      style={{ fontSize: 12, textTransform: "uppercase", fontWeight: 700 }}
+                    >
+                      Flagship Signal
+                    </div>
+                  </div>
+
+                  <h2 style={{ marginTop: 10, marginBottom: 0 }}>{vm.flagshipTitle}</h2>
+                </div>
+
+                <span
+                  className={
+                    vm.flagshipBadge === "Strong" || vm.flagshipBadge === "Productive"
+                      ? "badge green"
+                      : "badge"
+                  }
+                >
+                  {vm.flagshipBadge}
+                </span>
+              </div>
+
+              <div
+                className="row"
+                style={{ justifyContent: "space-between", alignItems: "flex-end", marginTop: 16 }}
+              >
+                <div>
+                  <div className="dashboard-flagship-score">{vm.flagshipScore}</div>
+                  <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+                    out of 100
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <div
+                  style={{
+                    width: "100%",
+                    height: 10,
+                    background: "#e5e7eb",
+                    borderRadius: 999,
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${vm.flagshipScore}%`,
+                      height: "100%",
+                      background: "var(--accent)",
+                      borderRadius: 999,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
+                {vm.insights[0]?.evidence?.slice(0, 3).map((bullet) => {
+                  let icon = "✓";
+                  let color = "var(--accent)";
+
+                  const text = bullet.toLowerCase();
+
+                  if (text.includes("rising during cut") || text.includes("building")) {
+                    icon = "⚠";
+                    color = "#f59e0b";
+                  }
+
+                  if (text.includes("needs correction") || text.includes("declining")) {
+                    icon = "✕";
+                    color = "#ef4444";
+                  }
+
+                  return (
+                    <div
+                      key={bullet}
+                      className="row"
+                      style={{ alignItems: "center", gap: 10 }}
+                    >
+                      <span
+                        style={{
+                          color,
+                          fontSize: 16,
+                          lineHeight: 1,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {icon}
+                      </span>
+
+                      <span style={{ fontSize: 14, lineHeight: 1.4 }}>{bullet}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="card" style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 14, lineHeight: 1.5 }}>{vm.flagshipBody}</div>
+            </div>
           </div>
         </div>
       </Section>
@@ -2255,6 +2454,72 @@ export default function PerformanceDashboardPage() {
       </Section>
     </Page>
   );
+}
+
+function getMovementInsight(
+  items: Array<{ movement: string; score: number; exerciseCount: number }>
+): string {
+  if (!items.length) return "";
+
+  const sorted = [...items].sort((a, b) => b.score - a.score);
+
+  const top = sorted[0];
+  const bottom = sorted[sorted.length - 1];
+
+  if (!top || !bottom) return "";
+
+  const gap = top.score - bottom.score;
+
+  if (gap < 0.75) {
+    return "Movement balance is consistent across patterns.";
+  }
+
+  return `${capitalize(top.movement)} is leading while ${capitalize(bottom.movement)} is lagging.`;
+}
+
+function getMovementAction(
+  items: Array<{ movement: string; score: number; exerciseCount: number }>
+): string {
+  if (!items.length) {
+    return "Keep logging core lifts so the pattern signal can stabilize.";
+  }
+
+  const sorted = [...items].sort((a, b) => b.score - a.score);
+  const top = sorted[0];
+  const bottom = sorted[sorted.length - 1];
+
+  if (!top || !bottom) {
+    return "Keep progression steady this week.";
+  }
+
+  const gap = top.score - bottom.score;
+
+  if (gap < 0.75) {
+    return "Keep current balance and progression steady.";
+  }
+
+  if (bottom.movement === "pull") {
+    return "Add 1–2 pulling sets this week and keep load progression clean.";
+  }
+
+  if (bottom.movement === "push") {
+    return "Add 1–2 pressing sets this week and keep reps crisp.";
+  }
+
+  if (bottom.movement === "hinge") {
+    return "Give hinge work a little more attention this week.";
+  }
+
+  if (bottom.movement === "squat") {
+    return "Bring squat pattern volume or effort up slightly this week.";
+  }
+
+  return `Give ${bottom.movement} a little more attention this week.`;
+}
+
+function capitalize(value: string) {
+  if (!value) return "";
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 /* ============================================================================

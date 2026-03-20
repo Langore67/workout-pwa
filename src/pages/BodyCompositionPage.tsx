@@ -33,8 +33,24 @@ import { useNavigate } from "react-router-dom";
 import { db } from "../db";
 import { Page, Section } from "../components/Page.tsx";
 import TrendChartCard from "../components/charts/TrendChartCard";
+import PhaseQualityCard from "../components/phase/PhaseQualityCard";
 import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTypes";
 import { formatInches, formatLbs } from "../components/charts/chartFormatters";
+import {
+  getFatMassLb,
+  getLeanMassLb,
+  getTBW,
+  getFluidRatio,
+  getCorrectedBodyFatPct,
+  getCorrectedLeanMassLb,
+  getBodyCompConfidence,
+  getBodyCompConfidenceLabel,
+  getFluidBalanceNote,
+} from "../body/bodyCalculations";
+import {
+  computeStrengthTrend,
+  type StrengthTrendRow,
+} from "../strength/Strength";
 
 type Mode = "cut" | "maintain" | "bulk";
 
@@ -52,13 +68,122 @@ type BodyMetricRow = {
   waist?: number;
 
   bodyFatPct?: number;
+  bodyFatMassLb?: number;
   leanMassLb?: number;
   skeletalMuscleMassLb?: number;
   visceralFatIndex?: number;
   bodyWaterPct?: number;
+
+  icwLb?: number;
+  ecwLb?: number;
+  mineralMassLb?: number;
 };
 
 const MODE_KEY = "workout_pwa_bodycomp_mode_v1";
+
+const PROFILE_STORAGE_KEY = "workout_pwa_profile_v1";
+
+type ProfileGoalData = {
+  targetWeightLb?: string;
+  targetBodyFatPct?: string;
+};
+
+type PhaseQualityStrengthResult = {
+  strengthDelta?: number;
+  strengthLabel: string;
+};
+
+function computeStrengthDeltaFromTrend(
+  trend: StrengthTrendRow[],
+  mode: Mode
+): PhaseQualityStrengthResult {
+  const sorted = (trend ?? [])
+    .slice()
+    .filter((r) =>
+      mode === "bulk"
+        ? Number.isFinite(r.absoluteIndex)
+        : Number.isFinite(r.relativeIndex)
+    )
+    .sort((a, b) => a.weekEndMs - b.weekEndMs);
+
+  const recent = sorted.slice(-4);
+
+  if (recent.length < 2) {
+    return {
+      strengthDelta: undefined,
+      strengthLabel:
+        mode === "bulk"
+          ? "Absolute strength trend needs more weekly data"
+          : "Relative strength trend needs more weekly data",
+    };
+  }
+
+  const first = recent[0];
+  const last = recent[recent.length - 1];
+
+  const firstValue =
+    mode === "bulk" ? first.absoluteIndex : first.relativeIndex;
+  const lastValue =
+    mode === "bulk" ? last.absoluteIndex : last.relativeIndex;
+
+  if (!Number.isFinite(firstValue) || !Number.isFinite(lastValue)) {
+    return {
+      strengthDelta: undefined,
+      strengthLabel:
+        mode === "bulk"
+          ? "Absolute strength trend unavailable"
+          : "Relative strength trend unavailable",
+    };
+  }
+
+  return {
+    strengthDelta: lastValue - firstValue,
+    strengthLabel:
+      mode === "bulk"
+        ? `Using Absolute Strength trend • last ${recent.length} weekly points`
+        : `Using Relative Strength trend • last ${recent.length} weekly points`,
+  };
+}
+
+
+
+
+
+function loadProfileGoals(): {
+  targetWeightLb?: number;
+  targetBodyFatPct?: number;
+} {
+  try {
+    const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
+    if (!raw) return {};
+
+    const parsed = JSON.parse(raw) as ProfileGoalData;
+
+    const targetWeightLb =
+      parsed?.targetWeightLb != null && parsed.targetWeightLb !== ""
+        ? Number(parsed.targetWeightLb)
+        : undefined;
+
+    const targetBodyFatPct =
+      parsed?.targetBodyFatPct != null && parsed.targetBodyFatPct !== ""
+        ? Number(parsed.targetBodyFatPct)
+        : undefined;
+
+    return {
+      targetWeightLb:
+        targetWeightLb != null && Number.isFinite(targetWeightLb)
+          ? targetWeightLb
+          : undefined,
+      targetBodyFatPct:
+        targetBodyFatPct != null && Number.isFinite(targetBodyFatPct)
+          ? targetBodyFatPct
+          : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
 
 /* ============================================================================
    Breadcrumb 1 — Helpers
@@ -82,20 +207,6 @@ function pickWaistIn(r: BodyMetricRow): number | undefined {
 function pickBodyFatPct(r: BodyMetricRow): number | undefined {
   const bf = (r as any)?.bodyFatPct;
   return typeof bf === "number" && Number.isFinite(bf) && bf >= 0 ? bf : undefined;
-}
-
-function computeFatMassLb(r: BodyMetricRow): number | undefined {
-  const weight = pickWeightLb(r);
-  const bf = pickBodyFatPct(r);
-  if (weight == null || bf == null) return undefined;
-  return weight * (bf / 100);
-}
-
-function computeLeanMassLb(r: BodyMetricRow): number | undefined {
-  const weight = pickWeightLb(r);
-  const fatMass = computeFatMassLb(r);
-  if (weight == null || fatMass == null) return undefined;
-  return weight - fatMass;
 }
 
 function fmtShortDate(ms: number) {
@@ -142,6 +253,16 @@ function formatChange(pct?: number) {
   return `${arrow} ${signed}`;
 }
 
+function formatRemaining(value?: number, unit = "") {
+  if (value == null || !Number.isFinite(value)) return "—";
+  if (Math.abs(value) < 0.05) return `At goal${unit ? ` ${unit}` : ""}`;
+  const sign = value > 0 ? "" : "+";
+  return `${sign}${value.toFixed(1)}${unit ? ` ${unit}` : ""}`;
+}
+
+
+
+
 function getChangeColor(
   pct: number | undefined,
   direction: "lower-is-better" | "higher-is-better"
@@ -173,44 +294,125 @@ function averagePreviousValues<T>(
   return average(priorValues);
 }
 
-function computeCutSignal(rows: BodyMetricRow[]) {
-  const weight = rows.map(pickWeightLb).filter((v): v is number => v != null);
-  const waist = rows.map(pickWaistIn).filter((v): v is number => v != null);
+function avgPrev<T>(
+  rows: T[],
+  getter: (row: T) => number | undefined,
+  count = 3
+): number | undefined {
+  return averagePreviousValues(rows, getter, count);
+}
 
-  if (weight.length < 3 || waist.length < 3) {
+function computePhaseSignal(rows: BodyMetricRow[], mode: Mode) {
+  const aligned = rows
+    .map((r) => ({
+      weight: pickWeightLb(r),
+      waist: pickWaistIn(r),
+      bodyFatPct: pickBodyFatPct(r),
+    }))
+    .filter(
+      (r): r is { weight: number; waist: number; bodyFatPct?: number } =>
+        r.weight != null && Number.isFinite(r.weight) &&
+        r.waist != null && Number.isFinite(r.waist)
+    );
+
+  if (aligned.length < 3) {
     return {
+      label: "Current Signal",
       status: "Not enough data",
-      note: "Add more weight and waist entries.",
+      note: "Add at least 3 entries that include both weight and waist.",
     };
   }
 
-  const weightDelta = weight[weight.length - 1] - weight[0];
-  const waistDelta = waist[waist.length - 1] - waist[0];
+  const first = aligned[0];
+  const last = aligned[aligned.length - 1];
 
-  if (weightDelta < 0 && waistDelta < 0) {
+  const weightDelta = last.weight - first.weight;
+  const waistDelta = last.waist - first.waist;
+
+  if (mode === "cut") {
+    if (weightDelta < 0 && waistDelta < 0) {
+      return {
+        label: "Current Signal",
+        status: "Strong fat-loss signal",
+        note: "Weight and waist are both trending down.",
+      };
+    }
+
+    if (weightDelta < 0 && waistDelta >= 0) {
+      return {
+        label: "Current Signal",
+        status: "Possible water / glycogen loss",
+        note: "Weight is down, but waist is flat or up.",
+      };
+    }
+
+    if (weightDelta >= 0 && waistDelta < 0) {
+      return {
+        label: "Current Signal",
+        status: "Possible recomposition",
+        note: "Waist is dropping while scale weight is stable or rising.",
+      };
+    }
+
     return {
-      status: "Strong fat-loss signal",
-      note: "Weight and waist both trending down.",
+      label: "Current Signal",
+      status: "Fat gain risk",
+      note: "Weight and waist are both drifting up during a cut.",
     };
   }
 
-  if (weightDelta < 0 && waistDelta >= 0) {
+  if (mode === "bulk") {
+    if (weightDelta > 0 && waistDelta <= 0) {
+      return {
+        label: "Current Signal",
+        status: "Lean gain signal",
+        note: "Weight is rising while waist is stable or down.",
+      };
+    }
+
+    if (weightDelta > 0 && waistDelta > 0) {
+      return {
+        label: "Current Signal",
+        status: "Possible surplus too aggressive",
+        note: "Weight and waist are both rising.",
+      };
+    }
+
+    if (weightDelta <= 0 && waistDelta <= 0) {
+      return {
+        label: "Current Signal",
+        status: "Undershooting bulk",
+        note: "Weight is not climbing enough for a gaining phase.",
+      };
+    }
+
     return {
-      status: "Possible water loss",
-      note: "Weight dropping but waist stable.",
+      label: "Current Signal",
+      status: "Mixed bulk signal",
+      note: "Trend is unclear. Watch the next few check-ins.",
     };
   }
 
-  if (weightDelta >= 0 && waistDelta < 0) {
+  if (Math.abs(weightDelta) <= 1 && Math.abs(waistDelta) <= 0.5) {
     return {
-      status: "Possible recomposition",
-      note: "Waist decreasing while weight is stable or up.",
+      label: "Current Signal",
+      status: "Stable maintenance signal",
+      note: "Weight and waist are both staying in a tight range.",
+    };
+  }
+
+  if (waistDelta < 0 && weightDelta >= 0) {
+    return {
+      label: "Current Signal",
+      status: "Possible recomp",
+      note: "Waist is improving without meaningful weight loss.",
     };
   }
 
   return {
-    status: "Fat gain risk",
-    note: "Weight and waist both increasing.",
+    label: "Current Signal",
+    status: "Maintenance drift",
+    note: "Weight and/or waist are moving enough to merit attention.",
   };
 }
 
@@ -268,14 +470,48 @@ function SnapshotTile({
   changeColor: string;
 }) {
   return (
-    <div className="card">
-      <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+    <div
+      className="card"
+      style={{
+        padding: 14,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        minHeight: 72,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: 0.6,
+          color: "var(--muted)",
+          marginBottom: 6,
+        }}
+      >
         {label}
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ fontWeight: 900, fontSize: 18 }}>{value}</div>
-        <div style={{ fontSize: 13, color: changeColor }}>{changeText}</div>
+      <div
+        style={{
+          fontWeight: 900,
+          fontSize: 26,
+          lineHeight: 1.1,
+          letterSpacing: -0.3,
+        }}
+      >
+        {value}
+      </div>
+
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 600,
+          color: changeColor,
+          marginTop: 4,
+        }}
+      >
+        {changeText}
       </div>
     </div>
   );
@@ -288,6 +524,7 @@ function SnapshotTile({
 export default function BodyCompositionPage() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>(() => loadMode());
+  const [strengthTrend, setStrengthTrend] = useState<StrengthTrendRow[]>([]);
 
   const rows = useLiveQuery(async () => {
     try {
@@ -305,50 +542,179 @@ export default function BodyCompositionPage() {
     saveMode(mode);
   }, [mode]);
 
-  /* ==========================================================================
-     Breadcrumb 3A — Derived data
-     ========================================================================== */
+  React.useEffect(() => {
+    let alive = true;
 
-  const chartRows = useMemo(() => {
-    return (rows ?? [])
-      .slice()
-      .reverse()
-      .filter((r) => pickTime(r) > 0);
-  }, [rows]);
+    (async () => {
+      try {
+        const trend = await computeStrengthTrend(12, 28);
+        if (!alive) return;
+        setStrengthTrend(Array.isArray(trend) ? trend : []);
+      } catch {
+        if (!alive) return;
+        setStrengthTrend([]);
+      }
+    })();
 
-  const latestSnapshot = useMemo(() => {
-    const source = rows ?? [];
-    const latest = source[0];
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-    const weight = latest ? pickWeightLb(latest) : undefined;
-    const waist = latest ? pickWaistIn(latest) : undefined;
-    const bodyFatPct = latest ? pickBodyFatPct(latest) : undefined;
-    const leanMass = latest ? computeLeanMassLb(latest) : undefined;
 
-    const prevWeightAvg = averagePreviousValues(source, pickWeightLb, 3);
-    const prevWaistAvg = averagePreviousValues(source, pickWaistIn, 3);
-    const prevBodyFatAvg = averagePreviousValues(source, pickBodyFatPct, 3);
-    const prevLeanAvg = averagePreviousValues(source, computeLeanMassLb, 3);
+
+
+    /* ==========================================================================
+       Breadcrumb 3A — Derived data
+       ========================================================================== */
+  
+    const profileGoals = useMemo(() => loadProfileGoals(), []);
+  
+    const chartRows = useMemo(() => {
+      return (rows ?? [])
+        .slice()
+        .reverse()
+        .filter((r) => pickTime(r) > 0);
+    }, [rows]);
+  
+    const latestSnapshot = useMemo(() => {
+      const source = rows ?? [];
+      const latest = source[0];
+  
+      const weight = latest ? pickWeightLb(latest) : undefined;
+      const waist = latest ? pickWaistIn(latest) : undefined;
+      const bodyFatPct = latest ? pickBodyFatPct(latest) : undefined;
+      const correctedBodyFatPct = latest ? getCorrectedBodyFatPct(latest as any) : undefined;
+      const leanMass = latest ? getLeanMassLb(latest as any) : undefined;
+      const correctedLeanMass = latest ? getCorrectedLeanMassLb(latest as any) : undefined;
+  
+      const prevWeightAvg = averagePreviousValues(source, pickWeightLb, 3);
+      const prevWaistAvg = averagePreviousValues(source, pickWaistIn, 3);
+      const prevBodyFatAvg = averagePreviousValues(source, pickBodyFatPct, 3);
+      const prevCorrectedBodyFatAvg = averagePreviousValues(
+        source,
+        (r) => getCorrectedBodyFatPct(r as any),
+        3
+      );
+      const prevLeanAvg = averagePreviousValues(
+        source,
+        (r) => getLeanMassLb(r as any),
+        3
+      );
+      const prevCorrectedLeanAvg = averagePreviousValues(
+        source,
+        (r) => getCorrectedLeanMassLb(r as any),
+        3
+      );
+  
+      const confidenceScore = latest ? getBodyCompConfidence(latest as any) : 0;
+      const confidenceLabel = getBodyCompConfidenceLabel(confidenceScore);
+      const fluidNote = latest
+        ? getFluidBalanceNote(latest as any)
+        : "Add ICW and ECW to assess fluid balance.";
+  
+      return {
+        date: latest ? fmtSnapshotDate(pickTime(latest)) : "—",
+  
+        weight,
+        weightChange: computePercentChange(weight, prevWeightAvg),
+  
+        waist,
+        waistChange: computePercentChange(waist, prevWaistAvg),
+  
+        bodyFatPct,
+        bfChange: computePercentChange(bodyFatPct, prevBodyFatAvg),
+  
+        correctedBodyFatPct,
+        correctedBfChange: computePercentChange(
+          correctedBodyFatPct,
+          prevCorrectedBodyFatAvg
+        ),
+  
+        leanMass,
+        leanChange: computePercentChange(leanMass, prevLeanAvg),
+  
+        correctedLeanMass,
+        correctedLeanChange: computePercentChange(
+          correctedLeanMass,
+          prevCorrectedLeanAvg
+        ),
+  
+        targetWeightLb: profileGoals.targetWeightLb,
+        targetBodyFatPct: profileGoals.targetBodyFatPct,
+  
+        remainingWeightLb:
+          weight != null && profileGoals.targetWeightLb != null
+            ? weight - profileGoals.targetWeightLb
+            : undefined,
+  
+        remainingCorrectedBfPct:
+          correctedBodyFatPct != null && profileGoals.targetBodyFatPct != null
+            ? correctedBodyFatPct - profileGoals.targetBodyFatPct
+            : undefined,
+  
+        confidenceScore,
+        confidenceLabel,
+        fluidNote,
+      };
+  }, [rows, profileGoals]);
+
+    const summary = modeSummary(mode);
+    const phaseSignal = useMemo(
+      () => computePhaseSignal(chartRows.slice(-10), mode),
+      [chartRows, mode]
+    );
+  
+    const phaseQualityStrength = useMemo(
+      () => computeStrengthDeltaFromTrend(strengthTrend, mode),
+      [strengthTrend, mode]
+  );
+
+/* ============================================================================
+   Breadcrumb 3C — Phase Quality Inputs (derived deltas)
+   ============================================================================ */
+
+  const phaseQualityInputs = useMemo(() => {
+    const window = chartRows.slice(-10);
+
+    if (window.length < 3) {
+      return {
+        strengthDelta: phaseQualityStrength.strengthDelta,
+        strengthLabel: phaseQualityStrength.strengthLabel,
+        sampleCount: window.length,
+      };
+    }
+
+    const first = window[0];
+    const last = window[window.length - 1];
+
+    const weightDelta =
+      (pickWeightLb(last) ?? 0) - (pickWeightLb(first) ?? 0);
+
+    const waistDelta =
+      (pickWaistIn(last) ?? 0) - (pickWaistIn(first) ?? 0);
+
+    const correctedLeanDelta =
+      (getCorrectedLeanMassLb(last as any) ?? 0) -
+      (getCorrectedLeanMassLb(first as any) ?? 0);
+
+    const correctedBodyFatDelta =
+      (getCorrectedBodyFatPct(last as any) ?? 0) -
+      (getCorrectedBodyFatPct(first as any) ?? 0);
 
     return {
-      date: latest ? fmtSnapshotDate(pickTime(latest)) : "—",
-
-      weight,
-      weightChange: computePercentChange(weight, prevWeightAvg),
-
-      waist,
-      waistChange: computePercentChange(waist, prevWaistAvg),
-
-      bodyFatPct,
-      bfChange: computePercentChange(bodyFatPct, prevBodyFatAvg),
-
-      leanMass,
-      leanChange: computePercentChange(leanMass, prevLeanAvg),
+      weightDelta,
+      waistDelta,
+      correctedLeanDelta,
+      correctedBodyFatDelta,
+      strengthDelta: phaseQualityStrength.strengthDelta,
+      strengthLabel: phaseQualityStrength.strengthLabel,
+      sampleCount: window.length,
     };
-  }, [rows]);
+  }, [chartRows, phaseQualityStrength]);
 
-  const summary = modeSummary(mode);
-  const cutSignal = useMemo(() => computeCutSignal(chartRows.slice(-10)), [chartRows]);
+
+
 
   /* ==========================================================================
      Breadcrumb 3B — Chart config map
@@ -356,7 +722,6 @@ export default function BodyCompositionPage() {
      This bundles the chart definitions so we do not repeat the same
      TrendChartCard boilerplate five times.
      ========================================================================== */
-
   const chartConfigs = useMemo(() => {
     const weightData: ChartDatum[] = chartRows
       .filter((r) => pickWeightLb(r) != null)
@@ -382,21 +747,61 @@ export default function BodyCompositionPage() {
         date: fmtShortDate(pickTime(r)),
       }));
 
-    const fatMassData: ChartDatum[] = chartRows
-      .filter((r) => computeFatMassLb(r) != null)
+    const correctedBodyFatPctData: ChartDatum[] = chartRows
+      .filter((r) => getCorrectedBodyFatPct(r as any) != null)
       .map((r) => ({
         label: fmtShortDate(pickTime(r)),
-        value: computeFatMassLb(r) ?? null,
+        value: getCorrectedBodyFatPct(r as any) ?? null,
+        date: fmtShortDate(pickTime(r)),
+      }));
+
+    const fatMassData: ChartDatum[] = chartRows
+      .filter((r) => getFatMassLb(r as any) != null)
+      .map((r) => ({
+        label: fmtShortDate(pickTime(r)),
+        value: getFatMassLb(r as any) ?? null,
         date: fmtShortDate(pickTime(r)),
       }));
 
     const leanMassData: ChartDatum[] = chartRows
-      .filter((r) => computeLeanMassLb(r) != null)
+      .filter((r) => getLeanMassLb(r as any) != null)
       .map((r) => ({
         label: fmtShortDate(pickTime(r)),
-        value: computeLeanMassLb(r) ?? null,
+        value: getLeanMassLb(r as any) ?? null,
         date: fmtShortDate(pickTime(r)),
       }));
+    
+    const correctedLeanMassData: ChartDatum[] = chartRows
+      .filter((r) => getCorrectedLeanMassLb(r as any) != null)
+      .map((r) => ({
+        label: fmtShortDate(pickTime(r)),
+        value: getCorrectedLeanMassLb(r as any) ?? null,
+        date: fmtShortDate(pickTime(r)),
+      }));
+
+    const tbwData: ChartDatum[] = chartRows
+      .filter((r) => getTBW(r as any) != null)
+      .map((r) => ({
+        label: fmtShortDate(pickTime(r)),
+        value: getTBW(r as any) ?? null,
+        date: fmtShortDate(pickTime(r)),
+      }));
+
+        const fluidRatioData: ChartDatum[] = chartRows
+          .filter((r) => getFluidRatio(r as any) != null)
+          .map((r) => ({
+            label: fmtShortDate(pickTime(r)),
+            value: getFluidRatio(r as any) ?? null,
+            date: fmtShortDate(pickTime(r)),
+          }));
+    
+        const confidenceData: ChartDatum[] = chartRows
+          .map((r) => ({
+            label: fmtShortDate(pickTime(r)),
+            value: getBodyCompConfidence(r as any),
+            date: fmtShortDate(pickTime(r)),
+          }))
+      .filter((r) => r.value != null);
 
     return [
       {
@@ -448,6 +853,22 @@ export default function BodyCompositionPage() {
         emptyMessage: "Add body fat % entries to see the trend.",
       },
       {
+        title: "Corrected Body Fat % Trend",
+        subtitle: "Fluid-aware body fat interpretation",
+        data: correctedBodyFatPctData,
+        series: [
+          {
+            key: "value",
+            label: "Corrected BF %",
+            formatter: formatBodyFatPct,
+            stroke: "var(--accent)",
+          },
+        ] satisfies ChartSeriesConfig[],
+        yDomainMode: "tight" as const,
+        valueFormatter: (value: number | null | undefined) => formatBodyFatPct(value),
+        emptyMessage: "Add body fat %, weight, and ideally ICW / ECW to see corrected body fat.",
+      },
+      {
         title: "Fat Mass Trend",
         subtitle: "Estimated fat mass from weight and body fat %",
         data: fatMassData,
@@ -463,21 +884,90 @@ export default function BodyCompositionPage() {
         valueFormatter: (value: number | null | undefined) => formatLbs(value),
         emptyMessage: "Add weight and body fat % entries to see fat mass.",
       },
+            {
+              title: "Lean Mass Trend",
+              subtitle: "Estimated lean mass from weight and body fat %",
+              data: leanMassData,
+              series: [
+                {
+                  key: "value",
+                  label: "Lean Mass",
+                  formatter: formatLbs,
+                  stroke: "var(--accent)",
+                },
+              ] satisfies ChartSeriesConfig[],
+              yDomainMode: "auto" as const,
+              valueFormatter: (value: number | null | undefined) => formatLbs(value),
+              emptyMessage: "Add weight and body fat % entries to see lean mass.",
+            },
+            {
+              title: "Corrected Lean Mass Trend",
+              subtitle: "Fluid-aware lean mass interpretation",
+              data: correctedLeanMassData,
+              series: [
+                {
+                  key: "value",
+                  label: "Corrected Lean Mass",
+                  shortLabel: "Corr Lean",
+                  formatter: formatLbs,
+                  stroke: "var(--accent)",
+                },
+              ] satisfies ChartSeriesConfig[],
+              yDomainMode: "auto" as const,
+              valueFormatter: (value: number | null | undefined) => formatLbs(value),
+              emptyMessage: "Add weight, body fat %, and ideally ICW / ECW to see corrected lean mass.",
+      },
       {
-        title: "Lean Mass Trend",
-        subtitle: "Estimated lean mass from weight and body fat %",
-        data: leanMassData,
+        title: "TBW Trend",
+        subtitle: "Total body water from ICW + ECW",
+        data: tbwData,
         series: [
           {
             key: "value",
-            label: "Lean Mass",
+            label: "TBW",
             formatter: formatLbs,
-            stroke: "var(--accent)",
+            stroke: "var(--text)",
           },
         ] satisfies ChartSeriesConfig[],
         yDomainMode: "auto" as const,
         valueFormatter: (value: number | null | undefined) => formatLbs(value),
-        emptyMessage: "Add weight and body fat % entries to see lean mass.",
+        emptyMessage: "Add ICW and ECW entries to see TBW.",
+      },
+            {
+              title: "Fluid Ratio Trend",
+              subtitle: "ECW / TBW fluid balance",
+              data: fluidRatioData,
+              series: [
+                {
+                  key: "value",
+                  label: "Fluid Ratio",
+                  formatter: (value: number | null | undefined) =>
+                    value == null || !Number.isFinite(value) ? "—" : value.toFixed(3),
+                  stroke: "var(--text)",
+                },
+              ] satisfies ChartSeriesConfig[],
+              yDomainMode: "tight" as const,
+              valueFormatter: (value: number | null | undefined) =>
+                value == null || !Number.isFinite(value) ? "—" : value.toFixed(3),
+              emptyMessage: "Add ICW and ECW entries to see fluid ratio.",
+            },
+            {
+              title: "Confidence Trend",
+              subtitle: "Body composition data completeness and coherence",
+              data: confidenceData,
+              series: [
+                {
+                  key: "value",
+                  label: "Confidence",
+                  formatter: (value: number | null | undefined) =>
+                    value == null || !Number.isFinite(value) ? "—" : `${value.toFixed(0)}/8`,
+                  stroke: "var(--accent)",
+                },
+              ] satisfies ChartSeriesConfig[],
+              yDomainMode: "tight" as const,
+              valueFormatter: (value: number | null | undefined) =>
+                value == null || !Number.isFinite(value) ? "—" : `${value.toFixed(0)}/8`,
+              emptyMessage: "Add body composition entries to see confidence trend.",
       },
     ];
   }, [chartRows]);
@@ -585,9 +1075,51 @@ export default function BodyCompositionPage() {
           </div>
         </div>
       </Section>
+      
+            {/* =====================================================================
+                Breadcrumb 4D — Goal targets
+               ================================================================== */}
+            <Section>
+              <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+                <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
+                  GOAL TARGETS
+                </div>
+      
+                <div className="grid two">
+                  <div className="card">
+                    <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                      TARGET WEIGHT
+                    </div>
+                    <div style={{ fontWeight: 900, fontSize: 22 }}>
+                      {formatLbs(latestSnapshot.targetWeightLb)}
+                    </div>
+                    <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
+                      Remaining: {formatRemaining(latestSnapshot.remainingWeightLb, "lb")}
+                    </div>
+                  </div>
+      
+                  <div className="card">
+                    <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                      TARGET BF %
+                    </div>
+                    <div style={{ fontWeight: 900, fontSize: 22 }}>
+                      {formatBodyFatPct(latestSnapshot.targetBodyFatPct)}
+                    </div>
+                    <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
+                      Remaining: {formatRemaining(latestSnapshot.remainingCorrectedBfPct, "%")}
+                    </div>
+                  </div>
+                </div>
+              </div>
+      </Section>
+      
+      
+      
+      
+      
 
       {/* =====================================================================
-          Breadcrumb 4D — Latest snapshot strip
+          Breadcrumb 4E — Latest snapshot strip
          ================================================================== */}
       <Section>
         <div className="card" style={{ padding: 12, marginBottom: 12 }}>
@@ -615,24 +1147,24 @@ export default function BodyCompositionPage() {
             />
 
             <SnapshotTile
-              label="BODY FAT %"
-              value={formatBodyFatPct(latestSnapshot.bodyFatPct)}
-              changeText={formatChange(latestSnapshot.bfChange)}
-              changeColor={getChangeColor(latestSnapshot.bfChange, "lower-is-better")}
+	      label="CORRECTED BF %"
+              value={formatBodyFatPct(latestSnapshot.correctedBodyFatPct)}
+	      changeText={formatChange(latestSnapshot.correctedBfChange)}
+	      changeColor={getChangeColor(latestSnapshot.correctedBfChange, "lower-is-better")}
             />
 
             <SnapshotTile
-              label="LEAN MASS"
-              value={formatLbs(latestSnapshot.leanMass)}
-              changeText={formatChange(latestSnapshot.leanChange)}
-              changeColor={getChangeColor(latestSnapshot.leanChange, "higher-is-better")}
+	      label="CORRECTED LEAN"
+	      value={formatLbs(latestSnapshot.correctedLeanMass)}
+	      changeText={formatChange(latestSnapshot.correctedLeanChange)}
+	      changeColor={getChangeColor(latestSnapshot.correctedLeanChange, "higher-is-better")}
             />
           </div>
         </div>
       </Section>
 
       {/* =====================================================================
-          Breadcrumb 4E — Coaching signals
+          Breadcrumb 4F — Coaching signals
          ================================================================== */}
       <Section>
         <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>Coaching signals</div>
@@ -655,27 +1187,82 @@ export default function BodyCompositionPage() {
             <div className="muted" style={{ lineHeight: 1.4 }}>{summary.secondary}</div>
           </div>
 
-          <div className="card">
-            <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
-              CONFIDENCE
-            </div>
-            <div className="muted" style={{ lineHeight: 1.4 }}>{summary.confidence}</div>
+	  <div className="card">
+	    <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+	     CONFIDENCE
+	   </div>
+	    <div style={{ fontWeight: 900, fontSize: 18 }}>
+	       {latestSnapshot.confidenceLabel}
+	     </div>
+	     <div className="muted" style={{ lineHeight: 1.4, marginTop: 6 }}>
+	       Score {latestSnapshot.confidenceScore}/8 • {summary.confidence}
+	     </div>
           </div>
 
-          <div className="card">
-            <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
-              CUT SIGNAL
-            </div>
-            <div style={{ fontWeight: 900, fontSize: 18 }}>{cutSignal.status}</div>
-            <div className="muted" style={{ lineHeight: 1.4, marginTop: 6 }}>
-              {cutSignal.note}
-            </div>
+                    <div className="card">
+	              <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+	                FLUID BALANCE
+	              </div>
+	              <div style={{ fontWeight: 900, fontSize: 18 }}>
+	                {latestSnapshot.fluidNote.includes("stable")
+	                  ? "Stable"
+	                  : latestSnapshot.fluidNote.includes("slightly elevated")
+	                    ? "Watch"
+	                    : latestSnapshot.fluidNote.includes("Higher ECW")
+	                      ? "Elevated"
+	                      : "Low data"}
+	              </div>
+	              <div className="muted" style={{ lineHeight: 1.4, marginTop: 6 }}>
+	                {latestSnapshot.fluidNote}
+	              </div>
+	            </div>
+	  
+	            <div className="card">
+	              <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+	                {phaseSignal.label.toUpperCase()}
+	              </div>
+	              <div style={{ fontWeight: 900, fontSize: 18 }}>{phaseSignal.status}</div>
+	              <div className="muted" style={{ lineHeight: 1.4, marginTop: 6 }}>
+	                {phaseSignal.note}
+	              </div>
           </div>
         </div>
       </Section>
 
+
+{/* =====================================================================
+    Breadcrumb 4G — Phase Quality (NEW)
+   ================================================================== */}
+<Section>
+  <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>
+    Phase Quality
+  </div>
+  <div className="muted" style={{ marginBottom: 6 }}>
+    Direction + composition + strength combined into a single quality signal.
+  </div>
+
+  {phaseQualityInputs.strengthLabel ? (
+    <div className="muted" style={{ marginBottom: 12, fontSize: 12 }}>
+      Strength: {phaseQualityInputs.strengthLabel}
+    </div>
+  ) : null}
+
+  <PhaseQualityCard
+    mode={mode}
+    weightDelta={phaseQualityInputs.weightDelta}
+    waistDelta={phaseQualityInputs.waistDelta}
+    correctedLeanDelta={phaseQualityInputs.correctedLeanDelta}
+    correctedBodyFatDelta={phaseQualityInputs.correctedBodyFatDelta}
+    strengthDelta={phaseQualityInputs.strengthDelta}
+    sampleCount={phaseQualityInputs.sampleCount}
+  />
+</Section>
+
+
+
+
       {/* =====================================================================
-          Breadcrumb 4F — Trend charts
+          Breadcrumb 4G — Trend charts
          ================================================================== */}
       <Section>
         <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>Trend snapshots</div>
@@ -686,20 +1273,19 @@ export default function BodyCompositionPage() {
 
         <div style={{ display: "grid", gap: 12 }}>
           {chartConfigs.map((chart) => (
-            <TrendChartCard
-              key={chart.title}
-              title={chart.title}
-              subtitle={chart.subtitle}
-              data={chart.data}
-              series={chart.series}
-              showBrush={chart.data.length > 12}
-              yDomainMode={chart.yDomainMode}
-              valueFormatter={chart.valueFormatter}
-              tooltipLabelFormatter={(label, datum) => {
-                if (typeof datum?.date === "string" && datum.date.trim()) return datum.date;
-                return label;
-              }}
-              emptyMessage={chart.emptyMessage}
+                        <TrendChartCard
+	                  key={chart.title}
+	                  title={chart.title}
+	                  subtitle={chart.subtitle}
+	                  data={chart.data}
+	                  series={chart.series}
+	                  yDomainMode={chart.yDomainMode}
+	                  valueFormatter={chart.valueFormatter}
+	                  tooltipLabelFormatter={(label, datum) => {
+	                    if (typeof datum?.date === "string" && datum.date.trim()) return datum.date;
+	                    return label;
+	                  }}
+	                  emptyMessage={chart.emptyMessage}
             />
           ))}
         </div>
@@ -708,6 +1294,7 @@ export default function BodyCompositionPage() {
   );
 }
 
-/* ============================================================================
-   End of file: src/pages/BodyCompositionPage.tsx
+    
+     /* ============================================================================
+        End of file: src/pages/BodyCompositionPage.tsx
    ============================================================================ */

@@ -49,6 +49,12 @@ import { Page, Section } from "../components/Page.tsx";
 import TrendChartCard from "../components/charts/TrendChartCard";
 import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTypes";
 import { formatInches, formatLbs } from "../components/charts/chartFormatters";
+import {
+  getFatMassLb,
+  getLeanMassLb,
+  getTBW,
+  getFluidRatio,
+} from "../body/bodyCalculations";
 
 type BodyMetricRow = {
   id: string;
@@ -67,10 +73,15 @@ type BodyMetricRow = {
   waist?: number;
 
   bodyFatPct?: number;
+  bodyFatMassLb?: number;
   leanMassLb?: number;
   skeletalMuscleMassLb?: number;
   visceralFatIndex?: number;
   bodyWaterPct?: number;
+
+  icwLb?: number;
+  ecwLb?: number;
+  mineralMassLb?: number;
 
   createdAt?: number;
 };
@@ -205,29 +216,41 @@ export default function BodyPage() {
   const [weightLb, setWeightLb] = useState("");
   const [waistIn, setWaistIn] = useState("");
   const [bodyFatPct, setBodyFatPct] = useState("");
+  const [bodyFatMassLb, setBodyFatMassLb] = useState("");
   const [leanMassLb, setLeanMassLb] = useState("");
   const [visceralFatIndex, setVisceralFatIndex] = useState("");
   const [skeletalMuscleMassLb, setSkeletalMuscleMassLb] = useState("");
   const [bodyWaterPct, setBodyWaterPct] = useState("");
+  const [icwLb, setIcwLb] = useState("");
+  const [ecwLb, setEcwLb] = useState("");
+  const [mineralMassLb, setMineralMassLb] = useState("");
 
   const hasAnyInput = useMemo(() => {
     return (
       !!weightLb.trim() ||
       !!waistIn.trim() ||
       !!bodyFatPct.trim() ||
+      !!bodyFatMassLb.trim() ||
       !!leanMassLb.trim() ||
       !!visceralFatIndex.trim() ||
       !!skeletalMuscleMassLb.trim() ||
-      !!bodyWaterPct.trim()
+      !!bodyWaterPct.trim() ||
+      !!icwLb.trim() ||
+      !!ecwLb.trim() ||
+      !!mineralMassLb.trim()
     );
   }, [
     weightLb,
     waistIn,
     bodyFatPct,
+    bodyFatMassLb,
     leanMassLb,
     visceralFatIndex,
     skeletalMuscleMassLb,
     bodyWaterPct,
+    icwLb,
+    ecwLb,
+    mineralMassLb,
   ]);
 
   const hasHeightInput = !!heightIn.trim();
@@ -421,65 +444,85 @@ export default function BodyPage() {
     setHeightIn("");
   }
 
-  async function addEntry() {
-    const w = toNumOrUndef(weightLb);
-    const waist = toNumOrUndef(waistIn);
-    const bf = toNumOrUndef(bodyFatPct);
-    const lm = toNumOrUndef(leanMassLb);
-    const vfi = toNumOrUndef(visceralFatIndex);
-    const smm = toNumOrUndef(skeletalMuscleMassLb);
-    const water = toNumOrUndef(bodyWaterPct);
-
-    const typedButInvalid =
-      (weightLb.trim() && w == null) ||
-      (waistIn.trim() && waist == null) ||
-      (bodyFatPct.trim() && bf == null) ||
-      (leanMassLb.trim() && lm == null) ||
-      (visceralFatIndex.trim() && vfi == null) ||
-      (skeletalMuscleMassLb.trim() && smm == null) ||
-      (bodyWaterPct.trim() && water == null);
-
-    if (typedButInvalid) {
-      window.alert("One or more fields are not valid numbers. Please correct and try again.");
-      return;
-    }
-
-    const hasAnyValid =
-      w != null ||
-      waist != null ||
-      bf != null ||
-      lm != null ||
-      vfi != null ||
-      smm != null ||
-      water != null;
-
-    if (!hasAnyValid) return;
-
-    const now = Date.now();
-
-    const row: BodyMetricRow = {
-      id: uuid(),
-      measuredAt: now,
-      takenAt: now,
-      createdAt: now,
-      weightLb: w,
-      waistIn: waist,
-      bodyFatPct: bf,
-      leanMassLb: lm,
-      visceralFatIndex: vfi,
-      skeletalMuscleMassLb: smm,
-      bodyWaterPct: water,
-    };
-
-    await table.add(row as any);
-
-    setWeightLb("");
-    setWaistIn("");
-    setBodyFatPct("");
-    setLeanMassLb("");
-    setVisceralFatIndex("");
-    setSkeletalMuscleMassLb("");
-    setBodyWaterPct("");
+    async function addEntry() {
+      const w = toNumOrUndef(weightLb);
+      const waist = toNumOrUndef(waistIn);
+      const bf = toNumOrUndef(bodyFatPct);
+      const fatMass = toNumOrUndef(bodyFatMassLb);
+      const lm = toNumOrUndef(leanMassLb);
+      const vfi = toNumOrUndef(visceralFatIndex);
+      const smm = toNumOrUndef(skeletalMuscleMassLb);
+      const water = toNumOrUndef(bodyWaterPct);
+      const icw = toNumOrUndef(icwLb);
+      const ecw = toNumOrUndef(ecwLb);
+      const mineral = toNumOrUndef(mineralMassLb);
+  
+      const typedButInvalid =
+        (weightLb.trim() && w == null) ||
+        (waistIn.trim() && waist == null) ||
+        (bodyFatPct.trim() && bf == null) ||
+        (bodyFatMassLb.trim() && fatMass == null) ||
+        (leanMassLb.trim() && lm == null) ||
+        (visceralFatIndex.trim() && vfi == null) ||
+        (skeletalMuscleMassLb.trim() && smm == null) ||
+        (bodyWaterPct.trim() && water == null) ||
+        (icwLb.trim() && icw == null) ||
+        (ecwLb.trim() && ecw == null) ||
+        (mineralMassLb.trim() && mineral == null);
+  
+      if (typedButInvalid) {
+        window.alert("One or more fields are not valid numbers. Please correct and try again.");
+        return;
+      }
+  
+      const hasAnyValid =
+        w != null ||
+        waist != null ||
+        bf != null ||
+        fatMass != null ||
+        lm != null ||
+        vfi != null ||
+        smm != null ||
+        water != null ||
+        icw != null ||
+        ecw != null ||
+        mineral != null;
+  
+      if (!hasAnyValid) return;
+  
+      const now = Date.now();
+  
+      const row: BodyMetricRow = {
+        id: uuid(),
+        measuredAt: now,
+        takenAt: now,
+        createdAt: now,
+        weightLb: w,
+        waistIn: waist,
+        bodyFatPct: bf,
+        bodyFatMassLb: fatMass,
+        leanMassLb: lm,
+        visceralFatIndex: vfi,
+        skeletalMuscleMassLb: smm,
+        bodyWaterPct: water,
+        icwLb: icw,
+        ecwLb: ecw,
+        mineralMassLb: mineral,
+      };
+  
+      await table.add(row as any);
+  
+      setWeightLb("");
+      setWaistIn("");
+      setBodyFatPct("");
+      setBodyFatMassLb("");
+      setLeanMassLb("");
+      setVisceralFatIndex("");
+      setSkeletalMuscleMassLb("");
+      setBodyWaterPct("");
+      setIcwLb("");
+      setEcwLb("");
+      setMineralMassLb("");
   }
 
   async function deleteEntry(id: string) {
@@ -636,7 +679,20 @@ export default function BodyPage() {
                 inputMode="decimal"
               />
             </div>
-
+            
+                        <div style={{ minWidth: 160, flex: 1 }}>
+	                  <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+	                    Body Fat Mass (lb)
+	                  </div>
+	                  <input
+	                    className="input"
+	                    value={bodyFatMassLb}
+	                    onChange={(e) => setBodyFatMassLb(e.target.value)}
+	                    placeholder="46.0"
+	                    inputMode="decimal"
+	                  />
+            </div>
+        
             <div style={{ minWidth: 160, flex: 1 }}>
               <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
                 Lean Mass (lb)
@@ -688,6 +744,46 @@ export default function BodyPage() {
                 inputMode="decimal"
               />
             </div>
+            
+                       <div style={{ minWidth: 160, flex: 1 }}>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                ICW (lb)
+              </div>
+              <input
+                className="input"
+                value={icwLb}
+                onChange={(e) => setIcwLb(e.target.value)}
+                placeholder="—"
+                inputMode="decimal"
+              />
+            </div>
+
+            <div style={{ minWidth: 160, flex: 1 }}>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                ECW (lb)
+              </div>
+              <input
+                className="input"
+                value={ecwLb}
+                onChange={(e) => setEcwLb(e.target.value)}
+                placeholder="—"
+                inputMode="decimal"
+              />
+            </div>
+
+            <div style={{ minWidth: 160, flex: 1 }}>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                Mineral Mass (lb)
+              </div>
+              <input
+                className="input"
+                value={mineralMassLb}
+                onChange={(e) => setMineralMassLb(e.target.value)}
+                placeholder="—"
+                inputMode="decimal"
+              />
+            </div> 
+                        
           </div>
 
           <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap" }}>
@@ -697,13 +793,17 @@ export default function BodyPage() {
             <button
               className="btn"
               onClick={() => {
-                setWeightLb("");
-                setWaistIn("");
-                setBodyFatPct("");
-                setLeanMassLb("");
-                setVisceralFatIndex("");
-                setSkeletalMuscleMassLb("");
-                setBodyWaterPct("");
+	        setWeightLb("");
+	        setWaistIn("");
+	        setBodyFatPct("");
+	        setBodyFatMassLb("");
+	        setLeanMassLb("");
+	        setVisceralFatIndex("");
+	        setSkeletalMuscleMassLb("");
+	        setBodyWaterPct("");
+	        setIcwLb("");
+	        setEcwLb("");
+	        setMineralMassLb("");
               }}
               disabled={!hasAnyInput}
             >
@@ -807,20 +907,26 @@ export default function BodyPage() {
                     </button>
                   </div>
 
-                  <div className="muted" style={{ marginTop: 8, fontSize: 13, lineHeight: 1.6 }}>
-                    Weight: <b>{show(pickWeightLb(r), 1)}</b>
-                    {"  •  "}
-                    Waist: <b>{show(pickWaistIn(r), 1)}</b>
-                    {"  •  "}
-                    BF%: <b>{show(r.bodyFatPct, 2)}</b>
-                    {"  •  "}
-                    Lean Mass: <b>{show((r as any).leanMassLb, 1)}</b>
-                    <br />
-                    VFI: <b>{show(r.visceralFatIndex, 2)}</b>
-                    {"  •  "}
-                    SMM: <b>{show(r.skeletalMuscleMassLb, 1)}</b>
-                    {"  •  "}
-                    Water%: <b>{show(r.bodyWaterPct, 2)}</b>
+		    <div className="muted" style={{ marginTop: 8, fontSize: 13, lineHeight: 1.6 }}>
+		      Weight: <b>{show(pickWeightLb(r), 1)}</b>
+		      {"  •  "}
+		      Waist: <b>{show(pickWaistIn(r), 1)}</b>
+		      {"  •  "}
+		      BF%: <b>{show(r.bodyFatPct, 2)}</b>
+		      {"  •  "}
+		      Fat Mass: <b>{show(getFatMassLb(r as any), 1)}</b>
+		      {"  •  "}
+		      Lean Mass: <b>{show(getLeanMassLb(r as any), 1)}</b>
+		      <br />
+		      VFI: <b>{show(r.visceralFatIndex, 2)}</b>
+		      {"  •  "}
+		      SMM: <b>{show(r.skeletalMuscleMassLb, 1)}</b>
+		      {"  •  "}
+		      Water%: <b>{show(r.bodyWaterPct, 2)}</b>
+		      {"  •  "}
+		      TBW: <b>{show(getTBW(r as any), 1)}</b>
+		      {"  •  "}
+		      Fluid Ratio: <b>{show(getFluidRatio(r as any), 3)}</b>
                   </div>
                 </div>
               ))

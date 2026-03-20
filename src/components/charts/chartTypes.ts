@@ -2,13 +2,13 @@
 /* ============================================================================
    chartTypes.ts — Shared chart types
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-15-CHARTS-03
+   BUILD_ID: 2026-03-17-CHARTS-04
    FILE: src/components/charts/chartTypes.ts
 
    Purpose
    - Centralize reusable chart typing for IronForge trend charts
-   - Support current Strength charts first
-   - Stay flexible for MPS and Body Composition charts later
+   - Support Strength, MPS, Body, and Body Composition charts
+   - Keep the shared chart shell flexible without overcomplicating the API
    ============================================================================ */
 
 export type ChartDatum = {
@@ -22,6 +22,9 @@ export type ChartSeriesConfig = {
   key: string;
   label: string;
 
+  /* optional shorter label for compact readouts */
+  shortLabel?: string;
+
   /* optional unit for tooltip display */
   unit?: string;
 
@@ -31,10 +34,10 @@ export type ChartSeriesConfig = {
   /* allow null gaps to be connected */
   connectNulls?: boolean;
 
-  /* value formatter used by tooltip */
+  /* value formatter used by tooltip/readout */
   formatter?: (value: number | null | undefined) => string;
 
-  /* optional per-series line color */
+  /* optional per-series stroke color */
   stroke?: string;
 };
 
@@ -45,6 +48,10 @@ export type TooltipValueRow = {
 
 export type YDomainMode = "auto" | "tight" | "zeroBased";
 
+export type ReadoutMode = "auto" | "statRow" | "tooltipOnly" | "none";
+
+export type HeaderBadgeMode = "auto" | "hidden";
+
 export type TrendChartCardProps = {
   title: string;
   subtitle?: string;
@@ -53,7 +60,29 @@ export type TrendChartCardProps = {
 
   xKey?: string;
   height?: number;
+
+  /* number of visible points in paged mode */
+  windowSize?: number;
+
   yDomainMode?: YDomainMode;
+
+  /* optional single-series linear trend overlay */
+  showTrendLine?: boolean;
+
+  /* controls single-series stat strip vs tooltip-only behavior */
+  readoutMode?: ReadoutMode;
+
+  /* optional header badge override; defaults to visible window info */
+  headerBadgeText?: string;
+
+  /* hide the top-right header badge entirely */
+  hideHeaderBadge?: boolean;
+
+  /* hide the auto "Window: start -> end" summary row */
+  hideWindowSummary?: boolean;
+
+  /* hide the auto delta summary row */
+  hideDeltaSummary?: boolean;
 
   valueFormatter?: (
     value: number | null | undefined,
@@ -65,3 +94,8 @@ export type TrendChartCardProps = {
 
   emptyMessage?: string;
 };
+
+/* ================================================================
+   FOOTER COMMENT
+   FILE: src/components/charts/chartTypes.ts
+   ============================================================== */
