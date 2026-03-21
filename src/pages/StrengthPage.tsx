@@ -1,7 +1,7 @@
 // src/pages/StrengthPage.tsx
 /* ========================================================================== */
 /*  StrengthPage.tsx                                                          */
-/*  BUILD_ID: 2026-03-17-STRENGTHPAGE-07                                      */
+/*  BUILD_ID: 2026-03-17-STRENGTHPAGE-08                                      */
 /*  FILE: src/pages/StrengthPage.tsx                                          */
 /* -------------------------------------------------------------------------- */
 /*  Purpose                                                                   */
@@ -23,6 +23,7 @@
 /* ========================================================================== */
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Page, Section } from "../components/Page.tsx";
 import {
   computeStrengthIndex,
@@ -146,9 +147,13 @@ function saveMode(m: Mode) {
 }
 
 function modeHint(mode: Mode) {
-  if (mode === "cut") return "Cut: Relative Index is your signal (BW-normalized).";
-  if (mode === "bulk") return "Bulk: Absolute Index usually climbs first; Relative may drift.";
-  return "Maintain: Expect slower changes; watch consistency across patterns.";
+  if (mode === "cut") {
+    return "Cut: Relative Strength matters most because it accounts for bodyweight changes.";
+  }
+  if (mode === "bulk") {
+    return "Bulk: Absolute Strength often rises first, while Relative Strength may lag as bodyweight climbs.";
+  }
+  return "Maintain: Look for stable-to-rising trends and consistency across squat, hinge, push, and pull.";
 }
 
 /* ========================================================================== */
@@ -156,6 +161,7 @@ function modeHint(mode: Mode) {
 /* ========================================================================== */
 
 export default function StrengthPage() {
+  const navigate = useNavigate();
   const windowDays = 28;
 
   const [mode, setMode] = useState<Mode>(() => loadMode());
@@ -259,41 +265,88 @@ export default function StrengthPage() {
     [],
   );
 
-  return (
-    <Page title="Strength">
-      {/* =====================================================================
-          Breadcrumb 4A — Progress-system page header
-         ================================================================== */}
-      <Section>
+    return (
+    <Page>
+          {/* =====================================================================
+              Breadcrumb 4A — Compact top header
+             ================================================================== */}
+          <Section>
+            <div
+              className="row"
+              style={{
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 6,
+              }}
+            >
+              <h2 style={{ margin: 0 }}>Strength</h2>
+    
+              <div
+                className="muted"
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  padding: "4px 6px",
+                  borderRadius: 6,
+                }}
+                onClick={() => navigate("/progress")}
+              >
+                ← Progress
+              </div>
+            </div>
+          </Section>
+    
+          {/* =====================================================================
+              Breadcrumb 4B — Page breadcrumb + header card
+             ================================================================== */}
+          <Section>
         <div className="card" style={{ marginBottom: 12, padding: 14 }}>
-          <div
-            className="muted"
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              marginBottom: 8,
-            }}
-          >
-            Progress / Strength
-          </div>
-
-          <h2 style={{ marginTop: 0, marginBottom: 8 }}>Strength</h2>
-
-          <div className="muted" style={{ lineHeight: 1.45 }}>
-            Estimated 1RM, trend snapshots, and lifting performance.
-          </div>
+        <div
+          className="muted"
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            marginBottom: 8,
+          }}
+        >
+          Progress / Strength
         </div>
+      
+        <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8 }}>Strength</div>
+      
+        <div className="muted" style={{ lineHeight: 1.45 }}>
+          Estimated 1RM, trend snapshots, and lifting performance.
+        </div>
+</div>
       </Section>
 
       {/* =====================================================================
           Breadcrumb 4B — Strength analytics content
          ================================================================== */}
       <Section>
-        <div className="card" style={{ padding: 14 }}>
-          <div style={{ fontWeight: 900, fontSize: 18 }}>Strength Index</div>
-          <div className="muted" style={{ marginTop: 6 }}>
-            Window: last <b>{windowDays}</b> days • Completed working sets only • e1RM{" "}
-            (Epley)
+                <div className="card" style={{ padding: 14 }}>
+	          <div
+	            className="muted"
+	            style={{
+	              fontSize: 12,
+	              fontWeight: 800,
+	              textTransform: "uppercase",
+	              letterSpacing: 0.5,
+	              marginBottom: 6,
+	            }}
+	          >
+	            Strength Analytics
+	          </div>
+	
+	          <div style={{ fontWeight: 900, fontSize: 22 }}>Strength Index</div>
+	
+	                    <div className="muted" style={{ marginTop: 6, lineHeight: 1.45 }}>
+		              Window: last <b>{windowDays}</b> days • Completed working sets only • e1RM (Epley)
+		            </div>
+		  
+		            <div className="muted" style={{ marginTop: 8, fontSize: 13, lineHeight: 1.45 }}>
+		              Relative Strength is the main signal during a cut. Absolute Strength helps show raw lifting progress, especially during maintain and bulk phases.
           </div>
 
           <hr style={{ marginTop: 12 }} />
@@ -326,12 +379,22 @@ export default function StrengthPage() {
           ) : (
             <>
               {/* ===================== Dashboard ===================== */}
-              <div style={{ fontWeight: 900, marginBottom: 8 }}>Dashboard</div>
+              <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>
+                Dashboard
+              </div>
 
-              <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
-                <div className="card" style={{ padding: 12, minWidth: 220, flex: 1 }}>
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    Mode
+              <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "stretch" }}>
+                <div className="card" style={{ padding: 12, minWidth: 220, flex: 1, minHeight: 170 }}>
+		    <div
+		      className="muted"
+		      style={{
+			fontSize: 12,
+			fontWeight: 800,
+			textTransform: "uppercase",
+			letterSpacing: 0.5,
+		      }}
+		    >
+		      Mode
                   </div>
 
                   <div
@@ -358,56 +421,88 @@ export default function StrengthPage() {
                     </button>
                   </div>
 
-                  <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>
-                    {modeHint(mode)}
+		    <div style={{ fontWeight: 900, fontSize: 18, marginTop: 10 }}>
+		      {mode === "cut"
+			? "Cut Lens"
+			: mode === "bulk"
+			  ? "Bulk Lens"
+			  : "Maintain Lens"}
+		    </div>
+
+		    <div className="muted" style={{ fontSize: 12, marginTop: 8, lineHeight: 1.45 }}>
+		      {modeHint(mode)}
                   </div>
                 </div>
 
-                <div className="card" style={{ padding: 12, minWidth: 220, flex: 1 }}>
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    Bodyweight (5-day avg)
+                <div className="card" style={{ padding: 12, minWidth: 220, flex: 1, minHeight: 170 }}>
+		    <div
+		      className="muted"
+		      style={{
+			fontSize: 12,
+			fontWeight: 800,
+			textTransform: "uppercase",
+			letterSpacing: 0.5,
+		      }}
+		    >
+		      Bodyweight
                   </div>
                   <div style={{ fontWeight: 900, fontSize: 22, marginTop: 6 }}>
                     {bwLabel === "—"
                       ? "—"
                       : bwLabel.replace(/\s*\(.*\)\s*$/, "")}
                   </div>
-                  <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                    Used for Relative Index • <b>{bwLabel}</b>
+		    <div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.4 }}>
+		      Strength uses a rolling 5-day average bodyweight for normalization • <b>{bwLabel}</b>
                   </div>
                   <div style={{ marginTop: 8 }}>
                     <Sparkline values={bwSeries} />
                   </div>
                 </div>
 
-                <div className="card" style={{ padding: 12, minWidth: 220, flex: 1 }}>
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    Relative Strength Index
+                <div className="card" style={{ padding: 12, minWidth: 220, flex: 1, minHeight:170 }}>
+		    <div
+		      className="muted"
+		      style={{
+			fontSize: 12,
+			fontWeight: 800,
+			textTransform: "uppercase",
+			letterSpacing: 0.5,
+		      }}
+		    >
+		      Relative Strength
                   </div>
                   <div style={{ fontWeight: 900, fontSize: 22, marginTop: 6 }}>
                     {Number.isFinite(Number(result.relativeIndex))
                       ? fmt2(result.relativeIndex)
                       : "—"}
                   </div>
-                  <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                    Best during cut (BW-normalized)
+		    <div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.4 }}>
+		      Bodyweight-normalized signal. This is the primary metric to watch during a cut.
                   </div>
                   <div style={{ marginTop: 8 }}>
                     <Sparkline values={relSeries} />
                   </div>
                 </div>
 
-                <div className="card" style={{ padding: 12, minWidth: 220, flex: 1 }}>
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    Absolute Strength Index
+                <div className="card" style={{ padding: 12, minWidth: 220, flex: 1, minHeight: 170 }}>
+		    <div
+		      className="muted"
+		      style={{
+			fontSize: 12,
+			fontWeight: 800,
+			textTransform: "uppercase",
+			letterSpacing: 0.5,
+		      }}
+		    >
+		      Absolute Strength
                   </div>
                   <div style={{ fontWeight: 900, fontSize: 22, marginTop: 6 }}>
                     {Number.isFinite(Number(result.absoluteIndex))
                       ? fmt0(result.absoluteIndex)
                       : "—"}
                   </div>
-                  <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                    Avg of best e1RM across squat/hinge/push/pull
+		    <div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.4 }}>
+		      Raw strength index across squat, hinge, push, and pull patterns.
                   </div>
                   <div style={{ marginTop: 8 }}>
                     <Sparkline values={absSeries} />
@@ -418,7 +513,9 @@ export default function StrengthPage() {
               <hr style={{ marginTop: 12 }} />
 
               {/* ===================== Pattern scores ===================== */}
-              <div style={{ fontWeight: 900, marginBottom: 8 }}>Pattern scores</div>
+              <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>
+                Pattern Scores
+              </div>
 
               <div style={{ display: "grid", gap: 8 }}>
                 {patterns.length ? (
@@ -453,18 +550,20 @@ export default function StrengthPage() {
                     </div>
                   ))
                 ) : (
-                  <div className="muted">No pattern scores yet.</div>
+		    <div className="muted">
+		      No pattern scores yet. Log completed working sets across your main lift patterns to build this section.
+                  </div>
                 )}
               </div>
 
               <hr style={{ marginTop: 12 }} />
 
-              {/* ===================== Shared chart proof ===================== */}
-              <div style={{ fontWeight: 900, marginBottom: 6 }}>
-                Relative Strength Trend
-              </div>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-                Shared chart component proof using weekly Relative Strength snapshots.
+	    {/* ===================== Relative strength chart ===================== */}
+	    <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 6 }}>
+	      Relative Strength Trend
+	    </div>
+	    <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+	      Weekly snapshots of bodyweight-normalized strength across your recent training history.
               </div>
 
               <TrendChartCard
@@ -491,12 +590,11 @@ export default function StrengthPage() {
               <hr style={{ marginTop: 12 }} />
 
               {/* ===================== Trend table ===================== */}
-              <div style={{ fontWeight: 900, marginBottom: 6 }}>
-                Trend (last 12 weeks)
+              <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 6 }}>
+	        Trend (Last 12 Weeks)
               </div>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-                Weekly snapshots • Same Strength Index rules • Relative is your cut
-                signal
+		    <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+		      Weekly snapshots using the same Strength Index rules. During a cut, Relative Strength is the primary signal.
               </div>
 
               <div className="card" style={{ padding: 0, overflow: "hidden" }}>
@@ -600,9 +698,8 @@ export default function StrengthPage() {
                 </table>
               </div>
 
-              <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>
-                Tip: During a cut, watch <b>Relative</b> first. If Relative stays flat
-                while BW trends down, you’re likely holding strength well.
+		    <div className="muted" style={{ marginTop: 10, fontSize: 12, lineHeight: 1.45 }}>
+		      Tip: During a cut, watch <b>Relative Strength</b> first. If it stays stable while bodyweight trends down, you are likely preserving strength well.
               </div>
             </>
           )}
