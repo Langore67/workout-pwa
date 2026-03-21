@@ -2,7 +2,7 @@
 /* ============================================================================
    BodyCompositionPage.tsx
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-15-BODYCOMP-07
+   BUILD_ID: 2026-03-20-BODYCOMP-08
    FILE: src/pages/BodyCompositionPage.tsx
 
    Purpose
@@ -32,6 +32,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
 import { db } from "../db";
 import { Page, Section } from "../components/Page.tsx";
+import HubPageHeader from "../components/layout/HubPageHeader";
 import TrendChartCard from "../components/charts/TrendChartCard";
 import PhaseQualityCard from "../components/phase/PhaseQualityCard";
 import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTypes";
@@ -458,26 +459,28 @@ function modeSummary(mode: Mode) {
    Breadcrumb 2 — Small reusable snapshot tile
    ============================================================================ */
 
-function SnapshotTile({
+function SnapshotRow({
   label,
   value,
   changeText,
   changeColor,
+  showDivider = true,
 }: {
   label: string;
   value: string;
   changeText: string;
   changeColor: string;
+  showDivider?: boolean;
 }) {
   return (
     <div
-      className="card"
       style={{
-        padding: 14,
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
-        minHeight: 72,
+        display: "grid",
+        gridTemplateColumns: "minmax(140px, 1fr) auto auto",
+        alignItems: "center",
+        gap: 12,
+        padding: "10px 0",
+        borderBottom: showDivider ? "1px solid var(--line)" : "none",
       }}
     >
       <div
@@ -486,7 +489,7 @@ function SnapshotTile({
           fontWeight: 700,
           letterSpacing: 0.6,
           color: "var(--muted)",
-          marginBottom: 6,
+          textTransform: "uppercase",
         }}
       >
         {label}
@@ -495,9 +498,12 @@ function SnapshotTile({
       <div
         style={{
           fontWeight: 900,
-          fontSize: 26,
+          fontSize: 17,
           lineHeight: 1.1,
-          letterSpacing: -0.3,
+          letterSpacing: -0.2,
+          color: "var(--text)",
+          textAlign: "right",
+          whiteSpace: "nowrap",
         }}
       >
         {value}
@@ -508,7 +514,9 @@ function SnapshotTile({
           fontSize: 12,
           fontWeight: 600,
           color: changeColor,
-          marginTop: 4,
+          textAlign: "right",
+          whiteSpace: "nowrap",
+          minWidth: 74,
         }}
       >
         {changeText}
@@ -516,6 +524,75 @@ function SnapshotTile({
     </div>
   );
 }
+
+function TargetRow({
+  label,
+  value,
+  remainingText,
+  showDivider = true,
+}: {
+  label: string;
+  value: string;
+  remainingText: string;
+  showDivider?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(140px, 1fr) auto auto",
+        alignItems: "center",
+        gap: 12,
+        padding: "10px 0",
+        borderBottom: showDivider ? "1px solid var(--line)" : "none",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: 0.6,
+          color: "var(--muted)",
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          fontWeight: 900,
+          fontSize: 17,
+          lineHeight: 1.1,
+          letterSpacing: -0.2,
+          color: "var(--text)",
+          textAlign: "right",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {value}
+      </div>
+
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: "var(--muted)",
+                textAlign: "right",
+                whiteSpace: "nowrap",
+                minWidth: 90,
+              }}
+            >
+              {remainingText === "—" ? "—" : `Remaining: ${remainingText}`}
+      </div>
+    </div>
+  );
+}
+
+
+
+
+
 
 /* ============================================================================
    Breadcrumb 3 — Page
@@ -976,82 +1053,72 @@ export default function BodyCompositionPage() {
      Breadcrumb 4 — Render
      ========================================================================== */
 
-  return (
-    <Page title="Body Composition">
-      {/* =====================================================================
-          Breadcrumb 4A — Compact top header
-         ================================================================== */}
-      <Section>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 6,
-          }}
-        >
-          <h2 style={{ margin: 0 }}>Body Composition</h2>
-
-          <div
-            className="muted"
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: "pointer",
-              padding: "4px 6px",
-              borderRadius: 6,
-            }}
-            onClick={() => navigate("/progress")}
-          >
-            ← Progress
-          </div>
-        </div>
-      </Section>
-
-      {/* =====================================================================
-          Breadcrumb 4B — Breadcrumb header card
-         ================================================================== */}
-      <Section>
-        <div className="card" style={{ marginBottom: 12, padding: 14 }}>
-          <div
-            className="muted"
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              marginBottom: 8,
-            }}
-          >
-            Progress / Body Composition
-          </div>
-
-          <div className="muted" style={{ lineHeight: 1.45 }}>
-            Weight, waist, and body-composition trends across cut, maintain, and bulk phases.
-          </div>
-
-          <div
-            className="muted"
-            style={{
-              marginTop: 10,
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-            onClick={() => navigate("/body")}
-          >
-            Open Body Metrics →
-          </div>
-        </div>
+    return (
+     <Page>
+            {/* =====================================================================
+                Breadcrumb 4A + 4B — Shared hub header + quick link
+               ================================================================== */}
+            <Section>
+              <HubPageHeader
+                hubLabel="Progress"
+                hubRoute="/progress"
+                pageTitle="Body Composition"
+                subtitle="Weight, waist, and body-composition trends across cut, maintain, and bulk phases."
+                showDetailCard={true}
+              />
+            </Section>
+      
+            <Section>
+              <div className="card" style={{ marginBottom: 12, padding: 12 }}>
+                <div
+                  className="muted"
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    marginBottom: 6,
+                  }}
+                >
+                  BODY ENTRY
+                </div>
+      
+                <div
+                  className="muted"
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                  onClick={() => navigate("/body")}
+                >
+                  Log or review body metrics →
+                </div>
+              </div>
       </Section>
 
       {/* =====================================================================
           Breadcrumb 4C — Phase toggle
          ================================================================== */}
       <Section>
-        <div className="card" style={{ padding: 12, marginBottom: 12 }}>
-          <div style={{ fontWeight: 900, marginBottom: 10 }}>Phase</div>
+	<div className="card" style={{ padding: 12, marginBottom: 12 }}>
+	  <div
+	    className="muted"
+	    style={{
+	      fontSize: 12,
+	      fontWeight: 800,
+	      textTransform: "uppercase",
+	      letterSpacing: 0.5,
+	      marginBottom: 6,
+	    }}
+	  >
+	    Phase
+	  </div>
+
+	  <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>
+	    Body Composition Lens
+          </div>
 
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
             <button
@@ -1079,86 +1146,89 @@ export default function BodyCompositionPage() {
             {/* =====================================================================
                 Breadcrumb 4D — Goal targets
                ================================================================== */}
-            <Section>
-              <div className="card" style={{ padding: 12, marginBottom: 12 }}>
-                <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
-                  GOAL TARGETS
-                </div>
-      
-                <div className="grid two">
-                  <div className="card">
-                    <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
-                      TARGET WEIGHT
-                    </div>
-                    <div style={{ fontWeight: 900, fontSize: 22 }}>
-                      {formatLbs(latestSnapshot.targetWeightLb)}
-                    </div>
-                    <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
-                      Remaining: {formatRemaining(latestSnapshot.remainingWeightLb, "lb")}
-                    </div>
-                  </div>
-      
-                  <div className="card">
-                    <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
-                      TARGET BF %
-                    </div>
-                    <div style={{ fontWeight: 900, fontSize: 22 }}>
-                      {formatBodyFatPct(latestSnapshot.targetBodyFatPct)}
-                    </div>
-                    <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
-                      Remaining: {formatRemaining(latestSnapshot.remainingCorrectedBfPct, "%")}
-                    </div>
-                  </div>
-                </div>
-              </div>
+                  <Section>
+	            <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+	              <div
+	                className="muted"
+	                style={{
+	                  fontSize: 12,
+	                  fontWeight: 800,
+	                  textTransform: "uppercase",
+	                  letterSpacing: 0.5,
+	                  marginBottom: 8,
+	                }}
+	              >
+	                Goal Targets
+	              </div>
+	    
+	              <div className="card" style={{ padding: "0 14px" }}>
+	                <TargetRow
+	                  label="Target Weight"
+	                  value={formatLbs(latestSnapshot.targetWeightLb)}
+	                  remainingText={formatRemaining(latestSnapshot.remainingWeightLb, "lb")}
+	                />
+	    
+	                <TargetRow
+	                  label="Target BF %"
+	                  value={formatBodyFatPct(latestSnapshot.targetBodyFatPct)}
+	                  remainingText={formatRemaining(latestSnapshot.remainingCorrectedBfPct, "%")}
+	                  showDivider={false}
+	                />
+	              </div>
+	            </div>
       </Section>
-      
-      
-      
-      
-      
 
       {/* =====================================================================
           Breadcrumb 4E — Latest snapshot strip
          ================================================================== */}
       <Section>
-        <div className="card" style={{ padding: 12, marginBottom: 12 }}>
-          <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
-            LATEST SNAPSHOT
+	<div className="card" style={{ padding: 12, marginBottom: 12 }}>
+	  <div
+	    className="muted"
+	    style={{
+	      fontSize: 12,
+	      fontWeight: 800,
+	      textTransform: "uppercase",
+	      letterSpacing: 0.5,
+	      marginBottom: 8,
+	    }}
+	  >
+	    Latest Snapshot
           </div>
 
           <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
             Most recent available body-composition metrics • {latestSnapshot.date}
           </div>
 
-          <div className="grid two">
-            <SnapshotTile
-              label="WEIGHT"
-              value={formatLbs(latestSnapshot.weight)}
-              changeText={formatChange(latestSnapshot.weightChange)}
-              changeColor={getChangeColor(latestSnapshot.weightChange, "lower-is-better")}
-            />
-
-            <SnapshotTile
-              label="WAIST"
-              value={formatInches(latestSnapshot.waist)}
-              changeText={formatChange(latestSnapshot.waistChange)}
-              changeColor={getChangeColor(latestSnapshot.waistChange, "lower-is-better")}
-            />
-
-            <SnapshotTile
-	      label="CORRECTED BF %"
-              value={formatBodyFatPct(latestSnapshot.correctedBodyFatPct)}
-	      changeText={formatChange(latestSnapshot.correctedBfChange)}
-	      changeColor={getChangeColor(latestSnapshot.correctedBfChange, "lower-is-better")}
-            />
-
-            <SnapshotTile
-	      label="CORRECTED LEAN"
-	      value={formatLbs(latestSnapshot.correctedLeanMass)}
-	      changeText={formatChange(latestSnapshot.correctedLeanChange)}
-	      changeColor={getChangeColor(latestSnapshot.correctedLeanChange, "higher-is-better")}
-            />
+                    <div className="card" style={{ padding: "0 14px" }}>
+	              <SnapshotRow
+	                label="Weight"
+	                value={formatLbs(latestSnapshot.weight)}
+	                changeText={formatChange(latestSnapshot.weightChange)}
+	                changeColor={getChangeColor(latestSnapshot.weightChange, "lower-is-better")}
+	              />
+	  
+	              <SnapshotRow
+	                label="Waist"
+	                value={formatInches(latestSnapshot.waist)}
+	                changeText={formatChange(latestSnapshot.waistChange)}
+	                changeColor={getChangeColor(latestSnapshot.waistChange, "lower-is-better")}
+	              />
+	  
+	              <SnapshotRow
+	                label="Corrected BF %"
+	                value={formatBodyFatPct(latestSnapshot.correctedBodyFatPct)}
+	                changeText={formatChange(latestSnapshot.correctedBfChange)}
+	                changeColor={getChangeColor(latestSnapshot.correctedBfChange, "lower-is-better")}
+	              />
+	  
+	              <SnapshotRow
+	                label="Corrected Lean"
+	                value={formatLbs(latestSnapshot.correctedLeanMass)}
+	                changeText={formatChange(latestSnapshot.correctedLeanChange)}
+	                changeColor={getChangeColor(latestSnapshot.correctedLeanChange, "higher-is-better")}
+	                showDivider={false}
+	              />
           </div>
         </div>
       </Section>
@@ -1167,7 +1237,7 @@ export default function BodyCompositionPage() {
           Breadcrumb 4F — Coaching signals
          ================================================================== */}
       <Section>
-        <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>Coaching signals</div>
+        <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>Coaching Signals</div>
         <div className="muted" style={{ marginBottom: 12 }}>
           Interpret the current phase before reading the deeper trend charts.
         </div>
@@ -1262,10 +1332,10 @@ export default function BodyCompositionPage() {
 
 
       {/* =====================================================================
-          Breadcrumb 4G — Trend charts
+          Breadcrumb 4H — Trend charts
          ================================================================== */}
       <Section>
-        <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>Trend snapshots</div>
+         <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>Trend Snapshots</div>
         <div className="muted" style={{ marginBottom: 12 }}>
           Start with the highest-value body metrics: scale weight, waist, body fat %, fat mass,
           and lean mass.
