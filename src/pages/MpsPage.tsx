@@ -102,11 +102,12 @@ type MpsModel = {
     /* ------------------------------------------------------------------------
        Readiness / confidence support
        ------------------------------------------------------------------------ */
-    waistEntryCount?: number;
-    waistTargetCount?: number;
-    waistEntriesNeeded?: number;
-    confidenceLabel?: string;
-   };
+      waistEntryCount?: number;
+      waistTargetCount?: number;
+      waistEntriesNeeded?: number;
+      confidenceScore?: number;
+      confidenceLabel?: string;
+     };
 
 /* ============================================================================
    Breadcrumb 2 — Constants / helpers
@@ -325,17 +326,72 @@ function buildMpsModel(args: {
     const hasWeight = Number.isFinite(weightNow) && Number.isFinite(weightPrev14);
     const hasWaist = Number.isFinite(waistNow) && Number.isFinite(waistPrev14);
   
-    const waistTarget = waistTargetCount ?? 14;
-    const waistCount = waistEntryCount ?? 0;
-    const waistNeeded = Math.max(0, waistTarget - waistCount);
-  
-    const confidenceLabel =
-      waistCount >= waistTarget
-        ? "Strong"
-        : waistCount >= 10
-        ? "Moderate"
-        : waistCount >= 4
-        ? "Building"
+      const waistTarget = waistTargetCount ?? 14;
+      const waistCount = waistEntryCount ?? 0;
+      const waistNeeded = Math.max(0, waistTarget - waistCount);
+    
+      /* ------------------------------------------------------------------------
+         Confidence model
+         ------------------------------------------------------------------------
+         What confidence means here
+         - Confidence reflects how trustworthy the current MPS readout is
+         - It is driven by:
+           1) waist-history completeness
+           2) weight comparison availability
+           3) strength comparison availability
+           4) signal coherence across weight / waist / strength
+         ------------------------------------------------------------------------ */
+    
+      const waistReadiness = Math.min(1, waistTarget > 0 ? waistCount / waistTarget : 0);
+    
+      const weightDataReady =
+        Number.isFinite(weightNow) && Number.isFinite(weightPrev14) ? 1 : 0;
+    
+      const strengthDataReady =
+        Number.isFinite(normalizedStrengthNow) &&
+        Number.isFinite(normalizedStrengthPrev14) &&
+        Number.isFinite(normalizedBest90)
+          ? 1
+          : 0;
+    
+      let coherenceScore = 0;
+    
+      if (weightDataReady && strengthDataReady && hasWaist) {
+        const strengthStableOrUp = (normalizedDelta14Pct ?? -999) >= -1.5;
+        const strengthClearlyDown = (normalizedDelta14Pct ?? -999) < -1.5;
+        const weightDown = (weightDelta14 ?? 999) < 0;
+        const waistDown = (waistDelta14 ?? 999) < 0;
+        const waistFlatOrDown = (waistDelta14 ?? 999) <= 0;
+    
+        if (weightDown && waistDown && strengthStableOrUp) {
+          coherenceScore = 1;
+        } else if (weightDown && waistFlatOrDown && strengthStableOrUp) {
+          coherenceScore = 0.8;
+        } else if (weightDown && strengthClearlyDown) {
+          coherenceScore = 0.35;
+        } else {
+          coherenceScore = 0.55;
+        }
+      } else if (weightDataReady || strengthDataReady) {
+        coherenceScore = 0.4;
+      } else {
+        coherenceScore = 0;
+      }
+    
+      const confidenceScore = Math.round(
+        waistReadiness * 40 +
+          weightDataReady * 20 +
+          strengthDataReady * 25 +
+          coherenceScore * 15
+      );
+    
+      const confidenceLabel =
+        confidenceScore >= 85
+          ? "Strong"
+          : confidenceScore >= 65
+          ? "Moderate"
+          : confidenceScore >= 40
+          ? "Building"
       : "Low";
 
       if (!hasStrength || !hasWeight) {
@@ -363,9 +419,10 @@ function buildMpsModel(args: {
           bodyFatDelta14,
           heightIn,
           waistToHeightRatio,
-          waistEntryCount: waistCount,
-          waistTargetCount: waistTarget,
-          waistEntriesNeeded: waistNeeded,
+	  waistEntryCount: waistCount,
+	  waistTargetCount: waistTarget,
+	  waistEntriesNeeded: waistNeeded,
+	  confidenceScore,
           confidenceLabel,
         };
   }
@@ -396,8 +453,9 @@ function buildMpsModel(args: {
         heightIn,
         waistToHeightRatio,
         waistEntryCount: waistCount,
-        waistTargetCount: waistTarget,
-        waistEntriesNeeded: waistNeeded,
+	waistTargetCount: waistTarget,
+	waistEntriesNeeded: waistNeeded,
+	confidenceScore,
         confidenceLabel,
       };
   }
@@ -447,11 +505,16 @@ function buildMpsModel(args: {
       leanMassNow,
       leanMassPrev14,
       leanMassDelta14,
-      bodyFatNow,
-      bodyFatPrev14,
-      bodyFatDelta14,
-      heightIn,
-      waistToHeightRatio,
+	bodyFatNow,
+	bodyFatPrev14,
+	bodyFatDelta14,
+	heightIn,
+	waistToHeightRatio,
+	waistEntryCount: waistCount,
+	waistTargetCount: waistTarget,
+	waistEntriesNeeded: waistNeeded,
+	confidenceScore,
+	confidenceLabel,
     };
   }
 
@@ -476,11 +539,16 @@ function buildMpsModel(args: {
       leanMassNow,
       leanMassPrev14,
       leanMassDelta14,
-      bodyFatNow,
-      bodyFatPrev14,
-      bodyFatDelta14,
-      heightIn,
-      waistToHeightRatio,
+            bodyFatNow,
+            bodyFatPrev14,
+            bodyFatDelta14,
+            heightIn,
+            waistToHeightRatio,
+            waistEntryCount: waistCount,
+            waistTargetCount: waistTarget,
+            waistEntriesNeeded: waistNeeded,
+            confidenceScore,
+            confidenceLabel,
     };
   }
 
@@ -504,11 +572,16 @@ function buildMpsModel(args: {
     leanMassNow,
     leanMassPrev14,
     leanMassDelta14,
-    bodyFatNow,
-    bodyFatPrev14,
-    bodyFatDelta14,
-    heightIn,
-    waistToHeightRatio,
+        bodyFatNow,
+        bodyFatPrev14,
+        bodyFatDelta14,
+        heightIn,
+        waistToHeightRatio,
+        waistEntryCount: waistCount,
+        waistTargetCount: waistTarget,
+        waistEntriesNeeded: waistNeeded,
+        confidenceScore,
+        confidenceLabel,
   };
 }
 
@@ -732,38 +805,14 @@ export default function MpsPage() {
            {/* ======================================================================
                Breadcrumb 6A — Progress-system page header
               ==================================================================== */}
-	 <HubPageHeader
-	   hubLabel="Progress"
-	   hubRoute="/progress"
-	   pageTitle="Muscle Preservation"
-	   subtitle="Strength signal during fat loss, using MPS and body trends."
-	   layout="compact"
+	       <HubPageHeader
+	         hubLabel="Progress"
+	         hubRoute="/progress"
+	         pageTitle="Muscle Preservation"
+	         subtitle="Strength signal during fat loss, using MPS and body trends."
       />
 
-      {/* ======================================================================
-          Breadcrumb 6B — Existing page header
-         ==================================================================== */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div
-          style={{
-            fontSize: 12,
-            fontWeight: 800,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: "var(--muted)",
-            marginBottom: 6,
-          }}
-        >
-          Cut Quality Signal
-        </div>
-
-        <h2 style={{ marginTop: 0, marginBottom: 8 }}>Muscle Preservation</h2>
-
-        <div className="muted" style={{ lineHeight: 1.45 }}>
-          Evaluates whether body weight is dropping while normalized strength is being preserved.
-        </div>
-      </div>
-
+      
             {/* ======================================================================
                 Breadcrumb 6C — Status card
                ==================================================================== */}
@@ -811,8 +860,8 @@ export default function MpsPage() {
                 </div>
               ) : model?.state === "partial" ? (
                 <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700 }}>
-                    Confidence: {model?.confidenceLabel ?? "Building"}
+                   <div style={{ fontSize: 14, fontWeight: 700 }}>
+		   Confidence: {model?.confidenceScore ?? 0}% ({model?.confidenceLabel ?? "Low"})
                   </div>
       
                   <div style={{ fontSize: 16, fontWeight: 800 }}>

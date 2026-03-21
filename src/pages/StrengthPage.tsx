@@ -1,7 +1,7 @@
 // src/pages/StrengthPage.tsx
 /* ========================================================================== */
 /*  StrengthPage.tsx                                                          */
-/*  BUILD_ID: 2026-03-17-STRENGTHPAGE-07                                      */
+/*  BUILD_ID: 2026-03-17-STRENGTHPAGE-08                                      */
 /*  FILE: src/pages/StrengthPage.tsx                                          */
 /* -------------------------------------------------------------------------- */
 /*  Purpose                                                                   */
@@ -24,6 +24,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Page, Section } from "../components/Page.tsx";
+import HubPageHeader from "../components/layout/HubPageHeader";
 import {
   computeStrengthIndex,
   computeStrengthTrend,
@@ -146,9 +147,9 @@ function saveMode(m: Mode) {
 }
 
 function modeHint(mode: Mode) {
-  if (mode === "cut") return "Cut: Relative Index is your signal (BW-normalized).";
-  if (mode === "bulk") return "Bulk: Absolute Index usually climbs first; Relative may drift.";
-  return "Maintain: Expect slower changes; watch consistency across patterns.";
+  if (mode === "cut") return "Cut: Relative Index is the main signal because it is bodyweight-normalized.";
+  if (mode === "bulk") return "Bulk: Absolute Index often climbs first, while Relative may drift as bodyweight rises.";
+  return "Maintain: Expect slower changes and look for consistency across patterns.";
 }
 
 /* ========================================================================== */
@@ -259,41 +260,44 @@ export default function StrengthPage() {
     [],
   );
 
-  return (
-    <Page title="Strength">
-      {/* =====================================================================
-          Breadcrumb 4A — Progress-system page header
-         ================================================================== */}
-      <Section>
-        <div className="card" style={{ marginBottom: 12, padding: 14 }}>
-          <div
-            className="muted"
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              marginBottom: 8,
-            }}
-          >
-            Progress / Strength
-          </div>
-
-          <h2 style={{ marginTop: 0, marginBottom: 8 }}>Strength</h2>
-
-          <div className="muted" style={{ lineHeight: 1.45 }}>
-            Estimated 1RM, trend snapshots, and lifting performance.
-          </div>
-        </div>
+    return (
+    <Page>
+	{/* =====================================================================
+	Breadcrumb 4A — Shared hub header
+	================================================================== */}
+	<Section>
+	  <HubPageHeader
+	    hubLabel="Progress"
+	    hubRoute="/progress"
+	    pageTitle="Strength"
+	    subtitle="Estimated 1RM, trend snapshots, pattern scores, and lifting performance."
+	    showDetailCard={true}
+	/>
       </Section>
 
       {/* =====================================================================
           Breadcrumb 4B — Strength analytics content
          ================================================================== */}
       <Section>
-        <div className="card" style={{ padding: 14 }}>
-          <div style={{ fontWeight: 900, fontSize: 18 }}>Strength Index</div>
-          <div className="muted" style={{ marginTop: 6 }}>
-            Window: last <b>{windowDays}</b> days • Completed working sets only • e1RM{" "}
-            (Epley)
+               <div className="card" style={{ padding: 14 }}>
+                 <div
+                   className="muted"
+                   style={{
+                     fontSize: 12,
+                     fontWeight: 800,
+                     textTransform: "uppercase",
+                     letterSpacing: 0.5,
+                     marginBottom: 6,
+                   }}
+                 >
+                   Strength Analytics
+                 </div>
+       
+                 <div style={{ fontWeight: 900, fontSize: 22 }}>Strength Index</div>
+       
+                 <div className="muted" style={{ marginTop: 6, lineHeight: 1.45 }}>
+                   Window: last <b>{windowDays}</b> days • Completed working sets only • e1RM
+                   (Epley)
           </div>
 
           <hr style={{ marginTop: 12 }} />
@@ -326,7 +330,9 @@ export default function StrengthPage() {
           ) : (
             <>
               {/* ===================== Dashboard ===================== */}
-              <div style={{ fontWeight: 900, marginBottom: 8 }}>Dashboard</div>
+                <div style={{ fontWeight: 900, marginBottom: 8, fontSize: 16 }}>
+	          Dashboard
+                </div>
 
               <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
                 <div className="card" style={{ padding: 12, minWidth: 220, flex: 1 }}>
@@ -418,7 +424,9 @@ export default function StrengthPage() {
               <hr style={{ marginTop: 12 }} />
 
               {/* ===================== Pattern scores ===================== */}
-              <div style={{ fontWeight: 900, marginBottom: 8 }}>Pattern scores</div>
+               <div style={{ fontWeight: 900, marginBottom: 8, fontSize: 16 }}>
+	         Pattern Scores
+               </div>
 
               <div style={{ display: "grid", gap: 8 }}>
                 {patterns.length ? (
@@ -460,8 +468,8 @@ export default function StrengthPage() {
               <hr style={{ marginTop: 12 }} />
 
               {/* ===================== Shared chart proof ===================== */}
-              <div style={{ fontWeight: 900, marginBottom: 6 }}>
-                Relative Strength Trend
+                            <div style={{ fontWeight: 900, marginBottom: 6, fontSize: 16 }}>
+	                      Relative Strength Trend
               </div>
               <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
                 Shared chart component proof using weekly Relative Strength snapshots.
@@ -491,9 +499,9 @@ export default function StrengthPage() {
               <hr style={{ marginTop: 12 }} />
 
               {/* ===================== Trend table ===================== */}
-              <div style={{ fontWeight: 900, marginBottom: 6 }}>
-                Trend (last 12 weeks)
-              </div>
+               <div style={{ fontWeight: 900, marginBottom: 6, fontSize: 16 }}>
+	        Trend (Last 12 Weeks)
+               </div>
               <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
                 Weekly snapshots • Same Strength Index rules • Relative is your cut
                 signal

@@ -2,7 +2,7 @@
 /* ============================================================================
    App.tsx — Routes + Safety Error Boundary + Top Nav "More" menu
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-15-APP-ROUTES-08
+   BUILD_ID: 2026-03-15-APP-ROUTES-09
    FILE: src/App.tsx
 
    Changes (APP-ROUTES-08)
@@ -36,9 +36,10 @@ import LogsPage from "./pages/LogsPage";
 import ProgressPage from "./pages/ProgressPage";
 import MpsPage from "./pages/MpsPage";
 import PasteWorkoutPage from "./pages/PasteWorkoutPage";
+
 import PerformanceDashboardPage from "./pages/PerformanceDashboardPage";
 import ProfilePage from "./pages/ProfilePage";
-
+import AboutPage from "./pages/AboutPage";
 /* ============================================================================
    Breadcrumb 1 — Runtime switches
    ============================================================================ */
@@ -244,19 +245,39 @@ function TopNav() {
                 Export
               </NavLink>
 
-              <NavLink
-                to="/help"
-                className={({ isActive }) => (isActive ? "active" : "")}
-                onClick={closeMore}
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: 8,
-                }}
-              >
-                Help
-              </NavLink>
+		    <NavLink
+		      to="/help"
+		      className={({ isActive }) => (isActive ? "active" : "")}
+		      onClick={closeMore}
+		      style={{
+			padding: "8px 10px",
+			borderRadius: 8,
+		      }}
+		    >
+		      Help
+		    </NavLink>
 
-              {import.meta.env.DEV && (
+		    <NavLink
+		      to="/about"
+		      className={({ isActive }) => (isActive ? "active" : "")}
+		      onClick={closeMore}
+		      style={{
+			padding: "8px 10px",
+			borderRadius: 8,
+		      }}
+		    >
+		      About
+              </NavLink>
+             
+             
+             
+             
+             
+             
+             
+             
+             
+             {import.meta.env.DEV && (
                 <NavLink
                   to="/Dev"
                   className={({ isActive }) => (isActive ? "active" : "")}
@@ -326,10 +347,11 @@ export default function App() {
                 Breadcrumb 4E — Utilities
                ================================================================= */}
             <Route path="/help" element={<HelpPage />} />
-            <Route path="/logs" element={<LogsPage />} />
-            <Route path="/import" element={<ImportCsvPage />} />
-            <Route path="/export" element={<ExportPage />} />
-            <Route path="/paste-workout" element={<PasteWorkoutPage />} />
+	    <Route path="/about" element={<AboutPage />} />
+	    <Route path="/logs" element={<LogsPage />} />
+	    <Route path="/import" element={<ImportCsvPage />} />
+	    <Route path="/export" element={<ExportPage />} />
+	    <Route path="/paste-workout" element={<PasteWorkoutPage />} />
             <Route path="/profile" element={<ProfilePage />} />
 
             {/* =================================================================
