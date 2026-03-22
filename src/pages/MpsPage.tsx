@@ -320,7 +320,10 @@ function buildMpsModel(args: {
       Number.isFinite(normalizedBest90);
   
     const hasWeight = Number.isFinite(weightNow) && Number.isFinite(weightPrev14);
-    const hasWaist = Number.isFinite(waistNow) && Number.isFinite(waistPrev14);
+    const hasWaist =
+      Number.isFinite(waistNow) && Number.isFinite(waistPrev14);
+    
+      const waistReady = waistEntryCount >= 10;
   
       const waistTarget = waistTargetCount ?? 14;
       const waistCount = waistEntryCount ?? 0;
@@ -381,53 +384,64 @@ function buildMpsModel(args: {
           coherenceScore * 15
       );
     
-      const confidenceLabel =
-        confidenceScore >= 85
-          ? "Strong"
-          : confidenceScore >= 65
-          ? "Moderate"
-          : confidenceScore >= 40
-          ? "Building"
-      : "Low";
+            const confidenceLabel =
+              confidenceScore >= 85
+                ? "Strong"
+                : confidenceScore >= 65
+                ? "Moderate"
+                : confidenceScore >= 40
+                ? "Building"
+                : "Low";
+      
+            const partialScoreMissingCore = Math.min(confidenceScore, 24);
+            const partialLabelMissingCore = "Low";
+      
+            const partialScoreMissingWaist = Math.min(
+              Math.round(waistReadiness * 35 + weightDataReady * 20 + strengthDataReady * 20),
+              39,
+            );
+      
+            const partialLabelMissingWaist =
+        partialScoreMissingWaist >= 25 ? "Building" : "Low";
 
-      if (!hasStrength || !hasWeight) {
-        return {
-          state: "partial",
-          title: "Partial Signal",
-          note: "Not enough strength or body-weight history yet to compute a reliable preservation signal.",
-          badCut: false,
-          normalizedStrengthNow,
-          normalizedStrengthPrev14,
-          normalizedDelta14Pct,
-          normalizedBest90,
-          normalizedVsBest90Pct,
-          weightNow,
-          weightPrev14,
-          weightDelta14,
-          waistNow,
-          waistPrev14,
-          waistDelta14,
-          leanMassNow,
-          leanMassPrev14,
-          leanMassDelta14,
-          bodyFatNow,
-          bodyFatPrev14,
-          bodyFatDelta14,
-          heightIn,
-          waistToHeightRatio,
-	  waistEntryCount: waistCount,
-	  waistTargetCount: waistTarget,
-	  waistEntriesNeeded: waistNeeded,
-	  confidenceScore,
-          confidenceLabel,
-        };
-  }
+            if (!hasStrength || !hasWeight) {
+              return {
+                state: "partial",
+                title: "Partial Signal",
+                note: "Not enough strength or body-weight history yet to compute a reliable preservation signal.",
+                badCut: false,
+                normalizedStrengthNow,
+                normalizedStrengthPrev14,
+                normalizedDelta14Pct,
+                normalizedBest90,
+                normalizedVsBest90Pct,
+                weightNow,
+                weightPrev14,
+                weightDelta14,
+                waistNow,
+                waistPrev14,
+                waistDelta14,
+                leanMassNow,
+                leanMassPrev14,
+                leanMassDelta14,
+                bodyFatNow,
+                bodyFatPrev14,
+                bodyFatDelta14,
+                heightIn,
+                waistToHeightRatio,
+                waistEntryCount: waistCount,
+                waistTargetCount: waistTarget,
+                waistEntriesNeeded: waistNeeded,
+                confidenceScore: partialScoreMissingCore,
+                confidenceLabel: partialLabelMissingCore,
+              };
+      }
 
-    if (!hasWaist) {
+    if (!waistReady) {
       return {
         state: "partial",
         title: "Partial Signal",
-        note: "Waist history is still building. Current waist data exists, but there is not yet enough older waist history to support the 14-day comparison.",
+        note: "Waist history is still building. Trend visibility is improving, but more data will increase confidence in the signal.",
         badCut: false,
         normalizedStrengthNow,
         normalizedStrengthPrev14,
@@ -467,6 +481,16 @@ function buildMpsModel(args: {
   const waistNotImproving = (waistDelta14 ?? -999) >= 0;
 
   const leanMassDown = (leanMassDelta14 ?? 999) < 0;
+  
+  let signalQuality: "clear" | "mixed" | "weak" = "weak";
+  
+  if (weightDown && waistDown && strengthUpOrFlat) {
+    signalQuality = "clear";
+  } else if (strengthUpOrFlat || weightDown || waistFlatOrDown) {
+    signalQuality = "mixed";
+  } else {
+    signalQuality = "weak";
+ }
 
   const badCut =
     weightDown &&
@@ -480,94 +504,131 @@ function buildMpsModel(args: {
       "Bad cut signal: body weight is dropping, but normalized strength is falling and waist is not improving. Lean tissue or recovery may be taking the hit.";
   }
 
-  if (weightDown && waistDown && strengthUpOrFlat && !farBelowBest90) {
-    return {
-      state: "green",
-      title: "Preserved",
-      note: "Weight and waist are down while normalized strength is stable to rising. Muscle is likely being preserved.",
-      badCut,
-      badCutNote,
-      normalizedStrengthNow,
-      normalizedStrengthPrev14,
-      normalizedDelta14Pct,
-      normalizedBest90,
-      normalizedVsBest90Pct,
-      weightNow,
-      weightPrev14,
-      weightDelta14,
-      waistNow,
-      waistPrev14,
-      waistDelta14,
-      leanMassNow,
-      leanMassPrev14,
-      leanMassDelta14,
-	bodyFatNow,
-	bodyFatPrev14,
-	bodyFatDelta14,
-	heightIn,
-	waistToHeightRatio,
-	waistEntryCount: waistCount,
-	waistTargetCount: waistTarget,
-	waistEntriesNeeded: waistNeeded,
-	confidenceScore,
-	confidenceLabel,
-    };
-  }
-
-  if (weightDown && waistFlatOrDown && strengthSlightlyDown && !badCut) {
-    return {
-      state: "yellow",
-      title: "Monitor",
-      note: "Weight is down and waist is not worsening, but normalized strength slipped slightly. Monitor recovery, protein, and training quality.",
-      badCut,
-      badCutNote,
-      normalizedStrengthNow,
-      normalizedStrengthPrev14,
-      normalizedDelta14Pct,
-      normalizedBest90,
-      normalizedVsBest90Pct,
-      weightNow,
-      weightPrev14,
-      weightDelta14,
-      waistNow,
-      waistPrev14,
-      waistDelta14,
-      leanMassNow,
-      leanMassPrev14,
-      leanMassDelta14,
-            bodyFatNow,
-            bodyFatPrev14,
-            bodyFatDelta14,
-            heightIn,
-            waistToHeightRatio,
-            waistEntryCount: waistCount,
-            waistTargetCount: waistTarget,
-            waistEntriesNeeded: waistNeeded,
-            confidenceScore,
-            confidenceLabel,
-    };
-  }
-
-  return {
-    state: "red",
-    title: "At Risk",
-    note: "Normalized strength is falling without a clear waist improvement signal. This cut may be risking lean tissue or recovery capacity.",
-    badCut,
-    badCutNote,
-    normalizedStrengthNow,
-    normalizedStrengthPrev14,
-    normalizedDelta14Pct,
-    normalizedBest90,
-    normalizedVsBest90Pct,
-    weightNow,
-    weightPrev14,
-    weightDelta14,
-    waistNow,
-    waistPrev14,
-    waistDelta14,
-    leanMassNow,
-    leanMassPrev14,
-    leanMassDelta14,
+      if (weightDown && waistDown && strengthUpOrFlat && !farBelowBest90) {
+        return {
+          state: "green",
+          title: "Preserved",
+          note: "Weight and waist are down while normalized strength is stable to rising. Muscle is likely being preserved.",
+          badCut,
+          badCutNote,
+          normalizedStrengthNow,
+          normalizedStrengthPrev14,
+          normalizedDelta14Pct,
+          normalizedBest90,
+          normalizedVsBest90Pct,
+          weightNow,
+          weightPrev14,
+          weightDelta14,
+          waistNow,
+          waistPrev14,
+          waistDelta14,
+          leanMassNow,
+          leanMassPrev14,
+          leanMassDelta14,
+          bodyFatNow,
+          bodyFatPrev14,
+          bodyFatDelta14,
+          heightIn,
+          waistToHeightRatio,
+          waistEntryCount: waistCount,
+          waistTargetCount: waistTarget,
+          waistEntriesNeeded: waistNeeded,
+          confidenceScore,
+          confidenceLabel,
+        };
+      }
+    
+      if (weightDown && waistFlatOrDown && strengthSlightlyDown && !badCut) {
+        return {
+          state: "yellow",
+          title: "Monitor",
+          note: "Weight is down and waist is not worsening, but normalized strength slipped slightly. Monitor recovery, protein, and training quality.",
+          badCut,
+          badCutNote,
+          normalizedStrengthNow,
+          normalizedStrengthPrev14,
+          normalizedDelta14Pct,
+          normalizedBest90,
+          normalizedVsBest90Pct,
+          weightNow,
+          weightPrev14,
+          weightDelta14,
+          waistNow,
+          waistPrev14,
+          waistDelta14,
+          leanMassNow,
+          leanMassPrev14,
+          leanMassDelta14,
+          bodyFatNow,
+          bodyFatPrev14,
+          bodyFatDelta14,
+          heightIn,
+          waistToHeightRatio,
+          waistEntryCount: waistCount,
+          waistTargetCount: waistTarget,
+          waistEntriesNeeded: waistNeeded,
+          confidenceScore,
+          confidenceLabel,
+        };
+      }
+    
+      if (strengthUpOrFlat && !badCut) {
+        return {
+          state: "yellow",
+          title: "Monitor",
+          note:
+	    signalQuality === "mixed"
+              ? "Strength is holding and weight is trending down, but waist confirmation is still unclear. You're close—watch waist trend."
+              : "Signals are weak or inconsistent. Monitor recovery, nutrition, and measurement consistency.",
+          badCut,
+          badCutNote,
+          normalizedStrengthNow,
+          normalizedStrengthPrev14,
+          normalizedDelta14Pct,
+          normalizedBest90,
+          normalizedVsBest90Pct,
+          weightNow,
+          weightPrev14,
+          weightDelta14,
+          waistNow,
+          waistPrev14,
+          waistDelta14,
+          leanMassNow,
+          leanMassPrev14,
+          leanMassDelta14,
+          bodyFatNow,
+          bodyFatPrev14,
+          bodyFatDelta14,
+          heightIn,
+          waistToHeightRatio,
+          waistEntryCount: waistCount,
+          waistTargetCount: waistTarget,
+          waistEntriesNeeded: waistNeeded,
+          confidenceScore,
+          confidenceLabel,
+        };
+      }
+    
+      return {
+        state: "red",
+        title: "At Risk",
+        note: "Normalized strength is falling without a clear waist improvement signal. This cut may be risking lean tissue or recovery capacity.",
+        badCut,
+        badCutNote,
+        normalizedStrengthNow,
+        normalizedStrengthPrev14,
+        normalizedDelta14Pct,
+        normalizedBest90,
+        normalizedVsBest90Pct,
+        weightNow,
+        weightPrev14,
+        weightDelta14,
+        waistNow,
+        waistPrev14,
+        waistDelta14,
+        leanMassNow,
+        leanMassPrev14,
+        leanMassDelta14,
         bodyFatNow,
         bodyFatPrev14,
         bodyFatDelta14,

@@ -53,6 +53,14 @@ import PhaseQualityCard from "../components/phase/PhaseQualityCard";
 import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTypes";
 import { formatInches, formatLbs } from "../components/charts/chartFormatters";
 import {
+  averagePreviousValues as sharedAveragePreviousValues,
+  computePhaseSignal as sharedComputePhaseSignal,
+  pickTime as sharedPickTime,
+  pickWeightLb as sharedPickWeightLb,
+  pickWaistIn as sharedPickWaistIn,
+  pickBodyFatPct as sharedPickBodyFatPct,
+} from "../body/bodySignalModel";
+import {
   getFatMassLb,
   getLeanMassLb,
   getTBW,
@@ -199,26 +207,6 @@ function loadProfileGoals(): {
    Breadcrumb 1 — Helpers
    ============================================================================ */
 
-function pickTime(r: BodyMetricRow): number {
-  const t = Number(r?.measuredAt ?? r?.takenAt ?? r?.date ?? r?.createdAt);
-  return Number.isFinite(t) ? t : 0;
-}
-
-function pickWeightLb(r: BodyMetricRow): number | undefined {
-  const bw = (r as any)?.weightLb ?? (r as any)?.weight;
-  return typeof bw === "number" && Number.isFinite(bw) && bw > 0 ? bw : undefined;
-}
-
-function pickWaistIn(r: BodyMetricRow): number | undefined {
-  const w = (r as any)?.waistIn ?? (r as any)?.waist;
-  return typeof w === "number" && Number.isFinite(w) && w > 0 ? w : undefined;
-}
-
-function pickBodyFatPct(r: BodyMetricRow): number | undefined {
-  const bf = (r as any)?.bodyFatPct;
-  return typeof bf === "number" && Number.isFinite(bf) && bf >= 0 ? bf : undefined;
-}
-
 function fmtShortDate(ms: number) {
   const d = new Date(ms);
   return d.toLocaleDateString(undefined, {
@@ -282,140 +270,9 @@ function getChangeColor(
   return isGood ? "var(--accent)" : "var(--danger)";
 }
 
-function average(nums: number[]): number | undefined {
-  if (!nums.length) return undefined;
-  return nums.reduce((sum, n) => sum + n, 0) / nums.length;
-}
 
-function averagePreviousValues<T>(
-  rows: T[],
-  getter: (row: T) => number | undefined,
-  count = 3
-): number | undefined {
-  const priorValues = rows
-    .slice(1)
-    .map(getter)
-    .filter((v): v is number => v != null && Number.isFinite(v))
-    .slice(0, count);
 
-  return average(priorValues);
-}
 
-function computePhaseSignal(rows: BodyMetricRow[], mode: Mode) {
-  const aligned = rows
-    .map((r) => ({
-      weight: pickWeightLb(r),
-      waist: pickWaistIn(r),
-      bodyFatPct: pickBodyFatPct(r),
-    }))
-    .filter(
-      (r): r is { weight: number; waist: number; bodyFatPct?: number } =>
-        r.weight != null &&
-        Number.isFinite(r.weight) &&
-        r.waist != null &&
-        Number.isFinite(r.waist)
-    );
-
-  if (aligned.length < 3) {
-    return {
-      label: "Current Signal",
-      status: "Not enough data",
-      note: "Add at least 3 entries that include both weight and waist.",
-    };
-  }
-
-  const first = aligned[0];
-  const last = aligned[aligned.length - 1];
-
-  const weightDelta = last.weight - first.weight;
-  const waistDelta = last.waist - first.waist;
-
-  if (mode === "cut") {
-    if (weightDelta < 0 && waistDelta < 0) {
-      return {
-        label: "Current Signal",
-        status: "Strong fat-loss signal",
-        note: "Weight and waist are both trending down.",
-      };
-    }
-
-    if (weightDelta < 0 && waistDelta >= 0) {
-      return {
-        label: "Current Signal",
-        status: "Possible water / glycogen loss",
-        note: "Weight is down, but waist is flat or up.",
-      };
-    }
-
-    if (weightDelta >= 0 && waistDelta < 0) {
-      return {
-        label: "Current Signal",
-        status: "Possible recomposition",
-        note: "Waist is dropping while scale weight is stable or rising.",
-      };
-    }
-
-    return {
-      label: "Current Signal",
-      status: "Fat gain risk",
-      note: "Weight and waist are both drifting up during a cut.",
-    };
-  }
-
-  if (mode === "bulk") {
-    if (weightDelta > 0 && waistDelta <= 0) {
-      return {
-        label: "Current Signal",
-        status: "Lean gain signal",
-        note: "Weight is rising while waist is stable or down.",
-      };
-    }
-
-    if (weightDelta > 0 && waistDelta > 0) {
-      return {
-        label: "Current Signal",
-        status: "Possible surplus too aggressive",
-        note: "Weight and waist are both rising.",
-      };
-    }
-
-    if (weightDelta <= 0 && waistDelta <= 0) {
-      return {
-        label: "Current Signal",
-        status: "Undershooting bulk",
-        note: "Weight is not climbing enough for a gaining phase.",
-      };
-    }
-
-    return {
-      label: "Current Signal",
-      status: "Mixed bulk signal",
-      note: "Trend is unclear. Watch the next few check-ins.",
-    };
-  }
-
-  if (Math.abs(weightDelta) <= 1 && Math.abs(waistDelta) <= 0.5) {
-    return {
-      label: "Current Signal",
-      status: "Stable maintenance signal",
-      note: "Weight and waist are both staying in a tight range.",
-    };
-  }
-
-  if (waistDelta < 0 && weightDelta >= 0) {
-    return {
-      label: "Current Signal",
-      status: "Possible recomp",
-      note: "Waist is improving without meaningful weight loss.",
-    };
-  }
-
-  return {
-    label: "Current Signal",
-    status: "Maintenance drift",
-    note: "Weight and/or waist are moving enough to merit attention.",
-  };
-}
 
 function loadMode(): Mode {
   try {
@@ -603,10 +460,10 @@ export default function BodyCompositionPage() {
       const arr = ((await db.bodyMetrics.toArray()) ?? []) as BodyMetricRow[];
       return arr
         .slice()
-        .sort((a, b) => pickTime(b) - pickTime(a))
+        .sort((a, b) => sharedPickTime(b) - sharedPickTime(a))
         .slice(0, 60);
     } catch {
-      return [] as BodyMetricRow[];
+    return [] as BodyMetricRow[];
     }
   }, []);
 
@@ -643,34 +500,34 @@ export default function BodyCompositionPage() {
     return (rows ?? [])
       .slice()
       .reverse()
-      .filter((r) => pickTime(r) > 0);
+      .filter((r) => sharedPickTime(r) > 0);
   }, [rows]);
 
   const latestSnapshot = useMemo(() => {
     const source = rows ?? [];
     const latest = source[0];
 
-    const weight = latest ? pickWeightLb(latest) : undefined;
-    const waist = latest ? pickWaistIn(latest) : undefined;
-    const bodyFatPct = latest ? pickBodyFatPct(latest) : undefined;
+    const weight = latest ? sharedPickWeightLb(latest) : undefined;
+    const waist = latest ? sharedPickWaistIn(latest) : undefined;
+    const bodyFatPct = latest ? sharedPickBodyFatPct(latest) : undefined;
     const correctedBodyFatPct = latest ? getCorrectedBodyFatPct(latest as any) : undefined;
     const leanMass = latest ? getLeanMassLb(latest as any) : undefined;
     const correctedLeanMass = latest ? getCorrectedLeanMassLb(latest as any) : undefined;
 
-    const prevWeightAvg = averagePreviousValues(source, pickWeightLb, 3);
-    const prevWaistAvg = averagePreviousValues(source, pickWaistIn, 3);
-    const prevBodyFatAvg = averagePreviousValues(source, pickBodyFatPct, 3);
-    const prevCorrectedBodyFatAvg = averagePreviousValues(
+    const prevWeightAvg = sharedAveragePreviousValues(source, sharedPickWeightLb, 3);
+    const prevWaistAvg = sharedAveragePreviousValues(source, sharedPickWaistIn, 3);
+    const prevBodyFatPctAvg = sharedAveragePreviousValues(source, sharedPickBodyFatPct, 3);
+    const prevCorrectedBodyFatAvg = sharedAveragePreviousValues(
       source,
       (r) => getCorrectedBodyFatPct(r as any),
       3
     );
-    const prevLeanAvg = averagePreviousValues(
+    const prevLeanAvg = sharedAveragePreviousValues(
       source,
       (r) => getLeanMassLb(r as any),
       3
     );
-    const prevCorrectedLeanAvg = averagePreviousValues(
+    const prevCorrectedLeanAvg = sharedAveragePreviousValues(
       source,
       (r) => getCorrectedLeanMassLb(r as any),
       3
@@ -683,7 +540,7 @@ export default function BodyCompositionPage() {
       : "Add ICW and ECW to assess fluid balance.";
 
     return {
-      date: latest ? fmtSnapshotDate(pickTime(latest)) : "—",
+      date: latest ? fmtSnapshotDate(sharedPickTime(latest)) : "—",
 
       weight,
       weightChange: computePercentChange(weight, prevWeightAvg),
@@ -692,7 +549,7 @@ export default function BodyCompositionPage() {
       waistChange: computePercentChange(waist, prevWaistAvg),
 
       bodyFatPct,
-      bfChange: computePercentChange(bodyFatPct, prevBodyFatAvg),
+      bfChange: computePercentChange(bodyFatPct, prevBodyFatPctAvg),
 
       correctedBodyFatPct,
       correctedBfChange: computePercentChange(
@@ -731,7 +588,7 @@ export default function BodyCompositionPage() {
   const summary = modeSummary(mode);
 
   const phaseSignal = useMemo(
-    () => computePhaseSignal(chartRows.slice(-10), mode),
+    () => sharedComputePhaseSignal(chartRows.slice(-10), mode),
     [chartRows, mode]
   );
 
@@ -759,10 +616,10 @@ export default function BodyCompositionPage() {
     const last = window[window.length - 1];
 
     const weightDelta =
-      (pickWeightLb(last) ?? 0) - (pickWeightLb(first) ?? 0);
+      (sharedPickWeightLb(last) ?? 0) - (sharedPickWeightLb(first) ?? 0);
 
     const waistDelta =
-      (pickWaistIn(last) ?? 0) - (pickWaistIn(first) ?? 0);
+      (sharedPickWaistIn(last) ?? 0) - (sharedPickWaistIn(first) ?? 0);
 
     const correctedLeanDelta =
       (getCorrectedLeanMassLb(last as any) ?? 0) -
@@ -789,82 +646,82 @@ export default function BodyCompositionPage() {
 
   const chartConfigs = useMemo(() => {
     const weightData: ChartDatum[] = chartRows
-      .filter((r) => pickWeightLb(r) != null)
+      .filter((r) => sharedPickWeightLb(r) != null)
       .map((r) => ({
-        label: fmtShortDate(pickTime(r)),
-        value: pickWeightLb(r) ?? null,
-        date: fmtShortDate(pickTime(r)),
+        label: fmtShortDate(sharedPickTime(r)),
+        value: sharedPickWeightLb(r) ?? null,
+        date: fmtShortDate(sharedPickTime(r)),
       }));
 
     const waistData: ChartDatum[] = chartRows
-      .filter((r) => pickWaistIn(r) != null)
+      .filter((r) => sharedPickWaistIn(r) != null)
       .map((r) => ({
-        label: fmtShortDate(pickTime(r)),
-        value: pickWaistIn(r) ?? null,
-        date: fmtShortDate(pickTime(r)),
+        label: fmtShortDate(sharedPickTime(r)),
+        value: sharedPickWaistIn(r) ?? null,
+        date: fmtShortDate(sharedPickTime(r)),
       }));
 
     const bodyFatPctData: ChartDatum[] = chartRows
-      .filter((r) => pickBodyFatPct(r) != null)
+      .filter((r) => sharedPickBodyFatPct(r) != null)
       .map((r) => ({
-        label: fmtShortDate(pickTime(r)),
-        value: pickBodyFatPct(r) ?? null,
-        date: fmtShortDate(pickTime(r)),
+        label: fmtShortDate(sharedPickTime(r)),
+        value: sharedPickBodyFatPct(r) ?? null,
+        date: fmtShortDate(sharedPickTime(r)),
       }));
 
     const correctedBodyFatPctData: ChartDatum[] = chartRows
       .filter((r) => getCorrectedBodyFatPct(r as any) != null)
       .map((r) => ({
-        label: fmtShortDate(pickTime(r)),
+        label: fmtShortDate(sharedPickTime(r)),
         value: getCorrectedBodyFatPct(r as any) ?? null,
-        date: fmtShortDate(pickTime(r)),
+        date: fmtShortDate(sharedPickTime(r)),
       }));
 
     const fatMassData: ChartDatum[] = chartRows
       .filter((r) => getFatMassLb(r as any) != null)
       .map((r) => ({
-        label: fmtShortDate(pickTime(r)),
+        label: fmtShortDate(sharedPickTime(r)),
         value: getFatMassLb(r as any) ?? null,
-        date: fmtShortDate(pickTime(r)),
+        date: fmtShortDate(sharedPickTime(r)),
       }));
 
     const leanMassData: ChartDatum[] = chartRows
       .filter((r) => getLeanMassLb(r as any) != null)
       .map((r) => ({
-        label: fmtShortDate(pickTime(r)),
+        label: fmtShortDate(sharedPickTime(r)),
         value: getLeanMassLb(r as any) ?? null,
-        date: fmtShortDate(pickTime(r)),
+        date: fmtShortDate(sharedPickTime(r)),
       }));
 
     const correctedLeanMassData: ChartDatum[] = chartRows
       .filter((r) => getCorrectedLeanMassLb(r as any) != null)
       .map((r) => ({
-        label: fmtShortDate(pickTime(r)),
+        label: fmtShortDate(sharedPickTime(r)),
         value: getCorrectedLeanMassLb(r as any) ?? null,
-        date: fmtShortDate(pickTime(r)),
+        date: fmtShortDate(sharedPickTime(r)),
       }));
 
     const tbwData: ChartDatum[] = chartRows
       .filter((r) => getTBW(r as any) != null)
       .map((r) => ({
-        label: fmtShortDate(pickTime(r)),
+        label: fmtShortDate(sharedPickTime(r)),
         value: getTBW(r as any) ?? null,
-        date: fmtShortDate(pickTime(r)),
+        date: fmtShortDate(sharedPickTime(r)),
       }));
 
     const fluidRatioData: ChartDatum[] = chartRows
       .filter((r) => getFluidRatio(r as any) != null)
       .map((r) => ({
-        label: fmtShortDate(pickTime(r)),
+        label: fmtShortDate(sharedPickTime(r)),
         value: getFluidRatio(r as any) ?? null,
-        date: fmtShortDate(pickTime(r)),
+        date: fmtShortDate(sharedPickTime(r)),
       }));
 
     const confidenceData: ChartDatum[] = chartRows
       .map((r) => ({
-        label: fmtShortDate(pickTime(r)),
+        label: fmtShortDate(sharedPickTime(r)),
         value: getBodyCompConfidence(r as any),
-        date: fmtShortDate(pickTime(r)),
+        date: fmtShortDate(sharedPickTime(r)),
       }))
       .filter((r) => r.value != null);
 
