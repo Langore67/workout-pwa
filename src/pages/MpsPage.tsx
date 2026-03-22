@@ -43,13 +43,14 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { db } from "../db";
+import { computeStrengthTrend } from "../strength/Strength";
 import {
   pickTime as sharedPickTime,
   pickWeightLb as sharedPickWeightLb,
   pickWaistIn as sharedPickWaistIn,
   pickBodyFatPct as sharedPickBodyFatPct,
+  type BodyMetricRow,
 } from "../body/bodySignalModel";
-import { computeStrengthTrend } from "../strength/Strength";
 
 
 
@@ -59,12 +60,8 @@ import { computeStrengthTrend } from "../strength/Strength";
 
 type MpsState = "green" | "yellow" | "red" | "partial";
 
-type BodySnapshot = {
+type BodySnapshot = BodyMetricRow & {
   takenAt: number;
-  weightLb?: number;
-  waistIn?: number;
-  leanMassLb?: number;
-  bodyFatPct?: number;
   smmLb?: number;
   visceralFat?: number;
   bodyWaterPct?: number;
@@ -155,7 +152,7 @@ function readNum(v: any): number | undefined {
    Breadcrumb 3 — Body metric table access
    ============================================================================ */
 
-function pickBodyTable(): any | null {
+function pickBodyTable(): { toArray: () => Promise<BodyMetricRow[]> } | null {
   const anyDb: any = db as any;
 
   const preferred = anyDb.bodyMetrics;
@@ -182,16 +179,16 @@ function pickBodyTable(): any | null {
   return null;
 }
 
-function mapBodyRow(row: any): BodySnapshot | null {
-  const takenAt = sharedPickTime(row as any);
+function mapBodyRow(row: BodyMetricRow): BodySnapshot | null {
+  const takenAt = sharedPickTime(row);
   if (!takenAt) return null;
 
   return {
     takenAt,
-    weightLb: sharedPickWeightLb(row as any),
-    waistIn: sharedPickWaistIn(row as any),
+    weightLb: sharedPickWeightLb(row),
+    waistIn: sharedPickWaistIn(row),
     leanMassLb: readNum(row?.leanMassLb ?? row?.leanMass ?? row?.lean_mass_lb),
-    bodyFatPct: sharedPickBodyFatPct(row as any),
+    bodyFatPct: sharedPickBodyFatPct(row),
     smmLb: readNum(
       row?.smmLb ??
         row?.smm ??
@@ -208,11 +205,11 @@ async function loadBodySnapshots(): Promise<BodySnapshot[]> {
   if (!table) return [];
 
   try {
-    const rows = await table.toArray();
-    return (rows ?? [])
-      .map(mapBodyRow)
-      .filter(Boolean)
-      .sort((a: any, b: any) => b.takenAt - a.takenAt);
+    const rows: BodyMetricRow[] = await table.toArray();
+        return (rows ?? [])
+          .map(mapBodyRow)
+          .filter((row): row is BodySnapshot => row != null)
+          .sort((a, b) => b.takenAt - a.takenAt);
   } catch {
     return [];
   }
@@ -228,7 +225,7 @@ function countWaistEntries(rows: BodySnapshot[], endAtMs: number): number {
 
 async function loadHeightIn(): Promise<number | undefined> {
   try {
-    const row: any = await db.app_meta.get(HEIGHT_META_KEY);
+    const row = await db.app_meta.get(HEIGHT_META_KEY);
     const parsed = row?.valueJson ? JSON.parse(row.valueJson) : undefined;
     const h = Number(parsed?.heightIn);
     return Number.isFinite(h) && h > 0 ? h : undefined;
