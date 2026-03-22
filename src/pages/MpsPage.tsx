@@ -153,7 +153,7 @@ function readNum(v: any): number | undefined {
    ============================================================================ */
 
 function pickBodyTable(): { toArray: () => Promise<BodyMetricRow[]> } | null {
-  const anyDb: any = db as any;
+  const anyDb = db as any;
 
   const preferred = anyDb.bodyMetrics;
   if (
@@ -926,9 +926,7 @@ export default function MpsPage() {
 
   return (
     <div className="container">
-    {/* ======================================================================
-    Breadcrumb 6A — Local page header
-   ==================================================================== */}
+    
 {/* ======================================================================
     Breadcrumb 6A — Local page header
    ==================================================================== */}
@@ -1160,6 +1158,10 @@ export default function MpsPage() {
 	       </div>
 	     );
 }
+
+
+
+
 
 /* ============================================================================
    End of file: src/pages/MpsPage.tsx
