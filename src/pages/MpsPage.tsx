@@ -43,7 +43,15 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { db } from "../db";
+import {
+  pickTime as sharedPickTime,
+  pickWeightLb as sharedPickWeightLb,
+  pickWaistIn as sharedPickWaistIn,
+  pickBodyFatPct as sharedPickBodyFatPct,
+} from "../body/bodySignalModel";
 import { computeStrengthTrend } from "../strength/Strength";
+
+
 
 /* ============================================================================
    Breadcrumb 1 — Types
@@ -143,10 +151,6 @@ function readNum(v: any): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-function readTimeMs(row: any): number | undefined {
-  return readNum(row?.measuredAt ?? row?.takenAt ?? row?.date ?? row?.createdAt);
-}
-
 /* ============================================================================
    Breadcrumb 3 — Body metric table access
    ============================================================================ */
@@ -179,15 +183,15 @@ function pickBodyTable(): any | null {
 }
 
 function mapBodyRow(row: any): BodySnapshot | null {
-  const takenAt = readTimeMs(row);
+  const takenAt = sharedPickTime(row as any);
   if (!takenAt) return null;
 
   return {
     takenAt,
-    weightLb: readNum(row?.weightLb ?? row?.weight),
-    waistIn: readNum(row?.waistIn ?? row?.waist ?? row?.waist_inches),
+    weightLb: sharedPickWeightLb(row as any),
+    waistIn: sharedPickWaistIn(row as any),
     leanMassLb: readNum(row?.leanMassLb ?? row?.leanMass ?? row?.lean_mass_lb),
-    bodyFatPct: readNum(row?.bodyFatPct ?? row?.bodyFat ?? row?.body_fat_pct),
+    bodyFatPct: sharedPickBodyFatPct(row as any),
     smmLb: readNum(
       row?.smmLb ??
         row?.smm ??
