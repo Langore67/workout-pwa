@@ -12,7 +12,7 @@
    - Reduce code drift by centralizing common chart logic in one place
    ============================================================================ */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   CartesianGrid,
   Legend,
@@ -217,10 +217,15 @@ export default function TrendChartCard({
   emptyMessage = "Not enough data yet.",
 }: TrendChartCardProps) {
   const safeWindowSize = Math.max(1, windowSize);
+  const safeHeight = Number.isFinite(height) && height > 0 ? height : 280;
 
-  const [windowEndIndex, setWindowEndIndex] = useState(Math.max(0, data.length - 1));
-  const [hover, setHover] = useState<HoverReadoutState>(EMPTY_HOVER);
-  const [hasUserInteracted, setHasUserInteracted] = useState(false);
+    const [windowEndIndex, setWindowEndIndex] = useState(Math.max(0, data.length - 1));
+    const [hover, setHover] = useState<HoverReadoutState>(EMPTY_HOVER);
+    const [hasUserInteracted, setHasUserInteracted] = useState(false);
+  
+      const chartHostRef = useRef<HTMLDivElement | null>(null);
+      const [chartHostSize, setChartHostSize] = useState({ width: 0, height: 0 });
+      const [chartCanRender, setChartCanRender] = useState(false);
 
   useEffect(() => {
     setWindowEndIndex(data.length ? data.length - 1 : 0);
@@ -244,6 +249,47 @@ export default function TrendChartCard({
   const visibleData = useMemo(() => {
     return data.slice(windowStartIndex, windowEndIndex + 1);
   }, [data, windowStartIndex, windowEndIndex]);
+  
+    useLayoutEffect(() => {
+      const node = chartHostRef.current;
+      if (!node) return;
+  
+      let frameId = 0;
+  
+      const updateSize = () => {
+        const nextWidth = node.clientWidth || 0;
+        const nextHeight = node.clientHeight || 0;
+  
+        setChartHostSize((prev) => {
+          if (prev.width === nextWidth && prev.height === nextHeight) {
+            return prev;
+          }
+          return { width: nextWidth, height: nextHeight };
+        });
+  
+        if (nextWidth > 0 && nextHeight > 0) {
+          frameId = window.requestAnimationFrame(() => {
+            setChartCanRender(true);
+          });
+        } else {
+          setChartCanRender(false);
+        }
+      };
+  
+      updateSize();
+  
+      const observer = new ResizeObserver(() => {
+        updateSize();
+      });
+  
+      observer.observe(node);
+  
+      return () => {
+        observer.disconnect();
+        if (frameId) window.cancelAnimationFrame(frameId);
+      };
+  }, [safeHeight, data.length, windowStartIndex, windowEndIndex]);
+  
 
   useEffect(() => {
     setHover(EMPTY_HOVER);
@@ -361,8 +407,11 @@ export default function TrendChartCard({
     compactMetaParts.push(deltaSummary.replace(/^Delta:\s*/i, "Δ "));
   }
 
-  const showHoverReadout =
-    hasUserInteracted && hover.active && !!hover.primary;
+    const showHoverReadout =
+      hasUserInteracted && hover.active && !!hover.primary;
+  
+    const chartReady =
+      chartCanRender && chartHostSize.width > 0 && chartHostSize.height > 0;
 
   const statPrimary =
     isSingleSeries && latestSeries
@@ -400,7 +449,7 @@ export default function TrendChartCard({
 
   if (!data.length) {
     return (
-      <div className="rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-sm">
+      <div className="min-w-0 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-sm">
         <div className="mb-3">
           <div className="text-base font-semibold text-[var(--text)]">{title}</div>
           {subtitle ? (
@@ -412,8 +461,8 @@ export default function TrendChartCard({
           className="flex items-center justify-center rounded-xl border border-dashed border-[var(--line)] bg-[var(--bg)]/40 px-4 text-center"
           style={{
             width: "100%",
-            height,
-            minHeight: height,
+            height: safeHeight,
+            minHeight: safeHeight,
           }}
         >
           <div style={{ maxWidth: 320 }}>
@@ -431,7 +480,7 @@ export default function TrendChartCard({
   }
 
   return (
-    <div className="rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-sm">
+    <div className="min-w-0 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-sm">
       <div className="mb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -482,100 +531,112 @@ export default function TrendChartCard({
         </div>
     ) : null}
 
-      <div
-        className="mt-2"
-        style={{
-          width: "100%",
-          minWidth: 0,
-          height,
-          minHeight: height,
-          position: "relative",
-        }}
+	  <div
+	    ref={chartHostRef}
+	    className="mt-2"
+	    style={{
+	      width: "100%",
+	      minWidth: 0,
+	      height: safeHeight,
+	      minHeight: safeHeight,
+	      position: "relative",
+	    }}
       >
-        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={height}>
-          <LineChart
-            data={chartData}
-            margin={{ top: 8, right: 20, left: 0, bottom: 12 }}
-            onMouseMove={() => setHasUserInteracted(true)}
-            onMouseEnter={() => setHasUserInteracted(true)}
-            onClick={() => setHasUserInteracted(true)}
-            onMouseLeave={() => {
-              setHoverSafe(EMPTY_HOVER);
-              setHasUserInteracted(false);
-            }}
-          >
-            <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
-
-            <XAxis
-              dataKey={xKey}
-              tickFormatter={xLabelFormatter}
-              minTickGap={24}
-            />
-
-            <YAxis domain={yDomain} width={44} />
-
-            {resolvedReadoutMode === "statRow" ? (
-              <Tooltip
-                offset={0}
-                allowEscapeViewBox={{ x: true, y: true }}
-                cursor={{ stroke: "var(--line2)", strokeWidth: 1 }}
-                content={
-                  <SingleSeriesHoverBridge
-                    series={series}
-                    labelFormatter={tooltipLabelFormatter}
-                    valueFormatter={valueFormatter}
-                    onHoverChange={setHoverSafe}
-                  />
-                }
-              />
-            ) : resolvedReadoutMode === "none" ? null : (
-              <Tooltip
-                offset={18}
-                allowEscapeViewBox={{ x: true, y: true }}
-                cursor={{ stroke: "var(--line2)", strokeWidth: 1 }}
-                wrapperStyle={{ zIndex: 20, pointerEvents: "none", maxWidth: 140 }}
-                content={
-                  <ChartTooltipContent
-                    series={series}
-                    labelFormatter={tooltipLabelFormatter}
-                    valueFormatter={valueFormatter}
-                  />
-                }
-              />
-            )}
-
-            {series.length > 1 ? <Legend /> : null}
-
-            {showTrendLine && isSingleSeries ? (
-              <Line
-                type="linear"
-                dataKey={trendKey}
-                name="Trend"
-                stroke="var(--muted)"
-                strokeWidth={2}
-                strokeDasharray="4 4"
-                dot={false}
-                activeDot={false}
-                connectNulls
-                isAnimationActive={false}
-              />
-            ) : null}
-
-            {series.map((s) => (
-              <Line
-                key={s.key}
-                type="monotone"
-                dataKey={s.key}
-                name={s.label}
-                strokeWidth={3}
-                dot={{ r: 4 }}
-                activeDot={{ r: 6 }}
-                connectNulls={s.connectNulls ?? true}
-                stroke={s.stroke ?? "var(--accent)"}
-              />
-            ))}
-          </LineChart>
-        </ResponsiveContainer>
+                {chartReady ? (
+	          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={safeHeight}>
+	            <LineChart
+	              data={chartData}
+	              margin={{ top: 8, right: 20, left: 0, bottom: 12 }}
+	              onMouseMove={() => setHasUserInteracted(true)}
+	              onMouseEnter={() => setHasUserInteracted(true)}
+	              onClick={() => setHasUserInteracted(true)}
+	              onMouseLeave={() => {
+	                setHoverSafe(EMPTY_HOVER);
+	                setHasUserInteracted(false);
+	              }}
+	            >
+	              <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+	
+	              <XAxis
+	                dataKey={xKey}
+	                tickFormatter={xLabelFormatter}
+	                minTickGap={24}
+	              />
+	
+	              <YAxis domain={yDomain} width={44} />
+	
+	              {resolvedReadoutMode === "statRow" ? (
+	                <Tooltip
+	                  offset={0}
+	                  allowEscapeViewBox={{ x: true, y: true }}
+	                  cursor={{ stroke: "var(--line2)", strokeWidth: 1 }}
+	                  content={
+	                    <SingleSeriesHoverBridge
+	                      series={series}
+	                      labelFormatter={tooltipLabelFormatter}
+	                      valueFormatter={valueFormatter}
+	                      onHoverChange={setHoverSafe}
+	                    />
+	                  }
+	                />
+	              ) : resolvedReadoutMode === "none" ? null : (
+	                <Tooltip
+	                  offset={18}
+	                  allowEscapeViewBox={{ x: true, y: true }}
+	                  cursor={{ stroke: "var(--line2)", strokeWidth: 1 }}
+	                  wrapperStyle={{ zIndex: 20, pointerEvents: "none", maxWidth: 140 }}
+	                  content={
+	                    <ChartTooltipContent
+	                      series={series}
+	                      labelFormatter={tooltipLabelFormatter}
+	                      valueFormatter={valueFormatter}
+	                    />
+	                  }
+	                />
+	              )}
+	
+	              {series.length > 1 ? <Legend /> : null}
+	
+	              {showTrendLine && isSingleSeries ? (
+	                <Line
+	                  type="linear"
+	                  dataKey={trendKey}
+	                  name="Trend"
+	                  stroke="var(--muted)"
+	                  strokeWidth={2}
+	                  strokeDasharray="4 4"
+	                  dot={false}
+	                  activeDot={false}
+	                  connectNulls
+	                  isAnimationActive={false}
+	                />
+	              ) : null}
+	
+	              {series.map((s) => (
+	                <Line
+	                  key={s.key}
+	                  type="monotone"
+	                  dataKey={s.key}
+	                  name={s.label}
+	                  strokeWidth={3}
+	                  dot={{ r: 4 }}
+	                  activeDot={{ r: 6 }}
+	                  connectNulls={s.connectNulls ?? true}
+	                  stroke={s.stroke ?? "var(--accent)"}
+	                />
+	              ))}
+	            </LineChart>
+	          </ResponsiveContainer>
+	        ) : (
+	          <div
+	            aria-hidden="true"
+	            style={{
+	              width: "100%",
+	              height: "100%",
+	              minHeight: safeHeight,
+	            }}
+	          />
+        )}
       </div>
 
       {data.length > safeWindowSize ? (

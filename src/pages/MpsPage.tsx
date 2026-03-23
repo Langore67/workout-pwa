@@ -43,11 +43,18 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { db } from "../db";
-import InformationButton from "../components/information/InformationButton";
-import InformationModal from "../components/information/InformationModal";
-import HubPageHeader from "../components/layout/HubPageHeader";
-import { getInformationEntry } from "../config/information/getInformationEntry";
+import ProgressPageHeader from "../components/layout/ProgressPageHeader";
+import SectionHeaderRow from "../components/layout/SectionHeaderRow";
 import { computeStrengthTrend } from "../strength/Strength";
+import {
+  pickTime as sharedPickTime,
+  pickWeightLb as sharedPickWeightLb,
+  pickWaistIn as sharedPickWaistIn,
+  pickBodyFatPct as sharedPickBodyFatPct,
+  type BodyMetricRow,
+} from "../body/bodySignalModel";
+
+
 
 /* ============================================================================
    Breadcrumb 1 — Types
@@ -55,12 +62,8 @@ import { computeStrengthTrend } from "../strength/Strength";
 
 type MpsState = "green" | "yellow" | "red" | "partial";
 
-type BodySnapshot = {
+type BodySnapshot = BodyMetricRow & {
   takenAt: number;
-  weightLb?: number;
-  waistIn?: number;
-  leanMassLb?: number;
-  bodyFatPct?: number;
   smmLb?: number;
   visceralFat?: number;
   bodyWaterPct?: number;
@@ -115,6 +118,17 @@ type MpsModel = {
 
 const HEIGHT_META_KEY = "profile.heightIn";
 
+const MPS_INFO_KEYS = {
+  coreSignal: "core_signal",
+} as const;
+
+const MPS_INFO_CONTENT = {
+  [MPS_INFO_KEYS.coreSignal]: {
+    title: "Core Signal",
+    body: "Explains the main muscle-preservation signal and how the key MPS metrics are interpreted.",
+  },
+} as const;
+
 function fmtNum(n?: number, digits = 1) {
   if (!Number.isFinite(n)) return "—";
   return Number(n).toFixed(digits);
@@ -147,16 +161,12 @@ function readNum(v: any): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-function readTimeMs(row: any): number | undefined {
-  return readNum(row?.measuredAt ?? row?.takenAt ?? row?.date ?? row?.createdAt);
-}
-
 /* ============================================================================
    Breadcrumb 3 — Body metric table access
    ============================================================================ */
 
-function pickBodyTable(): any | null {
-  const anyDb: any = db as any;
+function pickBodyTable(): { toArray: () => Promise<BodyMetricRow[]> } | null {
+  const anyDb = db as any;
 
   const preferred = anyDb.bodyMetrics;
   if (
@@ -182,16 +192,16 @@ function pickBodyTable(): any | null {
   return null;
 }
 
-function mapBodyRow(row: any): BodySnapshot | null {
-  const takenAt = readTimeMs(row);
+function mapBodyRow(row: BodyMetricRow): BodySnapshot | null {
+  const takenAt = sharedPickTime(row);
   if (!takenAt) return null;
 
   return {
     takenAt,
-    weightLb: readNum(row?.weightLb ?? row?.weight),
-    waistIn: readNum(row?.waistIn ?? row?.waist ?? row?.waist_inches),
+    weightLb: sharedPickWeightLb(row),
+    waistIn: sharedPickWaistIn(row),
     leanMassLb: readNum(row?.leanMassLb ?? row?.leanMass ?? row?.lean_mass_lb),
-    bodyFatPct: readNum(row?.bodyFatPct ?? row?.bodyFat ?? row?.body_fat_pct),
+    bodyFatPct: sharedPickBodyFatPct(row),
     smmLb: readNum(
       row?.smmLb ??
         row?.smm ??
@@ -208,11 +218,11 @@ async function loadBodySnapshots(): Promise<BodySnapshot[]> {
   if (!table) return [];
 
   try {
-    const rows = await table.toArray();
-    return (rows ?? [])
-      .map(mapBodyRow)
-      .filter(Boolean)
-      .sort((a: any, b: any) => b.takenAt - a.takenAt);
+    const rows: BodyMetricRow[] = await table.toArray();
+        return (rows ?? [])
+          .map(mapBodyRow)
+          .filter((row): row is BodySnapshot => row != null)
+          .sort((a, b) => b.takenAt - a.takenAt);
   } catch {
     return [];
   }
@@ -228,7 +238,7 @@ function countWaistEntries(rows: BodySnapshot[], endAtMs: number): number {
 
 async function loadHeightIn(): Promise<number | undefined> {
   try {
-    const row: any = await db.app_meta.get(HEIGHT_META_KEY);
+    const row = await db.app_meta.get(HEIGHT_META_KEY);
     const parsed = row?.valueJson ? JSON.parse(row.valueJson) : undefined;
     const h = Number(parsed?.heightIn);
     return Number.isFinite(h) && h > 0 ? h : undefined;
@@ -324,7 +334,10 @@ function buildMpsModel(args: {
       Number.isFinite(normalizedBest90);
   
     const hasWeight = Number.isFinite(weightNow) && Number.isFinite(weightPrev14);
-    const hasWaist = Number.isFinite(waistNow) && Number.isFinite(waistPrev14);
+    const hasWaist =
+      Number.isFinite(waistNow) && Number.isFinite(waistPrev14);
+    
+      const waistReady = waistEntryCount >= 10;
   
       const waistTarget = waistTargetCount ?? 14;
       const waistCount = waistEntryCount ?? 0;
@@ -385,53 +398,64 @@ function buildMpsModel(args: {
           coherenceScore * 15
       );
     
-      const confidenceLabel =
-        confidenceScore >= 85
-          ? "Strong"
-          : confidenceScore >= 65
-          ? "Moderate"
-          : confidenceScore >= 40
-          ? "Building"
-      : "Low";
+            const confidenceLabel =
+              confidenceScore >= 85
+                ? "Strong"
+                : confidenceScore >= 65
+                ? "Moderate"
+                : confidenceScore >= 40
+                ? "Building"
+                : "Low";
+      
+            const partialScoreMissingCore = Math.min(confidenceScore, 24);
+            const partialLabelMissingCore = "Low";
+      
+            const partialScoreMissingWaist = Math.min(
+              Math.round(waistReadiness * 35 + weightDataReady * 20 + strengthDataReady * 20),
+              39,
+            );
+      
+            const partialLabelMissingWaist =
+        partialScoreMissingWaist >= 25 ? "Building" : "Low";
 
-      if (!hasStrength || !hasWeight) {
-        return {
-          state: "partial",
-          title: "Partial Signal",
-          note: "Not enough strength or body-weight history yet to compute a reliable preservation signal.",
-          badCut: false,
-          normalizedStrengthNow,
-          normalizedStrengthPrev14,
-          normalizedDelta14Pct,
-          normalizedBest90,
-          normalizedVsBest90Pct,
-          weightNow,
-          weightPrev14,
-          weightDelta14,
-          waistNow,
-          waistPrev14,
-          waistDelta14,
-          leanMassNow,
-          leanMassPrev14,
-          leanMassDelta14,
-          bodyFatNow,
-          bodyFatPrev14,
-          bodyFatDelta14,
-          heightIn,
-          waistToHeightRatio,
-	  waistEntryCount: waistCount,
-	  waistTargetCount: waistTarget,
-	  waistEntriesNeeded: waistNeeded,
-	  confidenceScore,
-          confidenceLabel,
-        };
-  }
+            if (!hasStrength || !hasWeight) {
+              return {
+                state: "partial",
+                title: "Partial Signal",
+                note: "Not enough strength or body-weight history yet to compute a reliable preservation signal.",
+                badCut: false,
+                normalizedStrengthNow,
+                normalizedStrengthPrev14,
+                normalizedDelta14Pct,
+                normalizedBest90,
+                normalizedVsBest90Pct,
+                weightNow,
+                weightPrev14,
+                weightDelta14,
+                waistNow,
+                waistPrev14,
+                waistDelta14,
+                leanMassNow,
+                leanMassPrev14,
+                leanMassDelta14,
+                bodyFatNow,
+                bodyFatPrev14,
+                bodyFatDelta14,
+                heightIn,
+                waistToHeightRatio,
+                waistEntryCount: waistCount,
+                waistTargetCount: waistTarget,
+                waistEntriesNeeded: waistNeeded,
+                confidenceScore: partialScoreMissingCore,
+                confidenceLabel: partialLabelMissingCore,
+              };
+      }
 
-    if (!hasWaist) {
+    if (!waistReady) {
       return {
         state: "partial",
         title: "Partial Signal",
-        note: "Waist history is still building. Current waist data exists, but there is not yet enough older waist history to support the 14-day comparison.",
+        note: "Waist history is still building. Trend visibility is improving, but more data will increase confidence in the signal.",
         badCut: false,
         normalizedStrengthNow,
         normalizedStrengthPrev14,
@@ -471,6 +495,16 @@ function buildMpsModel(args: {
   const waistNotImproving = (waistDelta14 ?? -999) >= 0;
 
   const leanMassDown = (leanMassDelta14 ?? 999) < 0;
+  
+  let signalQuality: "clear" | "mixed" | "weak" = "weak";
+  
+  if (weightDown && waistDown && strengthUpOrFlat) {
+    signalQuality = "clear";
+  } else if (strengthUpOrFlat || weightDown || waistFlatOrDown) {
+    signalQuality = "mixed";
+  } else {
+    signalQuality = "weak";
+ }
 
   const badCut =
     weightDown &&
@@ -484,94 +518,131 @@ function buildMpsModel(args: {
       "Bad cut signal: body weight is dropping, but normalized strength is falling and waist is not improving. Lean tissue or recovery may be taking the hit.";
   }
 
-  if (weightDown && waistDown && strengthUpOrFlat && !farBelowBest90) {
-    return {
-      state: "green",
-      title: "Preserved",
-      note: "Weight and waist are down while normalized strength is stable to rising. Muscle is likely being preserved.",
-      badCut,
-      badCutNote,
-      normalizedStrengthNow,
-      normalizedStrengthPrev14,
-      normalizedDelta14Pct,
-      normalizedBest90,
-      normalizedVsBest90Pct,
-      weightNow,
-      weightPrev14,
-      weightDelta14,
-      waistNow,
-      waistPrev14,
-      waistDelta14,
-      leanMassNow,
-      leanMassPrev14,
-      leanMassDelta14,
-	bodyFatNow,
-	bodyFatPrev14,
-	bodyFatDelta14,
-	heightIn,
-	waistToHeightRatio,
-	waistEntryCount: waistCount,
-	waistTargetCount: waistTarget,
-	waistEntriesNeeded: waistNeeded,
-	confidenceScore,
-	confidenceLabel,
-    };
-  }
-
-  if (weightDown && waistFlatOrDown && strengthSlightlyDown && !badCut) {
-    return {
-      state: "yellow",
-      title: "Monitor",
-      note: "Weight is down and waist is not worsening, but normalized strength slipped slightly. Monitor recovery, protein, and training quality.",
-      badCut,
-      badCutNote,
-      normalizedStrengthNow,
-      normalizedStrengthPrev14,
-      normalizedDelta14Pct,
-      normalizedBest90,
-      normalizedVsBest90Pct,
-      weightNow,
-      weightPrev14,
-      weightDelta14,
-      waistNow,
-      waistPrev14,
-      waistDelta14,
-      leanMassNow,
-      leanMassPrev14,
-      leanMassDelta14,
-            bodyFatNow,
-            bodyFatPrev14,
-            bodyFatDelta14,
-            heightIn,
-            waistToHeightRatio,
-            waistEntryCount: waistCount,
-            waistTargetCount: waistTarget,
-            waistEntriesNeeded: waistNeeded,
-            confidenceScore,
-            confidenceLabel,
-    };
-  }
-
-  return {
-    state: "red",
-    title: "At Risk",
-    note: "Normalized strength is falling without a clear waist improvement signal. This cut may be risking lean tissue or recovery capacity.",
-    badCut,
-    badCutNote,
-    normalizedStrengthNow,
-    normalizedStrengthPrev14,
-    normalizedDelta14Pct,
-    normalizedBest90,
-    normalizedVsBest90Pct,
-    weightNow,
-    weightPrev14,
-    weightDelta14,
-    waistNow,
-    waistPrev14,
-    waistDelta14,
-    leanMassNow,
-    leanMassPrev14,
-    leanMassDelta14,
+      if (weightDown && waistDown && strengthUpOrFlat && !farBelowBest90) {
+        return {
+          state: "green",
+          title: "Preserved",
+          note: "Weight and waist are down while normalized strength is stable to rising. Muscle is likely being preserved.",
+          badCut,
+          badCutNote,
+          normalizedStrengthNow,
+          normalizedStrengthPrev14,
+          normalizedDelta14Pct,
+          normalizedBest90,
+          normalizedVsBest90Pct,
+          weightNow,
+          weightPrev14,
+          weightDelta14,
+          waistNow,
+          waistPrev14,
+          waistDelta14,
+          leanMassNow,
+          leanMassPrev14,
+          leanMassDelta14,
+          bodyFatNow,
+          bodyFatPrev14,
+          bodyFatDelta14,
+          heightIn,
+          waistToHeightRatio,
+          waistEntryCount: waistCount,
+          waistTargetCount: waistTarget,
+          waistEntriesNeeded: waistNeeded,
+          confidenceScore,
+          confidenceLabel,
+        };
+      }
+    
+      if (weightDown && waistFlatOrDown && strengthSlightlyDown && !badCut) {
+        return {
+          state: "yellow",
+          title: "Monitor",
+          note: "Weight is down and waist is not worsening, but normalized strength slipped slightly. Monitor recovery, protein, and training quality.",
+          badCut,
+          badCutNote,
+          normalizedStrengthNow,
+          normalizedStrengthPrev14,
+          normalizedDelta14Pct,
+          normalizedBest90,
+          normalizedVsBest90Pct,
+          weightNow,
+          weightPrev14,
+          weightDelta14,
+          waistNow,
+          waistPrev14,
+          waistDelta14,
+          leanMassNow,
+          leanMassPrev14,
+          leanMassDelta14,
+          bodyFatNow,
+          bodyFatPrev14,
+          bodyFatDelta14,
+          heightIn,
+          waistToHeightRatio,
+          waistEntryCount: waistCount,
+          waistTargetCount: waistTarget,
+          waistEntriesNeeded: waistNeeded,
+          confidenceScore,
+          confidenceLabel,
+        };
+      }
+    
+      if (strengthUpOrFlat && !badCut) {
+        return {
+          state: "yellow",
+          title: "Monitor",
+          note:
+	    signalQuality === "mixed"
+              ? "Strength is holding and weight is trending down, but waist confirmation is still unclear. You're close—watch waist trend."
+              : "Signals are weak or inconsistent. Monitor recovery, nutrition, and measurement consistency.",
+          badCut,
+          badCutNote,
+          normalizedStrengthNow,
+          normalizedStrengthPrev14,
+          normalizedDelta14Pct,
+          normalizedBest90,
+          normalizedVsBest90Pct,
+          weightNow,
+          weightPrev14,
+          weightDelta14,
+          waistNow,
+          waistPrev14,
+          waistDelta14,
+          leanMassNow,
+          leanMassPrev14,
+          leanMassDelta14,
+          bodyFatNow,
+          bodyFatPrev14,
+          bodyFatDelta14,
+          heightIn,
+          waistToHeightRatio,
+          waistEntryCount: waistCount,
+          waistTargetCount: waistTarget,
+          waistEntriesNeeded: waistNeeded,
+          confidenceScore,
+          confidenceLabel,
+        };
+      }
+    
+      return {
+        state: "red",
+        title: "At Risk",
+        note: "Normalized strength is falling without a clear waist improvement signal. This cut may be risking lean tissue or recovery capacity.",
+        badCut,
+        badCutNote,
+        normalizedStrengthNow,
+        normalizedStrengthPrev14,
+        normalizedDelta14Pct,
+        normalizedBest90,
+        normalizedVsBest90Pct,
+        weightNow,
+        weightPrev14,
+        weightDelta14,
+        waistNow,
+        waistPrev14,
+        waistDelta14,
+        leanMassNow,
+        leanMassPrev14,
+        leanMassDelta14,
         bodyFatNow,
         bodyFatPrev14,
         bodyFatDelta14,
@@ -588,6 +659,71 @@ function buildMpsModel(args: {
 /* ============================================================================
    Breadcrumb 5 — UI helpers
    ============================================================================ */
+function MpsSignalRow({
+  label,
+  value,
+  changeText,
+  changeColor = "var(--muted)",
+  showDivider = true,
+}: {
+  label: string;
+  value: string;
+  changeText: string;
+  changeColor?: string;
+  showDivider?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(140px, 1fr) auto auto",
+        alignItems: "center",
+        gap: 12,
+        padding: "10px 0",
+        borderBottom: showDivider ? "1px solid var(--line)" : "none",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: 0.6,
+          color: "var(--muted)",
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          fontWeight: 900,
+          fontSize: 17,
+          lineHeight: 1.1,
+          letterSpacing: -0.2,
+          color: "var(--text)",
+          textAlign: "right",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {value}
+      </div>
+
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 600,
+          color: changeColor,
+          textAlign: "right",
+          whiteSpace: "nowrap",
+          minWidth: 74,
+        }}
+      >
+        {changeText}
+      </div>
+    </div>
+  );
+}
 
 function stateTheme(state: MpsState) {
   switch (state) {
@@ -626,16 +762,100 @@ function whtrHelper(ratio?: number) {
   return "Above 0.55";
 }
 
+function StatusBadge({
+  label,
+}: {
+  label: string;
+}) {
+  const lower = label.toLowerCase();
+
+  let bg = "#e5e7eb";
+  let color = "#374151";
+
+  if (lower.includes("preserved") || lower.includes("good")) {
+    bg = "#dcfce7";
+    color = "#166534";
+  } else if (lower.includes("monitor") || lower.includes("partial")) {
+    bg = "#e0f2fe";
+    color = "#075985";
+  } else if (lower.includes("risk") || lower.includes("weak")) {
+    bg = "#fef3c7";
+    color = "#92400e";
+  }
+
+  return (
+    <div
+      style={{
+        display: "inline-block",
+        padding: "6px 12px",
+        borderRadius: 999,
+        fontWeight: 800,
+        fontSize: 12,
+        background: bg,
+        color: color,
+      }}
+    >
+      {label}
+    </div>
+  );
+}
+
+function SectionNavCard({
+  title,
+  backLabel,
+  backHref,
+}: {
+  title: string;
+  backLabel: string;
+  backHref: string;
+}) {
+  return (
+    <div
+      className="card"
+      style={{
+        marginBottom: 16,
+        padding: 16,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 14,
+          fontWeight: 800,
+          lineHeight: 1.1,
+          letterSpacing: "0.01em",
+        }}
+      >
+        {title}
+</div>
+
+      <a
+        href={backHref}
+        style={{
+          fontSize: 14,
+          fontWeight: 700,
+          color: "var(--muted)",
+          textDecoration: "none",
+          whiteSpace: "nowrap",
+        }}
+      >
+        ← {backLabel}
+      </a>
+    </div>
+  );
+}
+
 function MetricCard({
   label,
   value,
   helper,
-  onOpenInformation,
 }: {
   label: string;
   value: string;
   helper?: string;
-  onOpenInformation?: () => void;
 }) {
   return (
     <div
@@ -667,12 +887,7 @@ function MetricCard({
           {label}
         </div>
 
-        {onOpenInformation ? (
-          <InformationButton
-            onClick={onOpenInformation}
-            label={`Open information about ${label}`}
-          />
-        ) : null}
+     {null}
       </div>
 
       <div style={{ fontWeight: 900, fontSize: 22, lineHeight: 1.1 }}>{value}</div>
@@ -694,24 +909,11 @@ export default function MpsPage() {
   const [loading, setLoading] = useState(true);
   const [model, setModel] = useState<MpsModel | null>(null);
 
-  /* ==========================================================================
-     Breadcrumb 6AA — Information framework state
-     --------------------------------------------------------------------------
-     Any patch that changes Current Status wording, readiness thresholds,
-     confidence language, or required input counts must also review:
-
-     src/config/information/informationRegistry.ts
-     -> mps.currentStatus
-     ========================================================================== */
-    const [activeInformationKey, setActiveInformationKey] = useState<
-      "currentStatus" | "normalizedStrength" | null
-    >(null);
-  
-    const activeInformationEntry = useMemo(
-      () =>
-        activeInformationKey ? getInformationEntry("mps", activeInformationKey) : null,
-      [activeInformationKey],
-  );
+    /* ==========================================================================
+       Breadcrumb 6AA — Local-only page state
+       --------------------------------------------------------------------------
+       Information framework removed for local compatibility.
+     ========================================================================= */
 
   useEffect(() => {
     let cancelled = false;
@@ -802,17 +1004,14 @@ export default function MpsPage() {
 
   return (
     <div className="container">
-           {/* ======================================================================
-               Breadcrumb 6A — Progress-system page header
-              ==================================================================== */}
-	       <HubPageHeader
-	         hubLabel="Progress"
-	         hubRoute="/progress"
-	         pageTitle="Muscle Preservation"
-	         subtitle="Strength signal during fat loss, using MPS and body trends."
-      />
-
-      
+    
+  <ProgressPageHeader
+	breadcrumb="← Progress / Muscle Preservation"
+	description="Strength signal during fat loss, using MPS and body trends."
+	onBreadcrumbClick={() => {
+	  window.location.href = "/progress";
+	}}
+      /> 
             {/* ======================================================================
                 Breadcrumb 6C — Status card
                ==================================================================== */}
@@ -843,14 +1042,11 @@ export default function MpsPage() {
                   Current Status
                 </div>
       
-               <InformationButton
-		onClick={() => setActiveInformationKey("currentStatus")}
-		label="Open information about Current Status"
-             />
+               {null}
               </div>
       
-              <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>
-                {loading ? "Loading…" : model?.title ?? "Partial Signal"}
+              <div style={{ marginTop: 6 }}>
+	        <StatusBadge label={loading ? "Loading…" : model?.title ?? "Partial Signal"} />
               </div>
       
               {loading ? (
@@ -915,119 +1111,222 @@ export default function MpsPage() {
       {/* ======================================================================
           Breadcrumb 6E — Core metrics
          ==================================================================== */}
-      <div style={{ marginBottom: 10, fontWeight: 800, fontSize: 14 }}>Core Signal</div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))",
-          gap: 14,
-          marginBottom: 18,
-        }}
-      >
-        <MetricCard
-	  label="Normalized Strength"
-	  value={fmtNum(model?.normalizedStrengthNow, 3)}
-	  helper={`14d ${fmtSigned(model?.normalizedDelta14Pct, 1, "%")}`}
-	  onOpenInformation={() => setActiveInformationKey("normalizedStrength")}
-        />
-
-        <MetricCard
-          label="Vs 90d Best"
-          value={fmtSigned(model?.normalizedVsBest90Pct, 1, "%")}
-          helper={
-            model?.normalizedBest90 != null ? `best ${fmtNum(model.normalizedBest90, 3)}` : "—"
-          }
-        />
-
-        <MetricCard
-          label="Body Weight"
-          value={`${fmtNum(model?.weightNow, 1)} lb`}
-          helper={`14d ${fmtSigned(model?.weightDelta14, 1, " lb")}`}
-        />
-
-        <MetricCard
-          label="Waist"
-          value={model?.waistNow != null ? `${fmtNum(model?.waistNow, 1)} in` : "—"}
-          helper={`14d ${fmtSigned(model?.waistDelta14, 1, " in")}`}
-        />
-      </div>
+                    <div className="card" style={{ padding: "0 14px" }}>
+	              <div
+	                style={{
+	                  display: "grid",
+	                  gridTemplateColumns: "minmax(140px, 1fr) auto auto",
+	                  alignItems: "center",
+	                  gap: 12,
+	                  padding: "10px 0 6px",
+	                  borderBottom: "1px solid var(--line)",
+	                }}
+	              >
+	                <div
+	                  style={{
+	                    fontSize: 11,
+	                    fontWeight: 700,
+	                    letterSpacing: 0.6,
+	                    color: "var(--muted)",
+	                    textTransform: "uppercase",
+	                  }}
+	                >
+	                  Metric
+	                </div>
+	    
+	                <div
+	                  style={{
+	                    fontSize: 11,
+	                    fontWeight: 700,
+	                    letterSpacing: 0.6,
+	                    color: "var(--muted)",
+	                    textTransform: "uppercase",
+	                    textAlign: "right",
+	                    whiteSpace: "nowrap",
+	                  }}
+	                >
+	                  Value
+	                </div>
+	    
+	                <div
+	                  style={{
+	                    fontSize: 11,
+	                    fontWeight: 700,
+	                    letterSpacing: 0.6,
+	                    color: "var(--muted)",
+	                    textTransform: "uppercase",
+	                    textAlign: "right",
+	                    whiteSpace: "nowrap",
+	                    minWidth: 74,
+	                  }}
+	                >
+	                  Change
+	                </div>
+	              </div>
+	    
+	              <MpsSignalRow
+	                label="Normalized Strength"
+	                value={fmtNum(model?.normalizedStrengthNow, 3)}
+	                changeText={fmtSigned(model?.normalizedDelta14Pct, 1, "%")}
+	                changeColor={
+	                  (model?.normalizedDelta14Pct ?? 0) > 0
+	                    ? "var(--accent)"
+	                    : (model?.normalizedDelta14Pct ?? 0) < 0
+	                    ? "var(--danger)"
+	                    : "var(--muted)"
+	                }
+	              />
+	    
+	              <MpsSignalRow
+	                label="Vs 90d Best"
+	                value={fmtSigned(model?.normalizedVsBest90Pct, 1, "%")}
+	                changeText={
+	                  model?.normalizedBest90 != null
+	                    ? `best ${fmtNum(model.normalizedBest90, 3)}`
+	                    : "—"
+	                }
+	              />
+	    
+	              <MpsSignalRow
+	                label="Body Weight"
+	                value={`${fmtNum(model?.weightNow, 1)} lb`}
+	                changeText={fmtSigned(model?.weightDelta14, 1, " lb")}
+	                changeColor={
+	                  (model?.weightDelta14 ?? 0) < 0
+	                    ? "var(--accent)"
+	                    : (model?.weightDelta14 ?? 0) > 0
+	                    ? "var(--danger)"
+	                    : "var(--muted)"
+	                }
+	              />
+	    
+	              <MpsSignalRow
+	                label="Waist"
+	                value={model?.waistNow != null ? `${fmtNum(model?.waistNow, 1)} in` : "—"}
+	                changeText={fmtSigned(model?.waistDelta14, 1, " in")}
+	                changeColor={
+	                  (model?.waistDelta14 ?? 0) < 0
+	                    ? "var(--accent)"
+	                    : (model?.waistDelta14 ?? 0) > 0
+	                    ? "var(--danger)"
+	                    : "var(--muted)"
+	                }
+	                showDivider={false}
+	              />
+        </div>
+ 
 
       {/* ======================================================================
           Breadcrumb 6F — Supporting body composition
          ==================================================================== */}
-      <div style={{ marginBottom: 10, fontWeight: 800, fontSize: 14 }}>
-        Supporting Context
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))",
-          gap: 14,
-          marginBottom: 18,
-        }}
-      >
-        <MetricCard
-          label="Lean Mass"
-          value={model?.leanMassNow != null ? `${fmtNum(model?.leanMassNow, 1)} lb` : "—"}
-          helper={`14d ${fmtSigned(model?.leanMassDelta14, 1, " lb")}`}
-        />
-
-        <MetricCard
-          label="Body Fat"
-          value={fmtPct(model?.bodyFatNow, 1)}
-          helper={`14d ${fmtSigned(model?.bodyFatDelta14, 1, "%")}`}
-        />
-
-        <MetricCard
-          label="Waist / Height"
-          value={fmtNum(model?.waistToHeightRatio, 3)}
-          helper={whtrHelper(model?.waistToHeightRatio)}
-        />
+	       <div className="card" style={{ padding: 12, marginBottom: 18 }}>
+	         <SectionHeaderRow
+	           title="SUPPORTING CONTEXT"
+	         />
+	 
+	         <div className="card" style={{ padding: "0 14px" }}>
+	           <div
+	             style={{
+	               display: "grid",
+	               gridTemplateColumns: "minmax(140px, 1fr) auto auto",
+	               alignItems: "center",
+	               gap: 12,
+	               padding: "10px 0 6px",
+	               borderBottom: "1px solid var(--line)",
+	             }}
+	           >
+	             <div
+	               style={{
+	                 fontSize: 11,
+	                 fontWeight: 700,
+	                 letterSpacing: 0.6,
+	                 color: "var(--muted)",
+	                 textTransform: "uppercase",
+	               }}
+	             >
+	               Metric
+	             </div>
+	 
+	             <div
+	               style={{
+	                 fontSize: 11,
+	                 fontWeight: 700,
+	                 letterSpacing: 0.6,
+	                 color: "var(--muted)",
+	                 textTransform: "uppercase",
+	                 textAlign: "right",
+	                 whiteSpace: "nowrap",
+	               }}
+	             >
+	               Value
+	             </div>
+	 
+	             <div
+	               style={{
+	                 fontSize: 11,
+	                 fontWeight: 700,
+	                 letterSpacing: 0.6,
+	                 color: "var(--muted)",
+	                 textTransform: "uppercase",
+	                 textAlign: "right",
+	                 whiteSpace: "nowrap",
+	                 minWidth: 74,
+	               }}
+	             >
+	               Change
+	             </div>
+	           </div>
+	 
+	           <MpsSignalRow
+	             label="Lean Mass"
+	             value={model?.leanMassNow != null ? `${fmtNum(model?.leanMassNow, 1)} lb` : "—"}
+	             changeText={fmtSigned(model?.leanMassDelta14, 1, " lb")}
+	             changeColor={
+	               (model?.leanMassDelta14 ?? 0) > 0
+	                 ? "var(--accent)"
+	                 : (model?.leanMassDelta14 ?? 0) < 0
+	                 ? "var(--danger)"
+	                 : "var(--muted)"
+	             }
+	           />
+	 
+	           <MpsSignalRow
+	             label="Body Fat"
+	             value={fmtPct(model?.bodyFatNow, 1)}
+	             changeText={fmtSigned(model?.bodyFatDelta14, 1, "%")}
+	             changeColor={
+	               (model?.bodyFatDelta14 ?? 0) < 0
+	                 ? "var(--accent)"
+	                 : (model?.bodyFatDelta14 ?? 0) > 0
+	                 ? "var(--danger)"
+	                 : "var(--muted)"
+	             }
+	           />
+	 
+	           <MpsSignalRow
+	             label="Waist / Height"
+	             value={fmtNum(model?.waistToHeightRatio, 3)}
+	             changeText={whtrHelper(model?.waistToHeightRatio)}
+	             showDivider={false}
+	           />
+	         </div>
       </div>
 
                  {/* ======================================================================
 	             Breadcrumb 6G — Interpretation
 	            ==================================================================== */}
-	         <div className="card">
-	           <div
-	             style={{
-	               fontSize: 12,
-	               fontWeight: 800,
-	               letterSpacing: "0.08em",
-	               textTransform: "uppercase",
-	               color: "var(--muted)",
-	               marginBottom: 8,
-	             }}
-	           >
-	             Interpretation
-	           </div>
-	   
-	           <div className="muted" style={{ lineHeight: 1.55 }}>
-	             This signal uses a dual-anchor model. The 14-day comparison acts as the short-term
-	             coaching signal, while the 90-day best normalized strength acts as a reserve check.
-	             Waist is the main short-term body confirmation signal. Lean mass and body-fat trends
-	             provide supporting context, and waist-to-height ratio serves as a slower structural
-	             indicator.
-	           </div>
-	         </div>
-	   
-	               <InformationModal
-		         open={activeInformationKey != null}
-		         onClose={() => setActiveInformationKey(null)}
-		         entry={activeInformationEntry}
-		         context={
-		           activeInformationKey === "currentStatus"
-		             ? {
-		                 waistEntryCount: model?.waistEntryCount,
-		                 waistTargetCount: model?.waistTargetCount,
-		                 waistEntriesNeeded: model?.waistEntriesNeeded,
-		                 confidenceLabel: model?.confidenceLabel,
-		               }
-		             : undefined
-		         }
-                       />
+	         <div className="card" style={{ padding: 12, marginBottom: 16 }}>
+  <SectionHeaderRow title="INTERPRETATION" />
+
+  <div className="muted" style={{ lineHeight: 1.55 }}>
+    This signal uses a dual-anchor model. The 14-day comparison acts as the short-term
+    coaching signal, while the 90-day best normalized strength acts as a reserve check.
+    Waist is the main short-term body confirmation signal. Lean mass and body-fat trends
+    provide supporting context, and waist-to-height ratio serves as a slower structural
+    indicator.
+  </div>
+</div>	   
+	               {null}
 	       </div>
 	     );
 }

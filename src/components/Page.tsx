@@ -1,4 +1,6 @@
 import React from "react";
+import { BUILD_INFO } from "../buildInfo";
+
 
 export function Page({
   title,
@@ -20,10 +22,10 @@ export function Page({
         </div>
         {right ? <div className="page-header-right">{right}</div> : null}
       </div>
-
+  
       <div className="page-body">{children}</div>
     </div>
-  );
+);
 }
 
 export function Section({
