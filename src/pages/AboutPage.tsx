@@ -19,7 +19,7 @@
 import React from "react";
 import { Page, Section } from "../components/Page.tsx";
 import HubPageHeader from "../components/layout/HubPageHeader";
-import { BUILD_INFO } from "../build/buildInfo";
+import { buildInfo } from "../build/buildInfo";
 
 /* ============================================================================
    Breadcrumb 1 — Small helpers
@@ -107,9 +107,9 @@ export default function AboutPage() {
           </div>
 
           <div style={{ display: "grid", gap: 8 }}>
-            <AboutRow label="Version" value={BUILD_INFO.version} />
-            <AboutRow label="Build" value={BUILD_INFO.id} />
-            <AboutRow label="Built" value={BUILD_INFO.date} />
+            <AboutRow label="Version" value={buildInfo.version} />
+	    <AboutRow label="Build" value={buildInfo.commit} />
+            <AboutRow label="Built" value={buildInfo.builtAt} />
           </div>
         </div>
       </Section>
