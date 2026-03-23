@@ -1,16 +1,24 @@
-// src/pages/PerformanceDashboardPage.tsx
 /* ============================================================================
    PerformanceDashboardPage.tsx
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-16-DASH-IRONFORGE-08
+   BUILD_ID: 2026-03-23-PERFORMANCE-DASH-09
    FILE: src/pages/PerformanceDashboardPage.tsx
 
    Purpose
    - Provide IronForge's big-picture coaching dashboard
    - Combine strength, body composition, and training load into one coach view
    - Keep phase as an interpretation lens, not a data source override
+   - Align the page shell with the shared Progress sub-page standard
 
-   Changes (DASH-IRONFORGE-07)
+   Changes (PERFORMANCE-DASH-09)
+   ✅ Replace HubPageHeader with ProgressPageHeader
+   ✅ Restore working breadcrumb navigation back to Progress
+   ✅ Tighten overview-card spacing and top-page rhythm
+   ✅ Preserve current body metrics sourced from DB (not phase placeholders)
+   ✅ Preserve shared chart framework usage
+   ✅ Preserve dashboard insights / debug / build priorities sections
+
+   Prior version (DASH-IRONFORGE-08)
    ✅ Keep compact top header with ← Progress navigation
    ✅ Keep current body metrics sourced from DB (not phase placeholders)
    ✅ Preserve shared chart framework usage
@@ -20,7 +28,6 @@
    ✅ Replace Range overview stat with Strength Efficiency
    ✅ Make Body Weight / Waist chart badges phase-aware
    ✅ Keep real Strength Signal and weekly Training Volume trend wired in
-   ✅ Preserve dashboard insights / debug / build priorities sections
 
    Notes
    - Phase changes interpretation only
@@ -29,9 +36,10 @@
    ============================================================================ */
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Page, Section } from "../components/Page.tsx";
 import TrendChartCard from "../components/charts/TrendChartCard";
-import HubPageHeader from "../components/layout/HubPageHeader";
+import ProgressPageHeader from "../components/layout/ProgressPageHeader";
 import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTypes";
 import { formatLbs } from "../components/charts/chartFormatters";
 import {
@@ -1905,8 +1913,10 @@ function DashboardChartCard({
    ============================================================================ */
 
 export default function PerformanceDashboardPage() {
+  const navigate = useNavigate();
 
   const [activePhase, setActivePhase] = useState<DashboardPhase>("CUT");
+  
   const [activeRange, setActiveRange] = useState<DashboardRange>("8W");
   const [exerciseHistory, setExerciseHistory] = useState<ExerciseHistory[]>(MOCK_EXERCISE_HISTORY);
   const [dbSource, setDbSource] = useState<DbStrengthSource | null>(null);
@@ -2037,18 +2047,16 @@ export default function PerformanceDashboardPage() {
 
     return (
     <Page>
-          {/* ======================================================================
-              Breadcrumb 8A + 8B — Shared hub header
-             ==================================================================== */}
-          <Section>
-            <HubPageHeader
-              hubLabel="Progress"
-              hubRoute="/progress"
-              pageTitle="Performance"
-              subtitle="Big-picture coaching view across strength, body composition, and training trends."
-              metaLine={`Current body metrics as of ${bodySnapshot.asOfLabel}`}
-              showDetailCard={true}
-            />
+                {/* ======================================================================
+	            Breadcrumb 8A — Shared Progress sub-page header
+	           ==================================================================== */}
+	    <Section>
+	      <ProgressPageHeader
+		breadcrumb="← Progress / Performance"
+		description="Big-picture coaching view across strength, body composition, and training trends."
+		metaLine={`Current body metrics as of ${bodySnapshot.asOfLabel}`}
+		onBreadcrumbClick={() => navigate("/progress")}
+	      />
       </Section>
 
       {/* ======================================================================
@@ -2062,20 +2070,21 @@ export default function PerformanceDashboardPage() {
               style={{ justifyContent: "space-between", alignItems: "flex-start" }}
             >
               <div>
-                <div
-                  className="muted"
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 800,
-                    textTransform: "uppercase",
-                    letterSpacing: 0.5,
-                  }}
-                >
-                  Overview
+                                <div
+		                  className="muted"
+		                  style={{
+		                    fontSize: 12,
+		                    fontWeight: 800,
+		                    textTransform: "uppercase",
+		                    letterSpacing: 0.5,
+		                    marginBottom: 2,
+		                  }}
+		                >
+		                  Overview
                 </div>
-                <h2 style={{ marginTop: 6 }}>Dashboard Overview</h2>
-                <div className="muted" style={{ fontSize: 14 }}>
-                  Flagship signals, charts, and coaching insights.
+                 <h2 style={{ marginTop: 6, marginBottom: 6 }}>Dashboard Overview</h2>
+		<div className="muted" style={{ fontSize: 14, lineHeight: 1.45 }}>
+		  Flagship signals, charts, and coaching insights.
                 </div>
               </div>
               <span className="badge">Preview</span>
@@ -2093,11 +2102,31 @@ export default function PerformanceDashboardPage() {
             </div>
 
             <div className="grid two dashboard-hero-stats" style={{ marginTop: 12 }}>
-              {vm.heroStats.map((stat) => (
-                <div key={stat.label} className="card dashboard-stat">
-                  <div className="muted dashboard-stat-label">{stat.label}</div>
-                  <div className="dashboard-stat-value">{stat.value}</div>
-                </div>
+                            {vm.heroStats.map((stat) => (
+	                      <div
+	                        key={stat.label}
+	                        className="card dashboard-stat"
+	                        style={{
+	                          display: "flex",
+	                          alignItems: "center",
+	                          justifyContent: "space-between",
+	                          gap: 12,
+	                        }}
+	                      >
+	                        <div className="muted dashboard-stat-label" style={{ marginBottom: 0 }}>
+	                          {stat.label}
+	                        </div>
+	      
+	                        <div
+	                          className="dashboard-stat-value"
+	                          style={{
+	                            textAlign: "right",
+	                            whiteSpace: "nowrap",
+	                          }}
+	                        >
+	                          {stat.value}
+	                        </div>
+	                      </div>
               ))}
             </div>
           </div>
@@ -2321,44 +2350,50 @@ export default function PerformanceDashboardPage() {
             ))}
 
             <div className="card">
-              <div
-                className="row"
-                style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}
-              >
-                <h3 style={{ margin: 0 }}>Strength Signal Debug</h3>
-                <button
-                  type="button"
-                  className="btn small"
-                  onClick={() => setShowDebug((v) => !v)}
-                >
-                  {showDebug ? "Hide Debug" : "Show Debug"}
-                </button>
+                            <div
+	                      className="row"
+	                      style={{
+	                        justifyContent: "space-between",
+	                        alignItems: "center",
+	                        marginBottom: 8,
+	                      }}
+	                    >
+	                      <h3 style={{ margin: 0 }}>Strength Signal Debug</h3>
+	                      <button
+	                        type="button"
+	                        className="btn small"
+	                        onClick={() => setShowDebug((v) => !v)}
+	                      >
+	                        {showDebug ? "Hide Debug" : "Show Debug"}
+	                      </button>
               </div>
 
-              <div className="kv">
-                <span>Data Source</span>
-                <span style={{ color: "var(--text)", fontWeight: 700 }}>{vm.debug.dataSource}</span>
+                           <div className="kv">
+	                     <span>Data Source</span>
+	                     <span style={{ color: "var(--text)", fontWeight: 700 }}>
+	                       {vm.debug.dataSource}
+	                     </span>
               </div>
 
-              <div className="kv" style={{ marginTop: 8 }}>
-                <span>Exercises Counted</span>
-                <span style={{ color: "var(--text)", fontWeight: 700 }}>
-                  {vm.debug.exercisesCounted}
-                </span>
+		    <div className="kv" style={{ marginTop: 8 }}>
+		      <span>Exercises Counted</span>
+		      <span style={{ color: "var(--text)", fontWeight: 700 }}>
+			{vm.debug.exercisesCounted}
+		      </span>
               </div>
 
-              <div className="kv" style={{ marginTop: 8 }}>
-                <span>Current Signal</span>
-                <span style={{ color: "var(--text)", fontWeight: 700 }}>
-                  {vm.debug.currentSignal}
-                </span>
+                            <div className="kv" style={{ marginTop: 8 }}>
+	                      <span>Current Signal</span>
+	                      <span style={{ color: "var(--text)", fontWeight: 700 }}>
+	                        {vm.debug.currentSignal}
+	                      </span>
               </div>
 
-              <div className="kv" style={{ marginTop: 8 }}>
-                <span>Top Composite</span>
-                <span style={{ color: "var(--text)", fontWeight: 700 }}>
-                  {vm.debug.topComposite}
-                </span>
+                            <div className="kv" style={{ marginTop: 8 }}>
+	                      <span>Top Composite</span>
+	                      <span style={{ color: "var(--text)", fontWeight: 700 }}>
+	                        {vm.debug.topComposite}
+	                      </span>
               </div>
 
               {showDebug ? (
