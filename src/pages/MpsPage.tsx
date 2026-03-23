@@ -43,8 +43,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { db } from "../db";
-import ProgressPageHeader from "../components/Layout/ProgressPageHeader";
-import SectionHeaderRow from "../components/Layout/SectionHeaderRow";
+import ProgressPageHeader from "../components/layout/ProgressPageHeader";
+import SectionHeaderRow from "../components/layout/SectionHeaderRow";
 import { computeStrengthTrend } from "../strength/Strength";
 import {
   pickTime as sharedPickTime,

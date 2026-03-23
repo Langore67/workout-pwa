@@ -80,7 +80,7 @@ import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTy
 import { formatInches, formatLbs } from "../components/charts/chartFormatters";
 import InfoStubButton from "../components/information/InfoStubButton";
 import SectionHeaderRow from "../components/layout/SectionHeaderRow";
-import ProgressPageHeader from "../components/Layout/ProgressPageHeader";
+import ProgressPageHeader from "../components/layout/ProgressPageHeader";
 import {
   averagePreviousValues as sharedAveragePreviousValues,
   computePhaseSignal as sharedComputePhaseSignal,
