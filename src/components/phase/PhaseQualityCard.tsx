@@ -699,52 +699,7 @@ export default function PhaseQualityCard({
 
   return (
     <div className="card" style={{ padding: 14, marginBottom: 12 }}>
-      {/* =====================================================================
-          Breadcrumb 7A — Header
-         ================================================================== */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 12,
-          marginBottom: 10,
-        }}
-      >
-        <div
-          className="muted"
-          style={{
-            fontSize: 12,
-            fontWeight: 700,
-            letterSpacing: 0.5,
-          }}
-        >
-          {derived.title}
-        </div>
-
-        <button
-          type="button"
-          aria-label={`Open info for ${derived.infoKey}`}
-          onClick={() => {
-            // TODO: Hook into InfoModal / info framework later
-            console.log("Open info:", derived.infoKey);
-          }}
-          style={{
-            border: "1px solid var(--line)",
-            background: "transparent",
-            borderRadius: 999,
-            width: 24,
-            height: 24,
-            fontSize: 12,
-            fontWeight: 700,
-            color: "var(--muted)",
-            cursor: "pointer",
-          }}
-        >
-          i
-        </button>
-      </div>
-
+      
       {/* =====================================================================
           Breadcrumb 7B — Quadrant / maintain block
          ================================================================== */}
@@ -753,8 +708,9 @@ export default function PhaseQualityCard({
 	  style={{
 	    display: "grid",
 	    gridTemplateColumns: "1fr 1fr",
-	    gap: 8,
-	    marginBottom: 10,
+	    gap: 10,
+	    marginTop: 4,
+            marginBottom: 10,
 	  }}
         >
           {derived.cells.map((cell) => (
@@ -795,17 +751,24 @@ export default function PhaseQualityCard({
       {/* =====================================================================
           Breadcrumb 7C — Current state
          ================================================================== */}
-      <div style={{ marginBottom: 12 }}>
+      <div
+        style={{
+          border: "1px solid var(--line)",
+          borderRadius: 10,
+          padding: 12,
+          marginTop: 6,
+        }}
+      >
         <div
           className="muted"
           style={{
             fontSize: 11,
             fontWeight: 700,
             letterSpacing: 0.5,
-            marginBottom: 4,
+            marginBottom: 6,
           }}
         >
-          CURRENT
+          Current
         </div>
       
         <div
@@ -814,6 +777,7 @@ export default function PhaseQualityCard({
             fontSize: 18,
             lineHeight: 1.15,
             marginBottom: 6,
+            color: toneColor(activeTone),
           }}
         >
           {derived.quadrantLabel}

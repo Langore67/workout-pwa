@@ -43,6 +43,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { db } from "../db";
+import ProgressPageHeader from "../components/Layout/ProgressPageHeader";
+import SectionHeaderRow from "../components/Layout/SectionHeaderRow";
 import { computeStrengthTrend } from "../strength/Strength";
 import {
   pickTime as sharedPickTime,
@@ -115,6 +117,17 @@ type MpsModel = {
    ============================================================================ */
 
 const HEIGHT_META_KEY = "profile.heightIn";
+
+const MPS_INFO_KEYS = {
+  coreSignal: "core_signal",
+} as const;
+
+const MPS_INFO_CONTENT = {
+  [MPS_INFO_KEYS.coreSignal]: {
+    title: "Core Signal",
+    body: "Explains the main muscle-preservation signal and how the key MPS metrics are interpreted.",
+  },
+} as const;
 
 function fmtNum(n?: number, digits = 1) {
   if (!Number.isFinite(n)) return "—";
@@ -646,6 +659,71 @@ function buildMpsModel(args: {
 /* ============================================================================
    Breadcrumb 5 — UI helpers
    ============================================================================ */
+function MpsSignalRow({
+  label,
+  value,
+  changeText,
+  changeColor = "var(--muted)",
+  showDivider = true,
+}: {
+  label: string;
+  value: string;
+  changeText: string;
+  changeColor?: string;
+  showDivider?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(140px, 1fr) auto auto",
+        alignItems: "center",
+        gap: 12,
+        padding: "10px 0",
+        borderBottom: showDivider ? "1px solid var(--line)" : "none",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: 0.6,
+          color: "var(--muted)",
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          fontWeight: 900,
+          fontSize: 17,
+          lineHeight: 1.1,
+          letterSpacing: -0.2,
+          color: "var(--text)",
+          textAlign: "right",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {value}
+      </div>
+
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 600,
+          color: changeColor,
+          textAlign: "right",
+          whiteSpace: "nowrap",
+          minWidth: 74,
+        }}
+      >
+        {changeText}
+      </div>
+    </div>
+  );
+}
 
 function stateTheme(state: MpsState) {
   switch (state) {
@@ -927,37 +1005,13 @@ export default function MpsPage() {
   return (
     <div className="container">
     
-{/* ======================================================================
-    Breadcrumb 6A — Local page header
-   ==================================================================== */}
-<div style={{ marginBottom: 8 }}>
-  <div
-    style={{
-      fontSize: 12,
-      fontWeight: 800,
-      letterSpacing: "0.08em",
-      textTransform: "uppercase",
-      color: "var(--muted)",
-      marginBottom: 6,
-    }}
-  >
-    Progress
-  </div>
-
-  <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1 }}>
-    Muscle Preservation
-  </div>
-
-  <div className="muted" style={{ marginTop: 6 }}>
-    Strength signal during fat loss, using MPS and body trends.
-  </div>
-</div>
-
-<SectionNavCard
-  title="Muscle Preservation"
-  backLabel="Progress"
-  backHref="/progress"
-/> 
+  <ProgressPageHeader
+	breadcrumb="← Progress / Muscle Preservation"
+	description="Strength signal during fat loss, using MPS and body trends."
+	onBreadcrumbClick={() => {
+	  window.location.href = "/progress";
+	}}
+      /> 
             {/* ======================================================================
                 Breadcrumb 6C — Status card
                ==================================================================== */}
@@ -1057,111 +1111,225 @@ export default function MpsPage() {
       {/* ======================================================================
           Breadcrumb 6E — Core metrics
          ==================================================================== */}
-      <div style={{ marginBottom: 10, fontWeight: 800, fontSize: 14 }}>Core Signal</div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))",
-          gap: 14,
-          marginBottom: 18,
-        }}
-      >
-                <MetricCard
-		  label="Normalized Strength"
-		  value={fmtNum(model?.normalizedStrengthNow, 3)}
-		  helper={`14d ${fmtSigned(model?.normalizedDelta14Pct, 1, "%")}`}
-        />
-
-        <MetricCard
-          label="Vs 90d Best"
-          value={fmtSigned(model?.normalizedVsBest90Pct, 1, "%")}
-          helper={
-            model?.normalizedBest90 != null ? `best ${fmtNum(model.normalizedBest90, 3)}` : "—"
-          }
-        />
-
-        <MetricCard
-          label="Body Weight"
-          value={`${fmtNum(model?.weightNow, 1)} lb`}
-          helper={`14d ${fmtSigned(model?.weightDelta14, 1, " lb")}`}
-        />
-
-        <MetricCard
-          label="Waist"
-          value={model?.waistNow != null ? `${fmtNum(model?.waistNow, 1)} in` : "—"}
-          helper={`14d ${fmtSigned(model?.waistDelta14, 1, " in")}`}
-        />
-      </div>
+                    <div className="card" style={{ padding: "0 14px" }}>
+	              <div
+	                style={{
+	                  display: "grid",
+	                  gridTemplateColumns: "minmax(140px, 1fr) auto auto",
+	                  alignItems: "center",
+	                  gap: 12,
+	                  padding: "10px 0 6px",
+	                  borderBottom: "1px solid var(--line)",
+	                }}
+	              >
+	                <div
+	                  style={{
+	                    fontSize: 11,
+	                    fontWeight: 700,
+	                    letterSpacing: 0.6,
+	                    color: "var(--muted)",
+	                    textTransform: "uppercase",
+	                  }}
+	                >
+	                  Metric
+	                </div>
+	    
+	                <div
+	                  style={{
+	                    fontSize: 11,
+	                    fontWeight: 700,
+	                    letterSpacing: 0.6,
+	                    color: "var(--muted)",
+	                    textTransform: "uppercase",
+	                    textAlign: "right",
+	                    whiteSpace: "nowrap",
+	                  }}
+	                >
+	                  Value
+	                </div>
+	    
+	                <div
+	                  style={{
+	                    fontSize: 11,
+	                    fontWeight: 700,
+	                    letterSpacing: 0.6,
+	                    color: "var(--muted)",
+	                    textTransform: "uppercase",
+	                    textAlign: "right",
+	                    whiteSpace: "nowrap",
+	                    minWidth: 74,
+	                  }}
+	                >
+	                  Change
+	                </div>
+	              </div>
+	    
+	              <MpsSignalRow
+	                label="Normalized Strength"
+	                value={fmtNum(model?.normalizedStrengthNow, 3)}
+	                changeText={fmtSigned(model?.normalizedDelta14Pct, 1, "%")}
+	                changeColor={
+	                  (model?.normalizedDelta14Pct ?? 0) > 0
+	                    ? "var(--accent)"
+	                    : (model?.normalizedDelta14Pct ?? 0) < 0
+	                    ? "var(--danger)"
+	                    : "var(--muted)"
+	                }
+	              />
+	    
+	              <MpsSignalRow
+	                label="Vs 90d Best"
+	                value={fmtSigned(model?.normalizedVsBest90Pct, 1, "%")}
+	                changeText={
+	                  model?.normalizedBest90 != null
+	                    ? `best ${fmtNum(model.normalizedBest90, 3)}`
+	                    : "—"
+	                }
+	              />
+	    
+	              <MpsSignalRow
+	                label="Body Weight"
+	                value={`${fmtNum(model?.weightNow, 1)} lb`}
+	                changeText={fmtSigned(model?.weightDelta14, 1, " lb")}
+	                changeColor={
+	                  (model?.weightDelta14 ?? 0) < 0
+	                    ? "var(--accent)"
+	                    : (model?.weightDelta14 ?? 0) > 0
+	                    ? "var(--danger)"
+	                    : "var(--muted)"
+	                }
+	              />
+	    
+	              <MpsSignalRow
+	                label="Waist"
+	                value={model?.waistNow != null ? `${fmtNum(model?.waistNow, 1)} in` : "—"}
+	                changeText={fmtSigned(model?.waistDelta14, 1, " in")}
+	                changeColor={
+	                  (model?.waistDelta14 ?? 0) < 0
+	                    ? "var(--accent)"
+	                    : (model?.waistDelta14 ?? 0) > 0
+	                    ? "var(--danger)"
+	                    : "var(--muted)"
+	                }
+	                showDivider={false}
+	              />
+        </div>
+ 
 
       {/* ======================================================================
           Breadcrumb 6F — Supporting body composition
          ==================================================================== */}
-      <div style={{ marginBottom: 10, fontWeight: 800, fontSize: 14 }}>
-        Supporting Context
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))",
-          gap: 14,
-          marginBottom: 18,
-        }}
-      >
-        <MetricCard
-          label="Lean Mass"
-          value={model?.leanMassNow != null ? `${fmtNum(model?.leanMassNow, 1)} lb` : "—"}
-          helper={`14d ${fmtSigned(model?.leanMassDelta14, 1, " lb")}`}
-        />
-
-        <MetricCard
-          label="Body Fat"
-          value={fmtPct(model?.bodyFatNow, 1)}
-          helper={`14d ${fmtSigned(model?.bodyFatDelta14, 1, "%")}`}
-        />
-
-        <MetricCard
-          label="Waist / Height"
-          value={fmtNum(model?.waistToHeightRatio, 3)}
-          helper={whtrHelper(model?.waistToHeightRatio)}
-        />
+	       <div className="card" style={{ padding: 12, marginBottom: 18 }}>
+	         <SectionHeaderRow
+	           title="SUPPORTING CONTEXT"
+	         />
+	 
+	         <div className="card" style={{ padding: "0 14px" }}>
+	           <div
+	             style={{
+	               display: "grid",
+	               gridTemplateColumns: "minmax(140px, 1fr) auto auto",
+	               alignItems: "center",
+	               gap: 12,
+	               padding: "10px 0 6px",
+	               borderBottom: "1px solid var(--line)",
+	             }}
+	           >
+	             <div
+	               style={{
+	                 fontSize: 11,
+	                 fontWeight: 700,
+	                 letterSpacing: 0.6,
+	                 color: "var(--muted)",
+	                 textTransform: "uppercase",
+	               }}
+	             >
+	               Metric
+	             </div>
+	 
+	             <div
+	               style={{
+	                 fontSize: 11,
+	                 fontWeight: 700,
+	                 letterSpacing: 0.6,
+	                 color: "var(--muted)",
+	                 textTransform: "uppercase",
+	                 textAlign: "right",
+	                 whiteSpace: "nowrap",
+	               }}
+	             >
+	               Value
+	             </div>
+	 
+	             <div
+	               style={{
+	                 fontSize: 11,
+	                 fontWeight: 700,
+	                 letterSpacing: 0.6,
+	                 color: "var(--muted)",
+	                 textTransform: "uppercase",
+	                 textAlign: "right",
+	                 whiteSpace: "nowrap",
+	                 minWidth: 74,
+	               }}
+	             >
+	               Change
+	             </div>
+	           </div>
+	 
+	           <MpsSignalRow
+	             label="Lean Mass"
+	             value={model?.leanMassNow != null ? `${fmtNum(model?.leanMassNow, 1)} lb` : "—"}
+	             changeText={fmtSigned(model?.leanMassDelta14, 1, " lb")}
+	             changeColor={
+	               (model?.leanMassDelta14 ?? 0) > 0
+	                 ? "var(--accent)"
+	                 : (model?.leanMassDelta14 ?? 0) < 0
+	                 ? "var(--danger)"
+	                 : "var(--muted)"
+	             }
+	           />
+	 
+	           <MpsSignalRow
+	             label="Body Fat"
+	             value={fmtPct(model?.bodyFatNow, 1)}
+	             changeText={fmtSigned(model?.bodyFatDelta14, 1, "%")}
+	             changeColor={
+	               (model?.bodyFatDelta14 ?? 0) < 0
+	                 ? "var(--accent)"
+	                 : (model?.bodyFatDelta14 ?? 0) > 0
+	                 ? "var(--danger)"
+	                 : "var(--muted)"
+	             }
+	           />
+	 
+	           <MpsSignalRow
+	             label="Waist / Height"
+	             value={fmtNum(model?.waistToHeightRatio, 3)}
+	             changeText={whtrHelper(model?.waistToHeightRatio)}
+	             showDivider={false}
+	           />
+	         </div>
       </div>
 
                  {/* ======================================================================
 	             Breadcrumb 6G — Interpretation
 	            ==================================================================== */}
-	         <div className="card">
-	           <div
-	             style={{
-	               fontSize: 12,
-	               fontWeight: 800,
-	               letterSpacing: "0.08em",
-	               textTransform: "uppercase",
-	               color: "var(--muted)",
-	               marginBottom: 8,
-	             }}
-	           >
-	             Interpretation
-	           </div>
-	   
-	           <div className="muted" style={{ lineHeight: 1.55 }}>
-	             This signal uses a dual-anchor model. The 14-day comparison acts as the short-term
-	             coaching signal, while the 90-day best normalized strength acts as a reserve check.
-	             Waist is the main short-term body confirmation signal. Lean mass and body-fat trends
-	             provide supporting context, and waist-to-height ratio serves as a slower structural
-	             indicator.
-	           </div>
-	         </div>
-	   
+	         <div className="card" style={{ padding: 12, marginBottom: 16 }}>
+  <SectionHeaderRow title="INTERPRETATION" />
+
+  <div className="muted" style={{ lineHeight: 1.55 }}>
+    This signal uses a dual-anchor model. The 14-day comparison acts as the short-term
+    coaching signal, while the 90-day best normalized strength acts as a reserve check.
+    Waist is the main short-term body confirmation signal. Lean mass and body-fat trends
+    provide supporting context, and waist-to-height ratio serves as a slower structural
+    indicator.
+  </div>
+</div>	   
 	               {null}
 	       </div>
 	     );
 }
-
-
-
-
 
 /* ============================================================================
    End of file: src/pages/MpsPage.tsx
