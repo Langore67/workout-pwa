@@ -1,7 +1,7 @@
 /* ============================================================================
    PerformanceDashboardPage.tsx
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-23-PERFORMANCE-DASH-09
+   BUILD_ID: 2026-03-23-PERFORMANCE-DASH-10
    FILE: src/pages/PerformanceDashboardPage.tsx
 
    Purpose
@@ -10,24 +10,22 @@
    - Keep phase as an interpretation lens, not a data source override
    - Align the page shell with the shared Progress sub-page standard
 
-   Changes (PERFORMANCE-DASH-09)
+   Changes (PERFORMANCE-DASH-10)
+   ✅ Clean up indentation and formatting throughout the file
+   ✅ Refresh top versioning/comment header to reflect current page state
+   ✅ Preserve working breadcrumb navigation back to Progress
+   ✅ Preserve one-line hero stat tiles
+   ✅ Preserve current body metrics sourced from DB (not phase placeholders)
+   ✅ Preserve shared chart framework usage
+   ✅ Preserve dashboard insights / debug / build priorities sections
+
+   Prior version (PERFORMANCE-DASH-09)
    ✅ Replace HubPageHeader with ProgressPageHeader
    ✅ Restore working breadcrumb navigation back to Progress
    ✅ Tighten overview-card spacing and top-page rhythm
    ✅ Preserve current body metrics sourced from DB (not phase placeholders)
    ✅ Preserve shared chart framework usage
    ✅ Preserve dashboard insights / debug / build priorities sections
-
-   Prior version (DASH-IRONFORGE-08)
-   ✅ Keep compact top header with ← Progress navigation
-   ✅ Keep current body metrics sourced from DB (not phase placeholders)
-   ✅ Preserve shared chart framework usage
-   ✅ Restore separate Body Weight chart
-   ✅ Restore separate Waist Trend chart
-   ✅ Make phase control the coaching layer
-   ✅ Replace Range overview stat with Strength Efficiency
-   ✅ Make Body Weight / Waist chart badges phase-aware
-   ✅ Keep real Strength Signal and weekly Training Volume trend wired in
 
    Notes
    - Phase changes interpretation only
@@ -37,18 +35,22 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+
 import { Page, Section } from "../components/Page.tsx";
 import TrendChartCard from "../components/charts/TrendChartCard";
-import ProgressPageHeader from "../components/layout/ProgressPageHeader";
-import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTypes";
 import { formatLbs } from "../components/charts/chartFormatters";
+import type {
+  ChartDatum,
+  ChartSeriesConfig,
+} from "../components/charts/chartTypes";
+import ProgressPageHeader from "../components/layout/ProgressPageHeader";
 import {
   db,
+  type BodyMetricEntry,
   type Exercise,
-  type Track,
   type Session,
   type SetEntry,
-  type BodyMetricEntry,
+  type Track,
 } from "../db";
 
 /* ============================================================================
@@ -80,10 +82,14 @@ type ChartViewModel = {
     score: number;
   }>;
 
-  movementBreakdown?: Array<{
-    movement: string;
-    score: number;
-    exerciseCount: number;
+      movementBreakdown?: Array<{
+        movement: string;
+        score: number;
+        exerciseCount: number;
+        includedExercises: Array<{
+          label: string;
+          score: number;
+        }>;
   }>;
 };
 
@@ -119,8 +125,16 @@ type DashboardViewModel = {
     exercisesCounted: number;
     currentSignal: string;
     topComposite: string;
-    composites: Array<{ movement: string; score: string; exerciseCount: number }>;
-    topExercises: Array<{ label: string; changePct: string; score: string }>;
+    composites: Array<{
+      movement: string;
+      score: string;
+      exerciseCount: number;
+    }>;
+    topExercises: Array<{
+      label: string;
+      changePct: string;
+      score: string;
+    }>;
   };
 };
 
@@ -396,14 +410,14 @@ function buildPrimaryCoachingSignal(args: {
       weightTrend.points < 2
         ? 12
         : weightTrend.changeAbs <= -1.5
-           ? 20
-           : weightTrend.changeAbs <= -0.5
-              ? 18
-              : weightTrend.changeAbs <= 0
-                 ? 14
-                 : weightTrend.changeAbs <= 1
-                    ? 8
-                    : 4;
+          ? 20
+          : weightTrend.changeAbs <= -0.5
+            ? 18
+            : weightTrend.changeAbs <= 0
+              ? 14
+              : weightTrend.changeAbs <= 1
+                ? 8
+                : 4;
 
     waistComponent =
       waistTrend.points < 2
@@ -416,16 +430,16 @@ function buildPrimaryCoachingSignal(args: {
               ? 22
               : 10;
   } else if (phase === "MAINTAIN") {
-        weightComponent =
-          weightTrend.points < 2
-            ? 12
-            : Math.abs(weightTrend.changeAbs) <= 0.75
-              ? 20
-              : Math.abs(weightTrend.changeAbs) <= 1.5
-                ? 16
-                : Math.abs(weightTrend.changeAbs) <= 3
-                  ? 12
-                  : 8;
+    weightComponent =
+      weightTrend.points < 2
+        ? 12
+        : Math.abs(weightTrend.changeAbs) <= 0.75
+          ? 20
+          : Math.abs(weightTrend.changeAbs) <= 1.5
+            ? 16
+            : Math.abs(weightTrend.changeAbs) <= 3
+              ? 12
+              : 8;
 
     waistComponent =
       waistTrend.points < 2
@@ -732,7 +746,9 @@ function buildVolumeTrend(
     if (set.setType !== "working") return;
     if (!set.completedAt) return;
     if (typeof set.reps !== "number" || set.reps <= 0) return;
-    if (typeof set.weight !== "number" || !Number.isFinite(set.weight) || set.weight <= 0) return;
+    if (typeof set.weight !== "number" || !Number.isFinite(set.weight) || set.weight <= 0) {
+      return;
+    }
 
     const session = sessionById.get(set.sessionId);
     if (!session) return;
@@ -1162,10 +1178,6 @@ function buildExerciseHistoryFromDb(source: DbStrengthSource): ExerciseHistory[]
     source.sessions.filter((s) => !s.deletedAt).map((s) => [s.id, s])
   );
 
-
-
-
-
   const perExerciseSessionBest = new Map<
     string,
     {
@@ -1194,7 +1206,13 @@ function buildExerciseHistoryFromDb(source: DbStrengthSource): ExerciseHistory[]
     if (!session) continue;
 
     const at = session.startedAt ?? set.completedAt ?? set.createdAt;
-    const effectiveWeight = calcEffectiveWeightLb(set, exercise, track, source.bodyMetrics, at);
+    const effectiveWeight = calcEffectiveWeightLb(
+      set,
+      exercise,
+      track,
+      source.bodyMetrics,
+      at
+    );
 
     if (
       typeof effectiveWeight !== "number" ||
@@ -1273,7 +1291,7 @@ function computeStrengthSignal(
   range: DashboardRange,
   exerciseHistory: ExerciseHistory[]
 ): StrengthSignalResult {
-const safeHistory = exerciseHistory.length >= 2 ? exerciseHistory : MOCK_EXERCISE_HISTORY;
+  const safeHistory = exerciseHistory.length >= 2 ? exerciseHistory : MOCK_EXERCISE_HISTORY;
 
   const exerciseSignals = safeHistory
     .map(computeExerciseSignal)
@@ -1413,16 +1431,19 @@ function buildDashboardViewModel(
     heroSummary: primarySignal.summary,
     flagshipBody: primarySignal.body,
     heroStats: [
-      { label: "Strength Signal", value: strengthSignal.score.toFixed(2) },
+      { label: "Current Strength Signal", value: strengthSignal.score.toFixed(2) },
       { label: "Body Weight", value: bodySnapshot.weightLabel },
       { label: "Waist", value: bodySnapshot.waistLabel },
-      { label: "Strength Efficiency", value: primarySignal.strengthEfficiencyLabel },
+      {
+        label: "Strength Efficiency",
+        value: primarySignal.strengthEfficiencyLabel,
+       },
     ],
     charts: {
-      strength: {
-        id: "strength",
-        title: "Strength Signal",
-        subtitle: `Weekly trend • ${range}`,
+            strength: {
+              id: "strength",
+              title: "Strength Signal Trend",
+              subtitle: `Weekly historical trend • ${range}`,
         direction: strengthSignal.trend,
         momentumMessage,
         analysisRows: [
@@ -1435,7 +1456,10 @@ function buildDashboardViewModel(
           },
           { label: "Highest Value", value: strengthAnalysis.high.toFixed(2) },
           { label: "Lowest Value", value: strengthAnalysis.low.toFixed(2) },
-          { label: "Exercises Included", value: String(strengthSignal.exerciseSignals.length) },
+          {
+            label: "Exercises Included",
+            value: String(strengthSignal.exerciseSignals.length),
+          },
           { label: "Top Composite", value: topComposite },
         ],
         interpretation: strengthSignal.summary,
@@ -1444,17 +1468,24 @@ function buildDashboardViewModel(
           .sort((a, b) => b.changePct - a.changePct)
           .slice(0, 5)
           .map((item) => ({
-            label: item.label.replace(/—\s*hypertrophy/i, "").trim(),
+            label: normalizeExerciseDisplayLabel(item.label),
             changePct: item.changePct,
             score: item.normalizedScore,
           })),
-        movementBreakdown: strengthSignal.composites
-          .slice()
-          .sort((a, b) => b.score - a.score)
-          .map((item) => ({
-            movement: item.movement,
-            score: item.score,
-            exerciseCount: item.exerciseCount,
+	        movementBreakdown: strengthSignal.composites
+	          .slice()
+	          .sort((a, b) => b.score - a.score)
+	          .map((item) => ({
+	            movement: item.movement,
+	            score: item.score,
+	            exerciseCount: item.exerciseCount,
+	            includedExercises: strengthSignal.exerciseSignals
+	              .filter((signal) => signal.movement === item.movement)
+	              .map((signal) => ({
+	                label: normalizeExerciseDisplayLabel(signal.label),
+	                score: signal.normalizedScore,
+	              }))
+	              .sort((a, b) => a.label.localeCompare(b.label)),
           })),
       },
 
@@ -1559,11 +1590,36 @@ function buildDashboardViewModel(
       "Next: make the rolling window user-configurable.",
       "Next: let the user select which exercises contribute to Strength Signal.",
     ],
-    debug: {
-      dataSource: usingFallback ? "Mock Fallback" : "Real DB",
-      exercisesCounted: strengthSignal.exerciseSignals.length,
-      currentSignal: strengthSignal.score.toFixed(2),
+            debug: {
+	      dataSource: usingFallback ? "Fallback demo data" : "Logged workout data",
+	            dateWindowUsed:
+	              range === "4W"
+	                ? "Last 4 weeks"
+	                : range === "8W"
+	                  ? "Last 8 weeks"
+	                  : range === "12W"
+	                    ? "Last 12 weeks"
+	                    : range === "YTD"
+	                      ? "Year to date"
+                : "All available history",
+	      confidenceLevel:
+	        usingFallback || strengthSignal.exerciseSignals.length < 3
+	          ? "Low"
+	          : strengthSignal.exerciseSignals.length < 5
+	            ? "Moderate"
+	            : "High",
+	      exercisesCounted: strengthSignal.exerciseSignals.length,
+	      currentSignal: strengthSignal.score.toFixed(2),
       topComposite,
+        
+        
+        
+        
+        
+    
+    
+    
+    
       composites: strengthSignal.composites
         .slice()
         .sort((a, b) => b.score - a.score)
@@ -1577,7 +1633,7 @@ function buildDashboardViewModel(
         .sort((a, b) => b.changePct - a.changePct)
         .slice(0, 5)
         .map((item) => ({
-          label: item.label,
+                    label: normalizeExerciseDisplayLabel(item.label),
           changePct: `${item.changePct > 0 ? "+" : ""}${item.changePct.toFixed(2)}%`,
           score: item.normalizedScore.toFixed(2),
         })),
@@ -1676,24 +1732,145 @@ function StrengthTopMovers({
 function StrengthMovementBreakdown({
   items,
 }: {
-  items: Array<{ movement: string; score: number; exerciseCount: number }>;
+
+    items: Array<{
+      movement: string;
+      score: number;
+      exerciseCount: number;
+      includedExercises: Array<{
+        label: string;
+        score: number;
+      }>;
+    }>;
 }) {
+  const [expandedMovement, setExpandedMovement] = useState<string | null>(null);
+
   if (!items.length) {
     return <div className="muted">No composite movement data yet.</div>;
   }
 
   return (
     <div style={{ display: "grid", gap: 8 }}>
-      {items.map((item) => (
-        <div key={item.movement} className="kv">
-          <span style={{ textTransform: "capitalize" }}>
-            {item.movement} ({item.exerciseCount})
-          </span>
-          <span style={{ fontWeight: 700, color: "var(--text)" }}>
-            {item.score.toFixed(2)}
-          </span>
-        </div>
-      ))}
+            <div
+              className="muted"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1.3fr 1fr auto",
+                gap: 12,
+                fontSize: 12,
+                fontWeight: 800,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+                paddingBottom: 4,
+              }}
+            >
+              <span>Pattern</span>
+              <span>Included</span>
+              <span style={{ textAlign: "right" }}>Score</span>
+            </div>
+      
+            <div className="muted" style={{ fontSize: 12, marginTop: -2, marginBottom: 4 }}>
+              Tap a pattern to see which exercises are included.
+      </div>
+
+      {items.map((item) => {
+        const isExpanded = expandedMovement === item.movement;
+
+        return (
+          <div key={item.movement} style={{ display: "grid", gap: 6 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1.3fr 1fr auto",
+                gap: 12,
+                alignItems: "center",
+              }}
+            >
+              <button
+                type="button"
+                className="btn small"
+                onClick={() =>
+                  setExpandedMovement((prev) =>
+                    prev === item.movement ? null : item.movement
+                  )
+                }
+                style={{
+                  justifySelf: "start",
+                  padding: 0,
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--text)",
+                  fontWeight: 700,
+                  textAlign: "left",
+                }}
+              >
+                {capitalize(item.movement)}
+              </button>
+
+              <span className="muted" style={{ fontSize: 13 }}>
+                {item.exerciseCount}{" "}
+                {item.exerciseCount === 1 ? "exercise" : "exercises"}
+              </span>
+
+              <span
+                style={{
+                  fontWeight: 700,
+                  color: "var(--text)",
+                  textAlign: "right",
+                }}
+              >
+                {item.score.toFixed(2)}
+              </span>
+            </div>
+
+            {isExpanded ? (
+              <div
+                className="card"
+                style={{
+                  padding: 10,
+                  marginTop: 2,
+                }}
+              >
+                                <div
+		                  className="muted"
+		                  style={{
+		                    fontSize: 12,
+		                    fontWeight: 800,
+		                    textTransform: "uppercase",
+		                    letterSpacing: 0.5,
+		                    marginBottom: 8,
+		                  }}
+		                >
+		                  Included exercises
+		                </div>
+		
+		                <div
+		                  className="muted"
+		                  style={{ fontSize: 12, lineHeight: 1.45, marginBottom: 8 }}
+		                >
+		                  Contribution score (0–10): higher means the exercise is contributing
+		                  more strongly to this pattern right now.
+                </div>
+
+                <div style={{ display: "grid", gap: 6 }}>
+	     {item.includedExercises.map((exercise) => (
+	       <div
+		 key={exercise.label}
+		 className="kv"
+		 style={{ fontSize: 13 }}
+	       >
+		 <span>{exercise.label}</span>
+		 <span style={{ color: "var(--text)", fontWeight: 700 }}>
+		   {exercise.score.toFixed(2)}
+		 </span>
+	       </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
 
       <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
         <div className="muted" style={{ fontSize: 13, lineHeight: 1.4 }}>
@@ -1916,9 +2093,10 @@ export default function PerformanceDashboardPage() {
   const navigate = useNavigate();
 
   const [activePhase, setActivePhase] = useState<DashboardPhase>("CUT");
-  
   const [activeRange, setActiveRange] = useState<DashboardRange>("8W");
-  const [exerciseHistory, setExerciseHistory] = useState<ExerciseHistory[]>(MOCK_EXERCISE_HISTORY);
+  const [exerciseHistory, setExerciseHistory] = useState<ExerciseHistory[]>(
+    MOCK_EXERCISE_HISTORY
+  );
   const [dbSource, setDbSource] = useState<DbStrengthSource | null>(null);
   const [showDebug, setShowDebug] = useState(false);
 
@@ -1993,7 +2171,14 @@ export default function PerformanceDashboardPage() {
         bodyWeightChartData,
         waistChartData
       ),
-    [activePhase, activeRange, exerciseHistory, bodySnapshot, bodyWeightChartData, waistChartData]
+    [
+      activePhase,
+      activeRange,
+      exerciseHistory,
+      bodySnapshot,
+      bodyWeightChartData,
+      waistChartData,
+    ]
   );
 
   const volumeChartData = useMemo(
@@ -2006,7 +2191,8 @@ export default function PerformanceDashboardPage() {
       {
         key: "value",
         label: "Strength Signal",
-        formatter: (value) => (value == null || !Number.isFinite(value) ? "—" : value.toFixed(2)),
+        formatter: (value) =>
+          value == null || !Number.isFinite(value) ? "—" : value.toFixed(2),
       },
     ],
     []
@@ -2045,18 +2231,18 @@ export default function PerformanceDashboardPage() {
     []
   );
 
-    return (
+  return (
     <Page>
-                {/* ======================================================================
-	            Breadcrumb 8A — Shared Progress sub-page header
-	           ==================================================================== */}
-	    <Section>
-	      <ProgressPageHeader
-		breadcrumb="← Progress / Performance"
-		description="Big-picture coaching view across strength, body composition, and training trends."
-		metaLine={`Current body metrics as of ${bodySnapshot.asOfLabel}`}
-		onBreadcrumbClick={() => navigate("/progress")}
-	      />
+      {/* ======================================================================
+          Breadcrumb 8A — Shared Progress sub-page header
+         ==================================================================== */}
+      <Section>
+        <ProgressPageHeader
+          breadcrumb="← Progress / Performance"
+          description="Big-picture coaching view across strength, body composition, and training trends."
+          metaLine={`Current body metrics as of ${bodySnapshot.asOfLabel}`}
+          onBreadcrumbClick={() => navigate("/progress")}
+        />
       </Section>
 
       {/* ======================================================================
@@ -2070,29 +2256,33 @@ export default function PerformanceDashboardPage() {
               style={{ justifyContent: "space-between", alignItems: "flex-start" }}
             >
               <div>
-                                <div
-		                  className="muted"
-		                  style={{
-		                    fontSize: 12,
-		                    fontWeight: 800,
-		                    textTransform: "uppercase",
-		                    letterSpacing: 0.5,
-		                    marginBottom: 2,
-		                  }}
-		                >
-		                  Overview
+                <div
+                  className="muted"
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                    marginBottom: 2,
+                  }}
+                >
+                  Overview
                 </div>
-                 <h2 style={{ marginTop: 6, marginBottom: 6 }}>Dashboard Overview</h2>
-		<div className="muted" style={{ fontSize: 14, lineHeight: 1.45 }}>
-		  Flagship signals, charts, and coaching insights.
+
+                <h2 style={{ marginTop: 6, marginBottom: 6 }}>Dashboard Overview</h2>
+
+                <div className="muted" style={{ fontSize: 14, lineHeight: 1.45 }}>
+                  Flagship signals, charts, and coaching insights.
                 </div>
               </div>
+
               <span className="badge">Preview</span>
             </div>
 
             <hr />
 
             <label>Current Phase</label>
+
             <div style={{ marginTop: 8 }}>
               <PhaseControl activePhase={activePhase} onChange={setActivePhase} />
             </div>
@@ -2102,31 +2292,34 @@ export default function PerformanceDashboardPage() {
             </div>
 
             <div className="grid two dashboard-hero-stats" style={{ marginTop: 12 }}>
-                            {vm.heroStats.map((stat) => (
-	                      <div
-	                        key={stat.label}
-	                        className="card dashboard-stat"
-	                        style={{
-	                          display: "flex",
-	                          alignItems: "center",
-	                          justifyContent: "space-between",
-	                          gap: 12,
-	                        }}
-	                      >
-	                        <div className="muted dashboard-stat-label" style={{ marginBottom: 0 }}>
-	                          {stat.label}
-	                        </div>
-	      
-	                        <div
-	                          className="dashboard-stat-value"
-	                          style={{
-	                            textAlign: "right",
-	                            whiteSpace: "nowrap",
-	                          }}
-	                        >
-	                          {stat.value}
-	                        </div>
-	                      </div>
+              {vm.heroStats.map((stat) => (
+                <div
+                  key={stat.label}
+                  className="card dashboard-stat"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                  }}
+                >
+                  <div
+                    className="muted dashboard-stat-label"
+                    style={{ marginBottom: 0 }}
+                  >
+                    {stat.label}
+                  </div>
+
+                  <div
+                    className="dashboard-stat-value"
+                    style={{
+                      textAlign: "right",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {stat.value}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
@@ -2141,20 +2334,30 @@ export default function PerformanceDashboardPage() {
             >
               <div
                 className="row"
-                style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}
+                style={{
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  gap: 12,
+                }}
               >
                 <div>
                   <div className="row" style={{ alignItems: "center", gap: 10 }}>
                     <span className="badge green">✓ flagship</span>
                     <div
                       className="muted"
-                      style={{ fontSize: 12, textTransform: "uppercase", fontWeight: 700 }}
+                      style={{
+                        fontSize: 12,
+                        textTransform: "uppercase",
+                        fontWeight: 700,
+                      }}
                     >
                       Flagship Signal
                     </div>
                   </div>
 
-                  <h2 style={{ marginTop: 10, marginBottom: 0 }}>{vm.flagshipTitle}</h2>
+                  <h2 style={{ marginTop: 10, marginBottom: 0 }}>
+                    {vm.flagshipTitle}
+                  </h2>
                 </div>
 
                 <span
@@ -2170,7 +2373,11 @@ export default function PerformanceDashboardPage() {
 
               <div
                 className="row"
-                style={{ justifyContent: "space-between", alignItems: "flex-end", marginTop: 16 }}
+                style={{
+                  justifyContent: "space-between",
+                  alignItems: "flex-end",
+                  marginTop: 16,
+                }}
               >
                 <div>
                   <div className="dashboard-flagship-score">{vm.flagshipScore}</div>
@@ -2259,22 +2466,131 @@ export default function PerformanceDashboardPage() {
               <SectionHeader
                 title="Trend Charts"
                 subtitle="Pattern recognition, quick analysis, and interpretation."
-                right={<TimeRangeControl activeRange={activeRange} onChange={setActiveRange} />}
+                right={
+                  <TimeRangeControl
+                    activeRange={activeRange}
+                    onChange={setActiveRange}
+                  />
+                }
               />
             </div>
 
-            <DashboardChartCard
-              chart={vm.charts.strength}
-              chartData={strengthChartData}
-              series={strengthSeries}
-              yDomainMode="auto"
-              valueFormatter={(value) =>
-                value == null || !Number.isFinite(value) ? "—" : value.toFixed(2)
-              }
-              emptyMessage="Not enough strength history yet."
-            />
-
-            <DashboardChartCard
+                        <DashboardChartCard
+	                  chart={vm.charts.strength}
+	                  chartData={strengthChartData}
+	                  series={strengthSeries}
+	                  yDomainMode="auto"
+	                  valueFormatter={(value) =>
+	                    value == null || !Number.isFinite(value) ? "—" : value.toFixed(2)
+	                  }
+	                  emptyMessage="Not enough strength history yet."
+	                />
+	    
+	                <div className="card">
+	                  <div
+	                    className="row"
+	                    style={{
+	                      justifyContent: "space-between",
+	                      alignItems: "center",
+	                      marginBottom: 8,
+	                    }}
+	                  >
+	                    <h3 style={{ margin: 0 }}>Strength Signal Details</h3>
+	                    <button
+	                      type="button"
+	                      className="btn small"
+	                      onClick={() => setShowDebug((v) => !v)}
+	                    >
+	                      {showDebug ? "Hide Details" : "Show Details"}
+	                    </button>
+	                  </div>
+	    
+	                  <div className="kv">
+	                    <span>Source Used</span>
+	                    <span style={{ color: "var(--text)", fontWeight: 700 }}>
+	                      {vm.debug.dataSource}
+	                    </span>
+	                  </div>
+	    
+	                  <div className="kv" style={{ marginTop: 8 }}>
+	                    <span>Date Window Used</span>
+	                    <span style={{ color: "var(--text)", fontWeight: 700 }}>
+	                      {vm.debug.dateWindowUsed}
+	                    </span>
+	                  </div>
+	    
+	                  <div className="kv" style={{ marginTop: 8 }}>
+	                    <span>Confidence Level</span>
+	                    <span style={{ color: "var(--text)", fontWeight: 700 }}>
+	                      {vm.debug.confidenceLevel}
+	                    </span>
+	                  </div>
+	    
+	                  <div className="kv" style={{ marginTop: 8 }}>
+	                    <span>Exercises Included</span>
+	                    <span style={{ color: "var(--text)", fontWeight: 700 }}>
+	                      {vm.debug.exercisesCounted}
+	                    </span>
+	                  </div>
+	    
+	                  <div className="kv" style={{ marginTop: 8 }}>
+	                    <span>Current Strength Signal</span>
+	                    <span style={{ color: "var(--text)", fontWeight: 700 }}>
+	                      {vm.debug.currentSignal}
+	                    </span>
+	                  </div>
+	    
+	                  <div className="kv" style={{ marginTop: 8 }}>
+	                    <span>Strongest Pattern</span>
+	                      <span style={{ color: "var(--text)", fontWeight: 700 }}>
+			        {capitalize(vm.debug.topComposite)}
+                	      </span>
+	                  </div>
+	    
+	                  <div
+	                    className="muted"
+	                    style={{ marginTop: 10, fontSize: 12, lineHeight: 1.45 }}
+	                  >
+	                Note: The current score and the chart trend use the same underlying
+                workout history, but they are not the exact same calculation.
+	                  </div>
+	    
+	                  {showDebug ? (
+	                    <div className="list" style={{ marginTop: 12 }}>
+	                      <div className="card">
+	                        <strong>Pattern Breakdown</strong>
+	                        <div className="list" style={{ marginTop: 10 }}>
+	                          {vm.debug.composites.map((item) => (
+	                            <div key={item.movement} className="kv">
+	                              <span>
+	                                {capitalize(item.movement)} ({item.exerciseCount})
+	                              </span>
+	                              <span style={{ color: "var(--text)", fontWeight: 700 }}>
+	                                {item.score}
+	                              </span>
+	                            </div>
+	                          ))}
+	                        </div>
+	                      </div>
+	    
+	                      <div className="card">
+	                         <strong>Top Exercise Drivers</strong>
+	                        <div className="list" style={{ marginTop: 10 }}>
+	                          {vm.debug.topExercises.map((item) => (
+	                            <div key={item.label} className="kv">
+	                              <span>{item.label}</span>
+	                              <span style={{ color: "var(--text)", fontWeight: 700 }}>
+	                                {item.changePct} • {item.score}
+	                              </span>
+	                            </div>
+	                          ))}
+	                        </div>
+	                      </div>
+	                    </div>
+	                  ) : null}
+	                </div>
+	    
+	                <DashboardChartCard
               chart={vm.charts.bodyWeight}
               chartData={bodyWeightChartData}
               series={bodyWeightSeries}
@@ -2314,7 +2630,11 @@ export default function PerformanceDashboardPage() {
               <div key={item.id} className="card dashboard-insight">
                 <div
                   className="row"
-                  style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}
+                  style={{
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 8,
+                  }}
                 >
                   <h3 style={{ margin: 0 }}>{item.title}</h3>
                   <div className="row">
@@ -2348,88 +2668,6 @@ export default function PerformanceDashboardPage() {
                 ) : null}
               </div>
             ))}
-
-            <div className="card">
-                            <div
-	                      className="row"
-	                      style={{
-	                        justifyContent: "space-between",
-	                        alignItems: "center",
-	                        marginBottom: 8,
-	                      }}
-	                    >
-	                      <h3 style={{ margin: 0 }}>Strength Signal Debug</h3>
-	                      <button
-	                        type="button"
-	                        className="btn small"
-	                        onClick={() => setShowDebug((v) => !v)}
-	                      >
-	                        {showDebug ? "Hide Debug" : "Show Debug"}
-	                      </button>
-              </div>
-
-                           <div className="kv">
-	                     <span>Data Source</span>
-	                     <span style={{ color: "var(--text)", fontWeight: 700 }}>
-	                       {vm.debug.dataSource}
-	                     </span>
-              </div>
-
-		    <div className="kv" style={{ marginTop: 8 }}>
-		      <span>Exercises Counted</span>
-		      <span style={{ color: "var(--text)", fontWeight: 700 }}>
-			{vm.debug.exercisesCounted}
-		      </span>
-              </div>
-
-                            <div className="kv" style={{ marginTop: 8 }}>
-	                      <span>Current Signal</span>
-	                      <span style={{ color: "var(--text)", fontWeight: 700 }}>
-	                        {vm.debug.currentSignal}
-	                      </span>
-              </div>
-
-                            <div className="kv" style={{ marginTop: 8 }}>
-	                      <span>Top Composite</span>
-	                      <span style={{ color: "var(--text)", fontWeight: 700 }}>
-	                        {vm.debug.topComposite}
-	                      </span>
-              </div>
-
-              {showDebug ? (
-                <div className="list" style={{ marginTop: 12 }}>
-                  <div className="card">
-                    <strong>Composite Scores</strong>
-                    <div className="list" style={{ marginTop: 10 }}>
-                      {vm.debug.composites.map((item) => (
-                        <div key={item.movement} className="kv">
-                          <span>
-                            {item.movement} ({item.exerciseCount})
-                          </span>
-                          <span style={{ color: "var(--text)", fontWeight: 700 }}>
-                            {item.score}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="card">
-                    <strong>Top Exercise Signals</strong>
-                    <div className="list" style={{ marginTop: 10 }}>
-                      {vm.debug.topExercises.map((item) => (
-                        <div key={item.label} className="kv">
-                          <span>{item.label}</span>
-                          <span style={{ color: "var(--text)", fontWeight: 700 }}>
-                            {item.changePct} • {item.score}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </div>
 
             <div className="card">
               <h3>Build Priorities</h3>
@@ -2512,6 +2750,15 @@ function getMovementAction(
 function capitalize(value: string) {
   if (!value) return "";
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function normalizeExerciseDisplayLabel(value: string) {
+  if (!value) return "";
+
+  return value
+    .replace(/\s+[—-]\s*hypertrophy\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /* ============================================================================

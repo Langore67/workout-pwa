@@ -268,12 +268,12 @@ export default function StrengthPage() {
 
     return (
     <Page>
-	                  <Section>
-		            <ProgressPageHeader
-		              breadcrumb="← Progress / Strength"
-		              description="Estimated 1RM, trend snapshots, and lifting performance."
-		              onBreadcrumbClick={() => navigate("/progress")}
-		            />
+	  <Section>
+	    <ProgressPageHeader
+	      breadcrumb="← Progress / Strength"
+	      description="Estimated 1RM, trend snapshots, and lifting performance."
+	      onBreadcrumbClick={() => navigate("/progress")}
+	    />
       </Section>
 
       {/* =====================================================================
