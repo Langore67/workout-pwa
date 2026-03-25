@@ -212,6 +212,280 @@ function prettyDateLabel(ms: number) {
 }
 
 /* ========================================================================== */
+/*  Breadcrumb 3A — Exercise audit helpers (read-only scaffold)               */
+/* -------------------------------------------------------------------------- */
+/*  Purpose                                                                   */
+/*  - Build a safe first-pass data hygiene report directly from live DB data   */
+/*  - No writes, no merge actions, no catalog edits yet                        */
+/*  - Surface likely duplicate clusters + usage counts                         */
+/*                                                                            */
+/*  Notes                                                                     */
+/*  - This is intentionally conservative                                       */
+/*  - "Likely duplicate" means same normalized key after light cleanup         */
+/*  - We will add smarter recommendations in later passes                      */
+/* ========================================================================== */
+
+type ExerciseAuditRow = {
+  exerciseId: string;
+  name: string;
+  normalizedName: string;
+  aliases: string[];
+  aliasKeys: string[];
+  bodyPart?: string;
+  category?: string;
+  equipment?: string;
+  trackCount: number;
+  templateItemCount: number;
+  sessionItemCount: number;
+  setCount: number;
+  archived: boolean;
+  merged: boolean;
+};
+
+type ExerciseAuditCluster = {
+  key: string;
+  rows: ExerciseAuditRow[];
+  totalTracks: number;
+  totalTemplateItems: number;
+  totalSessionItems: number;
+  totalSets: number;
+  recommendation: "safe merge" | "review" | "keep separate";
+  reason: string;
+};
+
+type ExerciseAuditSummary = {
+  totalExercises: number;
+  activeExercises: number;
+  archivedExercises: number;
+  mergedExercises: number;
+  duplicateClusters: ExerciseAuditCluster[];
+  topUsageRows: ExerciseAuditRow[];
+};
+
+function auditKey(raw: string): string {
+  return normalizeName(String(raw || ""))
+    .replace(/\bdb\b/g, "dumbbell")
+    .replace(/\bbb\b/g, "barbell")
+    .replace(/\bkb\b/g, "kettlebell")
+    .replace(/\bbw\b/g, "bodyweight")
+    .replace(/\bpullups\b/g, "pull up")
+    .replace(/\bpullup\b/g, "pull up")
+    .replace(/\bpull-ups\b/g, "pull up")
+    .replace(/\bchinups\b/g, "chin up")
+    .replace(/\bchinup\b/g, "chin up")
+    .replace(/\bchin-ups\b/g, "chin up")
+    .replace(/\bpulldowns\b/g, "pulldown")
+    .replace(/\bpull downs\b/g, "pull down")
+    .replace(/[()/.]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function classifyAuditCluster(rows: ExerciseAuditRow[]): {
+  recommendation: "safe merge" | "review" | "keep separate";
+  reason: string;
+} {
+  const names = rows.map((r) => r.name);
+  const nameKeys = rows.map((r) => auditKey(r.name));
+
+  const distinctNameKeys = Array.from(new Set(nameKeys));
+  const distinctEquipment = Array.from(
+    new Set(rows.map((r) => String(r.equipment || "").trim()).filter(Boolean))
+  );
+  const distinctCategories = Array.from(
+    new Set(rows.map((r) => String(r.category || "").trim()).filter(Boolean))
+  );
+
+  const machineSignals = names.filter((n) => /machine|mts|selectorized|plate loaded/i.test(n)).length;
+
+  const aliasToOtherNameOverlap = rows.some((row, i) =>
+    row.aliasKeys.some((aliasKey) =>
+      rows.some((other, j) => i !== j && aliasKey === auditKey(other.name))
+    )
+  );
+
+  const aliasToOtherAliasOverlap = rows.some((row, i) =>
+    row.aliasKeys.some((aliasKey) =>
+      rows.some((other, j) => i !== j && other.aliasKeys.includes(aliasKey))
+    )
+  );
+
+  const exactNameMatch = distinctNameKeys.length === 1;
+  const sameMeta = distinctEquipment.length <= 1 && distinctCategories.length <= 1;
+
+  if (aliasToOtherNameOverlap && sameMeta) {
+    return {
+      recommendation: "safe merge",
+      reason: "One exercise name is already present as an alias on another exercise, which strongly suggests a duplicate.",
+    };
+  }
+
+  if (exactNameMatch && sameMeta && machineSignals === 0) {
+    return {
+      recommendation: "safe merge",
+      reason: "Same normalized name, same equipment/category, no machine-specific split detected.",
+    };
+  }
+
+  if (exactNameMatch && sameMeta && machineSignals > 0) {
+    return {
+      recommendation: "review",
+      reason: "Looks closely related, but one or more names suggest a machine-specific variant.",
+    };
+  }
+
+  if ((aliasToOtherAliasOverlap || aliasToOtherNameOverlap) && sameMeta) {
+    return {
+      recommendation: "review",
+      reason: "Alias overlap suggests a likely duplicate, but naming still deserves a quick review.",
+    };
+  }
+
+  return {
+    recommendation: "keep separate",
+    reason: "Names are related, but equipment/category or naming pattern suggests these may be distinct exercises.",
+  };
+}
+
+
+
+
+function buildExerciseAuditSummary(args: {
+  exercises: Exercise[];
+  tracks: any[];
+  templateItems: any[];
+  sessionItems: any[];
+  sets: any[];
+}): ExerciseAuditSummary {
+  const { exercises, tracks, templateItems, sessionItems, sets } = args;
+
+  const trackCountByExerciseId = new Map<string, number>();
+  const templateItemCountByExerciseId = new Map<string, number>();
+  const sessionItemCountByExerciseId = new Map<string, number>();
+  const setCountByExerciseId = new Map<string, number>();
+
+  const trackById = new Map<string, any>();
+  for (const t of tracks) {
+    if (!t?.id) continue;
+    trackById.set(String(t.id), t);
+
+    const exId = String(t.exerciseId ?? "");
+    if (!exId) continue;
+    trackCountByExerciseId.set(exId, (trackCountByExerciseId.get(exId) ?? 0) + 1);
+  }
+
+  for (const item of templateItems) {
+    const track = trackById.get(String(item?.trackId ?? ""));
+    const exId = String(track?.exerciseId ?? "");
+    if (!exId) continue;
+    templateItemCountByExerciseId.set(exId, (templateItemCountByExerciseId.get(exId) ?? 0) + 1);
+  }
+
+  for (const item of sessionItems) {
+    const track = trackById.get(String(item?.trackId ?? ""));
+    const exId = String(track?.exerciseId ?? "");
+    if (!exId) continue;
+    sessionItemCountByExerciseId.set(exId, (sessionItemCountByExerciseId.get(exId) ?? 0) + 1);
+  }
+
+  for (const se of sets) {
+    const track = trackById.get(String(se?.trackId ?? ""));
+    const exId = String(track?.exerciseId ?? "");
+    if (!exId) continue;
+    setCountByExerciseId.set(exId, (setCountByExerciseId.get(exId) ?? 0) + 1);
+  }
+
+  const rows: ExerciseAuditRow[] = exercises.map((e) => {
+    const aliases = cleanStringArray((e as any).aliases);
+    const aliasKeys = aliases.map((a) => auditKey(a)).filter(Boolean);
+
+    return {
+      exerciseId: e.id,
+      name: e.name,
+      normalizedName: e.normalizedName,
+      aliases,
+      aliasKeys,
+      bodyPart: e.bodyPart,
+      category: (e as any).category,
+      equipment: (e as any).equipment,
+      trackCount: trackCountByExerciseId.get(e.id) ?? 0,
+      templateItemCount: templateItemCountByExerciseId.get(e.id) ?? 0,
+      sessionItemCount: sessionItemCountByExerciseId.get(e.id) ?? 0,
+      setCount: setCountByExerciseId.get(e.id) ?? 0,
+      archived: !!e.archivedAt,
+      merged: !!(e as any).mergedIntoExerciseId,
+    };
+  });
+
+    const clusterMap = new Map<string, ExerciseAuditRow[]>();
+  
+    for (const row of rows) {
+      if (row.archived || row.merged) continue;
+  
+      const keys = Array.from(new Set([auditKey(row.name), ...row.aliasKeys].filter(Boolean)));
+      for (const key of keys) {
+        const arr = clusterMap.get(key) ?? [];
+        arr.push(row);
+        clusterMap.set(key, arr);
+      }
+  }
+
+    const duplicateClusters: ExerciseAuditCluster[] = Array.from(clusterMap.entries())
+      .map(([key, rawRows]) => {
+        const deduped = Array.from(new Map(rawRows.map((r) => [r.exerciseId, r])).values()).sort((a, b) =>
+          a.name.localeCompare(b.name)
+        );
+  
+        const classification = classifyAuditCluster(deduped);
+  
+        return {
+          key,
+          rows: deduped,
+          totalTracks: deduped.reduce((sum, r) => sum + r.trackCount, 0),
+          totalTemplateItems: deduped.reduce((sum, r) => sum + r.templateItemCount, 0),
+          totalSessionItems: deduped.reduce((sum, r) => sum + r.sessionItemCount, 0),
+          totalSets: deduped.reduce((sum, r) => sum + r.setCount, 0),
+          recommendation: classification.recommendation,
+          reason: classification.reason,
+        };
+      })
+      .filter((c) => c.rows.length > 1)
+      .sort((a, b) => {
+        const rank = (value: ExerciseAuditCluster["recommendation"]) =>
+          value === "safe merge" ? 0 : value === "review" ? 1 : 2;
+  
+        const rankA = rank(a.recommendation);
+        const rankB = rank(b.recommendation);
+        if (rankA !== rankB) return rankA - rankB;
+  
+        const usageA = a.totalSets + a.totalSessionItems + a.totalTemplateItems + a.totalTracks;
+        const usageB = b.totalSets + b.totalSessionItems + b.totalTemplateItems + b.totalTracks;
+        if (usageB !== usageA) return usageB - usageA;
+  
+        return a.key.localeCompare(b.key);
+    });
+
+  const topUsageRows = rows
+    .slice()
+    .sort((a, b) => {
+      const usageA = a.setCount + a.sessionItemCount + a.templateItemCount + a.trackCount;
+      const usageB = b.setCount + b.sessionItemCount + b.templateItemCount + b.trackCount;
+      if (usageB !== usageA) return usageB - usageA;
+      return a.name.localeCompare(b.name);
+    })
+    .slice(0, 20);
+
+  return {
+    totalExercises: rows.length,
+    activeExercises: rows.filter((r) => !r.archived && !r.merged).length,
+    archivedExercises: rows.filter((r) => r.archived).length,
+    mergedExercises: rows.filter((r) => r.merged).length,
+    duplicateClusters,
+    topUsageRows,
+  };
+}
+
+/* ========================================================================== */
 /*  Breadcrumb 3 — Small chart/record UI parts                                 */
 /* ========================================================================== */
 
@@ -817,13 +1091,46 @@ export default function ExercisesPage() {
   // ✅ NEW: metric mode
   const [editMetricMode, setEditMetricMode] = useState<MetricMode>("reps");
 
-  // Coaching fields
-  const [editSummary, setEditSummary] = useState("");
-  const [editDirections, setEditDirections] = useState("");
-  const [editCuesSetupText, setEditCuesSetupText] = useState("");
-  const [editCuesExecutionText, setEditCuesExecutionText] = useState("");
-  const [editCommonMistakesText, setEditCommonMistakesText] = useState("");
-  const [editVideoUrl, setEditVideoUrl] = useState("");
+    // Coaching fields
+    const [editSummary, setEditSummary] = useState("");
+    const [editDirections, setEditDirections] = useState("");
+    const [editCuesSetupText, setEditCuesSetupText] = useState("");
+    const [editCuesExecutionText, setEditCuesExecutionText] = useState("");
+    const [editCommonMistakesText, setEditCommonMistakesText] = useState("");
+    const [editVideoUrl, setEditVideoUrl] = useState("");
+  
+    /* ======================================================================== */
+    /*  Breadcrumb 7A — Exercise audit UI state                                  */
+    /* ======================================================================== */
+  
+        const [showAudit, setShowAudit] = useState(false);
+	const [showMergeMode, setShowMergeMode] = useState(false);
+	const [selectedManualMergeIds, setSelectedManualMergeIds] = useState<string[]>([]);
+	const [selectedManualKeepExerciseId, setSelectedManualKeepExerciseId] = useState<string | null>(null);
+	const [showArchivedMerged, setShowArchivedMerged] = useState(false);
+	const [auditFilter, setAuditFilter] = useState<"all" | "safe merge" | "review" | "keep separate">("all");
+	const [selectedAuditClusterKey, setSelectedAuditClusterKey] = useState<string | null>(null);
+	const [selectedKeepExerciseId, setSelectedKeepExerciseId] = useState<string | null>(null);
+	const [selectedMergeSourceIds, setSelectedMergeSourceIds] = useState<string[]>([]);
+	const [lastMergeSnapshot, setLastMergeSnapshot] = useState<ExerciseMergeRollbackSnapshot | null>(null);
+    
+      const auditSummary = useLiveQuery(async () => {
+      const [exerciseRows, tracks, templateItems, sessionItems, sets] = await Promise.all([
+        db.exercises.toArray(),
+        db.tracks.toArray(),
+        db.templateItems.toArray(),
+        db.sessionItems.toArray(),
+        db.sets.toArray(),
+      ]);
+  
+      return buildExerciseAuditSummary({
+        exercises: exerciseRows,
+        tracks,
+        templateItems,
+        sessionItems,
+        sets,
+      });
+  }, []);
 
   /* ======================================================================== */
   /*  Breadcrumb 8 — DB reads                                                  */
@@ -831,8 +1138,24 @@ export default function ExercisesPage() {
 
   const exercises = useLiveQuery(async () => {
     const arr = await db.exercises.toArray();
-    return arr.filter((e) => !e.archivedAt && !(e as any).mergedIntoExerciseId);
+  
+    return arr.filter((e) => {
+      if (showArchivedMerged) return true;
+      return !e.archivedAt && !(e as any).mergedIntoExerciseId;
+    });
+  }, [showArchivedMerged]);
+  
+  const allExercises = useLiveQuery(async () => {
+    return db.exercises.toArray();
   }, []);
+  
+  const exerciseNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const ex of allExercises ?? []) {
+      map.set(ex.id, ex.name);
+    }
+    return map;
+  }, [allExercises]);
 
   const viewingExercise = useMemo(() => {
     if (!viewingId) return null;
@@ -956,11 +1279,151 @@ export default function ExercisesPage() {
     );
   }
 
+  type ExerciseMergeRollbackSnapshot = {
+    keepExerciseId: string;
+    mergeSourceIds: string[];
+    keepBefore: Exercise;
+    sourcesBefore: Exercise[];
+    tracksBefore: Track[];
+    createdAt: number;
+  };
+  
   function clearAll() {
     setQ("");
     setBodyPart("");
     setSortAsc(true);
   }
+  
+  function toggleManualMergeSelection(exerciseId: string) {
+    setSelectedManualMergeIds((current) => {
+      const next = current.includes(exerciseId)
+        ? current.filter((id) => id !== exerciseId)
+        : [...current, exerciseId];
+  
+      setSelectedManualKeepExerciseId((keepId) => (keepId && next.includes(keepId) ? keepId : null));
+  
+      return next;
+    });
+}
+
+async function createExerciseMergeRollbackSnapshot(params: {
+  keepExerciseId: string;
+  mergeSourceIds: string[];
+}): Promise<ExerciseMergeRollbackSnapshot> {
+  const { keepExerciseId, mergeSourceIds } = params;
+
+  const sourceIds = Array.from(
+    new Set(
+      mergeSourceIds
+        .map((id) => String(id || "").trim())
+        .filter((id) => id && id !== keepExerciseId)
+    )
+  );
+
+  const keepBefore = await db.exercises.get(keepExerciseId);
+  if (!keepBefore) throw new Error("Keep exercise not found for rollback snapshot.");
+
+  const sourcesBefore = (
+    await Promise.all(sourceIds.map((id) => db.exercises.get(id)))
+  ).filter(Boolean) as Exercise[];
+
+  if (!sourcesBefore.length) throw new Error("No source exercises found for rollback snapshot.");
+
+  const tracksBefore = await db.tracks.where("exerciseId").anyOf(sourceIds).toArray();
+
+  return {
+    keepExerciseId,
+    mergeSourceIds: sourceIds,
+    keepBefore,
+    sourcesBefore,
+    tracksBefore,
+    createdAt: Date.now(),
+  };
+}
+
+async function undoExerciseMerge(snapshot: ExerciseMergeRollbackSnapshot) {
+  await db.transaction("rw", db.exercises, db.tracks, async () => {
+    await db.exercises.put(snapshot.keepBefore);
+
+    for (const source of snapshot.sourcesBefore) {
+      await db.exercises.put(source);
+    }
+
+    for (const track of snapshot.tracksBefore) {
+      await db.tracks.put(track);
+    }
+  });
+}
+
+async function applyExerciseMerge(params: {
+  keepExerciseId: string;
+  mergeSourceIds: string[];
+}) {
+  const { keepExerciseId, mergeSourceIds } = params;
+
+  const sourceIds = Array.from(
+    new Set(
+      mergeSourceIds
+        .map((id) => String(id || "").trim())
+        .filter((id) => id && id !== keepExerciseId)
+    )
+  );
+
+  if (!keepExerciseId || !sourceIds.length) return;
+
+  await db.transaction("rw", db.exercises, db.tracks, async () => {
+    const keep = await db.exercises.get(keepExerciseId);
+    if (!keep) throw new Error("Keep exercise not found.");
+
+    const sourceExercises = (
+      await Promise.all(sourceIds.map((id) => db.exercises.get(id)))
+    ).filter(Boolean) as Exercise[];
+
+    if (!sourceExercises.length) throw new Error("No source exercises found.");
+
+    const now = Date.now();
+
+    const mergedAliasPool = Array.from(
+      new Set(
+        [
+          ...(Array.isArray(keep.aliases) ? keep.aliases : []),
+          ...sourceExercises.flatMap((ex) => [
+            ex.name,
+            ...(Array.isArray(ex.aliases) ? ex.aliases : []),
+          ]),
+        ]
+          .map((s) => String(s || "").trim())
+          .filter(Boolean)
+          .filter((s) => normalizeName(s) !== normalizeName(keep.name))
+      )
+    ).sort((a, b) => a.localeCompare(b));
+
+    await db.exercises.update(keepExerciseId, {
+      aliases: mergedAliasPool,
+      updatedAt: now,
+    });
+
+    const tracksToMove = await db.tracks.where("exerciseId").anyOf(sourceIds).toArray();
+    for (const track of tracksToMove) {
+      await db.tracks.update(track.id, {
+        exerciseId: keepExerciseId,
+      });
+    }
+
+    for (const source of sourceExercises) {
+      await db.exercises.update(source.id, {
+        mergedIntoExerciseId: keepExerciseId,
+        mergeNote: `Merged into ${keep.name} on ${new Date(now).toISOString()}`,
+        archivedAt: source.archivedAt ?? now,
+        updatedAt: now,
+      });
+    }
+  });
+}
+
+
+
+
 
   /* ======================================================================== */
   /*  Breadcrumb 11 — Details + edit helpers                                    */
@@ -1137,23 +1600,837 @@ export default function ExercisesPage() {
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div style={{ fontWeight: 900, fontSize: 18 }}>Exercise Catalog</div>
 
-          <div className="row" style={{ gap: 8, alignItems: "center" }}>
-            <button className="btn small" onClick={() => nav("/templates")}>
-              Templates
+          <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+	    <button className="btn small" onClick={() => nav("/templates")}>
+	      Templates
+	    </button>
+	    <button className="btn small" onClick={runSeed} title="Seed catalog (adds missing)">
+	      Seed
+	    </button>
+	    <button
+	      className="btn small"
+	      onClick={() => {
+	        setShowMergeMode((v) => {
+	          const next = !v;
+	          if (!next) {
+	            setSelectedManualMergeIds([]);
+	            setSelectedManualKeepExerciseId(null);
+	          }
+	          return next;
+	        });
+	      }}
+	      title="Manually select exercises from the catalog to merge"
+	      style={{
+	        borderColor: showMergeMode ? "var(--accent)" : undefined,
+	        fontWeight: showMergeMode ? 800 : undefined,
+	      }}
+	    >
+	      {showMergeMode ? "Exit Merge Mode" : "Merge Mode"}
+	     </button>
+	    <button
+	      className="btn small"
+	      onClick={() => setShowAudit((v) => !v)}
+	      title="Show read-only exercise hygiene audit"
+	    >
+	      {showAudit ? "Hide Audit" : "Audit"}
+	    </button>
+	    <button
+	      className="btn small"
+	      onClick={() => setShowArchivedMerged((v) => !v)}
+	      title="Show archived and merged exercises in the catalog list"
+	    >
+	      {showArchivedMerged ? "Hide Archived/Merged" : "Show Archived/Merged"}
+	    </button>
+	    <button className="btn small primary" onClick={() => openCreate("")}>
+	      + New
+	    </button>
+</div>
+         
+         {showAudit ? (
+	   <div
+	     className="card"
+	     style={{
+	       marginTop: 12,
+	       marginBottom: 12,
+	       padding: 12,
+	       border: "1px solid var(--border)",
+	       borderRadius: 12,
+	       background: "var(--card)",
+	     }}
+	   >
+	     <div
+	       style={{
+	         display: "flex",
+	         justifyContent: "space-between",
+	         alignItems: "center",
+	         gap: 8,
+	         marginBottom: 8,
+	         flexWrap: "wrap",
+	       }}
+	     >
+	       <div style={{ fontWeight: 800 }}>Exercise Audit</div>
+	       
+	       {lastMergeSnapshot ? (
+	         <button
+	           type="button"
+	           className="btn small"
+	           onClick={async () => {
+	             const ok = window.confirm("Undo the last exercise merge?");
+	             if (!ok) return;
+	       
+	             try {
+	               await undoExerciseMerge(lastMergeSnapshot);
+	               setLastMergeSnapshot(null);
+	               setSelectedAuditClusterKey(null);
+	               setSelectedKeepExerciseId(null);
+	               setSelectedMergeSourceIds([]);
+	               alert("Last merge undone.");
+	             } catch (err) {
+	               console.error("Undo exercise merge failed", err);
+	               alert(err instanceof Error ? err.message : "Undo exercise merge failed.");
+	             }
+	           }}
+	         >
+	           Undo Last Merge
+	         </button>
+	       ) : null}
+	       
+	  </div>
+	 
+	           {!auditSummary ? (
+	           <div className="muted">Loading audit...</div>
+	         ) : (
+	           <div style={{ fontSize: 14, lineHeight: 1.5 }}>
+		     <div>Total exercises: {auditSummary.totalExercises}</div>
+		     <div>Active exercises: {auditSummary.activeExercises}</div>
+		     <div>Archived exercises: {auditSummary.archivedExercises}</div>
+		     <div>Merged exercises: {auditSummary.mergedExercises}</div>
+		     <div>Likely duplicate clusters: {auditSummary.duplicateClusters.length}</div>
+		   
+		     <div
+		       style={{
+		         display: "grid",
+		         gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+		         gap: 8,
+		         marginTop: 12,
+		         marginBottom: 12,
+		       }}
+		     >
+		       <div
+		         style={{
+		           border: "1px solid var(--border)",
+		           borderRadius: 10,
+		           padding: 10,
+		           background: "var(--card)",
+		         }}
+		       >
+		         <div
+		           style={{
+		             fontSize: 12,
+		             fontWeight: 700,
+		             textTransform: "uppercase",
+		             letterSpacing: 0.3,
+		             color: "#15803d",
+		             marginBottom: 4,
+		           }}
+		         >
+		           Safe Merge
+		         </div>
+		         <div style={{ fontSize: 22, fontWeight: 800 }}>
+		           {
+		             auditSummary.duplicateClusters.filter((c) => c.recommendation === "safe merge").length
+		           }
+		         </div>
+		       </div>
+		   
+		       <div
+		         style={{
+		           border: "1px solid var(--border)",
+		           borderRadius: 10,
+		           padding: 10,
+		           background: "var(--card)",
+		         }}
+		       >
+		         <div
+		           style={{
+		             fontSize: 12,
+		             fontWeight: 700,
+		             textTransform: "uppercase",
+		             letterSpacing: 0.3,
+		             color: "#b45309",
+		             marginBottom: 4,
+		           }}
+		         >
+		           Review
+		         </div>
+		         <div style={{ fontSize: 22, fontWeight: 800 }}>
+		           {auditSummary.duplicateClusters.filter((c) => c.recommendation === "review").length}
+		         </div>
+		       </div>
+		   
+		       <div
+		         style={{
+		           border: "1px solid var(--border)",
+		           borderRadius: 10,
+		           padding: 10,
+		           background: "var(--card)",
+		         }}
+		       >
+		         <div
+		           style={{
+		             fontSize: 12,
+		             fontWeight: 700,
+		             textTransform: "uppercase",
+		             letterSpacing: 0.3,
+		             color: "#6b7280",
+		             marginBottom: 4,
+		           }}
+		         >
+		           Keep Separate
+		         </div>
+		         <div style={{ fontSize: 22, fontWeight: 800 }}>
+		           {
+		             auditSummary.duplicateClusters.filter((c) => c.recommendation === "keep separate").length
+		           }
+		         </div>
+		       </div>
+		     </div>
+{(() => {
+  const filteredClusters =
+    auditFilter === "all"
+      ? auditSummary.duplicateClusters
+      : auditSummary.duplicateClusters.filter((c) => c.recommendation === auditFilter);
+
+  return (
+    <>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 8,
+          marginTop: 4,
+          marginBottom: 12,
+        }}
+      >
+        {(["all", "safe merge", "review", "keep separate"] as const).map((value) => {
+          const active = auditFilter === value;
+          return (
+            <button
+              key={value}
+              type="button"
+              className="btn small"
+              onClick={() => setAuditFilter(value)}
+              style={{
+                borderColor: active ? "var(--accent)" : undefined,
+                fontWeight: active ? 800 : 600,
+              }}
+            >
+              {value === "all"
+                ? "All"
+                : value === "safe merge"
+                ? "Safe Merge"
+                : value === "review"
+                ? "Review"
+                : "Keep Separate"}
             </button>
-            <button className="btn small" onClick={runSeed} title="Seed catalog (adds missing)">
-              Seed
-            </button>
-            <button className="btn small primary" onClick={() => openCreate("")}>
-              + New
-            </button>
+          );
+        })}
+      </div>
+
+{(() => {
+  const selectedCluster =
+    selectedAuditClusterKey != null
+      ? filteredClusters.find((c) => c.key === selectedAuditClusterKey) ?? null
+      : null;
+
+  return selectedCluster ? (
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: 12,
+        padding: 12,
+        background: "var(--card)",
+        marginBottom: 12,
+      }}
+    >
+      <div style={{ fontWeight: 800, marginBottom: 6 }}>Selected cluster</div>
+      <div style={{ fontWeight: 700, marginBottom: 4 }}>Key: {selectedCluster.key}</div>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+        {selectedCluster.reason}
+      </div>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+        Recommendation: {selectedCluster.recommendation}
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+        {selectedKeepExerciseId
+          ? `Keeping: ${
+              selectedCluster.rows.find((row) => row.exerciseId === selectedKeepExerciseId)?.name ?? "Unknown"
+            }`
+          : "Choose the exercise to keep."}
+      </div>
+
+      <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+        {selectedMergeSourceIds.length
+          ? `Ready to merge ${selectedMergeSourceIds.length} exercise(s) into the kept one.`
+          : "No merge sources selected yet."}
+      </div>
+      
+      {selectedKeepExerciseId && selectedMergeSourceIds.length ? (
+        <div
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            padding: 10,
+            background: "var(--card)",
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ fontWeight: 800, marginBottom: 6 }}>Merge preview</div>
+      
+          <div style={{ fontSize: 13, marginBottom: 6 }}>
+            <strong>Keep:</strong>{" "}
+            {selectedCluster.rows.find((row) => row.exerciseId === selectedKeepExerciseId)?.name ?? "Unknown"}
           </div>
+      
+          <div style={{ fontSize: 13, marginBottom: 8 }}>
+            <strong>Merge:</strong>{" "}
+            {selectedCluster.rows
+              .filter((row) => selectedMergeSourceIds.includes(row.exerciseId))
+              .map((row) => row.name)
+              .join(", ")}
+          </div>
+      
+          {(() => {
+            const mergeRows = selectedCluster.rows.filter((row) =>
+              selectedMergeSourceIds.includes(row.exerciseId)
+            );
+      
+            const totals = mergeRows.reduce(
+              (acc, row) => {
+                acc.tracks += row.trackCount;
+                acc.templateItems += row.templateItemCount;
+                acc.sessionItems += row.sessionItemCount;
+                acc.sets += row.setCount;
+                return acc;
+              },
+              { tracks: 0, templateItems: 0, sessionItems: 0, sets: 0 }
+            );
+      
+            return (
+              <>
+                <div className="muted" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 10 }}>
+                  <div>Tracks affected: {totals.tracks}</div>
+                  <div>Template items affected: {totals.templateItems}</div>
+                  <div>Session items affected: {totals.sessionItems}</div>
+                  <div>Sets affected: {totals.sets}</div>
+                </div>
+      
+                <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+		  <button
+		    type="button"
+		    className="btn small primary"
+		    onClick={async () => {
+		      if (!selectedKeepExerciseId || !selectedMergeSourceIds.length) return;
+		
+		      const keepName =
+		        selectedCluster.rows.find((row) => row.exerciseId === selectedKeepExerciseId)?.name ?? "Unknown";
+		
+		      const mergeNames = selectedCluster.rows
+		        .filter((row) => selectedMergeSourceIds.includes(row.exerciseId))
+		        .map((row) => row.name);
+		
+		      const ok = window.confirm(
+		        `Merge ${mergeNames.join(", ")} into ${keepName}?\n\n` +
+		          `This will relink tracks to the kept exercise, add aliases, and archive the merged exercises.`
+		      );
+		      if (!ok) return;
+		
+		      try {
+		        const snapshot = await createExerciseMergeRollbackSnapshot({
+		          keepExerciseId: selectedKeepExerciseId,
+		          mergeSourceIds: selectedMergeSourceIds,
+		        });
+		
+		        await applyExerciseMerge({
+		          keepExerciseId: selectedKeepExerciseId,
+		          mergeSourceIds: selectedMergeSourceIds,
+		        });
+		
+		        setLastMergeSnapshot(snapshot);
+		        setSelectedAuditClusterKey(null);
+		        setSelectedKeepExerciseId(null);
+		        setSelectedMergeSourceIds([]);
+		
+		        alert(`Merged into ${keepName}.`);
+		      } catch (err) {
+		        console.error("Exercise merge failed", err);
+		        alert(err instanceof Error ? err.message : "Exercise merge failed.");
+		      }
+		    }}
+		  >
+		    Apply Merge
+		  </button>
+		
+		  <button
+		    type="button"
+		    className="btn small"
+		    onClick={() => {
+		      setSelectedKeepExerciseId(null);
+		      setSelectedMergeSourceIds([]);
+		    }}
+		  >
+		    Clear Selection
+		  </button>
+		
+		  {lastMergeSnapshot ? (
+		    <button
+		      type="button"
+		      className="btn small"
+		      onClick={async () => {
+		        const ok = window.confirm("Undo the last exercise merge?");
+		        if (!ok) return;
+		
+		        try {
+		          await undoExerciseMerge(lastMergeSnapshot);
+		          setLastMergeSnapshot(null);
+		          setSelectedAuditClusterKey(null);
+		          setSelectedKeepExerciseId(null);
+		          setSelectedMergeSourceIds([]);
+		          alert("Last merge undone.");
+		        } catch (err) {
+		          console.error("Undo exercise merge failed", err);
+		          alert(err instanceof Error ? err.message : "Undo exercise merge failed.");
+		        }
+		      }}
+		    >
+		      Undo Last Merge
+		    </button>
+		  ) : null}
+		</div>
+              </>
+            );
+          })()}
+        </div>
+       ) : null}
+
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+          Choose the exercise to keep.
         </div>
 
-        <div className="muted" style={{ marginTop: 8 }}>
-          Names are case-insensitive. Focus Area is optional (no filter). Coaching fields are editable per exercise.
-          <span className="muted" style={{ marginLeft: 10 }}>• Tap an exercise name to view Details / History / Charts / Records.</span>
+        <div style={{ display: "grid", gap: 6 }}>
+          {selectedCluster.rows.map((row) => {
+            const isKeep = selectedKeepExerciseId === row.exerciseId;
+
+            return (
+              <div
+                key={row.exerciseId}
+                onClick={() => {
+                  setSelectedKeepExerciseId(row.exerciseId);
+                  setSelectedMergeSourceIds((current) => current.filter((id) => id !== row.exerciseId));
+                }}
+                style={{
+                  border: isKeep ? "2px solid var(--accent)" : "1px solid var(--border)",
+                  borderRadius: 10,
+                  padding: 8,
+                  background: "var(--card)",
+                  cursor: "pointer",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <div style={{ fontWeight: 700 }}>{row.name}</div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: isKeep ? "var(--accent)" : "var(--muted)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {isKeep ? "KEEP" : "Tap to keep"}
+                  </div>
+                </div>
+
+                {row.aliases.length ? (
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    Aliases: {row.aliases.join(", ")}
+                  </div>
+                ) : null}
+
+                <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  Tracks {row.trackCount} • Template Items {row.templateItemCount} • Session Items{" "}
+                  {row.sessionItemCount} • Sets {row.setCount}
+                </div>
+              </div>
+            );
+          })}
         </div>
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+          {selectedKeepExerciseId
+            ? "Choose exercise(s) to merge into the kept one."
+            : "Choose the exercise to keep before selecting merge sources."}
+        </div>
+
+        <div style={{ display: "grid", gap: 6 }}>
+          {selectedCluster.rows
+            .filter((row) => row.exerciseId !== selectedKeepExerciseId)
+            .map((row) => {
+              const isSelected = selectedMergeSourceIds.includes(row.exerciseId);
+              const disabled = !selectedKeepExerciseId;
+
+              return (
+                <div
+                  key={`merge-${row.exerciseId}`}
+                  onClick={() => {
+                    if (disabled) return;
+                    setSelectedMergeSourceIds((current) =>
+                      current.includes(row.exerciseId)
+                        ? current.filter((id) => id !== row.exerciseId)
+                        : [...current, row.exerciseId]
+                    );
+                  }}
+                  style={{
+                    border: isSelected ? "2px solid #b45309" : "1px solid var(--border)",
+                    borderRadius: 10,
+                    padding: 8,
+                    background: "var(--card)",
+                    cursor: disabled ? "not-allowed" : "pointer",
+                    opacity: disabled ? 0.65 : 1,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <div style={{ fontWeight: 700 }}>{row.name}</div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 800,
+                        color: isSelected ? "#b45309" : "var(--muted)",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {isSelected ? "MERGE" : disabled ? "Pick keep first" : "Tap to merge"}
+                    </div>
+                  </div>
+
+                  {row.aliases.length ? (
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      Aliases: {row.aliases.join(", ")}
+                    </div>
+                  ) : null}
+
+                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    Tracks {row.trackCount} • Template Items {row.templateItemCount} • Session Items{" "}
+                    {row.sessionItemCount} • Sets {row.setCount}
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      </div>
+    </div>
+  ) : null;
+})()}
+
+      {filteredClusters.length ? (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>
+            {auditFilter === "all"
+              ? "Likely duplicate clusters"
+              : auditFilter === "safe merge"
+              ? "Safe merge candidates"
+              : auditFilter === "review"
+              ? "Review candidates"
+              : "Keep separate clusters"}
+          </div>
+
+          <div style={{ display: "grid", gap: 10 }}>
+            {filteredClusters.slice(0, 20).map((cluster) => (
+              <div
+	        key={cluster.key}
+	        onClick={() => {
+		  setSelectedAuditClusterKey((current) => {
+		    const next = current === cluster.key ? null : cluster.key;
+		    setSelectedKeepExerciseId(null);
+		    setSelectedMergeSourceIds([]);
+		    return next;
+		  });
+		}}
+	        style={{
+	          border:
+	            selectedAuditClusterKey === cluster.key
+	              ? "2px solid var(--accent)"
+	              : "1px solid var(--border)",
+	          borderRadius: 10,
+	          padding: 10,
+	          background: "var(--card)",
+	          cursor: "pointer",
+	        }}
+	      >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    alignItems: "flex-start",
+                    marginBottom: 4,
+                  }}
+                >
+                  <div style={{ fontWeight: 700 }}>Key: {cluster.key}</div>
+
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.3,
+                      whiteSpace: "nowrap",
+                      color:
+                        cluster.recommendation === "safe merge"
+                          ? "#15803d"
+                          : cluster.recommendation === "review"
+                          ? "#b45309"
+                          : "#6b7280",
+                    }}
+                  >
+                    {cluster.recommendation}
+                  </div>
+                </div>
+
+                <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+                  {cluster.reason}
+                </div>
+
+                <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+                  Tracks {cluster.totalTracks} • Template Items {cluster.totalTemplateItems} •
+                  Session Items {cluster.totalSessionItems} • Sets {cluster.totalSets}
+                </div>
+
+                <div style={{ display: "grid", gap: 4 }}>
+                  {cluster.rows.map((row) => (
+                    <div
+                      key={row.exerciseId}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        alignItems: "baseline",
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{row.name}</div>
+                        {row.aliases.length ? (
+                          <div className="muted" style={{ fontSize: 12 }}>
+                            Aliases: {row.aliases.join(", ")}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
+                        Sets {row.setCount}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="muted" style={{ marginTop: 8 }}>
+          No clusters match this filter.
+        </div>
+      )}
+    </>
+  );
+})()}		     
+		   
+  
+	           </div>
+    )}
+	   </div>
+) : null}
+         
+         
+        </div>
+
+        {showMergeMode ? (
+	  <div
+	    style={{
+	      marginTop: 12,
+	      marginBottom: 12,
+	      padding: 10,
+	      border: "1px solid var(--border)",
+	      borderRadius: 10,
+	      background: "var(--card)",
+	    }}
+	  >
+	    <div style={{ fontWeight: 800, marginBottom: 4 }}>Manual Merge Mode</div>
+	    <div className="muted" style={{ fontSize: 13 }}>
+	      {selectedManualMergeIds.length
+	        ? `${selectedManualMergeIds.length} exercise(s) selected.`
+	        : "Tap exercises below to select them for manual merge."}
+	    </div>
+	
+	    {selectedManualMergeIds.length >= 2 ? (
+	      <div
+	        style={{
+	          marginTop: 12,
+	          paddingTop: 12,
+	          borderTop: "1px solid var(--border)",
+	        }}
+	      >
+	        <div style={{ fontWeight: 800, marginBottom: 8 }}>Manual Merge Preview</div>
+	
+	        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+	          {selectedManualKeepExerciseId
+	            ? `Keeping: ${
+	                (exercises ?? []).find((e) => e.id === selectedManualKeepExerciseId)?.name ?? "Unknown"
+	              }`
+	            : "Choose the exercise to keep."}
+	        </div>
+	
+	        <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+	          {selectedManualKeepExerciseId
+	            ? `Ready to merge ${
+	                selectedManualMergeIds.filter((id) => id !== selectedManualKeepExerciseId).length
+	              } exercise(s) into the kept one.`
+	            : "Tap one of the selected exercises below to mark it as KEEP."}
+	        </div>
+	
+	               <div style={{ display: "grid", gap: 6 }}>
+	                 {(exercises ?? [])
+	                   .filter((e) => selectedManualMergeIds.includes(e.id))
+	                   .map((e) => {
+	                     const isKeep = selectedManualKeepExerciseId === e.id;
+	                     return (
+	                       <div
+	                         key={`manual-merge-${e.id}`}
+	                         onClick={() => setSelectedManualKeepExerciseId(e.id)}
+	                         style={{
+	                           border: isKeep ? "2px solid var(--accent)" : "1px solid var(--border)",
+	                           borderRadius: 10,
+	                           padding: 8,
+	                           background: "var(--card)",
+	                           cursor: "pointer",
+	                         }}
+	                       >
+	                         <div
+	                           style={{
+	                             display: "flex",
+	                             justifyContent: "space-between",
+	                             gap: 12,
+	                             alignItems: "flex-start",
+	                           }}
+	                         >
+	                           <div style={{ fontWeight: 700 }}>{e.name}</div>
+	                           <div
+	                             style={{
+	                               fontSize: 12,
+	                               fontWeight: 800,
+	                               color: isKeep ? "var(--accent)" : "var(--muted)",
+	                               whiteSpace: "nowrap",
+	                             }}
+	                           >
+	                             {isKeep ? "KEEP" : "Tap to keep"}
+	                           </div>
+	                         </div>
+	                       </div>
+	                     );
+	                   })}
+	               </div>
+	       
+	               <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
+	                 <button
+	                   type="button"
+	                   className="btn small primary"
+	                   disabled={
+	                     !selectedManualKeepExerciseId ||
+	                     selectedManualMergeIds.filter((id) => id !== selectedManualKeepExerciseId).length < 1
+	                   }
+	                   onClick={async () => {
+	                     if (!selectedManualKeepExerciseId) return;
+	       
+	                     const mergeSourceIds = selectedManualMergeIds.filter(
+	                       (id) => id !== selectedManualKeepExerciseId
+	                     );
+	                     if (!mergeSourceIds.length) return;
+	       
+	                     const keepName =
+	                       (exercises ?? []).find((e) => e.id === selectedManualKeepExerciseId)?.name ?? "Unknown";
+	       
+	                     const mergeNames = (exercises ?? [])
+	                       .filter((e) => mergeSourceIds.includes(e.id))
+	                       .map((e) => e.name);
+	       
+	                     const ok = window.confirm(
+	                       `Merge ${mergeNames.join(", ")} into ${keepName}?\n\n` +
+	                         `This will relink tracks to the kept exercise, add aliases, and archive the merged exercises.`
+	                     );
+	                     if (!ok) return;
+	       
+	                     try {
+	                       const snapshot = await createExerciseMergeRollbackSnapshot({
+	                         keepExerciseId: selectedManualKeepExerciseId,
+	                         mergeSourceIds,
+	                       });
+	       
+	                       await applyExerciseMerge({
+	                         keepExerciseId: selectedManualKeepExerciseId,
+	                         mergeSourceIds,
+	                       });
+	       
+	                       setLastMergeSnapshot(snapshot);
+	                       setSelectedManualMergeIds([]);
+	                       setSelectedManualKeepExerciseId(null);
+	       
+	                       alert(`Merged into ${keepName}.`);
+	                     } catch (err) {
+	                       console.error("Manual exercise merge failed", err);
+	                       alert(err instanceof Error ? err.message : "Manual exercise merge failed.");
+	                     }
+	                   }}
+	                 >
+	                   Apply Manual Merge
+	                 </button>
+	       
+	                 <button
+	                   type="button"
+	                   className="btn small"
+	                   onClick={() => {
+	                     setSelectedManualMergeIds([]);
+	                     setSelectedManualKeepExerciseId(null);
+	                   }}
+	                 >
+	                   Clear Manual Selection
+	                 </button>
+        	</div>
+	      </div>
+	    ) : null}
+	  </div>
+) : null}
+	
+	<div className="muted" style={{ marginTop: 8 }}>
+	  Names are case-insensitive. Focus Area is optional (no filter). Coaching fields are editable per exercise.
+	  <span className="muted" style={{ marginLeft: 10 }}>• Tap an exercise name to view Details / History / Charts / Records.</span>
+</div>
 
         <hr />
 
@@ -1268,12 +2545,23 @@ export default function ExercisesPage() {
                         style={{ minWidth: 0, flex: 1, cursor: "pointer", borderRadius: 12, padding: 2 }}
                       >
                         <div style={{ fontWeight: 900, wordBreak: "break-word" }}>{e.name}</div>
-
-                        <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
-                          {meta || "—"}
-                          <span className="muted" style={{ marginLeft: 10 }}>• Metric {metric}</span>
-                          <span className="muted" style={{ marginLeft: 10 }}>• Cues {hasCues ? `S${cs} • E${ce}` : "—"}</span>
-                        </div>
+			
+			{(e.archivedAt || (e as any).mergedIntoExerciseId) ? (
+			  <div className="muted" style={{ marginTop: 4, fontSize: 12, wordBreak: "break-word" }}>
+			    {(e as any).mergedIntoExerciseId
+			      ? `Merged into ${
+			          exerciseNameById.get((e as any).mergedIntoExerciseId) ??
+			          (e as any).mergedIntoExerciseId
+			        }`
+			      : "Archived"}
+			  </div>
+			) : null}
+			
+			<div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
+			  {meta || "—"}
+			  <span className="muted" style={{ marginLeft: 10 }}>• Metric {metric}</span>
+			  <span className="muted" style={{ marginLeft: 10 }}>• Cues {hasCues ? `S${cs} • E${ce}` : "—"}</span>
+			</div>
 
                         {textOrUndef(String((e as any).summary ?? "")) ? (
                           <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
@@ -1282,16 +2570,35 @@ export default function ExercisesPage() {
                         ) : null}
                       </div>
 
-                      <button
-                        className="btn small"
-                        onClick={(ev) => {
-                          ev.stopPropagation();
-                          openEdit(e);
-                        }}
-                        title="Edit exercise"
-                      >
-                        Edit
-                      </button>
+                      <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+		        {showMergeMode ? (
+		          <button
+		            type="button"
+		            className="btn small"
+		            onClick={(evt) => {
+		              evt.stopPropagation();
+		              toggleManualMergeSelection(e.id);
+		            }}
+		            style={{
+		              borderColor: selectedManualMergeIds.includes(e.id) ? "var(--accent)" : undefined,
+		              fontWeight: selectedManualMergeIds.includes(e.id) ? 800 : undefined,
+		            }}
+		          >
+		            {selectedManualMergeIds.includes(e.id) ? "Selected" : "Select"}
+		          </button>
+		        ) : null}
+		      
+		        <button
+		          className="btn small"
+		          onClick={(ev) => {
+		            ev.stopPropagation();
+		            openEdit(e);
+		          }}
+		          title="Edit exercise"
+		        >
+		          Edit
+		        </button>
+		     </div>
                     </div>
                   </div>
                 );
