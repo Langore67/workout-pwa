@@ -840,8 +840,13 @@ function computeExerciseSignal(exercise: ExerciseHistory): ExerciseSignal {
 
   const latestE1RM = e1rms.length > 0 ? e1rms[e1rms.length - 1] : safeBaseline;
 
-  const baselineWindow = e1rms.slice(0, Math.min(2, e1rms.length));
-  const recentWindow = e1rms.slice(Math.max(0, e1rms.length - 2));
+  const baselineWindow =
+    e1rms.length >= 2 ? e1rms.slice(0, Math.min(2, e1rms.length)) : [e1rms[0] ?? safeBaseline];
+
+  const recentWindow =
+    e1rms.length >= 2
+      ? e1rms.slice(Math.max(0, e1rms.length - 2))
+      : [e1rms[0] ?? safeBaseline];
 
   const baselineAvgRaw = average(baselineWindow);
   const recentAvgRaw = average(recentWindow);
@@ -885,16 +890,15 @@ function computeCompositeSignals(exerciseSignals: ExerciseSignal[]): CompositeSi
     .map(([movement, items]) => {
       if (!items.length) return null;
 
-      const best = items
-        .slice()
-        .sort((a, b) => b.normalizedScore - a.normalizedScore)[0];
-
-      if (!best || !Number.isFinite(best.normalizedScore)) return null;
-
-      return {
-        movement,
-        exerciseCount: items.length,
-        score: round2(best.normalizedScore),
+            const usable = items.filter((x) => Number.isFinite(x.normalizedScore));
+            if (!usable.length) return null;
+      
+            const score = average(usable.map((x) => x.normalizedScore));
+      
+            return {
+              movement,
+              exerciseCount: usable.length,
+              score: round2(score),
       } satisfies CompositeSignal;
     })
     .filter((x): x is CompositeSignal => Boolean(x));
@@ -1042,25 +1046,31 @@ function classifyMovementPattern(exercise: Exercise, track: Track): StrengthMove
     return "push";
   }
 
-  if (
-    name.includes("pull-up") ||
-    name.includes("pull up") ||
-    name.includes("chin-up") ||
-    name.includes("chin up") ||
-    name.includes("pulldown") ||
-    name.includes("pull down") ||
-    name.includes("barbell row") ||
-    name.includes("pendlay row") ||
-    name.includes("dumbbell row") ||
-    name.includes("3-point row") ||
-    name.includes("3 point row") ||
-    name.includes("chest-supported row") ||
-    name.includes("chest supported row") ||
-    name.includes("seated cable row") ||
-    name.includes("machine row") ||
-    name.includes("cable row")
-  ) {
-    return "pull";
+    if (
+      name.includes("pull-up") ||
+      name.includes("pull up") ||
+      name.includes("pullup") ||
+      name.includes("chin-up") ||
+      name.includes("chin up") ||
+      name.includes("chinup") ||
+      name.includes("pulldown") ||
+      name.includes("pull down") ||
+      name.includes("pull-down") ||
+      name.includes("lat pulldown") ||
+      name.includes("lat pull down") ||
+      name.includes("lat pull-down") ||
+      name.includes("barbell row") ||
+      name.includes("pendlay row") ||
+      name.includes("dumbbell row") ||
+      name.includes("3-point row") ||
+      name.includes("3 point row") ||
+      name.includes("chest-supported row") ||
+      name.includes("chest supported row") ||
+      name.includes("seated cable row") ||
+      name.includes("machine row") ||
+      name.includes("cable row")
+    ) {
+      return "pull";
   }
 
   return "exclude";
@@ -1103,21 +1113,38 @@ function calcEffectiveWeightLb(
 ): number | undefined {
   const explicit = typeof set.weight === "number" ? set.weight : undefined;
   const name = `${exercise.name} ${track.displayName}`.toLowerCase();
+  const notes = String((set as any).notes ?? "").toLowerCase();
 
   const looksBodyweight =
     exercise.equipment === "Bodyweight" ||
     exercise.category === "Bodyweight" ||
     name.includes("pull up") ||
     name.includes("pull-up") ||
+    name.includes("pullup") ||
     name.includes("chin up") ||
     name.includes("chin-up") ||
+    name.includes("chinup") ||
     name.includes("dip");
 
   if (!looksBodyweight) return explicit;
 
   const bw = nearestBodyweightLb(bodyMetrics, sessionAt);
   if (typeof bw !== "number") return explicit;
-  return bw + (explicit ?? 0);
+
+  const raw = explicit ?? 0;
+
+  const looksAssisted =
+    notes.includes("assist") ||
+    name.includes("assisted") ||
+    raw < 0;
+
+  const effective = looksAssisted
+    ? raw < 0
+      ? bw + raw
+      : bw - raw
+    : bw + raw;
+
+  return Number.isFinite(effective) && effective > 0 ? effective : undefined;
 }
 
 async function loadStrengthSource(): Promise<DbStrengthSource> {
@@ -1155,9 +1182,12 @@ function filterExerciseHistoryByRange(
         return Number.isFinite(at) && at >= startDate.getTime();
       });
 
-      if (sessions.length < 2) return null;
+	if (sessions.length < 1) return null;
 
-      const baselineE1RM = calcE1RM(sessions[0].weight, sessions[0].reps);
+	const baselineSeed =
+	sessions.length >= 2 ? sessions[0] : sessions[sessions.length - 1];
+
+	const baselineE1RM = calcE1RM(baselineSeed.weight, baselineSeed.reps);
       if (!Number.isFinite(baselineE1RM) || baselineE1RM <= 0) return null;
 
       return {
@@ -1270,9 +1300,12 @@ function buildExerciseHistoryFromDb(source: DbStrengthSource): ExerciseHistory[]
           rir: item.rir,
         }));
 
-      if (sessions.length < 2) return null;
-
-      const baselineE1RM = calcE1RM(sessions[0].weight, sessions[0].reps);
+            if (sessions.length < 1) return null;
+      
+            const baselineSeed =
+              sessions.length >= 2 ? sessions[0] : sessions[sessions.length - 1];
+      
+            const baselineE1RM = calcE1RM(baselineSeed.weight, baselineSeed.reps);
       if (!Number.isFinite(baselineE1RM) || baselineE1RM <= 0) return null;
 
       return {
@@ -1291,7 +1324,7 @@ function computeStrengthSignal(
   range: DashboardRange,
   exerciseHistory: ExerciseHistory[]
 ): StrengthSignalResult {
-  const safeHistory = exerciseHistory.length >= 2 ? exerciseHistory : MOCK_EXERCISE_HISTORY;
+    const safeHistory = exerciseHistory.length > 0 ? exerciseHistory : MOCK_EXERCISE_HISTORY;
 
   const exerciseSignals = safeHistory
     .map(computeExerciseSignal)
@@ -1401,7 +1434,7 @@ function buildDashboardViewModel(
   bodyWeightTrendData: ChartDatum[],
   waistTrendData: ChartDatum[]
 ): DashboardViewModel {
-  const usingFallback = exerciseHistory.length < 2;
+    const usingFallback = exerciseHistory.length < 1;
   const sourceHistory = usingFallback ? MOCK_EXERCISE_HISTORY : exerciseHistory;
 
   const strengthSignal = computeStrengthSignal(phase, range, sourceHistory);
@@ -2112,10 +2145,10 @@ export default function PerformanceDashboardPage() {
           setDbSource(source);
         }
 
-        if (!cancelled && realHistory.length >= 2) {
-          setExerciseHistory(realHistory);
-        } else if (!cancelled) {
-          setExerciseHistory(MOCK_EXERCISE_HISTORY);
+	if (!cancelled && realHistory.length > 0) {
+	 setExerciseHistory(realHistory);
+	} else if (!cancelled) {
+	 setExerciseHistory(MOCK_EXERCISE_HISTORY);
         }
       } catch (err) {
         console.error("PerformanceDashboardPage load failed:", err);
@@ -2141,7 +2174,7 @@ export default function PerformanceDashboardPage() {
   const strengthChartData: ChartDatum[] = useMemo(
     () =>
       buildStrengthChartPoints(
-        exerciseHistory.length >= 2 ? exerciseHistory : MOCK_EXERCISE_HISTORY,
+        exerciseHistory.length >= 0 ? exerciseHistory : MOCK_EXERCISE_HISTORY,
         activeRange
       ).map((point) => ({
         label: point.week,

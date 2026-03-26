@@ -161,16 +161,19 @@ function patternFromName(name: string): StrengthPattern | undefined {
     return "push";
   }
 
-  if (
-    n.includes("row") ||
-    n.includes("pulldown") ||
-    n.includes("pull down") ||
-    n.includes("pullup") ||
-    n.includes("pull-up") ||
-    n.includes("chin") ||
-    n.includes("lat pull")
-  ) {
-    return "pull";
+    if (
+      n.includes("row") ||
+      n.includes("pulldown") ||
+      n.includes("pull down") ||
+      n.includes("lat pulldown") ||
+      n.includes("lat pull down") ||
+      n.includes("pullup") ||
+      n.includes("pull-up") ||
+      n.includes("pull up") ||
+      n.includes("chin") ||
+      n.includes("lat pull")
+    ) {
+      return "pull";
   }
 
   return undefined;
@@ -405,11 +408,77 @@ export async function computeStrengthIndexAt(endAtMs: number, windowDays = 28): 
   function patternFast(exerciseId: string): StrengthPattern | undefined {
     const override = EXERCISE_ID_OVERRIDES[exerciseId];
     if (override) return override;
-
+  
     const ex = exerciseById.get(exerciseId);
     const name = ex?.name ?? ex?.displayName ?? ex?.title ?? "";
     return patternFromName(name);
   }
+  
+  function isBodyweightCompoundName(name: string): boolean {
+    const n = String(name || "").trim().toLowerCase();
+    if (!n) return false;
+  
+    return (
+      n.includes("pull up") ||
+      n.includes("pull-up") ||
+      n.includes("pullup") ||
+      n.includes("chin up") ||
+      n.includes("chin-up") ||
+      n.includes("chinup") ||
+      n === "dip" ||
+      n.includes(" dips")
+    );
+  }
+  
+  function calcEffectiveStrengthWeightLb(
+    rawWeight: number,
+    exerciseName: string,
+    bodyweight: number
+  ): number {
+    const w = Number(rawWeight);
+    if (!Number.isFinite(w)) return 0;
+  
+    const bwSafe = Number.isFinite(bodyweight) && bodyweight > 0 ? bodyweight : 0;
+  
+    if (isBodyweightCompoundName(exerciseName)) {
+      const effective = bwSafe + w;
+      return Number.isFinite(effective) && effective > 0 ? effective : 0;
+    }
+  
+    return w > 0 ? w : 0;
+}
+  
+  function isBodyweightCompoundName(name: string): boolean {
+    const n = String(name || "").trim().toLowerCase();
+    if (!n) return false;
+  
+    return (
+      n.includes("pull up") ||
+      n.includes("pull-up") ||
+      n.includes("chin up") ||
+      n.includes("chin-up") ||
+      n.includes("dip") ||
+      n.includes("dips")
+    );
+  }
+  
+  function calcEffectiveStrengthWeightLb(
+    rawWeight: number,
+    exerciseName: string,
+    bodyweight: number
+  ): number {
+    const w = Number(rawWeight);
+    if (!Number.isFinite(w)) return 0;
+  
+    const bwSafe = Number.isFinite(bodyweight) && bodyweight > 0 ? bodyweight : 0;
+  
+    if (isBodyweightCompoundName(exerciseName)) {
+      const effective = bwSafe + w;
+      return Number.isFinite(effective) && effective > 0 ? effective : 0;
+    }
+  
+    return w > 0 ? w : 0;
+}
 
   /* ------------------------------------------------------------------------ */
   /* Breadcrumb 7B — Accumulate per-pattern strength signal                    */
@@ -419,24 +488,28 @@ export async function computeStrengthIndexAt(endAtMs: number, windowDays = 28): 
   for (const s of working) {
     const track = trackById.get(s.trackId);
     if (!track) continue;
-
+  
     const exId = String(track.exerciseId ?? "");
     if (!exId) continue;
-
+  
+    const ex = exerciseById.get(exId);
+    const exerciseName = String(ex?.name ?? ex?.displayName ?? ex?.title ?? "").trim();
+  
     const pattern = patternFast(exId);
     if (!pattern) continue;
-
-    const scored = computeScoredE1RM(s.weight, s.reps);
+  
+    const effectiveWeight = calcEffectiveStrengthWeightLb(s.weight, exerciseName, bodyweight);
+    const scored = computeScoredE1RM(effectiveWeight, s.reps);
     if (scored <= 0) continue;
-
+  
     const bucket = acc[pattern];
     bucket.completedWorkingSets += 1;
-
+  
     if (scored > bucket.top) bucket.top = scored;
     bucket.working.push(scored);
-
+  
     if (isHardSet(s)) bucket.hardSets += 1;
-  }
+}
 
   /* ------------------------------------------------------------------------ */
   /* Breadcrumb 7C — Build pattern outputs                                     */
