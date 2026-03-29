@@ -28,6 +28,10 @@ import {
 } from "../db";
 import { uuid } from "../utils";
 import { addAppLog } from "../appLog";
+import {
+  buildExerciseResolverIndex,
+  resolveExerciseFromIndex,
+} from "../domain/exercises/exerciseResolver";
 
 /* ============================================================================
    Breadcrumb 1 — Types
@@ -387,7 +391,7 @@ export default function ImportCsvPage() {
     );
 
     const existingExercises = await db.exercises.toArray();
-    const exerciseByName = buildExerciseLookup(existingExercises);
+    const resolverIndex = buildExerciseResolverIndex(existingExercises);
 
     const existingTracks = await db.tracks.toArray();
     const trackByDisplay = new Map<string, Track>();
@@ -397,11 +401,54 @@ export default function ImportCsvPage() {
 
     const now = Date.now();
 
+    const exerciseByImportedName = new Map<string, Exercise>();
     const newExercises: Exercise[] = [];
     for (const name of exerciseNames) {
-      const normalized = normalizeName(name);
-      if (exerciseByName.has(normalized)) continue;
+      const resolution = resolveExerciseFromIndex(
+        {
+          rawName: name,
+          allowAlias: true,
+          followMerged: true,
+          includeArchived: false,
+        },
+        resolverIndex
+      );
 
+      if (
+        resolution.status === "exact" ||
+        resolution.status === "alias" ||
+        resolution.status === "merged_redirect"
+      ) {
+        const resolvedExercise = resolution.exercise ?? resolution.canonicalExercise;
+        if (resolvedExercise) {
+          exerciseByImportedName.set(name, resolvedExercise);
+          continue;
+        }
+      }
+
+      if (resolution.status === "ambiguous" || resolution.status === "archived_match") {
+        await addAppLog({
+          type: "import",
+          level: "error",
+          message: "CSV import blocked by ambiguous exercise resolution",
+          detailsJson: JSON.stringify({
+            fileName: file.name,
+            exerciseName: name,
+            normalizedInput: resolution.normalizedInput,
+            status: resolution.status,
+            candidateIds: (resolution.candidates ?? []).map((x) => x.id),
+            candidateNames: (resolution.candidates ?? []).map((x) => x.name),
+            warnings: resolution.warnings,
+          }),
+        });
+
+        setStatus(
+          `Import blocked: ambiguous exercise match for "${name}". Review duplicate/alias data in Exercises before importing.`
+        );
+        return;
+      }
+
+      const normalized = normalizeName(name);
       const ex: Exercise = {
         id: uuid(),
         name,
@@ -413,7 +460,7 @@ export default function ImportCsvPage() {
       };
 
       newExercises.push(ex);
-      exerciseByName.set(normalized, ex);
+      exerciseByImportedName.set(name, ex);
     }
 
     const newTracks: Track[] = [];
@@ -421,7 +468,7 @@ export default function ImportCsvPage() {
       const normalized = normalizeName(name);
       if (trackByDisplay.has(normalized)) continue;
 
-      const ex = exerciseByName.get(normalized);
+      const ex = exerciseByImportedName.get(name);
       if (!ex) continue;
 
       const t: Track = {
