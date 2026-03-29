@@ -74,6 +74,10 @@ import {
 } from "../db";
 import { uuid } from "../utils";
 import { addAppLog } from "../appLog";
+import {
+  buildExerciseResolverIndex,
+  resolveExerciseFromIndex,
+} from "../domain/exercises/exerciseResolver";
 
 /* ============================================================================
    Breadcrumb 1 — Types
@@ -974,19 +978,7 @@ export default function PasteWorkoutPage() {
 
     const existingExercises = await db.exercises.toArray();
     const existingTracks = await db.tracks.toArray();
-
-    const exerciseByName = new Map<string, Exercise>();
-    for (const ex of existingExercises) {
-      const norm = normalizeName(ex.name);
-      if (norm) exerciseByName.set(norm, ex);
-
-      if (Array.isArray((ex as any).aliases)) {
-        for (const alias of (ex as any).aliases) {
-          const a = normalizeName(String(alias || ""));
-          if (a) exerciseByName.set(a, ex);
-        }
-      }
-    }
+    const resolverIndex = buildExerciseResolverIndex(existingExercises);
 
     const trackByDisplay = new Map<string, Track>();
     for (const t of existingTracks) {
@@ -996,11 +988,55 @@ export default function PasteWorkoutPage() {
     const now = Date.now();
     const importableExercises = parsed.exercises.filter((ex) => ex.sets.length > 0);
 
+    const exerciseByImportedName = new Map<string, Exercise>();
     const newExercises: Exercise[] = [];
     for (const ex of importableExercises) {
-      const norm = normalizeName(ex.exercise);
-      if (exerciseByName.has(norm)) continue;
+      const resolution = resolveExerciseFromIndex(
+        {
+          rawName: ex.exercise,
+          allowAlias: true,
+          followMerged: true,
+          includeArchived: false,
+        },
+        resolverIndex
+      );
 
+      if (
+        resolution.status === "exact" ||
+        resolution.status === "alias" ||
+        resolution.status === "merged_redirect"
+      ) {
+        const resolvedExercise = resolution.exercise ?? resolution.canonicalExercise;
+        if (resolvedExercise) {
+          exerciseByImportedName.set(ex.exercise, resolvedExercise);
+          continue;
+        }
+      }
+
+      if (resolution.status === "ambiguous" || resolution.status === "archived_match") {
+        await addAppLog({
+          type: "import",
+          level: "error",
+          message: "Paste workout import blocked by ambiguous exercise resolution",
+          detailsJson: JSON.stringify({
+            programDay: parsed.programDay,
+            date: parsed.date,
+            exerciseName: ex.exercise,
+            normalizedInput: resolution.normalizedInput,
+            status: resolution.status,
+            candidateIds: (resolution.candidates ?? []).map((x) => x.id),
+            candidateNames: (resolution.candidates ?? []).map((x) => x.name),
+            warnings: resolution.warnings,
+          }),
+        });
+
+        setStatus(
+          `Import blocked: ambiguous exercise match for "${ex.exercise}". Review duplicate/alias data in Exercises before importing.`
+        );
+        return;
+      }
+
+      const norm = normalizeName(ex.exercise);
       const newEx: Exercise = {
         id: uuid(),
         name: ex.exercise,
@@ -1012,7 +1048,7 @@ export default function PasteWorkoutPage() {
       };
 
       newExercises.push(newEx);
-      exerciseByName.set(norm, newEx);
+      exerciseByImportedName.set(ex.exercise, newEx);
     }
 
     const newTracks: Track[] = [];
@@ -1050,7 +1086,7 @@ export default function PasteWorkoutPage() {
               continue;
       }
 
-      const exercise = exerciseByName.get(norm);
+      const exercise = exerciseByImportedName.get(ex.exercise);
       if (!exercise) continue;
 
       const t: Track = {
