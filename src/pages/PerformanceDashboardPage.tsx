@@ -1,7 +1,8 @@
+// src/pages/PerformanceDashboardPage.tsx
 /* ============================================================================
    PerformanceDashboardPage.tsx
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-23-PERFORMANCE-DASH-10
+   BUILD_ID: 2026-03-28-PERFORMANCE-DASH-11
    FILE: src/pages/PerformanceDashboardPage.tsx
 
    Purpose
@@ -10,7 +11,16 @@
    - Keep phase as an interpretation lens, not a data source override
    - Align the page shell with the shared Progress sub-page standard
 
-   Changes (PERFORMANCE-DASH-10)
+   Changes (PERFORMANCE-DASH-11)
+   ✅ Cleaned full-file formatting, spacing, and indentation
+   ✅ Preserved shared breadcrumb navigation back to Progress
+   ✅ Preserved current body metrics sourced from DB (not phase placeholders)
+   ✅ Preserved shared Strength engine wiring for chart/history when available
+   ✅ Preserved Performance-specific fallback chart/debug behavior
+   ✅ Kept hero stats synchronized with shared chart-history availability
+   ✅ Tightened page backlog items so they stay scoped to this page
+
+   Prior version (PERFORMANCE-DASH-10)
    ✅ Clean up indentation and formatting throughout the file
    ✅ Refresh top versioning/comment header to reflect current page state
    ✅ Preserve working breadcrumb navigation back to Progress
@@ -19,31 +29,29 @@
    ✅ Preserve shared chart framework usage
    ✅ Preserve dashboard insights / debug / build priorities sections
 
-   Prior version (PERFORMANCE-DASH-09)
-   ✅ Replace HubPageHeader with ProgressPageHeader
-   ✅ Restore working breadcrumb navigation back to Progress
-   ✅ Tighten overview-card spacing and top-page rhythm
-   ✅ Preserve current body metrics sourced from DB (not phase placeholders)
-   ✅ Preserve shared chart framework usage
-   ✅ Preserve dashboard insights / debug / build priorities sections
-
    Notes
    - Phase changes interpretation only
    - Current Body Weight / Waist do not change when CUT / MAINTAIN / BULK changes
    - Shared TrendChartCard is the standard chart renderer for this page
+   - Shared Strength engine is preferred when shared chart history is available
    ============================================================================ */
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { Page, Section } from "../components/Page.tsx";
-import TrendChartCard from "../components/charts/TrendChartCard";
 import { formatLbs } from "../components/charts/chartFormatters";
-import type {
-  ChartDatum,
-  ChartSeriesConfig,
-} from "../components/charts/chartTypes";
+import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTypes";
 import ProgressPageHeader from "../components/layout/ProgressPageHeader";
+import DashboardChartCard from "../components/performance/DashboardChartCard";
+import PerformanceInsightsSection from "../components/performance/PerformanceInsightsSection";
+import PerformanceOverviewSection from "../components/performance/PerformanceOverviewSection";
+import PerformanceStrengthSignalSection from "../components/performance/PerformanceStrengthSignalSection";
+import {
+  computeStrengthIndex,
+  computeStrengthTrend,
+  type StrengthTrendRow,
+} from "../strength/Strength";
 import {
   db,
   type BodyMetricEntry,
@@ -61,35 +69,30 @@ export type DashboardPhase = "CUT" | "MAINTAIN" | "BULK";
 export type DashboardRange = "4W" | "8W" | "12W" | "YTD" | "ALL";
 export type TrendDirection = "improving" | "stable" | "declining" | "watch";
 
-type AnalysisRow = {
-  label: string;
-  value: string;
-};
-
 type ChartViewModel = {
   id: "strength" | "bodyWeight" | "waist" | "volume";
   title: string;
   subtitle: string;
   direction: TrendDirection;
   momentumMessage?: string;
-  analysisRows: AnalysisRow[];
+  analysisRows: Array<{
+    label: string;
+    value: string;
+  }>;
   interpretation: string;
-
-  /* strength-only optional supporting detail */
   topMovers?: Array<{
     label: string;
     changePct: number;
     score: number;
   }>;
-
-      movementBreakdown?: Array<{
-        movement: string;
-        score: number;
-        exerciseCount: number;
-        includedExercises: Array<{
-          label: string;
-          score: number;
-        }>;
+  movementBreakdown?: Array<{
+    movement: string;
+    score: number;
+    exerciseCount: number;
+    includedExercises: Array<{
+      label: string;
+      score: number;
+    }>;
   }>;
 };
 
@@ -121,7 +124,9 @@ type DashboardViewModel = {
   insights: InsightViewModel[];
   actions: string[];
   debug: {
-    dataSource: "Real DB" | "Mock Fallback";
+    dataSource: string;
+    dateWindowUsed: string;
+    confidenceLevel: string;
     exercisesCounted: number;
     currentSignal: string;
     topComposite: string;
@@ -210,12 +215,6 @@ type MetricTrendSummary = {
    Breadcrumb 2 — Static controls
    ============================================================================ */
 
-const PHASE_TABS: Array<{ phase: DashboardPhase; tone: string }> = [
-  { phase: "CUT", tone: "Fat loss with muscle retention" },
-  { phase: "MAINTAIN", tone: "Hold body comp and consolidate performance" },
-  { phase: "BULK", tone: "Drive growth with controlled waist gain" },
-];
-
 const TIME_RANGES: DashboardRange[] = ["4W", "8W", "12W", "YTD", "ALL"];
 
 /* ============================================================================
@@ -300,6 +299,23 @@ function weekLabelFromKey(key: string) {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function formatRangeLabel(range: DashboardRange): string {
+  switch (range) {
+    case "4W":
+      return "Last 4 weeks";
+    case "8W":
+      return "Last 8 weeks";
+    case "12W":
+      return "Last 12 weeks";
+    case "YTD":
+      return "Year to date";
+    case "ALL":
+      return "All available";
+    default:
+      return range;
+  }
+}
+
 function pickBodyMetricTime(entry: BodyMetricEntry): number {
   return Number(entry.measuredAt ?? entry.takenAt ?? entry.createdAt ?? 0);
 }
@@ -351,7 +367,6 @@ function getWeightTrendDirection(
     return "watch";
   }
 
-  // BULK
   if (trend.changeAbs >= 0.5 && trend.changeAbs <= 3) return "improving";
   if (trend.changeAbs >= 0 && trend.changeAbs <= 4) return "stable";
   return "watch";
@@ -375,7 +390,6 @@ function getWaistTrendDirection(
     return "watch";
   }
 
-  // BULK
   if (trend.changeAbs <= 0.2) return "improving";
   if (trend.changeAbs <= 0.5) return "stable";
   return "declining";
@@ -389,16 +403,6 @@ function buildPrimaryCoachingSignal(args: {
   waistTrend: MetricTrendSummary;
 }) {
   const { phase, strengthSignal, bodySnapshot, weightTrend, waistTrend } = args;
-
-  /* ------------------------------------------------------------------------
-     Breadcrumb — Score components
-     What this does
-     - Computes separate score contributions for strength, weight, and waist
-     - Treats missing waist history as neutral, not negative
-
-     Why this matters
-     - Incomplete waist data should reduce confidence, not unfairly tank score
-     ------------------------------------------------------------------------ */
 
   const strengthComponent = clamp((strengthSignal.score / 10) * 45, 0, 45);
 
@@ -450,7 +454,6 @@ function buildPrimaryCoachingSignal(args: {
             ? 24
             : 12;
   } else {
-    // BULK
     weightComponent =
       weightTrend.points < 2
         ? 12
@@ -473,40 +476,16 @@ function buildPrimaryCoachingSignal(args: {
   const rawScore = strengthComponent + weightComponent + waistComponent;
   const score = round2(clamp(rawScore, 0, 100));
 
-  /* ------------------------------------------------------------------------
-     Breadcrumb — Confidence model
-     What this does
-     - Separates signal quality from data completeness
-     - Uses trend-history availability to drive confidence
-
-     Why this matters
-     - A score can be decent while confidence remains only moderate
-     ------------------------------------------------------------------------ */
-
   const confidencePoints =
     (weightTrend.points >= 2 ? 1 : 0) +
     (waistTrend.points >= 2 ? 1 : 0) +
     (strengthSignal.exerciseSignals.length >= 3 ? 1 : 0);
 
   const confidence =
-    confidencePoints === 3
-      ? "High"
-      : confidencePoints === 2
-        ? "Moderate"
-        : "Low";
-
-  /* ------------------------------------------------------------------------
-     Breadcrumb — Badge thresholds
-     ------------------------------------------------------------------------ */
+    confidencePoints === 3 ? "High" : confidencePoints === 2 ? "Moderate" : "Low";
 
   const badge =
-    score >= 80
-      ? "Strong"
-      : score >= 65
-        ? "Good"
-        : score >= 50
-          ? "Mixed"
-          : "Watch";
+    score >= 80 ? "Strong" : score >= 65 ? "Good" : score >= 50 ? "Mixed" : "Watch";
 
   const title =
     phase === "CUT"
@@ -522,10 +501,6 @@ function buildPrimaryCoachingSignal(args: {
         ? "MAINTAIN mode evaluates whether performance and body composition are staying stable."
         : "BULK mode evaluates whether strength and body weight are rising without waist drifting too fast.";
 
-  /* ------------------------------------------------------------------------
-     Breadcrumb — Friendly coaching text
-     ------------------------------------------------------------------------ */
-
   const weightText =
     weightTrend.points >= 2
       ? `${weightTrend.changeAbs > 0 ? "+" : ""}${formatOneDecimal(weightTrend.changeAbs)} lb`
@@ -536,21 +511,9 @@ function buildPrimaryCoachingSignal(args: {
       ? `${waistTrend.changeAbs > 0 ? "+" : ""}${formatOneDecimal(waistTrend.changeAbs)} in`
       : "trend history is still building";
 
-  const body =
-    phase === "CUT"
-      ? `Strength Signal is ${strengthSignal.trend}. Body weight is ${weightText} over the selected range, and waist ${waistTrend.points >= 2 ? `is ${waistText}` : waistText}. Confidence is ${confidence.toLowerCase()}.`
-      : phase === "MAINTAIN"
-        ? `Strength Signal is ${strengthSignal.trend}. Body weight is ${weightText} over the selected range, and waist ${waistTrend.points >= 2 ? `is ${waistText}` : waistText}. Confidence is ${confidence.toLowerCase()}.`
-        : `Strength Signal is ${strengthSignal.trend}. Body weight is ${weightText} over the selected range, and waist ${waistTrend.points >= 2 ? `is ${waistText}` : waistText}. Confidence is ${confidence.toLowerCase()}.`;
-
-  /* ------------------------------------------------------------------------
-     Breadcrumb — Evidence bullets
-     What this does
-     - Produces clean stateful bullets for future ribbon / summary card UI
-
-     Why this matters
-     - UI should consume clear signal states, not raw numbers only
-     ------------------------------------------------------------------------ */
+  const body = `Strength Signal is ${strengthSignal.trend}. Body weight is ${weightText} over the selected range, and waist ${
+    waistTrend.points >= 2 ? `is ${waistText}` : waistText
+  }. Confidence is ${confidence.toLowerCase()}.`;
 
   const strengthBullet =
     strengthSignal.trend === "improving"
@@ -594,10 +557,6 @@ function buildPrimaryCoachingSignal(args: {
           : waistTrend.changeAbs <= 0.2
             ? "Waist staying controlled"
             : "Waist rising during bulk";
-
-  /* ------------------------------------------------------------------------
-     Breadcrumb — Strength efficiency
-     ------------------------------------------------------------------------ */
 
   const strengthEfficiency =
     bodySnapshot.weightValue && bodySnapshot.weightValue > 0
@@ -673,6 +632,7 @@ function buildBodyWeightTrend(
   range: DashboardRange
 ): ChartDatum[] {
   const startMs = rangeStartMs(range) ?? 0;
+
   const filtered = bodyMetrics
     .filter((entry) => {
       const at = pickBodyMetricTime(entry);
@@ -734,10 +694,7 @@ function buildVolumeTrend(
   sets: SetEntry[],
   range: DashboardRange
 ): ChartDatum[] {
-  const sessionById = new Map(
-    sessions.filter((s) => !s.deletedAt).map((s) => [s.id, s])
-  );
-
+  const sessionById = new Map(sessions.filter((s) => !s.deletedAt).map((s) => [s.id, s]));
   const startMs = rangeStartMs(range) ?? 0;
   const byWeek = new Map<string, number>();
 
@@ -890,15 +847,15 @@ function computeCompositeSignals(exerciseSignals: ExerciseSignal[]): CompositeSi
     .map(([movement, items]) => {
       if (!items.length) return null;
 
-            const usable = items.filter((x) => Number.isFinite(x.normalizedScore));
-            if (!usable.length) return null;
-      
-            const score = average(usable.map((x) => x.normalizedScore));
-      
-            return {
-              movement,
-              exerciseCount: usable.length,
-              score: round2(score),
+      const usable = items.filter((x) => Number.isFinite(x.normalizedScore));
+      if (!usable.length) return null;
+
+      const score = average(usable.map((x) => x.normalizedScore));
+
+      return {
+        movement,
+        exerciseCount: usable.length,
+        score: round2(score),
       } satisfies CompositeSignal;
     })
     .filter((x): x is CompositeSignal => Boolean(x));
@@ -1046,31 +1003,31 @@ function classifyMovementPattern(exercise: Exercise, track: Track): StrengthMove
     return "push";
   }
 
-    if (
-      name.includes("pull-up") ||
-      name.includes("pull up") ||
-      name.includes("pullup") ||
-      name.includes("chin-up") ||
-      name.includes("chin up") ||
-      name.includes("chinup") ||
-      name.includes("pulldown") ||
-      name.includes("pull down") ||
-      name.includes("pull-down") ||
-      name.includes("lat pulldown") ||
-      name.includes("lat pull down") ||
-      name.includes("lat pull-down") ||
-      name.includes("barbell row") ||
-      name.includes("pendlay row") ||
-      name.includes("dumbbell row") ||
-      name.includes("3-point row") ||
-      name.includes("3 point row") ||
-      name.includes("chest-supported row") ||
-      name.includes("chest supported row") ||
-      name.includes("seated cable row") ||
-      name.includes("machine row") ||
-      name.includes("cable row")
-    ) {
-      return "pull";
+  if (
+    name.includes("pull-up") ||
+    name.includes("pull up") ||
+    name.includes("pullup") ||
+    name.includes("chin-up") ||
+    name.includes("chin up") ||
+    name.includes("chinup") ||
+    name.includes("pulldown") ||
+    name.includes("pull down") ||
+    name.includes("pull-down") ||
+    name.includes("lat pulldown") ||
+    name.includes("lat pull down") ||
+    name.includes("lat pull-down") ||
+    name.includes("barbell row") ||
+    name.includes("pendlay row") ||
+    name.includes("dumbbell row") ||
+    name.includes("3-point row") ||
+    name.includes("3 point row") ||
+    name.includes("chest-supported row") ||
+    name.includes("chest supported row") ||
+    name.includes("seated cable row") ||
+    name.includes("machine row") ||
+    name.includes("cable row")
+  ) {
+    return "pull";
   }
 
   return "exclude";
@@ -1133,10 +1090,7 @@ function calcEffectiveWeightLb(
 
   const raw = explicit ?? 0;
 
-  const looksAssisted =
-    notes.includes("assist") ||
-    name.includes("assisted") ||
-    raw < 0;
+  const looksAssisted = notes.includes("assist") || name.includes("assisted") || raw < 0;
 
   const effective = looksAssisted
     ? raw < 0
@@ -1157,48 +1111,6 @@ async function loadStrengthSource(): Promise<DbStrengthSource> {
   ]);
 
   return { exercises, tracks, sessions, sets, bodyMetrics };
-}
-
-function rangeStartDate(range: DashboardRange, now = Date.now()): Date | undefined {
-  const startMs = rangeStartMs(range, now);
-  if (!startMs) return undefined;
-  return new Date(startMs);
-}
-
-function filterExerciseHistoryByRange(
-  history: ExerciseHistory[],
-  range: DashboardRange,
-  now = Date.now()
-): ExerciseHistory[] {
-  if (range === "ALL") return history;
-
-  const startDate = rangeStartDate(range, now);
-  if (!startDate) return history;
-
-  const filtered = history
-    .map((exercise) => {
-      const sessions = exercise.sessions.filter((session) => {
-        const at = new Date(`${session.date}T00:00:00`).getTime();
-        return Number.isFinite(at) && at >= startDate.getTime();
-      });
-
-	if (sessions.length < 1) return null;
-
-	const baselineSeed =
-	sessions.length >= 2 ? sessions[0] : sessions[sessions.length - 1];
-
-	const baselineE1RM = calcE1RM(baselineSeed.weight, baselineSeed.reps);
-      if (!Number.isFinite(baselineE1RM) || baselineE1RM <= 0) return null;
-
-      return {
-        ...exercise,
-        baselineE1RM,
-        sessions,
-      } satisfies ExerciseHistory;
-    })
-    .filter((x): x is ExerciseHistory => Boolean(x));
-
-  return filtered;
 }
 
 function buildExerciseHistoryFromDb(source: DbStrengthSource): ExerciseHistory[] {
@@ -1300,12 +1212,12 @@ function buildExerciseHistoryFromDb(source: DbStrengthSource): ExerciseHistory[]
           rir: item.rir,
         }));
 
-            if (sessions.length < 1) return null;
-      
-            const baselineSeed =
-              sessions.length >= 2 ? sessions[0] : sessions[sessions.length - 1];
-      
-            const baselineE1RM = calcE1RM(baselineSeed.weight, baselineSeed.reps);
+      if (sessions.length < 1) return null;
+
+      const baselineSeed =
+        sessions.length >= 2 ? sessions[0] : sessions[sessions.length - 1];
+
+      const baselineE1RM = calcE1RM(baselineSeed.weight, baselineSeed.reps);
       if (!Number.isFinite(baselineE1RM) || baselineE1RM <= 0) return null;
 
       return {
@@ -1324,7 +1236,7 @@ function computeStrengthSignal(
   range: DashboardRange,
   exerciseHistory: ExerciseHistory[]
 ): StrengthSignalResult {
-    const safeHistory = exerciseHistory.length > 0 ? exerciseHistory : MOCK_EXERCISE_HISTORY;
+  const safeHistory = exerciseHistory.length > 0 ? exerciseHistory : MOCK_EXERCISE_HISTORY;
 
   const exerciseSignals = safeHistory
     .map(computeExerciseSignal)
@@ -1434,7 +1346,7 @@ function buildDashboardViewModel(
   bodyWeightTrendData: ChartDatum[],
   waistTrendData: ChartDatum[]
 ): DashboardViewModel {
-    const usingFallback = exerciseHistory.length < 1;
+  const usingFallback = exerciseHistory.length < 1;
   const sourceHistory = usingFallback ? MOCK_EXERCISE_HISTORY : exerciseHistory;
 
   const strengthSignal = computeStrengthSignal(phase, range, sourceHistory);
@@ -1467,16 +1379,13 @@ function buildDashboardViewModel(
       { label: "Current Strength Signal", value: strengthSignal.score.toFixed(2) },
       { label: "Body Weight", value: bodySnapshot.weightLabel },
       { label: "Waist", value: bodySnapshot.waistLabel },
-      {
-        label: "Strength Efficiency",
-        value: primarySignal.strengthEfficiencyLabel,
-       },
+      { label: "Strength Efficiency", value: primarySignal.strengthEfficiencyLabel },
     ],
     charts: {
-            strength: {
-              id: "strength",
-              title: "Strength Signal Trend",
-              subtitle: `Weekly historical trend • ${range}`,
+      strength: {
+        id: "strength",
+        title: "Strength Signal Trend",
+        subtitle: `Weekly historical trend • ${range}`,
         direction: strengthSignal.trend,
         momentumMessage,
         analysisRows: [
@@ -1505,20 +1414,20 @@ function buildDashboardViewModel(
             changePct: item.changePct,
             score: item.normalizedScore,
           })),
-	        movementBreakdown: strengthSignal.composites
-	          .slice()
-	          .sort((a, b) => b.score - a.score)
-	          .map((item) => ({
-	            movement: item.movement,
-	            score: item.score,
-	            exerciseCount: item.exerciseCount,
-	            includedExercises: strengthSignal.exerciseSignals
-	              .filter((signal) => signal.movement === item.movement)
-	              .map((signal) => ({
-	                label: normalizeExerciseDisplayLabel(signal.label),
-	                score: signal.normalizedScore,
-	              }))
-	              .sort((a, b) => a.label.localeCompare(b.label)),
+        movementBreakdown: strengthSignal.composites
+          .slice()
+          .sort((a, b) => b.score - a.score)
+          .map((item) => ({
+            movement: item.movement,
+            score: item.score,
+            exerciseCount: item.exerciseCount,
+            includedExercises: strengthSignal.exerciseSignals
+              .filter((signal) => signal.movement === item.movement)
+              .map((signal) => ({
+                label: normalizeExerciseDisplayLabel(signal.label),
+                score: signal.normalizedScore,
+              }))
+              .sort((a, b) => a.label.localeCompare(b.label)),
           })),
       },
 
@@ -1618,41 +1527,22 @@ function buildDashboardViewModel(
       },
     ],
     actions: [
-      "Next: add an explicit Cut Quality evidence card below the phase selector.",
-      "Next: build the Cut Quality quadrant on the Muscle Preservation page.",
-      "Next: make the rolling window user-configurable.",
-      "Next: let the user select which exercises contribute to Strength Signal.",
+      "Next: add a Cut Quality evidence card below the phase selector.",
+      "Next: allow user-configurable Strength Signal windows.",
+      "Next: allow exercise inclusion and exclusion for Strength Signal.",
     ],
-            debug: {
-	      dataSource: usingFallback ? "Fallback demo data" : "Logged workout data",
-	            dateWindowUsed:
-	              range === "4W"
-	                ? "Last 4 weeks"
-	                : range === "8W"
-	                  ? "Last 8 weeks"
-	                  : range === "12W"
-	                    ? "Last 12 weeks"
-	                    : range === "YTD"
-	                      ? "Year to date"
-                : "All available history",
-	      confidenceLevel:
-	        usingFallback || strengthSignal.exerciseSignals.length < 3
-	          ? "Low"
-	          : strengthSignal.exerciseSignals.length < 5
-	            ? "Moderate"
-	            : "High",
-	      exercisesCounted: strengthSignal.exerciseSignals.length,
-	      currentSignal: strengthSignal.score.toFixed(2),
+    debug: {
+      dataSource: usingFallback ? "Fallback demo data" : "Logged workout data",
+      dateWindowUsed: formatRangeLabel(range),
+      confidenceLevel:
+        usingFallback || strengthSignal.exerciseSignals.length < 3
+          ? "Low"
+          : strengthSignal.exerciseSignals.length < 5
+            ? "Moderate"
+            : "High",
+      exercisesCounted: strengthSignal.exerciseSignals.length,
+      currentSignal: strengthSignal.score.toFixed(2),
       topComposite,
-        
-        
-        
-        
-        
-    
-    
-    
-    
       composites: strengthSignal.composites
         .slice()
         .sort((a, b) => b.score - a.score)
@@ -1666,7 +1556,7 @@ function buildDashboardViewModel(
         .sort((a, b) => b.changePct - a.changePct)
         .slice(0, 5)
         .map((item) => ({
-                    label: normalizeExerciseDisplayLabel(item.label),
+          label: normalizeExerciseDisplayLabel(item.label),
           changePct: `${item.changePct > 0 ? "+" : ""}${item.changePct.toFixed(2)}%`,
           score: item.normalizedScore.toFixed(2),
         })),
@@ -1677,298 +1567,6 @@ function buildDashboardViewModel(
 /* ============================================================================
    Breadcrumb 7 — UI helpers
    ============================================================================ */
-
-function iconForTrend(direction: TrendDirection) {
-  if (direction === "improving") return "↗";
-  if (direction === "stable") return "→";
-  if (direction === "declining") return "↘";
-  return "!";
-}
-
-function badgeClassForTrend(direction: TrendDirection) {
-  return direction === "improving" ? "badge green" : "badge";
-}
-
-function AnalysisRows({ rows }: { rows: AnalysisRow[] }) {
-  return (
-    <div style={{ display: "grid", gap: 8 }}>
-      {rows.map((row) => (
-        <div key={row.label} className="kv">
-          <span>{row.label}</span>
-          <span style={{ color: "var(--text)", fontWeight: 700 }}>{row.value}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function StrengthTopMovers({
-  items,
-}: {
-  items: Array<{ label: string; changePct: number; score: number }>;
-}) {
-  if (!items.length) {
-    return <div className="muted">Not enough exercise history yet.</div>;
-  }
-
-  return (
-    <div style={{ display: "grid", gap: 8 }}>
-      {items.map((item) => (
-        <div
-          key={item.label}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr auto",
-            alignItems: "center",
-            gap: 12,
-          }}
-        >
-          <span
-            className="muted"
-            style={{
-              fontSize: 13,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-            title={item.label}
-          >
-            {item.label}
-          </span>
-
-          <span
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              textAlign: "right",
-              fontVariantNumeric: "tabular-nums",
-              color:
-                item.changePct > 0
-                  ? "#16a34a"
-                  : item.changePct < 0
-                    ? "#dc2626"
-                    : "var(--text)",
-            }}
-          >
-            {item.changePct > 0 ? "+" : ""}
-            {item.changePct.toFixed(2)}%
-            <span style={{ opacity: 0.65, marginLeft: 6 }}>
-              {item.score.toFixed(2)}
-            </span>
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function StrengthMovementBreakdown({
-  items,
-}: {
-
-    items: Array<{
-      movement: string;
-      score: number;
-      exerciseCount: number;
-      includedExercises: Array<{
-        label: string;
-        score: number;
-      }>;
-    }>;
-}) {
-  const [expandedMovement, setExpandedMovement] = useState<string | null>(null);
-
-  if (!items.length) {
-    return <div className="muted">No composite movement data yet.</div>;
-  }
-
-  return (
-    <div style={{ display: "grid", gap: 8 }}>
-            <div
-              className="muted"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1.3fr 1fr auto",
-                gap: 12,
-                fontSize: 12,
-                fontWeight: 800,
-                textTransform: "uppercase",
-                letterSpacing: 0.5,
-                paddingBottom: 4,
-              }}
-            >
-              <span>Pattern</span>
-              <span>Included</span>
-              <span style={{ textAlign: "right" }}>Score</span>
-            </div>
-      
-            <div className="muted" style={{ fontSize: 12, marginTop: -2, marginBottom: 4 }}>
-              Tap a pattern to see which exercises are included.
-      </div>
-
-      {items.map((item) => {
-        const isExpanded = expandedMovement === item.movement;
-
-        return (
-          <div key={item.movement} style={{ display: "grid", gap: 6 }}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1.3fr 1fr auto",
-                gap: 12,
-                alignItems: "center",
-              }}
-            >
-              <button
-                type="button"
-                className="btn small"
-                onClick={() =>
-                  setExpandedMovement((prev) =>
-                    prev === item.movement ? null : item.movement
-                  )
-                }
-                style={{
-                  justifySelf: "start",
-                  padding: 0,
-                  border: "none",
-                  background: "transparent",
-                  color: "var(--text)",
-                  fontWeight: 700,
-                  textAlign: "left",
-                }}
-              >
-                {capitalize(item.movement)}
-              </button>
-
-              <span className="muted" style={{ fontSize: 13 }}>
-                {item.exerciseCount}{" "}
-                {item.exerciseCount === 1 ? "exercise" : "exercises"}
-              </span>
-
-              <span
-                style={{
-                  fontWeight: 700,
-                  color: "var(--text)",
-                  textAlign: "right",
-                }}
-              >
-                {item.score.toFixed(2)}
-              </span>
-            </div>
-
-            {isExpanded ? (
-              <div
-                className="card"
-                style={{
-                  padding: 10,
-                  marginTop: 2,
-                }}
-              >
-                                <div
-		                  className="muted"
-		                  style={{
-		                    fontSize: 12,
-		                    fontWeight: 800,
-		                    textTransform: "uppercase",
-		                    letterSpacing: 0.5,
-		                    marginBottom: 8,
-		                  }}
-		                >
-		                  Included exercises
-		                </div>
-		
-		                <div
-		                  className="muted"
-		                  style={{ fontSize: 12, lineHeight: 1.45, marginBottom: 8 }}
-		                >
-		                  Contribution score (0–10): higher means the exercise is contributing
-		                  more strongly to this pattern right now.
-                </div>
-
-                <div style={{ display: "grid", gap: 6 }}>
-	     {item.includedExercises.map((exercise) => (
-	       <div
-		 key={exercise.label}
-		 className="kv"
-		 style={{ fontSize: 13 }}
-	       >
-		 <span>{exercise.label}</span>
-		 <span style={{ color: "var(--text)", fontWeight: 700 }}>
-		   {exercise.score.toFixed(2)}
-		 </span>
-	       </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
-
-      <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
-        <div className="muted" style={{ fontSize: 13, lineHeight: 1.4 }}>
-          {getMovementInsight(items)}
-        </div>
-
-        <div style={{ fontSize: 13, lineHeight: 1.4 }}>
-          <span className="muted">Action: </span>
-          <span style={{ color: "var(--text)", fontWeight: 600 }}>
-            {getMovementAction(items)}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SectionHeader({
-  title,
-  subtitle,
-  right,
-}: {
-  title: string;
-  subtitle: string;
-  right?: React.ReactNode;
-}) {
-  return (
-    <div style={{ display: "grid", gap: 8, marginBottom: 4 }}>
-      <div>
-        <h2 style={{ margin: 0 }}>{title}</h2>
-        <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-          {subtitle}
-        </div>
-      </div>
-      {right ? <div>{right}</div> : null}
-    </div>
-  );
-}
-
-function PhaseControl({
-  activePhase,
-  onChange,
-}: {
-  activePhase: DashboardPhase;
-  onChange: (phase: DashboardPhase) => void;
-}) {
-  return (
-    <div className="row">
-      {PHASE_TABS.map((tab) => {
-        const active = tab.phase === activePhase;
-        return (
-          <button
-            key={tab.phase}
-            type="button"
-            className={`btn ${active ? "primary" : ""}`}
-            onClick={() => onChange(tab.phase)}
-            title={tab.tone}
-          >
-            {tab.phase}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 function TimeRangeControl({
   activeRange,
@@ -1989,6 +1587,7 @@ function TimeRangeControl({
     >
       {TIME_RANGES.map((range) => {
         const active = range === activeRange;
+
         return (
           <button
             key={range}
@@ -2001,119 +1600,6 @@ function TimeRangeControl({
           </button>
         );
       })}
-    </div>
-  );
-}
-
-function TrendBadge({ direction }: { direction: TrendDirection }) {
-  return (
-    <span className={badgeClassForTrend(direction)}>
-      {iconForTrend(direction)} {direction}
-    </span>
-  );
-}
-
-function DashboardChartCard({
-  chart,
-  chartData,
-  series,
-  yDomainMode,
-  valueFormatter,
-  emptyMessage,
-}: {
-  chart: ChartViewModel;
-  chartData: ChartDatum[];
-  series: ChartSeriesConfig[];
-  yDomainMode: "auto" | "tight";
-  valueFormatter: (value: number | null | undefined) => string;
-  emptyMessage: string;
-}) {
-  return (
-    <div className="card">
-      <div
-        className="row"
-        style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}
-      >
-        <div>
-          <h3 style={{ margin: 0 }}>{chart.title}</h3>
-          <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-            {chart.subtitle}
-          </div>
-
-          {chart.momentumMessage ? (
-            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-              {chart.momentumMessage}
-            </div>
-          ) : null}
-        </div>
-        <TrendBadge direction={chart.direction} />
-      </div>
-
-      <TrendChartCard
-        title={chart.title}
-        subtitle={chart.subtitle}
-        data={chartData}
-        series={series}
-        yDomainMode={yDomainMode}
-        valueFormatter={valueFormatter}
-        tooltipLabelFormatter={(label, datum) => {
-          if (typeof datum?.date === "string" && datum.date.trim()) return datum.date;
-          return label;
-        }}
-        emptyMessage={emptyMessage}
-      />
-
-      <div className="grid two dashboard-analysis" style={{ marginTop: 12 }}>
-        <div className="card">
-          <div
-            className="row"
-            style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}
-          >
-            <strong>Analysis</strong>
-            <TrendBadge direction={chart.direction} />
-          </div>
-          <AnalysisRows rows={chart.analysisRows} />
-        </div>
-
-        <div className="card">
-          <div
-            className="row"
-            style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}
-          >
-            <strong>Coach Interpretation</strong>
-            <TrendBadge direction={chart.direction} />
-          </div>
-          <div style={{ fontSize: 14, lineHeight: 1.5 }}>{chart.interpretation}</div>
-        </div>
-      </div>
-
-      {chart.id === "strength" && (
-        <div className="grid two dashboard-analysis" style={{ marginTop: 12 }}>
-          <div className="card">
-            <div
-              className="row"
-              style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}
-            >
-              <strong>Top Movers</strong>
-              <span className="badge">Drivers</span>
-            </div>
-
-            <StrengthTopMovers items={chart.topMovers ?? []} />
-          </div>
-
-          <div className="card">
-            <div
-              className="row"
-              style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}
-            >
-              <strong>Movement Breakdown</strong>
-              <span className="badge">Composites</span>
-            </div>
-
-            <StrengthMovementBreakdown items={chart.movementBreakdown ?? []} />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -2131,6 +1617,10 @@ export default function PerformanceDashboardPage() {
     MOCK_EXERCISE_HISTORY
   );
   const [dbSource, setDbSource] = useState<DbStrengthSource | null>(null);
+  const [sharedStrengthResult, setSharedStrengthResult] = useState<
+    Awaited<ReturnType<typeof computeStrengthIndex>> | null
+  >(null);
+  const [sharedStrengthTrend, setSharedStrengthTrend] = useState<StrengthTrendRow[]>([]);
   const [showDebug, setShowDebug] = useState(false);
 
   useEffect(() => {
@@ -2141,15 +1631,10 @@ export default function PerformanceDashboardPage() {
         const source = await loadStrengthSource();
         const realHistory = buildExerciseHistoryFromDb(source);
 
-        if (!cancelled) {
-          setDbSource(source);
-        }
+        if (cancelled) return;
 
-	if (!cancelled && realHistory.length > 0) {
-	 setExerciseHistory(realHistory);
-	} else if (!cancelled) {
-	 setExerciseHistory(MOCK_EXERCISE_HISTORY);
-        }
+        setDbSource(source);
+        setExerciseHistory(realHistory.length > 0 ? realHistory : MOCK_EXERCISE_HISTORY);
       } catch (err) {
         console.error("PerformanceDashboardPage load failed:", err);
         if (!cancelled) {
@@ -2166,6 +1651,49 @@ export default function PerformanceDashboardPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSharedStrength() {
+      try {
+        const weeks =
+          activeRange === "4W"
+            ? 4
+            : activeRange === "8W"
+              ? 8
+              : activeRange === "12W"
+                ? 12
+                : activeRange === "YTD"
+                  ? 52
+                  : activeRange === "ALL"
+                    ? 104
+                    : 12;
+
+        const [result, trend] = await Promise.all([
+          computeStrengthIndex(28),
+          computeStrengthTrend(weeks, 28),
+        ]);
+
+        if (cancelled) return;
+
+        setSharedStrengthResult(result ?? null);
+        setSharedStrengthTrend(Array.isArray(trend) ? trend : []);
+      } catch (err) {
+        console.error("PerformanceDashboardPage shared strength load failed:", err);
+        if (!cancelled) {
+          setSharedStrengthResult(null);
+          setSharedStrengthTrend([]);
+        }
+      }
+    }
+
+    void loadSharedStrength();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeRange]);
+
   const bodySnapshot = useMemo(
     () => buildCurrentBodySnapshot(dbSource?.bodyMetrics ?? []),
     [dbSource]
@@ -2173,16 +1701,33 @@ export default function PerformanceDashboardPage() {
 
   const strengthChartData: ChartDatum[] = useMemo(
     () =>
-      buildStrengthChartPoints(
-        exerciseHistory.length >= 0 ? exerciseHistory : MOCK_EXERCISE_HISTORY,
-        activeRange
-      ).map((point) => ({
+      buildStrengthChartPoints(exerciseHistory, activeRange).map((point) => ({
         label: point.week,
         value: point.value,
         date: point.week,
       })),
     [exerciseHistory, activeRange]
   );
+
+  const sharedStrengthChartData: ChartDatum[] = useMemo(() => {
+    const sorted = [...sharedStrengthTrend].sort((a, b) => a.weekEndMs - b.weekEndMs);
+
+    return sorted.map((row, index) => ({
+      label: row.label ?? `W${index + 1}`,
+      value: Number.isFinite(row.normalizedIndex) ? row.normalizedIndex : null,
+      date:
+        typeof row.weekEndMs === "number" && Number.isFinite(row.weekEndMs)
+          ? new Date(row.weekEndMs).toISOString().slice(0, 10)
+          : row.label ?? `W${index + 1}`,
+    }));
+  }, [sharedStrengthTrend]);
+
+  const sharedCurrentStrengthSignal = useMemo(() => {
+    const value = sharedStrengthResult?.normalizedIndex;
+    return Number.isFinite(value) ? Number(value) : null;
+  }, [sharedStrengthResult]);
+
+  const hasSharedStrengthChart = sharedStrengthChartData.length > 0;
 
   const bodyWeightChartData = useMemo(
     () => buildBodyWeightTrend(dbSource?.bodyMetrics ?? [], activeRange),
@@ -2213,6 +1758,105 @@ export default function PerformanceDashboardPage() {
       waistChartData,
     ]
   );
+
+  const effectiveHeroStats = useMemo(() => {
+    if (!hasSharedStrengthChart || sharedCurrentStrengthSignal == null) {
+      return vm.heroStats;
+    }
+
+    return vm.heroStats.map((stat) =>
+      stat.label === "Current Strength Signal"
+        ? {
+            ...stat,
+            value: sharedCurrentStrengthSignal.toFixed(2),
+          }
+        : stat
+    );
+  }, [vm.heroStats, sharedCurrentStrengthSignal, hasSharedStrengthChart]);
+
+  const effectiveStrengthChart = useMemo(() => {
+    if (!hasSharedStrengthChart) {
+      return vm.charts.strength;
+    }
+
+    const values = sharedStrengthChartData
+      .map((point) => point.value)
+      .filter(
+        (value): value is number => typeof value === "number" && Number.isFinite(value)
+      );
+
+    const start = values.length > 0 ? values[0] : null;
+    const current = values.length > 0 ? values[values.length - 1] : null;
+    const high = values.length > 0 ? Math.max(...values) : null;
+    const low = values.length > 0 ? Math.min(...values) : null;
+
+    const changePct =
+      start != null && start !== 0 && current != null
+        ? round2(((current - start) / start) * 100)
+        : 0;
+
+    const direction: TrendDirection =
+      changePct >= 5
+        ? "improving"
+        : changePct <= -3
+          ? "declining"
+          : changePct > -3 && changePct < 2
+            ? "stable"
+            : "watch";
+
+    return {
+      ...vm.charts.strength,
+      subtitle: `Weekly historical trend • ${activeRange}`,
+      direction,
+      momentumMessage: buildMomentumMessage(changePct),
+      analysisRows: [
+        { label: "Formula", value: "Shared Strength engine" },
+        { label: "Start Value", value: start != null ? start.toFixed(2) : "—" },
+        { label: "Current Value", value: current != null ? current.toFixed(2) : "—" },
+        {
+          label: "Overall Change",
+          value: `${changePct > 0 ? "+" : ""}${changePct.toFixed(2)}%`,
+        },
+        { label: "Highest Value", value: high != null ? high.toFixed(2) : "—" },
+        { label: "Lowest Value", value: low != null ? low.toFixed(2) : "—" },
+        { label: "Weeks Loaded", value: String(sharedStrengthChartData.length) },
+        { label: "Source", value: "Shared Strength engine" },
+      ],
+      interpretation:
+        "Strength Signal trend is now using the shared Strength engine for charted performance over the selected window.",
+    };
+  }, [vm.charts.strength, sharedStrengthChartData, activeRange, hasSharedStrengthChart]);
+
+  const sharedStrengthConfidenceLabel = useMemo(() => {
+    if (!hasSharedStrengthChart) {
+      return vm.debug.confidenceLevel;
+    }
+
+    const weeksLoaded = sharedStrengthChartData.length;
+    const bwDaysUsed = sharedStrengthResult?.bodyweightDaysUsed ?? 0;
+
+    if (weeksLoaded >= 8 && bwDaysUsed >= 3) return "High";
+    if (weeksLoaded >= 4) return "Moderate";
+    return "Low";
+  }, [
+    vm.debug.confidenceLevel,
+    sharedStrengthChartData.length,
+    sharedStrengthResult,
+    hasSharedStrengthChart,
+  ]);
+
+  const sharedStrongestPatternLabel = useMemo(() => {
+    if (!hasSharedStrengthChart) return capitalize(vm.debug.topComposite);
+
+    const patterns = sharedStrengthResult?.patterns ?? [];
+    if (!patterns.length) return capitalize(vm.debug.topComposite);
+
+    const top = patterns
+      .slice()
+      .sort((a, b) => (b.normalized ?? 0) - (a.normalized ?? 0))[0];
+
+    return top?.pattern ? capitalize(top.pattern) : capitalize(vm.debug.topComposite);
+  }, [sharedStrengthResult, vm.debug.topComposite, hasSharedStrengthChart]);
 
   const volumeChartData = useMemo(
     () => buildVolumeTrend(dbSource?.sessions ?? [], dbSource?.sets ?? [], activeRange),
@@ -2282,211 +1926,17 @@ export default function PerformanceDashboardPage() {
           Breadcrumb 8C — Hero area
          ==================================================================== */}
       <Section>
-        <div className="dashboard-hero">
-          <div className="card">
-            <div
-              className="row"
-              style={{ justifyContent: "space-between", alignItems: "flex-start" }}
-            >
-              <div>
-                <div
-                  className="muted"
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 800,
-                    textTransform: "uppercase",
-                    letterSpacing: 0.5,
-                    marginBottom: 2,
-                  }}
-                >
-                  Overview
-                </div>
-
-                <h2 style={{ marginTop: 6, marginBottom: 6 }}>Dashboard Overview</h2>
-
-                <div className="muted" style={{ fontSize: 14, lineHeight: 1.45 }}>
-                  Flagship signals, charts, and coaching insights.
-                </div>
-              </div>
-
-              <span className="badge">Preview</span>
-            </div>
-
-            <hr />
-
-            <label>Current Phase</label>
-
-            <div style={{ marginTop: 8 }}>
-              <PhaseControl activePhase={activePhase} onChange={setActivePhase} />
-            </div>
-
-            <div className="card" style={{ marginTop: 10 }}>
-              <div style={{ fontSize: 14, lineHeight: 1.5 }}>{vm.heroSummary}</div>
-            </div>
-
-            <div className="grid two dashboard-hero-stats" style={{ marginTop: 12 }}>
-              {vm.heroStats.map((stat) => (
-                <div
-                  key={stat.label}
-                  className="card dashboard-stat"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 12,
-                  }}
-                >
-                  <div
-                    className="muted dashboard-stat-label"
-                    style={{ marginBottom: 0 }}
-                  >
-                    {stat.label}
-                  </div>
-
-                  <div
-                    className="dashboard-stat-value"
-                    style={{
-                      textAlign: "right",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {stat.value}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="card">
-            <div
-              className="card"
-              style={{
-                borderColor: "rgba(34, 197, 94, 0.22)",
-                background: "rgba(34, 197, 94, 0.035)",
-              }}
-            >
-              <div
-                className="row"
-                style={{
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  gap: 12,
-                }}
-              >
-                <div>
-                  <div className="row" style={{ alignItems: "center", gap: 10 }}>
-                    <span className="badge green">✓ flagship</span>
-                    <div
-                      className="muted"
-                      style={{
-                        fontSize: 12,
-                        textTransform: "uppercase",
-                        fontWeight: 700,
-                      }}
-                    >
-                      Flagship Signal
-                    </div>
-                  </div>
-
-                  <h2 style={{ marginTop: 10, marginBottom: 0 }}>
-                    {vm.flagshipTitle}
-                  </h2>
-                </div>
-
-                <span
-                  className={
-                    vm.flagshipBadge === "Strong" || vm.flagshipBadge === "Productive"
-                      ? "badge green"
-                      : "badge"
-                  }
-                >
-                  {vm.flagshipBadge}
-                </span>
-              </div>
-
-              <div
-                className="row"
-                style={{
-                  justifyContent: "space-between",
-                  alignItems: "flex-end",
-                  marginTop: 16,
-                }}
-              >
-                <div>
-                  <div className="dashboard-flagship-score">{vm.flagshipScore}</div>
-                  <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-                    out of 100
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ marginTop: 14 }}>
-                <div
-                  style={{
-                    width: "100%",
-                    height: 10,
-                    background: "#e5e7eb",
-                    borderRadius: 999,
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: `${vm.flagshipScore}%`,
-                      height: "100%",
-                      background: "var(--accent)",
-                      borderRadius: 999,
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
-                {vm.insights[0]?.evidence?.slice(0, 3).map((bullet) => {
-                  let icon = "✓";
-                  let color = "var(--accent)";
-
-                  const text = bullet.toLowerCase();
-
-                  if (text.includes("rising during cut") || text.includes("building")) {
-                    icon = "⚠";
-                    color = "#f59e0b";
-                  }
-
-                  if (text.includes("needs correction") || text.includes("declining")) {
-                    icon = "✕";
-                    color = "#ef4444";
-                  }
-
-                  return (
-                    <div
-                      key={bullet}
-                      className="row"
-                      style={{ alignItems: "center", gap: 10 }}
-                    >
-                      <span
-                        style={{
-                          color,
-                          fontSize: 16,
-                          lineHeight: 1,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {icon}
-                      </span>
-
-                      <span style={{ fontSize: 14, lineHeight: 1.4 }}>{bullet}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="card" style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 14, lineHeight: 1.5 }}>{vm.flagshipBody}</div>
-            </div>
-          </div>
-        </div>
+        <PerformanceOverviewSection
+          activePhase={activePhase}
+          setActivePhase={setActivePhase}
+          heroSummary={vm.heroSummary}
+          heroStats={effectiveHeroStats}
+          flagshipTitle={vm.flagshipTitle}
+          flagshipScore={vm.flagshipScore}
+          flagshipBadge={vm.flagshipBadge}
+          flagshipBody={vm.flagshipBody}
+          firstInsight={vm.insights[0]}
+        />
       </Section>
 
       {/* ======================================================================
@@ -2496,134 +1946,65 @@ export default function PerformanceDashboardPage() {
         <div className="grid two" style={{ alignItems: "start" }}>
           <div className="list">
             <div className="card">
-              <SectionHeader
-                title="Trend Charts"
-                subtitle="Pattern recognition, quick analysis, and interpretation."
-                right={
+              <div style={{ display: "grid", gap: 8, marginBottom: 4 }}>
+                <div>
+                  <h2 style={{ margin: 0 }}>Trend Charts</h2>
+                  <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+                    Pattern recognition, quick analysis, and interpretation.
+                  </div>
+                </div>
+
+                <div>
                   <TimeRangeControl
                     activeRange={activeRange}
                     onChange={setActiveRange}
                   />
-                }
-              />
+                </div>
+              </div>
             </div>
 
-                        <DashboardChartCard
-	                  chart={vm.charts.strength}
-	                  chartData={strengthChartData}
-	                  series={strengthSeries}
-	                  yDomainMode="auto"
-	                  valueFormatter={(value) =>
-	                    value == null || !Number.isFinite(value) ? "—" : value.toFixed(2)
-	                  }
-	                  emptyMessage="Not enough strength history yet."
-	                />
-	    
-	                <div className="card">
-	                  <div
-	                    className="row"
-	                    style={{
-	                      justifyContent: "space-between",
-	                      alignItems: "center",
-	                      marginBottom: 8,
-	                    }}
-	                  >
-	                    <h3 style={{ margin: 0 }}>Strength Signal Details</h3>
-	                    <button
-	                      type="button"
-	                      className="btn small"
-	                      onClick={() => setShowDebug((v) => !v)}
-	                    >
-	                      {showDebug ? "Hide Details" : "Show Details"}
-	                    </button>
-	                  </div>
-	    
-	                  <div className="kv">
-	                    <span>Source Used</span>
-	                    <span style={{ color: "var(--text)", fontWeight: 700 }}>
-	                      {vm.debug.dataSource}
-	                    </span>
-	                  </div>
-	    
-	                  <div className="kv" style={{ marginTop: 8 }}>
-	                    <span>Date Window Used</span>
-	                    <span style={{ color: "var(--text)", fontWeight: 700 }}>
-	                      {vm.debug.dateWindowUsed}
-	                    </span>
-	                  </div>
-	    
-	                  <div className="kv" style={{ marginTop: 8 }}>
-	                    <span>Confidence Level</span>
-	                    <span style={{ color: "var(--text)", fontWeight: 700 }}>
-	                      {vm.debug.confidenceLevel}
-	                    </span>
-	                  </div>
-	    
-	                  <div className="kv" style={{ marginTop: 8 }}>
-	                    <span>Exercises Included</span>
-	                    <span style={{ color: "var(--text)", fontWeight: 700 }}>
-	                      {vm.debug.exercisesCounted}
-	                    </span>
-	                  </div>
-	    
-	                  <div className="kv" style={{ marginTop: 8 }}>
-	                    <span>Current Strength Signal</span>
-	                    <span style={{ color: "var(--text)", fontWeight: 700 }}>
-	                      {vm.debug.currentSignal}
-	                    </span>
-	                  </div>
-	    
-	                  <div className="kv" style={{ marginTop: 8 }}>
-	                    <span>Strongest Pattern</span>
-	                      <span style={{ color: "var(--text)", fontWeight: 700 }}>
-			        {capitalize(vm.debug.topComposite)}
-                	      </span>
-	                  </div>
-	    
-	                  <div
-	                    className="muted"
-	                    style={{ marginTop: 10, fontSize: 12, lineHeight: 1.45 }}
-	                  >
-	                Note: The current score and the chart trend use the same underlying
-                workout history, but they are not the exact same calculation.
-	                  </div>
-	    
-	                  {showDebug ? (
-	                    <div className="list" style={{ marginTop: 12 }}>
-	                      <div className="card">
-	                        <strong>Pattern Breakdown</strong>
-	                        <div className="list" style={{ marginTop: 10 }}>
-	                          {vm.debug.composites.map((item) => (
-	                            <div key={item.movement} className="kv">
-	                              <span>
-	                                {capitalize(item.movement)} ({item.exerciseCount})
-	                              </span>
-	                              <span style={{ color: "var(--text)", fontWeight: 700 }}>
-	                                {item.score}
-	                              </span>
-	                            </div>
-	                          ))}
-	                        </div>
-	                      </div>
-	    
-	                      <div className="card">
-	                         <strong>Top Exercise Drivers</strong>
-	                        <div className="list" style={{ marginTop: 10 }}>
-	                          {vm.debug.topExercises.map((item) => (
-	                            <div key={item.label} className="kv">
-	                              <span>{item.label}</span>
-	                              <span style={{ color: "var(--text)", fontWeight: 700 }}>
-	                                {item.changePct} • {item.score}
-	                              </span>
-	                            </div>
-	                          ))}
-	                        </div>
-	                      </div>
-	                    </div>
-	                  ) : null}
-	                </div>
-	    
-	                <DashboardChartCard
+            <PerformanceStrengthSignalSection
+              chart={effectiveStrengthChart}
+              chartData={hasSharedStrengthChart ? sharedStrengthChartData : strengthChartData}
+              series={strengthSeries}
+              showDebug={showDebug}
+              setShowDebug={setShowDebug}
+              sourceUsed={
+                hasSharedStrengthChart ? "Shared Strength Engine" : vm.debug.dataSource
+              }
+              dateWindowUsed={
+                hasSharedStrengthChart ? formatRangeLabel(activeRange) : vm.debug.dateWindowUsed
+              }
+              confidenceLevel={
+                hasSharedStrengthChart
+                  ? sharedStrengthConfidenceLabel
+                  : vm.debug.confidenceLevel
+              }
+              exercisesIncluded={
+                hasSharedStrengthChart
+                  ? `${vm.debug.exercisesCounted} (drilldown)`
+                  : String(vm.debug.exercisesCounted)
+              }
+              currentStrengthSignal={
+                hasSharedStrengthChart && sharedCurrentStrengthSignal != null
+                  ? sharedCurrentStrengthSignal.toFixed(2)
+                  : vm.debug.currentSignal
+              }
+              strongestPattern={
+                hasSharedStrengthChart
+                  ? sharedStrongestPatternLabel
+                  : capitalize(vm.debug.topComposite)
+              }
+              note={
+                hasSharedStrengthChart
+                  ? "Note: Current Strength Signal and the chart trend now prefer the shared Strength engine when shared chart data is available. Secondary drill-downs below may still reflect legacy Performance-specific breakdown logic."
+                  : "Note: This view is using legacy Performance chart/debug fallback until shared chart history is available."
+              }
+              debugComposites={vm.debug.composites}
+              debugTopExercises={vm.debug.topExercises}
+            />
+
+            <DashboardChartCard
               chart={vm.charts.bodyWeight}
               chartData={bodyWeightChartData}
               series={bodyWeightSeries}
@@ -2651,133 +2032,11 @@ export default function PerformanceDashboardPage() {
             />
           </div>
 
-          <div className="list">
-            <div className="card">
-              <SectionHeader
-                title="Coaching Insights"
-                subtitle="Phase-aware outputs from the selector / rules layer."
-              />
-            </div>
-
-            {vm.insights.map((item) => (
-              <div key={item.id} className="card dashboard-insight">
-                <div
-                  className="row"
-                  style={{
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: 8,
-                  }}
-                >
-                  <h3 style={{ margin: 0 }}>{item.title}</h3>
-                  <div className="row">
-                    <span
-                      className={
-                        item.status === "Strong" || item.status === "Productive"
-                          ? "badge green"
-                          : "badge"
-                      }
-                    >
-                      {item.status}
-                    </span>
-                    <span className="badge">{item.confidence}</span>
-                  </div>
-                </div>
-
-                <div style={{ fontSize: 14, lineHeight: 1.5 }}>{item.body}</div>
-
-                <div className="list" style={{ marginTop: 10 }}>
-                  {item.evidence.map((evidenceItem) => (
-                    <div key={evidenceItem} className="card">
-                      {evidenceItem}
-                    </div>
-                  ))}
-                </div>
-
-                {item.action ? (
-                  <div className="card" style={{ marginTop: 10, fontWeight: 700 }}>
-                    {item.action}
-                  </div>
-                ) : null}
-              </div>
-            ))}
-
-            <div className="card">
-              <h3>Build Priorities</h3>
-              <div className="list">
-                {vm.actions.map((action) => (
-                  <div key={action} className="card dashboard-priority">
-                    {action}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <PerformanceInsightsSection insights={vm.insights} actions={vm.actions} />
         </div>
       </Section>
     </Page>
   );
-}
-
-function getMovementInsight(
-  items: Array<{ movement: string; score: number; exerciseCount: number }>
-): string {
-  if (!items.length) return "";
-
-  const sorted = [...items].sort((a, b) => b.score - a.score);
-
-  const top = sorted[0];
-  const bottom = sorted[sorted.length - 1];
-
-  if (!top || !bottom) return "";
-
-  const gap = top.score - bottom.score;
-
-  if (gap < 0.75) {
-    return "Movement balance is consistent across patterns.";
-  }
-
-  return `${capitalize(top.movement)} is leading while ${capitalize(bottom.movement)} is lagging.`;
-}
-
-function getMovementAction(
-  items: Array<{ movement: string; score: number; exerciseCount: number }>
-): string {
-  if (!items.length) {
-    return "Keep logging core lifts so the pattern signal can stabilize.";
-  }
-
-  const sorted = [...items].sort((a, b) => b.score - a.score);
-  const top = sorted[0];
-  const bottom = sorted[sorted.length - 1];
-
-  if (!top || !bottom) {
-    return "Keep progression steady this week.";
-  }
-
-  const gap = top.score - bottom.score;
-
-  if (gap < 0.75) {
-    return "Keep current balance and progression steady.";
-  }
-
-  if (bottom.movement === "pull") {
-    return "Add 1–2 pulling sets this week and keep load progression clean.";
-  }
-
-  if (bottom.movement === "push") {
-    return "Add 1–2 pressing sets this week and keep reps crisp.";
-  }
-
-  if (bottom.movement === "hinge") {
-    return "Give hinge work a little more attention this week.";
-  }
-
-  if (bottom.movement === "squat") {
-    return "Bring squat pattern volume or effort up slightly this week.";
-  }
-
-  return `Give ${bottom.movement} a little more attention this week.`;
 }
 
 function capitalize(value: string) {
