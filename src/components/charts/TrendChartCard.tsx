@@ -544,16 +544,17 @@ export default function TrendChartCard({
       >
                 {chartReady ? (
 	          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={safeHeight}>
-	            <LineChart
-	              data={chartData}
-	              margin={{ top: 8, right: 20, left: 0, bottom: 12 }}
-	              onMouseMove={() => setHasUserInteracted(true)}
-	              onMouseEnter={() => setHasUserInteracted(true)}
-	              onClick={() => setHasUserInteracted(true)}
-	              onMouseLeave={() => {
-	                setHoverSafe(EMPTY_HOVER);
-	                setHasUserInteracted(false);
-	              }}
+		    	            <LineChart
+		    	              data={chartData}
+		    	              margin={{ top: 8, right: 20, left: 10, bottom: 12 }}
+		    	              accessibilityLayer={false}
+		    	              onMouseMove={() => setHasUserInteracted(true)}
+		    	              onMouseEnter={() => setHasUserInteracted(true)}
+		    	              onClick={() => setHasUserInteracted(true)}
+		    	              onMouseLeave={() => {
+		    	                setHoverSafe(EMPTY_HOVER);
+		    	                setHasUserInteracted(false);
+		    	              }}
 	            >
 	              <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
 	
@@ -563,21 +564,23 @@ export default function TrendChartCard({
 	                minTickGap={24}
 	              />
 	
-	              <YAxis domain={yDomain} width={44} />
+	              <YAxis domain={yDomain} width={60} />
 	
-	              {resolvedReadoutMode === "statRow" ? (
-	                <Tooltip
-	                  offset={0}
-	                  allowEscapeViewBox={{ x: true, y: true }}
-	                  cursor={{ stroke: "var(--line2)", strokeWidth: 1 }}
-	                  content={
-	                    <SingleSeriesHoverBridge
-	                      series={series}
-	                      labelFormatter={tooltipLabelFormatter}
-	                      valueFormatter={valueFormatter}
-	                      onHoverChange={setHoverSafe}
-	                    />
-	                  }
+	              	              {resolvedReadoutMode === "statRow" ? (
+		      	                <Tooltip
+		      	                  offset={0}
+		      	                  allowEscapeViewBox={{ x: true, y: true }}
+		      	                  cursor={{ stroke: "var(--line2)", strokeWidth: 1 }}
+		      	                  wrapperStyle={{ visibility: "hidden", pointerEvents: "none" }}
+		      	                  contentStyle={{ display: "none" }}
+		      	                  content={
+		      	                    <SingleSeriesHoverBridge
+		      	                      series={series}
+		      	                      labelFormatter={tooltipLabelFormatter}
+		      	                      valueFormatter={valueFormatter}
+		      	                      onHoverChange={setHoverSafe}
+		      	                    />
+		      	                  }
 	                />
 	              ) : resolvedReadoutMode === "none" ? null : (
 	                <Tooltip
@@ -612,18 +615,30 @@ export default function TrendChartCard({
 	                />
 	              ) : null}
 	
-	              {series.map((s) => (
-	                <Line
-	                  key={s.key}
-	                  type="monotone"
-	                  dataKey={s.key}
-	                  name={s.label}
-	                  strokeWidth={3}
-	                  dot={{ r: 4 }}
-	                  activeDot={{ r: 6 }}
-	                  connectNulls={s.connectNulls ?? true}
-	                  stroke={s.stroke ?? "var(--accent)"}
-	                />
+	              	              {series.map((s) => (
+		      	                <Line
+		      	                  key={s.key}
+		      	                  type="monotone"
+		      	                  dataKey={s.key}
+		      	                  name={s.label}
+		      	                  strokeWidth={3}
+					  dot={{
+					    r: 4,
+					    fill: s.stroke ?? "var(--accent)",
+					    stroke: s.stroke ?? "var(--accent)",
+					    strokeWidth: 0,
+					    tabIndex: -1,
+					  }}
+					  activeDot={{
+					    r: 6,
+					    fill: s.stroke ?? "var(--accent)",
+					    stroke: s.stroke ?? "var(--accent)",
+					    strokeWidth: 0,
+					    tabIndex: -1,
+	                  }}
+		      	                  connectNulls={s.connectNulls ?? true}
+		      	                  stroke={s.stroke ?? "var(--accent)"}
+		      	                />
 	              ))}
 	            </LineChart>
 	          </ResponsiveContainer>
