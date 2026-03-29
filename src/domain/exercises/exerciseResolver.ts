@@ -1,0 +1,313 @@
+import { db, normalizeName, type Exercise } from "../../db";
+
+export type ExerciseResolutionStatus =
+  | "exact"
+  | "alias"
+  | "merged_redirect"
+  | "archived_match"
+  | "not_found"
+  | "ambiguous";
+
+export type ExerciseResolutionSource =
+  | "normalizedName"
+  | "alias"
+  | "mergedIntoExerciseId"
+  | "fallback_scan";
+
+export type ResolveExerciseInput = {
+  rawName: string;
+  allowAlias?: boolean;
+  followMerged?: boolean;
+  includeArchived?: boolean;
+};
+
+export type ResolvedExercise = {
+  status: ExerciseResolutionStatus;
+  source?: ExerciseResolutionSource;
+  inputName: string;
+  normalizedInput: string;
+  exercise?: Exercise;
+  canonicalExercise?: Exercise;
+  matchedAlias?: string;
+  candidates?: Exercise[];
+  warnings: string[];
+};
+
+export type ExerciseResolverIndex = {
+  allExercises: Exercise[];
+  canonicalById: Map<string, Exercise>;
+  activeByNormalizedName: Map<string, Exercise[]>;
+  activeByAlias: Map<string, Exercise[]>;
+  mergedByNormalizedName: Map<string, Exercise[]>;
+  archivedByNormalizedName: Map<string, Exercise[]>;
+};
+
+function addToMap(map: Map<string, Exercise[]>, key: string, exercise: Exercise) {
+  if (!key) return;
+  const arr = map.get(key) ?? [];
+  arr.push(exercise);
+  map.set(key, arr);
+}
+
+function uniqueExercises(rows: Exercise[] | undefined): Exercise[] {
+  if (!rows?.length) return [];
+  const byId = new Map<string, Exercise>();
+  for (const row of rows) {
+    if (!row?.id || byId.has(row.id)) continue;
+    byId.set(row.id, row);
+  }
+  return Array.from(byId.values());
+}
+
+function buildNotFound(inputName: string, normalizedInput: string, warnings: string[] = []): ResolvedExercise {
+  return {
+    status: "not_found",
+    inputName,
+    normalizedInput,
+    warnings,
+  };
+}
+
+function buildAmbiguous(
+  inputName: string,
+  normalizedInput: string,
+  source: ExerciseResolutionSource,
+  candidates: Exercise[],
+  warnings: string[] = []
+): ResolvedExercise {
+  return {
+    status: "ambiguous",
+    source,
+    inputName,
+    normalizedInput,
+    candidates,
+    warnings,
+  };
+}
+
+function resolveBucket(
+  rows: Exercise[] | undefined,
+  inputName: string,
+  normalizedInput: string,
+  status: "exact" | "alias" | "archived_match",
+  source: ExerciseResolutionSource,
+  matchedAlias?: string
+): ResolvedExercise | undefined {
+  const candidates = uniqueExercises(rows);
+  if (!candidates.length) return undefined;
+  if (candidates.length > 1) {
+    return buildAmbiguous(inputName, normalizedInput, source, candidates);
+  }
+
+  return {
+    status,
+    source,
+    inputName,
+    normalizedInput,
+    exercise: candidates[0],
+    warnings: [],
+    ...(matchedAlias ? { matchedAlias } : {}),
+  };
+}
+
+function resolveMergedRedirect(
+  rows: Exercise[] | undefined,
+  index: ExerciseResolverIndex,
+  inputName: string,
+  normalizedInput: string
+): ResolvedExercise | undefined {
+  const mergedRows = uniqueExercises(rows);
+  if (!mergedRows.length) return undefined;
+
+  const warnings: string[] = [];
+  const targets: Exercise[] = [];
+
+  for (const row of mergedRows) {
+    const targetId = row.mergedIntoExerciseId;
+    if (!targetId) continue;
+    const canonical = index.canonicalById.get(targetId);
+    if (!canonical) {
+      warnings.push(`Merged exercise "${row.name}" points to missing canonical "${targetId}".`);
+      continue;
+    }
+    targets.push(canonical);
+  }
+
+  const candidates = uniqueExercises(targets);
+  if (!candidates.length) {
+    return buildNotFound(inputName, normalizedInput, warnings);
+  }
+  if (candidates.length > 1) {
+    return buildAmbiguous(
+      inputName,
+      normalizedInput,
+      "mergedIntoExerciseId",
+      candidates,
+      warnings
+    );
+  }
+
+  return {
+    status: "merged_redirect",
+    source: "mergedIntoExerciseId",
+    inputName,
+    normalizedInput,
+    exercise: candidates[0],
+    canonicalExercise: candidates[0],
+    warnings,
+  };
+}
+
+export function normalizeExerciseQuery(rawName: string): string {
+  return normalizeName(rawName);
+}
+
+export function buildExerciseResolverIndex(exercises: Exercise[]): ExerciseResolverIndex {
+  const allExercises = Array.isArray(exercises) ? exercises.slice() : [];
+  const canonicalById = new Map<string, Exercise>();
+  const activeByNormalizedName = new Map<string, Exercise[]>();
+  const activeByAlias = new Map<string, Exercise[]>();
+  const mergedByNormalizedName = new Map<string, Exercise[]>();
+  const archivedByNormalizedName = new Map<string, Exercise[]>();
+
+  for (const exercise of allExercises) {
+    if (!exercise?.id) continue;
+    if (!exercise.mergedIntoExerciseId) {
+      canonicalById.set(exercise.id, exercise);
+    }
+  }
+
+  for (const exercise of allExercises) {
+    if (!exercise?.id) continue;
+
+    const normalizedExerciseName =
+      normalizeExerciseQuery(exercise.normalizedName || exercise.name || "");
+
+    if (exercise.mergedIntoExerciseId) {
+      addToMap(mergedByNormalizedName, normalizedExerciseName, exercise);
+      continue;
+    }
+
+    if (exercise.archivedAt) {
+      addToMap(archivedByNormalizedName, normalizedExerciseName, exercise);
+      continue;
+    }
+
+    addToMap(activeByNormalizedName, normalizedExerciseName, exercise);
+
+    if (Array.isArray(exercise.aliases)) {
+      for (const alias of exercise.aliases) {
+        const normalizedAlias = normalizeExerciseQuery(String(alias || ""));
+        addToMap(activeByAlias, normalizedAlias, exercise);
+      }
+    }
+  }
+
+  return {
+    allExercises,
+    canonicalById,
+    activeByNormalizedName,
+    activeByAlias,
+    mergedByNormalizedName,
+    archivedByNormalizedName,
+  };
+}
+
+export function resolveExerciseFromIndex(
+  input: ResolveExerciseInput,
+  index: ExerciseResolverIndex
+): ResolvedExercise {
+  const inputName = String(input.rawName ?? "");
+  const normalizedInput = normalizeExerciseQuery(inputName);
+  const allowAlias = input.allowAlias !== false;
+  const followMerged = input.followMerged !== false;
+  const includeArchived = input.includeArchived === true;
+
+  if (!normalizedInput) {
+    return buildNotFound(inputName, normalizedInput, ["Exercise name is empty after normalization."]);
+  }
+
+  const exact = resolveBucket(
+    index.activeByNormalizedName.get(normalizedInput),
+    inputName,
+    normalizedInput,
+    "exact",
+    "normalizedName"
+  );
+  if (exact) return exact;
+
+  if (allowAlias) {
+    const aliasMatches = uniqueExercises(index.activeByAlias.get(normalizedInput));
+    if (aliasMatches.length === 1) {
+      const exercise = aliasMatches[0];
+      const matchedAlias =
+        exercise.aliases?.find((alias) => normalizeExerciseQuery(String(alias || "")) === normalizedInput) ??
+        undefined;
+      return {
+        status: "alias",
+        source: "alias",
+        inputName,
+        normalizedInput,
+        exercise,
+        matchedAlias,
+        warnings: [],
+      };
+    }
+    if (aliasMatches.length > 1) {
+      return buildAmbiguous(inputName, normalizedInput, "alias", aliasMatches);
+    }
+  }
+
+  if (followMerged) {
+    const merged = resolveMergedRedirect(
+      index.mergedByNormalizedName.get(normalizedInput),
+      index,
+      inputName,
+      normalizedInput
+    );
+    if (merged) return merged;
+  }
+
+  if (includeArchived) {
+    const archived = resolveBucket(
+      index.archivedByNormalizedName.get(normalizedInput),
+      inputName,
+      normalizedInput,
+      "archived_match",
+      "normalizedName"
+    );
+    if (archived) return archived;
+  }
+
+  const scanMatches = uniqueExercises(
+    index.allExercises.filter((exercise) => {
+      if (!exercise?.id) return false;
+      if (exercise.mergedIntoExerciseId) return false;
+      if (exercise.archivedAt && !includeArchived) return false;
+      return normalizeExerciseQuery(exercise.name || "") === normalizedInput;
+    })
+  );
+
+  if (scanMatches.length === 1) {
+    const exercise = scanMatches[0];
+    return {
+      status: exercise.archivedAt ? "archived_match" : "exact",
+      source: "fallback_scan",
+      inputName,
+      normalizedInput,
+      exercise,
+      warnings: [],
+    };
+  }
+  if (scanMatches.length > 1) {
+    return buildAmbiguous(inputName, normalizedInput, "fallback_scan", scanMatches);
+  }
+
+  return buildNotFound(inputName, normalizedInput);
+}
+
+export async function resolveExercise(input: ResolveExerciseInput): Promise<ResolvedExercise> {
+  const exercises = await db.exercises.toArray();
+  const index = buildExerciseResolverIndex(exercises);
+  return resolveExerciseFromIndex(input, index);
+}
