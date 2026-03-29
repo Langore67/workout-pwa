@@ -35,6 +35,7 @@ import type {
 import { uuid } from "../utils";
 import { getBestSessionLastNDays, suggestionFromBest } from "../progression";
 import { computeAndStorePRsForSession } from "../prs";
+import { resolveExercise } from "../domain/exercises/exerciseResolver";
 
 /* ============================================================================
    Breadcrumb 01 — Local widenings / UI-only types
@@ -180,24 +181,34 @@ async function findOrCreateExerciseByName(rawName: string): Promise<string> {
   if (!name) throw new Error("Exercise name is required.");
 
   const norm = normalizeLoose(name);
+  const resolution = await resolveExercise({
+    rawName: name,
+    allowAlias: true,
+    followMerged: true,
+    includeArchived: true,
+  });
 
-  const indexedHit = await db.exercises.where("normalizedName").equals(norm).first();
-  if (indexedHit && !(indexedHit as any).mergedIntoExerciseId) {
-    if ((indexedHit as any).archivedAt) {
-      await db.exercises.update(indexedHit.id, { archivedAt: undefined, updatedAt: Date.now() } as any);
-    }
-    return indexedHit.id;
+  if (
+    resolution.status === "exact" ||
+    resolution.status === "alias" ||
+    resolution.status === "merged_redirect"
+  ) {
+    const resolvedExercise = resolution.exercise ?? resolution.canonicalExercise;
+    if (resolvedExercise?.id) return resolvedExercise.id;
   }
 
-  const all = await db.exercises.toArray();
-  const scanHit = all.find(
-    (ex: any) => normalizeLoose(String(ex.name ?? "")) === norm && !ex.mergedIntoExerciseId
-  );
-  if (scanHit) {
-    if ((scanHit as any).archivedAt) {
-      await db.exercises.update(scanHit.id, { archivedAt: undefined, updatedAt: Date.now() } as any);
-    }
-    return scanHit.id;
+  if (resolution.status === "ambiguous") {
+    throw new Error(
+      `Ambiguous exercise match for "${name}". Review duplicate/alias data in Exercises first.`
+    );
+  }
+
+  if (resolution.status === "archived_match" && resolution.exercise?.id) {
+    await db.exercises.update(resolution.exercise.id, {
+      archivedAt: undefined,
+      updatedAt: Date.now(),
+    } as any);
+    return resolution.exercise.id;
   }
 
   const now = Date.now();
