@@ -7,7 +7,7 @@ async function goto(page: Page, path: string) {
 }
 
 test.describe("shared effective-load helpers", () => {
-  test("assisted bodyweight effective load uses bodyweight plus logged load for e1RM", async ({ page }) => {
+  test("pull up with negative assistance uses bodyweight plus logged load for e1RM", async ({ page }) => {
     await goto(page, "/");
 
     const result = await page.evaluate(async () => {
@@ -20,7 +20,26 @@ test.describe("shared effective-load helpers", () => {
     expect(result).toEqual({ effective: 138, e1rm: 184 });
   });
 
-  test("bodyweight compound effective load handles unassisted, weighted, and non-bodyweight cases", async ({ page }) => {
+  test("explicit assisted names treat positive logged weight as assistance", async ({ page }) => {
+    await goto(page, "/");
+
+    const result = await page.evaluate(async () => {
+      const strength = await import("/src/strength/Strength.ts");
+      return {
+        assistedPullUpPositive: strength.calcEffectiveStrengthWeightLb(65, "Assisted Pull Up", 203),
+        assistedPullUpNegative: strength.calcEffectiveStrengthWeightLb(-65, "Assisted Pull Up", 203),
+        weightedPullUp: strength.calcEffectiveStrengthWeightLb(25, "Pull Up", 203),
+      };
+    });
+
+    expect(result).toEqual({
+      assistedPullUpPositive: 138,
+      assistedPullUpNegative: 138,
+      weightedPullUp: 228,
+    });
+  });
+
+  test("bodyweight compound effective load still handles unassisted and non-bodyweight cases", async ({ page }) => {
     await goto(page, "/");
 
     const result = await page.evaluate(async () => {
@@ -28,7 +47,6 @@ test.describe("shared effective-load helpers", () => {
       return {
         unassistedChinUp: strength.calcEffectiveStrengthWeightLb(0, "Chin Up", 203),
         weightedDip: strength.calcEffectiveStrengthWeightLb(45, "Dip", 203),
-        assistedDip: strength.calcEffectiveStrengthWeightLb(-80, "Dip", 203),
         normalBench: strength.calcEffectiveStrengthWeightLb(135, "Bench Press", 203),
       };
     });
@@ -36,7 +54,6 @@ test.describe("shared effective-load helpers", () => {
     expect(result).toEqual({
       unassistedChinUp: 203,
       weightedDip: 248,
-      assistedDip: 123,
       normalBench: 135,
     });
   });
