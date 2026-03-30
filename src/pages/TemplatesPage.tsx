@@ -44,6 +44,22 @@ function normalizeLoose(s: string) {
   return (s || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function normalizeReusableTrackDisplayName(s: string) {
+  return normalizeLoose(
+    (s || "")
+      .replace(/â€”/g, "-")
+      .replace(/[—–]/g, "-")
+  );
+}
+
+function shouldRefreshReusedTrackDisplayName(existingDisplayName: string, desiredDisplayName: string) {
+  const current = (existingDisplayName || "").trim();
+  const desired = (desiredDisplayName || "").trim();
+  if (!current || !desired) return false;
+  if (current === desired) return false;
+  return normalizeReusableTrackDisplayName(current) === normalizeReusableTrackDisplayName(desired);
+}
+
 function makeUniqueName(base: string, existingNames: Set<string>) {
   let name = base;
   if (!existingNames.has(name)) return name;
@@ -618,11 +634,11 @@ export default function TemplatesPage() {
     );
 
     if (matches.length) {
-      const normWanted = normalizeLoose(args.desiredDisplayName);
+      const normWanted = normalizeReusableTrackDisplayName(args.desiredDisplayName);
       const preferNoVariant = matches.filter((t: any) => t.variantId == null);
 
       const exactNameNoVariant = preferNoVariant.filter(
-        (t: any) => normalizeLoose(String(t.displayName ?? "")) === normWanted
+        (t: any) => normalizeReusableTrackDisplayName(String(t.displayName ?? "")) === normWanted
       );
       const pool =
         exactNameNoVariant.length
@@ -632,7 +648,16 @@ export default function TemplatesPage() {
             : matches;
 
       pool.sort((a: any, b: any) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
-      return pool[0].id;
+      const reused = pool[0];
+
+      if (
+        reused?.variantId == null &&
+        shouldRefreshReusedTrackDisplayName(String(reused.displayName ?? ""), args.desiredDisplayName)
+      ) {
+        await db.tracks.update(reused.id, { displayName: args.desiredDisplayName.trim() } as any);
+      }
+
+      return reused.id;
     }
 
     return await createTrackVariant({

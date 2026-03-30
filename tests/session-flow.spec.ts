@@ -608,7 +608,7 @@ test.describe("Template session flow reuse guards", () => {
     expect(state.trackCount).toBe(3);
   });
 
-  test("preserve reused display name", async ({ page }) => {
+  test("reused awkward casing is refreshed without changing the reused track", async ({ page }) => {
     const seeded = await page.evaluate(async () => {
       // @ts-ignore
       const db = window.__db;
@@ -632,7 +632,7 @@ test.describe("Template session flow reuse guards", () => {
           id: customTrackId,
           exerciseId,
           trackType: "hypertrophy",
-          displayName: "Bench Press Custom Hypertrophy",
+          displayName: "bench Press â€” hypertrophy",
           trackingMode: "weightedReps",
           warmupSetsDefault: 2,
           workingSetsDefault: 3,
@@ -666,24 +666,27 @@ test.describe("Template session flow reuse guards", () => {
       return { templateId, customTrackId };
     });
 
-    const dialog = await quickAddTemplateExercise(page, "Upper A", "Bench Press");
-    await expect(dialog.getByText("Bench Press Custom Hypertrophy")).toBeVisible({ timeout: 15000 });
+    await quickAddTemplateExercise(page, "Upper A", "Bench Press");
 
-    const state = await page.evaluate(async ({ templateId, customTrackId }) => {
-      // @ts-ignore
-      const db = window.__db;
-      const items = await db.templateItems.where("templateId").equals(templateId).toArray();
-      const reusedTrack = await db.tracks.get(customTrackId);
-      return {
-        templateTrackIds: items.map((item: any) => item.trackId),
-        displayName: reusedTrack?.displayName ?? null,
-        trackCount: await db.tracks.count(),
-      };
-    }, seeded);
-
-    expect(state.templateTrackIds).toEqual([seeded.customTrackId]);
-    expect(state.displayName).toBe("Bench Press Custom Hypertrophy");
-    expect(state.trackCount).toBe(2);
+    await expect
+      .poll(async () => {
+        return await page.evaluate(async ({ templateId, customTrackId }) => {
+          // @ts-ignore
+          const db = window.__db;
+          const items = await db.templateItems.where("templateId").equals(templateId).toArray();
+          const reusedTrack = await db.tracks.get(customTrackId);
+          return {
+            templateTrackIds: items.map((item: any) => item.trackId),
+            displayName: reusedTrack?.displayName ?? null,
+            trackCount: await db.tracks.count(),
+          };
+        }, seeded);
+      }, { timeout: 15000 })
+      .toEqual({
+        templateTrackIds: [seeded.customTrackId],
+        displayName: "Bench Press — hypertrophy",
+        trackCount: 2,
+      });
   });
 
   test("create fallback track only when no reusable candidate exists", async ({ page }) => {
