@@ -284,18 +284,8 @@ async function findOrCreateReusableTrack(args: {
   );
 
   if (matches.length) {
-    const normWanted = normalizeLoose(args.desiredDisplayName);
     const preferNoVariant = matches.filter((t: any) => t.variantId == null);
-
-    const exactNameNoVariant = preferNoVariant.filter(
-      (t: any) => normalizeLoose(String(t.displayName ?? "")) === normWanted
-    );
-
-    const pool = exactNameNoVariant.length
-      ? exactNameNoVariant
-      : preferNoVariant.length
-      ? preferNoVariant
-      : matches;
+    const pool = preferNoVariant.length ? preferNoVariant : matches;
 
     pool.sort((a: any, b: any) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
     return pool[0].id;
