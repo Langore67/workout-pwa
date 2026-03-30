@@ -36,6 +36,7 @@ import { uuid } from "../utils";
 import { getBestSessionLastNDays, suggestionFromBest } from "../progression";
 import { computeAndStorePRsForSession } from "../prs";
 import { resolveExercise } from "../domain/exercises/exerciseResolver";
+import { isBodyweightEffectiveLoadExerciseName } from "../strength/Strength";
 
 /* ============================================================================
    Breadcrumb 01 — Local widenings / UI-only types
@@ -103,6 +104,21 @@ function parseNum(v: string): number | undefined {
   if (!t) return undefined;
   const x = Number(t);
   return Number.isFinite(x) ? x : undefined;
+}
+
+function normalizeWeightInput(raw: string): string {
+  const cleaned = (raw ?? "").replace(",", ".");
+  return cleaned.replace(/[^\d.\-]/g, "").replace(/(?!^)-/g, "");
+}
+
+function parseCommittedWeight(raw: string, allowNegative: boolean): number | undefined {
+  const t = normalizeWeightInput(raw).trim();
+  if (!t || t === "-") return undefined;
+  if (/^-?\.\d+$/.test(t)) return Number(t.replace(/^-\./, "-0.").replace(/^\./, "0."));
+  if (/^-?\d+\.$/.test(t)) return Number(t.slice(0, -1));
+  const n = Number(t);
+  if (!Number.isFinite(n)) return undefined;
+  return allowNegative ? n : Math.max(0, n);
 }
 
 function parseTimeToSeconds(raw: string): number | undefined {
@@ -1217,13 +1233,17 @@ function ExerciseCard({
      Breadcrumb 06.15 — DB write helper
      ------------------------------------------------------------------------ */
   async function updateSet(id: string, patch: Partial<SetEntryX>) {
+    const allowsNegativeWeight = isBodyweightEffectiveLoadExerciseName(track.displayName ?? "");
+
     if ("weight" in patch) {
       const w = patch.weight as any;
-      if (w !== undefined && w !== null && Number.isFinite(w) && w > LIMITS.maxWeight) {
+      if (w !== undefined && w !== null && Number.isFinite(w) && Math.abs(w) > LIMITS.maxWeight) {
         window.alert(`Max weight is ${LIMITS.maxWeight}. Did you accidentally append reps to weight?`);
         return;
       }
-      if (w !== undefined && w !== null && Number.isFinite(w) && w < 0) patch.weight = 0 as any;
+      if (w !== undefined && w !== null && Number.isFinite(w) && w < 0 && !allowsNegativeWeight) {
+        patch.weight = 0 as any;
+      }
     }
 
     if ("reps" in patch) {
@@ -1841,6 +1861,7 @@ function SetRow({
   const distanceUnit = ((se as any).distanceUnit as string | undefined) ?? "mi";
 
   const showWeightInDistance = track.trackingMode === "weightedReps";
+  const allowsNegativeWeight = isBodyweightEffectiveLoadExerciseName(track.displayName ?? "");
 
   const ghostWeight =
     compact && isWorking && se.weight === undefined && prevParsed.prevWeight !== undefined
@@ -1877,11 +1898,16 @@ function SetRow({
   }
 
   const [rirText, setRirText] = useState<string>("");
+  const [weightText, setWeightText] = useState<string>("");
 
   useEffect(() => {
     const v = (se as any).rir;
     setRirText(v === undefined || v === null ? "" : String(v));
   }, [se.id, (se as any).rir]);
+
+  useEffect(() => {
+    setWeightText(se.weight === undefined || se.weight === null ? "" : String(se.weight));
+  }, [se.id, se.weight]);
 
   const showRir =
     metricMode === "reps" && loadedReps && isWorking && track.trackType !== "corrective";
@@ -1950,11 +1976,24 @@ function SetRow({
                 name="weight"
                 aria-label="weight"
                 placeholder={ghostWeight}
-                value={se.weight ?? ""}
+                value={weightText}
                 inputMode="decimal"
-                onChange={(e) => onChange(se.id, { weight: parseNum(e.target.value) })}
+                type="text"
+                onChange={(e) => setWeightText(normalizeWeightInput(e.target.value))}
                 onFocus={() => {
-                  if (compact && isWorking && !locked) onAcceptPrevWeight();
+                  if (compact && isWorking && !locked && se.weight === undefined && !weightText) onAcceptPrevWeight();
+                }}
+                onBlur={() => {
+                  const committed = parseCommittedWeight(weightText, allowsNegativeWeight);
+                  onChange(se.id, { weight: committed });
+                  setWeightText(committed === undefined ? "" : String(committed));
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+                  if (e.key === "Escape") {
+                    setWeightText(se.weight === undefined || se.weight === null ? "" : String(se.weight));
+                    (e.currentTarget as HTMLInputElement).blur();
+                  }
                 }}
                 disabled={locked}
               />
@@ -2074,11 +2113,24 @@ function SetRow({
               name="weight"
               aria-label="weight"
               placeholder={ghostWeight}
-              value={se.weight ?? ""}
+              value={weightText}
               inputMode="decimal"
-              onChange={(e) => onChange(se.id, { weight: parseNum(e.target.value) })}
+              type="text"
+              onChange={(e) => setWeightText(normalizeWeightInput(e.target.value))}
               onFocus={() => {
-                if (compact && isWorking && !locked) onAcceptPrevWeight();
+                if (compact && isWorking && !locked && se.weight === undefined && !weightText) onAcceptPrevWeight();
+              }}
+              onBlur={() => {
+                const committed = parseCommittedWeight(weightText, allowsNegativeWeight);
+                onChange(se.id, { weight: committed });
+                setWeightText(committed === undefined ? "" : String(committed));
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+                if (e.key === "Escape") {
+                  setWeightText(se.weight === undefined || se.weight === null ? "" : String(se.weight));
+                  (e.currentTarget as HTMLInputElement).blur();
+                }
               }}
               disabled={locked}
             />
