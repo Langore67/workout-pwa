@@ -105,6 +105,34 @@ export function computeScoredE1RM(weight: number, reps: number) {
   return computeE1RM(w, r);
 }
 
+export function isBodyweightEffectiveLoadExerciseName(name: string) {
+  const n = String(name || "").trim().toLowerCase();
+  if (!n) return false;
+
+  return (
+    n.includes("pull up") ||
+    n.includes("pull-up") ||
+    n.includes("pullup") ||
+    n.includes("chin up") ||
+    n.includes("chin-up") ||
+    n.includes("chinup") ||
+    n.includes("dip")
+  );
+}
+
+export function calcEffectiveStrengthWeightLb(rawWeight: number, exerciseName: string, bodyweight: number): number {
+  const w = Number(rawWeight);
+  if (!Number.isFinite(w)) return 0;
+
+  if (!isBodyweightEffectiveLoadExerciseName(exerciseName)) {
+    return w > 0 ? w : 0;
+  }
+
+  const bwSafe = Number.isFinite(bodyweight) && bodyweight > 0 ? bodyweight : 0;
+  const effective = bwSafe + w;
+  return Number.isFinite(effective) && effective > 0 ? effective : 0;
+}
+
 function normalizeByBodyweight(value: number, bodyweight: number) {
   if (!Number.isFinite(value) || value <= 0) return 0;
   const bw = Number(bodyweight);
@@ -413,72 +441,6 @@ export async function computeStrengthIndexAt(endAtMs: number, windowDays = 28): 
     const name = ex?.name ?? ex?.displayName ?? ex?.title ?? "";
     return patternFromName(name);
   }
-  
-  function isBodyweightCompoundName(name: string): boolean {
-    const n = String(name || "").trim().toLowerCase();
-    if (!n) return false;
-  
-    return (
-      n.includes("pull up") ||
-      n.includes("pull-up") ||
-      n.includes("pullup") ||
-      n.includes("chin up") ||
-      n.includes("chin-up") ||
-      n.includes("chinup") ||
-      n === "dip" ||
-      n.includes(" dips")
-    );
-  }
-  
-  function calcEffectiveStrengthWeightLb(
-    rawWeight: number,
-    exerciseName: string,
-    bodyweight: number
-  ): number {
-    const w = Number(rawWeight);
-    if (!Number.isFinite(w)) return 0;
-  
-    const bwSafe = Number.isFinite(bodyweight) && bodyweight > 0 ? bodyweight : 0;
-  
-    if (isBodyweightCompoundName(exerciseName)) {
-      const effective = bwSafe + w;
-      return Number.isFinite(effective) && effective > 0 ? effective : 0;
-    }
-  
-    return w > 0 ? w : 0;
-}
-  
-  function isBodyweightCompoundName(name: string): boolean {
-    const n = String(name || "").trim().toLowerCase();
-    if (!n) return false;
-  
-    return (
-      n.includes("pull up") ||
-      n.includes("pull-up") ||
-      n.includes("chin up") ||
-      n.includes("chin-up") ||
-      n.includes("dip") ||
-      n.includes("dips")
-    );
-  }
-  
-  function calcEffectiveStrengthWeightLb(
-    rawWeight: number,
-    exerciseName: string,
-    bodyweight: number
-  ): number {
-    const w = Number(rawWeight);
-    if (!Number.isFinite(w)) return 0;
-  
-    const bwSafe = Number.isFinite(bodyweight) && bodyweight > 0 ? bodyweight : 0;
-  
-    if (isBodyweightCompoundName(exerciseName)) {
-      const effective = bwSafe + w;
-      return Number.isFinite(effective) && effective > 0 ? effective : 0;
-    }
-  
-    return w > 0 ? w : 0;
-}
 
   /* ------------------------------------------------------------------------ */
   /* Breadcrumb 7B — Accumulate per-pattern strength signal                    */
