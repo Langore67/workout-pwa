@@ -48,6 +48,7 @@ import PerformanceInsightsSection from "../components/performance/PerformanceIns
 import PerformanceOverviewSection from "../components/performance/PerformanceOverviewSection";
 import PerformanceStrengthSignalSection from "../components/performance/PerformanceStrengthSignalSection";
 import {
+  calcEffectiveStrengthWeightLb,
   computeStrengthIndex,
   computeStrengthTrend,
   type StrengthTrendRow,
@@ -1070,8 +1071,6 @@ function calcEffectiveWeightLb(
 ): number | undefined {
   const explicit = typeof set.weight === "number" ? set.weight : undefined;
   const name = `${exercise.name} ${track.displayName}`.toLowerCase();
-  const notes = String((set as any).notes ?? "").toLowerCase();
-
   const looksBodyweight =
     exercise.equipment === "Bodyweight" ||
     exercise.category === "Bodyweight" ||
@@ -1088,15 +1087,7 @@ function calcEffectiveWeightLb(
   const bw = nearestBodyweightLb(bodyMetrics, sessionAt);
   if (typeof bw !== "number") return explicit;
 
-  const raw = explicit ?? 0;
-
-  const looksAssisted = notes.includes("assist") || name.includes("assisted") || raw < 0;
-
-  const effective = looksAssisted
-    ? raw < 0
-      ? bw + raw
-      : bw - raw
-    : bw + raw;
+  const effective = calcEffectiveStrengthWeightLb(explicit ?? 0, name, bw);
 
   return Number.isFinite(effective) && effective > 0 ? effective : undefined;
 }
