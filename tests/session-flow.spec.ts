@@ -25,6 +25,43 @@ function finishButton(page: Page): Locator {
   return page.getByRole("button", { name: /finish session/i }).first();
 }
 
+function templateEditor(page: Page): Locator {
+  return page.getByRole("dialog");
+}
+
+async function openTemplateEditor(page: Page, templateName: string) {
+  await goto(page, "/templates");
+  await page.getByRole("button", { name: templateName }).click();
+  const dialog = templateEditor(page);
+  await expect(dialog).toBeVisible({ timeout: 15000 });
+  await expect(dialog.getByText(new RegExp(`Edit:\\s*${templateName}`, "i"))).toBeVisible({ timeout: 15000 });
+  return dialog;
+}
+
+async function quickAddTemplateExercise(page: Page, templateName: string, exerciseName: string) {
+  const dialog = await openTemplateEditor(page, templateName);
+  const quickAddInput = dialog.getByRole("textbox").first();
+
+  await expect(quickAddInput).toBeVisible({ timeout: 15000 });
+  await quickAddInput.fill(exerciseName);
+
+  const variantType = dialog.getByLabel("Variant type");
+  if (await variantType.count()) {
+    await variantType.selectOption("hypertrophy");
+  }
+
+  const trackingMode = dialog.getByLabel("Tracking mode");
+  if (await trackingMode.count()) {
+    await trackingMode.selectOption("weightedReps");
+  }
+
+  const quickAddButton = dialog.locator('button[title*="Reuses an existing track if one exists"]').first();
+  await expect(quickAddButton).toBeVisible({ timeout: 15000 });
+  await quickAddButton.click();
+
+  return dialog;
+}
+
 // ---- Inputs (robust to lbs/placeholder loss on iPhone) ----
 function inputWeight(page: Page): Locator {
   return page
@@ -191,6 +228,108 @@ async function ensureFinishNavigated(page: Page) {
   // If gate blocks, Review list appears and navigation does not occur
   await expect(page.getByText(/Review \(tap to jump\)/i)).toHaveCount(0);
   await page.waitForURL(/\/complete\//, { timeout: 15000 });
+}
+
+type TemplateTrackSeed = {
+  templateId: string;
+  exerciseId: string;
+  canonicalTrackId: string;
+  customTrackId: string;
+  strengthTrackId: string;
+};
+
+async function seedTemplateTrackReuseState(page: Page): Promise<TemplateTrackSeed> {
+  return await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const now = Date.now();
+    const uuid = () => crypto.randomUUID();
+
+    const folderId = uuid();
+    const templateId = uuid();
+    const exerciseId = uuid();
+    const canonicalTrackId = uuid();
+    const customTrackId = uuid();
+    const strengthTrackId = uuid();
+    const variantId = uuid();
+
+    await db.folders.add({
+      id: folderId,
+      name: "Default",
+      orderIndex: 1,
+      createdAt: now,
+    });
+
+    await db.templates.add({
+      id: templateId,
+      name: "Upper A",
+      folderId,
+      createdAt: now,
+    });
+
+    await db.exercises.add({
+      id: exerciseId,
+      name: "Bench Press",
+      equipmentTags: ["barbell"],
+      createdAt: now,
+    });
+
+    await db.tracks.bulkAdd([
+      {
+        id: canonicalTrackId,
+        exerciseId,
+        trackType: "hypertrophy",
+        displayName: "Bench Press Canonical Hypertrophy",
+        trackingMode: "weightedReps",
+        warmupSetsDefault: 2,
+        workingSetsDefault: 3,
+        repMin: 8,
+        repMax: 12,
+        restSecondsDefault: 120,
+        rirTargetMin: 1,
+        rirTargetMax: 2,
+        weightJumpDefault: 5,
+        createdAt: now - 3000,
+      },
+      {
+        id: customTrackId,
+        exerciseId,
+        trackType: "hypertrophy",
+        displayName: "Bench Press Custom Hypertrophy",
+        trackingMode: "weightedReps",
+        variantId,
+        warmupSetsDefault: 2,
+        workingSetsDefault: 3,
+        repMin: 8,
+        repMax: 12,
+        restSecondsDefault: 120,
+        rirTargetMin: 1,
+        rirTargetMax: 2,
+        weightJumpDefault: 5,
+        createdAt: now - 2000,
+      },
+      {
+        id: strengthTrackId,
+        exerciseId,
+        trackType: "strength",
+        displayName: "Bench Press Strength",
+        trackingMode: "weightedReps",
+        warmupSetsDefault: 2,
+        workingSetsDefault: 3,
+        repMin: 3,
+        repMax: 6,
+        restSecondsDefault: 180,
+        rirTargetMin: 1,
+        rirTargetMax: 2,
+        weightJumpDefault: 5,
+        createdAt: now - 1000,
+      },
+    ]);
+
+    return { templateId, exerciseId, canonicalTrackId, customTrackId, strengthTrackId };
+  });
 }
 
 test.describe("Finish Session pipeline", () => {
@@ -437,5 +576,203 @@ test.describe("Finish Session pipeline", () => {
     expect(typeof prsJson).toBe("string");
     expect((prsJson as string).length).toBeGreaterThan(2);
     expect(prsJson).not.toBe("[]");
+  });
+});
+
+test.describe("Template session flow reuse guards", () => {
+  test.beforeEach(async ({ page }) => {
+    await goto(page, "/");
+    await resetDexieDb(page);
+  });
+
+  test("reuse existing canonical track", async ({ page }) => {
+    const seeded = await seedTemplateTrackReuseState(page);
+
+    await quickAddTemplateExercise(page, "Upper A", "Bench Press");
+
+    const state = await page.evaluate(async ({ templateId, canonicalTrackId }) => {
+      // @ts-ignore
+      const db = window.__db;
+      const items = await db.templateItems.where("templateId").equals(templateId).toArray();
+      return {
+        templateTrackIds: items.map((item: any) => item.trackId),
+        templateItemCount: items.length,
+        canonicalTrackExists: !!(await db.tracks.get(canonicalTrackId)),
+        trackCount: await db.tracks.count(),
+      };
+    }, seeded);
+
+    expect(state.templateItemCount).toBe(1);
+    expect(state.templateTrackIds).toEqual([seeded.canonicalTrackId]);
+    expect(state.canonicalTrackExists).toBe(true);
+    expect(state.trackCount).toBe(3);
+  });
+
+  test("preserve reused display name", async ({ page }) => {
+    const seeded = await page.evaluate(async () => {
+      // @ts-ignore
+      const db = window.__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const now = Date.now();
+      const uuid = () => crypto.randomUUID();
+
+      const folderId = uuid();
+      const templateId = uuid();
+      const exerciseId = uuid();
+      const customTrackId = uuid();
+      const variantTrackId = uuid();
+
+      await db.folders.add({ id: folderId, name: "Default", orderIndex: 1, createdAt: now });
+      await db.templates.add({ id: templateId, name: "Upper A", folderId, createdAt: now });
+      await db.exercises.add({ id: exerciseId, name: "Bench Press", equipmentTags: ["barbell"], createdAt: now });
+
+      await db.tracks.bulkAdd([
+        {
+          id: customTrackId,
+          exerciseId,
+          trackType: "hypertrophy",
+          displayName: "Bench Press Custom Hypertrophy",
+          trackingMode: "weightedReps",
+          warmupSetsDefault: 2,
+          workingSetsDefault: 3,
+          repMin: 8,
+          repMax: 12,
+          restSecondsDefault: 120,
+          rirTargetMin: 1,
+          rirTargetMax: 2,
+          weightJumpDefault: 5,
+          createdAt: now - 2000,
+        },
+        {
+          id: variantTrackId,
+          exerciseId,
+          trackType: "hypertrophy",
+          displayName: "Bench Press Variant Hypertrophy",
+          trackingMode: "weightedReps",
+          variantId: uuid(),
+          warmupSetsDefault: 2,
+          workingSetsDefault: 3,
+          repMin: 8,
+          repMax: 12,
+          restSecondsDefault: 120,
+          rirTargetMin: 1,
+          rirTargetMax: 2,
+          weightJumpDefault: 5,
+          createdAt: now - 1000,
+        },
+      ]);
+
+      return { templateId, customTrackId };
+    });
+
+    const dialog = await quickAddTemplateExercise(page, "Upper A", "Bench Press");
+    await expect(dialog.getByText("Bench Press Custom Hypertrophy")).toBeVisible({ timeout: 15000 });
+
+    const state = await page.evaluate(async ({ templateId, customTrackId }) => {
+      // @ts-ignore
+      const db = window.__db;
+      const items = await db.templateItems.where("templateId").equals(templateId).toArray();
+      const reusedTrack = await db.tracks.get(customTrackId);
+      return {
+        templateTrackIds: items.map((item: any) => item.trackId),
+        displayName: reusedTrack?.displayName ?? null,
+        trackCount: await db.tracks.count(),
+      };
+    }, seeded);
+
+    expect(state.templateTrackIds).toEqual([seeded.customTrackId]);
+    expect(state.displayName).toBe("Bench Press Custom Hypertrophy");
+    expect(state.trackCount).toBe(2);
+  });
+
+  test("create fallback track only when no reusable candidate exists", async ({ page }) => {
+    const seeded = await page.evaluate(async () => {
+      // @ts-ignore
+      const db = window.__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const now = Date.now();
+      const uuid = () => crypto.randomUUID();
+
+      const folderId = uuid();
+      const templateId = uuid();
+      const exerciseId = uuid();
+      const strengthTrackId = uuid();
+
+      await db.folders.add({ id: folderId, name: "Default", orderIndex: 1, createdAt: now });
+      await db.templates.add({ id: templateId, name: "Upper A", folderId, createdAt: now });
+      await db.exercises.add({ id: exerciseId, name: "Bench Press", equipmentTags: ["barbell"], createdAt: now });
+
+      await db.tracks.add({
+        id: strengthTrackId,
+        exerciseId,
+        trackType: "strength",
+        displayName: "Bench Press Strength",
+        trackingMode: "weightedReps",
+        warmupSetsDefault: 2,
+        workingSetsDefault: 3,
+        repMin: 3,
+        repMax: 6,
+        restSecondsDefault: 180,
+        rirTargetMin: 1,
+        rirTargetMax: 2,
+        weightJumpDefault: 5,
+        createdAt: now - 1000,
+      });
+
+      return { templateId, exerciseId, strengthTrackId };
+    });
+
+    await quickAddTemplateExercise(page, "Upper A", "Bench Press");
+
+    const state = await page.evaluate(async ({ templateId, exerciseId, strengthTrackId }) => {
+      // @ts-ignore
+      const db = window.__db;
+      const items = await db.templateItems.where("templateId").equals(templateId).toArray();
+      const tracks = await db.tracks.where("exerciseId").equals(exerciseId).toArray();
+      const fallback = tracks.find(
+        (track: any) =>
+          track.id !== strengthTrackId &&
+          track.trackType === "hypertrophy" &&
+          track.trackingMode === "weightedReps"
+      );
+
+      return {
+        templateTrackIds: items.map((item: any) => item.trackId),
+        exerciseTrackCount: tracks.length,
+        fallbackTrackId: fallback?.id ?? null,
+        fallbackTrackType: fallback?.trackType ?? null,
+        fallbackTrackingMode: fallback?.trackingMode ?? null,
+      };
+    }, seeded);
+
+    expect(state.exerciseTrackCount).toBe(2);
+    expect(state.fallbackTrackId).not.toBeNull();
+    expect(state.templateTrackIds).toEqual([state.fallbackTrackId]);
+    expect(state.fallbackTrackType).toBe("hypertrophy");
+    expect(state.fallbackTrackingMode).toBe("weightedReps");
+  });
+
+  test("duplicate guard unchanged", async ({ page }) => {
+    const seeded = await seedTemplateTrackReuseState(page);
+
+    await quickAddTemplateExercise(page, "Upper A", "Bench Press");
+    await quickAddTemplateExercise(page, "Upper A", "Bench Press");
+
+    const state = await page.evaluate(async ({ templateId }) => {
+      // @ts-ignore
+      const db = window.__db;
+      const items = await db.templateItems.where("templateId").equals(templateId).toArray();
+      return {
+        templateItemCount: items.length,
+        trackIds: items.map((item: any) => item.trackId),
+        trackCount: await db.tracks.count(),
+      };
+    }, seeded);
+
+    expect(state.templateItemCount).toBe(1);
+    expect(state.trackIds).toEqual([seeded.canonicalTrackId]);
+    expect(state.trackCount).toBe(3);
   });
 });
