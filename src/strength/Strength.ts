@@ -120,6 +120,21 @@ export function isBodyweightEffectiveLoadExerciseName(name: string) {
   );
 }
 
+export function isExplicitlyAssistedBodyweightExerciseName(name: string) {
+  const n = String(name || "").trim().toLowerCase();
+  if (!n) return false;
+
+  return (
+    n.includes("assisted pull up") ||
+    n.includes("assisted pull-up") ||
+    n.includes("assisted pullup") ||
+    n.includes("assisted chin up") ||
+    n.includes("assisted chin-up") ||
+    n.includes("assisted chinup") ||
+    n.includes("assisted dip")
+  );
+}
+
 export function calcEffectiveStrengthWeightLb(rawWeight: number, exerciseName: string, bodyweight: number): number {
   const w = Number(rawWeight);
   if (!Number.isFinite(w)) return 0;
@@ -129,8 +144,28 @@ export function calcEffectiveStrengthWeightLb(rawWeight: number, exerciseName: s
   }
 
   const bwSafe = Number.isFinite(bodyweight) && bodyweight > 0 ? bodyweight : 0;
-  const effective = bwSafe + w;
+  const effective = isExplicitlyAssistedBodyweightExerciseName(exerciseName)
+    ? bwSafe - Math.abs(w)
+    : bwSafe + w;
   return Number.isFinite(effective) && effective > 0 ? effective : 0;
+}
+
+export function latestBodyweightFromRows(rows: Array<any>): number | undefined {
+  let bestAt = -Infinity;
+  let bestWeight: number | undefined;
+
+  for (const row of rows ?? []) {
+    const weight = Number(row?.weightLb ?? row?.weight);
+    const at = Number(row?.takenAt ?? row?.date ?? row?.createdAt);
+    if (!Number.isFinite(weight) || weight <= 0) continue;
+    if (!Number.isFinite(at)) continue;
+    if (at >= bestAt) {
+      bestAt = at;
+      bestWeight = weight;
+    }
+  }
+
+  return bestWeight;
 }
 
 function normalizeByBodyweight(value: number, bodyweight: number) {

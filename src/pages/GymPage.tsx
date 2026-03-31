@@ -36,6 +36,8 @@ import { uuid } from "../utils";
 import { getBestSessionLastNDays, suggestionFromBest } from "../progression";
 import { computeAndStorePRsForSession } from "../prs";
 import { resolveExercise } from "../domain/exercises/exerciseResolver";
+import { isBodyweightEffectiveLoadExerciseName } from "../strength/Strength";
+import NumericPad from "../components/NumericPad";
 
 /* ============================================================================
    Breadcrumb 01 — Local widenings / UI-only types
@@ -103,6 +105,23 @@ function parseNum(v: string): number | undefined {
   if (!t) return undefined;
   const x = Number(t);
   return Number.isFinite(x) ? x : undefined;
+}
+
+function normalizeWeightInput(raw: string): string {
+  const cleaned = (raw ?? "").replace(",", ".");
+  const hadMinus = cleaned.includes("-");
+  const base = cleaned.replace(/-/g, "").replace(/[^\d.]/g, "");
+  return hadMinus ? `-${base}` : base;
+}
+
+function parseCommittedWeight(raw: string, allowNegative: boolean): number | undefined {
+  const t = normalizeWeightInput(raw).trim();
+  if (!t || t === "-") return undefined;
+  if (/^-?\.\d+$/.test(t)) return Number(t.replace(/^-\./, "-0.").replace(/^\./, "0."));
+  if (/^-?\d+\.$/.test(t)) return Number(t.slice(0, -1));
+  const n = Number(t);
+  if (!Number.isFinite(n)) return undefined;
+  return allowNegative ? n : Math.max(0, n);
 }
 
 function parseTimeToSeconds(raw: string): number | undefined {
@@ -661,6 +680,7 @@ function AddExerciseModal({
           </button>
         </div>
       </div>
+
     </div>
   );
 }
@@ -1080,6 +1100,10 @@ function ExerciseCard({
     (commonMistakes?.length ?? 0) > 0;
 
   const variantName = useMemo(() => cleanText((variant as any)?.name), [variant]);
+  const weightEntryContextName = useMemo(
+    () => [cleanText((exercise as any)?.name), track.displayName].filter(Boolean).join(" ").trim(),
+    [exercise, track.displayName]
+  );
 
   /* ------------------------------------------------------------------------
      Breadcrumb 06.10 — Clipboard builder
@@ -1217,13 +1241,17 @@ function ExerciseCard({
      Breadcrumb 06.15 — DB write helper
      ------------------------------------------------------------------------ */
   async function updateSet(id: string, patch: Partial<SetEntryX>) {
+    const allowsNegativeWeight = isBodyweightEffectiveLoadExerciseName(weightEntryContextName);
+
     if ("weight" in patch) {
       const w = patch.weight as any;
-      if (w !== undefined && w !== null && Number.isFinite(w) && w > LIMITS.maxWeight) {
+      if (w !== undefined && w !== null && Number.isFinite(w) && Math.abs(w) > LIMITS.maxWeight) {
         window.alert(`Max weight is ${LIMITS.maxWeight}. Did you accidentally append reps to weight?`);
         return;
       }
-      if (w !== undefined && w !== null && Number.isFinite(w) && w < 0) patch.weight = 0 as any;
+      if (w !== undefined && w !== null && Number.isFinite(w) && w < 0 && !allowsNegativeWeight) {
+        patch.weight = 0 as any;
+      }
     }
 
     if ("reps" in patch) {
@@ -1686,6 +1714,7 @@ function ExerciseCard({
                   prevText={prevText}
                   prevParsed={prevParsed}
                   track={track}
+                  weightEntryContextName={weightEntryContextName}
                   metricMode={metricMode}
                   loadedReps={loadedReps}
                   done={done}
@@ -1782,6 +1811,7 @@ function ExerciseCard({
           )}
         </div>
       </div>
+
     </div>
   );
 }
@@ -1796,6 +1826,7 @@ function SetRow({
   prevText,
   prevParsed,
   track,
+  weightEntryContextName,
   metricMode,
   loadedReps,
   done,
@@ -1814,6 +1845,7 @@ function SetRow({
   prevText: string;
   prevParsed: { prevWeight?: number; prevReps?: number };
   track: Track;
+  weightEntryContextName: string;
   metricMode: "reps" | "distance" | "time";
   loadedReps: boolean;
   done: boolean;
@@ -1827,6 +1859,11 @@ function SetRow({
   onAcceptPrevReps: () => void;
 }) {
   const selectRef = useRef<HTMLSelectElement | null>(null);
+  const weightInputRef = useRef<HTMLInputElement | null>(null);
+  const repsInputRef = useRef<HTMLInputElement | null>(null);
+  const distanceInputRef = useRef<HTMLInputElement | null>(null);
+  const [activePadField, setActivePadField] = useState<"weight" | "reps" | null>(null);
+  const [padBuffer, setPadBuffer] = useState<string>("");
 
   function openTypePicker() {
     selectRef.current?.focus();
@@ -1841,6 +1878,7 @@ function SetRow({
   const distanceUnit = ((se as any).distanceUnit as string | undefined) ?? "mi";
 
   const showWeightInDistance = track.trackingMode === "weightedReps";
+  const allowsNegativeWeight = isBodyweightEffectiveLoadExerciseName(weightEntryContextName);
 
   const ghostWeight =
     compact && isWorking && se.weight === undefined && prevParsed.prevWeight !== undefined
@@ -1877,11 +1915,103 @@ function SetRow({
   }
 
   const [rirText, setRirText] = useState<string>("");
+  const [weightText, setWeightText] = useState<string>("");
 
   useEffect(() => {
     const v = (se as any).rir;
     setRirText(v === undefined || v === null ? "" : String(v));
   }, [se.id, (se as any).rir]);
+
+  useEffect(() => {
+    setWeightText(se.weight === undefined || se.weight === null ? "" : String(se.weight));
+  }, [se.id, se.weight]);
+
+  async function commitPadDraft(field: "weight" | "reps") {
+    if (field === "weight") {
+      const committed = parseCommittedWeight(padBuffer, allowsNegativeWeight);
+      await onChange(se.id, { weight: committed });
+      setWeightText(committed === undefined ? "" : String(committed));
+      return committed;
+    }
+
+    const committed = parseNum(padBuffer);
+    await onChange(se.id, { reps: committed });
+    return committed;
+  }
+
+  function openPad(field: "weight" | "reps") {
+    if (locked) return;
+
+    if (field === "weight" && compact && isWorking && se.weight === undefined && !weightText) {
+      onAcceptPrevWeight();
+    }
+
+    if (field === "reps" && compact && isWorking) {
+      onAcceptPrevReps();
+    }
+
+    const currentValue = field === "weight" ? weightText : se.reps === undefined || se.reps === null ? "" : String(se.reps);
+    setPadBuffer(currentValue);
+    setActivePadField(field);
+  }
+
+  async function closePad(commitFirst: boolean) {
+    const field = activePadField;
+    if (commitFirst && field) await commitPadDraft(field);
+    setActivePadField(null);
+    setPadBuffer("");
+    if (field === "weight") weightInputRef.current?.blur();
+    if (field === "reps") repsInputRef.current?.blur();
+  }
+
+  function handlePadKey(k: string) {
+    setPadBuffer((prev) => {
+      if (activePadField === "weight") return normalizeWeightInput(`${prev}${k}`);
+      return normalizeDecimalInput(`${prev}${k}`);
+    });
+  }
+
+  function handlePadBackspace() {
+    setPadBuffer((prev) => prev.slice(0, -1));
+  }
+
+  function toggleWeightDraftSign() {
+    if (!allowsNegativeWeight || activePadField !== "weight") return;
+    setPadBuffer((prev) => {
+      const normalized = normalizeWeightInput(prev);
+      if (!normalized) return "-";
+      if (normalized === "-") return "";
+      return normalized.startsWith("-") ? normalized.slice(1) : `-${normalized}`;
+    });
+  }
+
+  async function focusNextFromPad() {
+    const field = activePadField;
+    if (!field) return;
+
+    await commitPadDraft(field);
+    setActivePadField(null);
+    setPadBuffer("");
+
+    if (field === "weight" && metricMode === "reps" && loadedReps) {
+      repsInputRef.current?.focus();
+      return;
+    }
+
+    if (field === "weight" && metricMode === "distance" && showWeightInDistance) {
+      distanceInputRef.current?.focus();
+      return;
+    }
+
+    if (field === "reps") {
+      repsInputRef.current?.blur();
+      return;
+    }
+
+    weightInputRef.current?.blur();
+  }
+
+  const accessorySignLabel = padBuffer.trim().startsWith("-") ? "-/+ -" : "-/+ +";
 
   const showRir =
     metricMode === "reps" && loadedReps && isWorking && track.trackType !== "corrective";
@@ -1946,30 +2076,33 @@ function SetRow({
           {loadedReps && (
             <>
               <input
-                className="cell-input"
-                name="weight"
-                aria-label="weight"
-                placeholder={ghostWeight}
-                value={se.weight ?? ""}
-                inputMode="decimal"
-                onChange={(e) => onChange(se.id, { weight: parseNum(e.target.value) })}
-                onFocus={() => {
-                  if (compact && isWorking && !locked) onAcceptPrevWeight();
-                }}
-                disabled={locked}
+                  ref={weightInputRef}
+                  className="cell-input"
+                  name="weight"
+                  aria-label="weight"
+                  placeholder={ghostWeight}
+                  value={activePadField === "weight" ? padBuffer : weightText}
+                  inputMode="none"
+                  type="text"
+                  onChange={(e) => setWeightText(normalizeWeightInput(e.target.value))}
+                  onFocus={() => openPad("weight")}
+                  onClick={() => openPad("weight")}
+                  readOnly
+                  disabled={locked}
               />
 
               <input
+                ref={repsInputRef}
                 className="cell-input"
                 name="reps"
                 aria-label="reps"
                 placeholder={ghostReps}
-                value={se.reps ?? ""}
-                inputMode="numeric"
+                value={activePadField === "reps" ? padBuffer : (se.reps ?? "")}
+                inputMode="none"
                 onChange={(e) => onChange(se.id, { reps: parseNum(e.target.value) })}
-                onFocus={() => {
-                  if (compact && isWorking && !locked) onAcceptPrevReps();
-                }}
+                onFocus={() => openPad("reps")}
+                onClick={() => openPad("reps")}
+                readOnly
                 disabled={locked}
               />
 
@@ -2006,11 +2139,17 @@ function SetRow({
             <>
               <div className="muted">—</div>
               <input
+                ref={repsInputRef}
                 className="cell-input"
+                name="reps"
+                aria-label="reps"
                 placeholder="reps"
-                value={se.reps ?? ""}
-                inputMode="numeric"
+                value={activePadField === "reps" ? padBuffer : (se.reps ?? "")}
+                inputMode="none"
                 onChange={(e) => onChange(se.id, { reps: parseNum(e.target.value) })}
+                onFocus={() => openPad("reps")}
+                onClick={() => openPad("reps")}
+                readOnly
                 disabled={locked}
               />
               <div className="muted">—</div>
@@ -2037,11 +2176,17 @@ function SetRow({
             <>
               <div className="muted">—</div>
               <input
+                ref={repsInputRef}
                 className="cell-input"
+                name="reps"
+                aria-label="reps"
                 placeholder="breaths"
-                value={se.reps ?? ""}
-                inputMode="numeric"
+                value={activePadField === "reps" ? padBuffer : (se.reps ?? "")}
+                inputMode="none"
                 onChange={(e) => onChange(se.id, { reps: parseNum(e.target.value) })}
+                onFocus={() => openPad("reps")}
+                onClick={() => openPad("reps")}
+                readOnly
                 disabled={locked}
               />
               <div className="muted">—</div>
@@ -2070,17 +2215,19 @@ function SetRow({
         <>
           {showWeightInDistance ? (
             <input
-              className="cell-input"
-              name="weight"
-              aria-label="weight"
-              placeholder={ghostWeight}
-              value={se.weight ?? ""}
-              inputMode="decimal"
-              onChange={(e) => onChange(se.id, { weight: parseNum(e.target.value) })}
-              onFocus={() => {
-                if (compact && isWorking && !locked) onAcceptPrevWeight();
-              }}
-              disabled={locked}
+                ref={weightInputRef}
+                className="cell-input"
+                name="weight"
+                aria-label="weight"
+                placeholder={ghostWeight}
+                value={activePadField === "weight" ? padBuffer : weightText}
+                inputMode="none"
+                type="text"
+                onChange={(e) => setWeightText(normalizeWeightInput(e.target.value))}
+                onFocus={() => openPad("weight")}
+                onClick={() => openPad("weight")}
+                readOnly
+                disabled={locked}
             />
           ) : (
             <div className="muted">—</div>
@@ -2088,6 +2235,7 @@ function SetRow({
 
           <div className="row" style={{ gap: 6, alignItems: "center" }}>
             <input
+              ref={distanceInputRef}
               className="cell-input"
               name="distance"
               aria-label="distance"
@@ -2167,6 +2315,62 @@ function SetRow({
           ✕
         </button>
       </div>
+
+      <NumericPad
+        visible={!!activePadField && !locked}
+        decimalEnabled={activePadField === "weight"}
+        title={activePadField === "reps" ? "Reps" : "Weight"}
+        layout="strongColumn"
+        theme="ironforge"
+        onKey={handlePadKey}
+        onBackspace={handlePadBackspace}
+        onClear={() => setPadBuffer("")}
+        onDone={() => {
+          void closePad(true);
+        }}
+        onNext={() => {
+          void focusNextFromPad();
+        }}
+        rightColumnButtons={[
+          {
+            key: "hide",
+            label: "Hide",
+            onClick: () => {
+              void closePad(true);
+            },
+            testId: "gym-weight-accessory-dismiss",
+          },
+          {
+            key: "calc",
+            label: "Calc",
+            onClick: () => {},
+            disabled: true,
+            testId: "gym-weight-accessory-utility",
+          },
+          activePadField === "weight" && allowsNegativeWeight
+            ? {
+                key: "sign",
+                label: accessorySignLabel,
+                onClick: toggleWeightDraftSign,
+                testId: "gym-weight-accessory-sign",
+              }
+            : {
+                key: "sign-disabled",
+                label: "-/+",
+                onClick: () => {},
+                disabled: true,
+                testId: "gym-weight-accessory-sign-disabled",
+              },
+          {
+            key: "next",
+            label: "Next",
+            onClick: () => {
+              void focusNextFromPad();
+            },
+            testId: "gym-weight-accessory-next",
+          },
+        ]}
+      />
     </div>
   );
 }
