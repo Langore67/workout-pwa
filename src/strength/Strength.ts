@@ -211,6 +211,9 @@ function patternFromName(name: string): StrengthPattern | undefined {
     n.includes("deadlift") ||
     n.includes("rdl") ||
     n.includes("romanian") ||
+    n.includes("glute bridge") ||
+    n.includes("bridge machine") ||
+    n.includes("hip thrust") ||
     n.includes("good morning") ||
     n.includes("hip hinge")
   ) {
@@ -240,6 +243,10 @@ function patternFromName(name: string): StrengthPattern | undefined {
   }
 
   return undefined;
+}
+
+export function classifyStrengthPatternFromExerciseName(name: string): StrengthPattern | undefined {
+  return patternFromName(name);
 }
 
 /* -------------------------------------------------------------------------- */

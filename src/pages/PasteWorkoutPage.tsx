@@ -78,6 +78,11 @@ import {
   buildExerciseResolverIndex,
   resolveExerciseFromIndex,
 } from "../domain/exercises/exerciseResolver";
+import {
+  defaultTrackTypeFromExerciseName,
+  inferTrackingModeFromExerciseName,
+  inferTrackingModeFromSetSignals,
+} from "../domain/trackingMode";
 
 /* ============================================================================
    Breadcrumb 1 — Types
@@ -124,6 +129,7 @@ type PreviewSummary = {
   setCount: number;
   warningCount: number;
   failedLineCount: number;
+  newExerciseNames: string[];
   wouldAddExercises: number;
   wouldAddTracks: number;
   wouldAddSessions: number;
@@ -313,15 +319,11 @@ function inferTrackingMode(
   hasWeight: boolean,
   hasReps: boolean
 ): TrackingMode {
-  const s = exerciseName.toLowerCase();
-
-  if (s.includes("plank") || s.includes("hold") || s.includes("hang")) return "timeSeconds";
-  if (!hasWeight && hasReps) return "repsOnly";
-  if (s.includes("band") || s.includes("pull-apart") || s.includes("pull apart")) {
-    return "repsOnly";
-  }
-
-  return "weightedReps";
+  return inferTrackingModeFromExerciseName(exerciseName, {
+    hasWeight,
+    hasReps,
+    treatHangAsTime: true,
+  });
 }
 
 function inferBetterTrackingModeFromParsedSets(
@@ -338,42 +340,30 @@ function inferBetterTrackingModeFromParsedSets(
     (s) => s.seconds !== undefined && Number.isFinite(s.seconds) && s.seconds > 0
   );
 
-  if (hasWeightedLoad && hasReps) return "weightedReps";
-  if (!hasWeightedLoad && hasReps) return "repsOnly";
-  if (hasSeconds) return "timeSeconds";
-
-  return inferTrackingMode(exerciseName, hasWeightedLoad, hasReps);
+  return inferTrackingModeFromSetSignals(
+    exerciseName,
+    {
+      hasWeightedLoad,
+      hasReps,
+      hasSeconds,
+    },
+    { treatHangAsTime: true }
+  );
 }
 
 function defaultTrackType(exerciseName: string): TrackType {
-  const s = exerciseName.toLowerCase();
-
-  if (
-    s.includes("breathing") ||
-    s.includes("reset") ||
-    s.includes("mobility") ||
-    s.includes("stretch") ||
-    s.includes("clamshell") ||
-    s.includes("clams") ||
-    s.includes("wall slide") ||
-    s.includes("hip rotation") ||
-    s.includes("walkout") ||
-    s.includes("knee to wall")
-  ) {
-    return "corrective";
-  }
-
-  if (
-    s.includes("walk") ||
-    s.includes("bike") ||
-    s.includes("cardio") ||
-    s.includes("treadmill") ||
-    s.includes("hang")
-  ) {
-    return "cardio";
-  }
-
-  return "hypertrophy";
+  return defaultTrackTypeFromExerciseName(exerciseName, {
+    extraCorrectiveTerms: [
+      "stretch",
+      "clamshell",
+      "clams",
+      "wall slide",
+      "hip rotation",
+      "walkout",
+      "knee to wall",
+    ],
+    enableCardioTerms: true,
+  });
 }
 
 function buildSetNotes(set: ParsedSet): string | undefined {
@@ -811,26 +801,38 @@ export default function PasteWorkoutPage() {
   async function buildPreview(parsedWorkout: ParsedWorkout): Promise<PreviewSummary> {
     const existingExercises = await db.exercises.toArray();
     const existingTracks = await db.tracks.toArray();
+    const resolverIndex = buildExerciseResolverIndex(existingExercises);
 
-    const exerciseKeys = new Set(existingExercises.map((e) => normalizeName(e.name)));
     const trackKeys = new Set(existingTracks.map((t) => normalizeName(t.displayName)));
 
     const importableExercises = parsedWorkout.exercises.filter((ex) => ex.sets.length > 0);
+    const newExerciseNames = new Set<string>();
 
-    let wouldAddExercises = 0;
     let wouldAddTracks = 0;
     let wouldAddSessions = 0;
     let wouldAddSessionItems = 0;
     let wouldAddSets = 0;
 
     for (const ex of importableExercises) {
-      const norm = normalizeName(ex.exercise);
+      const resolution = resolveExerciseFromIndex(
+        {
+          rawName: ex.exercise,
+          allowAlias: true,
+          followMerged: true,
+          includeArchived: false,
+        },
+        resolverIndex
+      );
+      const isExistingExercise =
+        resolution.status === "exact" ||
+        resolution.status === "alias" ||
+        resolution.status === "merged_redirect";
 
-      if (!exerciseKeys.has(norm)) {
-        wouldAddExercises += 1;
-        exerciseKeys.add(norm);
+      if (!isExistingExercise) {
+        newExerciseNames.add(ex.exercise);
       }
 
+      const norm = normalizeName(ex.exercise);
       if (!trackKeys.has(norm)) {
         wouldAddTracks += 1;
         trackKeys.add(norm);
@@ -854,7 +856,8 @@ export default function PasteWorkoutPage() {
       setCount: parsedWorkout.exercises.reduce((sum, ex) => sum + ex.sets.length, 0),
       warningCount: parsedWorkout.warnings.length,
       failedLineCount: parsedWorkout.failedLines.length,
-      wouldAddExercises,
+      newExerciseNames: Array.from(newExerciseNames),
+      wouldAddExercises: newExerciseNames.size,
       wouldAddTracks,
       wouldAddSessions: existingSession ? 0 : wouldAddSessions,
       wouldAddSessionItems: existingSession ? 0 : wouldAddSessionItems,
@@ -1565,7 +1568,20 @@ export default function PasteWorkoutPage() {
           <div style={{ display: "grid", gap: 12 }}>
             {parsed.exercises.map((ex, exIdx) => (
               <div key={`${ex.exercise}-${exIdx}`} className="card" style={{ padding: 12 }}>
-                <div style={{ fontWeight: 700, marginBottom: 8 }}>{ex.exercise}</div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    marginBottom: 8,
+                  }}
+                >
+                  <div style={{ fontWeight: 700 }}>{ex.exercise}</div>
+                  {preview.newExerciseNames.includes(ex.exercise) && (
+                    <span className="badge">NEW</span>
+                  )}
+                </div>
                 {!ex.sets.length ? (
                   <div className="muted">No parsed sets</div>
                 ) : (

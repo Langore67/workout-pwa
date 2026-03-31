@@ -16,6 +16,9 @@
    - We are only adding confidence + messaging
    ============================================================================ */
 
+import type { BodyMetricEntry } from "../db";
+import { getBodyFatPctRaw, getLeanMassLb, getWeightLb } from "./bodyCalculations";
+
 export type HydrationConfidenceLevel = "high" | "medium" | "low";
 
 export type HydrationConfidenceInput = {
@@ -283,4 +286,41 @@ export function computeHydrationConfidence(
       interpretation,
       detail,
   };
+}
+
+export function computeHydrationConfidenceFromBodyRows(rows: BodyMetricEntry[]) {
+  const latest = rows?.[0];
+  if (!latest) return null;
+
+  const prev = rows?.[1];
+  const waterSamples = (rows ?? [])
+    .slice(1, 6)
+    .map((row) => row?.bodyWaterPct)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+
+  const waterPctAvg =
+    waterSamples.length > 0
+      ? waterSamples.reduce((sum, value) => sum + value, 0) / waterSamples.length
+      : null;
+
+  const waterPctRecentHigh = waterSamples.length > 0 ? Math.max(...waterSamples) : null;
+  const tbwNow =
+    typeof latest.icwLb === "number" && typeof latest.ecwLb === "number"
+      ? latest.icwLb + latest.ecwLb
+      : null;
+
+  return computeHydrationConfidence({
+    waterPctNow: latest?.bodyWaterPct ?? null,
+    waterPctAvg,
+    waterPctRecentHigh,
+    icwNow: latest?.icwLb ?? null,
+    ecwNow: latest?.ecwLb ?? null,
+    tbwNow,
+    weightNow: getWeightLb(latest) ?? null,
+    weightPrev: prev ? getWeightLb(prev) ?? null : null,
+    leanMassNow: getLeanMassLb(latest) ?? null,
+    leanMassPrev: prev ? getLeanMassLb(prev) ?? null : null,
+    bodyFatPctNow: getBodyFatPctRaw(latest) ?? null,
+    bodyFatPctPrev: prev ? getBodyFatPctRaw(prev) ?? null : null,
+  });
 }

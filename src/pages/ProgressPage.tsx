@@ -26,8 +26,10 @@
    ✅ Keep implementation simple and navigation-only
    ============================================================================ */
 
-import React from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetrics";
+import { formatCoachExportText } from "../lib/coachExport/formatCoachExportText";
 
 /* ============================================================================
    Breadcrumb 1 — Tile component
@@ -135,6 +137,22 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 export default function ProgressPage() {
   const nav = useNavigate();
+  const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "error">("idle");
+
+  async function onCopyCoachExport() {
+    try {
+      setCopyState("copying");
+      const metrics = await buildCoachExportMetrics();
+      const text = formatCoachExportText(metrics);
+      await navigator.clipboard.writeText(text);
+      setCopyState("copied");
+      window.setTimeout(() => {
+        setCopyState((current) => (current === "copied" ? "idle" : current));
+      }, 2000);
+    } catch {
+      setCopyState("error");
+    }
+  }
 
   return (
     <div className="container">
@@ -159,6 +177,19 @@ export default function ProgressPage() {
 
         <div className="muted" style={{ lineHeight: 1.45 }}>
           Strength trends, body metrics, walking volume, and muscle preservation.
+        </div>
+
+        <div className="row" style={{ gap: 10, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
+          <button className="btn primary" onClick={() => void onCopyCoachExport()} disabled={copyState === "copying"}>
+            {copyState === "copying" ? "Building Export…" : "Copy Coach Export"}
+          </button>
+          <div className="muted" style={{ fontSize: 13 }}>
+            {copyState === "copied"
+              ? "Coach export copied."
+              : copyState === "error"
+                ? "Could not copy export."
+                : "Creates a copy/paste summary for ChatGPT analysis."}
+          </div>
         </div>
       </div>
 

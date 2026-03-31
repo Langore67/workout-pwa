@@ -38,6 +38,11 @@ import { computeAndStorePRsForSession } from "../prs";
 import { resolveExercise } from "../domain/exercises/exerciseResolver";
 import { isBodyweightEffectiveLoadExerciseName } from "../strength/Strength";
 import NumericPad from "../components/NumericPad";
+import {
+  createTrackVariant as createTrackVariantShared,
+  findOrCreateExerciseByName as findOrCreateExerciseByNameShared,
+  findOrCreateReusableTrack as findOrCreateReusableTrackShared,
+} from "../lib/reusableTrackWorkflow";
 
 /* ============================================================================
    Breadcrumb 01 — Local widenings / UI-only types
@@ -61,6 +66,17 @@ type CatalogGroup = {
    ============================================================================ */
 function normalizeLoose(s: string) {
   return (s || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function hasMeaningfulSetData(se: SetEntry | SetEntryX) {
+  return (
+    (typeof se.weight === "number" && Number.isFinite(se.weight)) ||
+    (typeof se.reps === "number" && se.reps > 0) ||
+    (typeof se.seconds === "number" && se.seconds > 0) ||
+    (typeof se.distance === "number" && se.distance > 0) ||
+    (typeof se.rir === "number" && Number.isFinite(se.rir)) ||
+    (typeof se.completedAt === "number" && Number.isFinite(se.completedAt) && se.completedAt > 0)
+  );
 }
 
 function useCompactMode(maxWidthPx: number = 520): boolean {
@@ -196,53 +212,46 @@ function isLoadedRepsTrack(track: Track, metricMode: MetricModeX): boolean {
    Breadcrumb 03 — Active-session add exercise helpers
    ============================================================================ */
 async function findOrCreateExerciseByName(rawName: string): Promise<string> {
-  const name = rawName.trim();
-  if (!name) throw new Error("Exercise name is required.");
+  return findOrCreateExerciseByNameShared({
+    rawName,
+    normalizeName: normalizeLoose,
+    resolveExisting: async (name) => {
+      const resolution = await resolveExercise({
+        rawName: name,
+        allowAlias: true,
+        followMerged: true,
+        includeArchived: true,
+      });
 
-  const norm = normalizeLoose(name);
-  const resolution = await resolveExercise({
-    rawName: name,
-    allowAlias: true,
-    followMerged: true,
-    includeArchived: true,
+      if (
+        resolution.status === "exact" ||
+        resolution.status === "alias" ||
+        resolution.status === "merged_redirect"
+      ) {
+        const resolvedExercise = resolution.exercise ?? resolution.canonicalExercise;
+        if (resolvedExercise?.id) {
+          return { kind: "existing", exerciseId: resolvedExercise.id } as const;
+        }
+      }
+
+      if (resolution.status === "ambiguous") {
+        return {
+          kind: "ambiguous",
+          message: `Ambiguous exercise match for "${name}". Review duplicate/alias data in Exercises first.`,
+        } as const;
+      }
+
+      if (resolution.status === "archived_match" && resolution.exercise?.id) {
+        return {
+          kind: "existing",
+          exerciseId: resolution.exercise.id,
+          unarchive: true,
+        } as const;
+      }
+
+      return null;
+    },
   });
-
-  if (
-    resolution.status === "exact" ||
-    resolution.status === "alias" ||
-    resolution.status === "merged_redirect"
-  ) {
-    const resolvedExercise = resolution.exercise ?? resolution.canonicalExercise;
-    if (resolvedExercise?.id) return resolvedExercise.id;
-  }
-
-  if (resolution.status === "ambiguous") {
-    throw new Error(
-      `Ambiguous exercise match for "${name}". Review duplicate/alias data in Exercises first.`
-    );
-  }
-
-  if (resolution.status === "archived_match" && resolution.exercise?.id) {
-    await db.exercises.update(resolution.exercise.id, {
-      archivedAt: undefined,
-      updatedAt: Date.now(),
-    } as any);
-    return resolution.exercise.id;
-  }
-
-  const now = Date.now();
-  const exerciseId = uuid();
-
-  await db.exercises.add({
-    id: exerciseId,
-    name,
-    normalizedName: norm,
-    equipmentTags: [],
-    createdAt: now,
-    updatedAt: now,
-  } as any);
-
-  return exerciseId;
 }
 
 async function createTrackVariant(args: {
@@ -251,43 +260,7 @@ async function createTrackVariant(args: {
   trackType: TrackType;
   trackingMode: TrackingMode;
 }): Promise<string> {
-  const now = Date.now();
-  const trackId = uuid();
-
-  const defaults =
-    args.trackType === "corrective"
-      ? {
-          warmupSetsDefault: 0,
-          workingSetsDefault: 1,
-          repMin: 1,
-          repMax: 1,
-          restSecondsDefault: 60,
-          rirTargetMin: undefined,
-          rirTargetMax: undefined,
-          weightJumpDefault: 0,
-        }
-      : {
-          warmupSetsDefault: 2,
-          workingSetsDefault: 3,
-          repMin: args.trackType === "strength" ? 3 : 8,
-          repMax: args.trackType === "strength" ? 6 : 12,
-          restSecondsDefault: args.trackType === "strength" ? 180 : 120,
-          rirTargetMin: 1,
-          rirTargetMax: 2,
-          weightJumpDefault: 5,
-        };
-
-  await db.tracks.add({
-    id: trackId,
-    exerciseId: args.exerciseId,
-    trackType: args.trackType,
-    displayName: args.displayName,
-    trackingMode: args.trackingMode,
-    ...defaults,
-    createdAt: now,
-  } as any);
-
-  return trackId;
+  return createTrackVariantShared(args);
 }
 
 async function findOrCreateReusableTrack(args: {
@@ -296,26 +269,7 @@ async function findOrCreateReusableTrack(args: {
   trackType: TrackType;
   trackingMode: TrackingMode;
 }): Promise<string> {
-  const allForExercise = await db.tracks.where("exerciseId").equals(args.exerciseId).toArray();
-
-  const matches = allForExercise.filter(
-    (t: any) => t.trackType === args.trackType && t.trackingMode === args.trackingMode
-  );
-
-  if (matches.length) {
-    const preferNoVariant = matches.filter((t: any) => t.variantId == null);
-    const pool = preferNoVariant.length ? preferNoVariant : matches;
-
-    pool.sort((a: any, b: any) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
-    return pool[0].id;
-  }
-
-  return await createTrackVariant({
-    exerciseId: args.exerciseId,
-    displayName: args.desiredDisplayName,
-    trackType: args.trackType,
-    trackingMode: args.trackingMode,
-  });
+  return findOrCreateReusableTrackShared(args);
 }
 
 async function addTrackToSession(args: {
@@ -848,6 +802,28 @@ export default function GymPage() {
     }
   }
 
+  async function leaveSession() {
+    const hasLoggedData = ((sets ?? []) as SetEntryX[]).some((se) => hasMeaningfulSetData(se));
+    const isOpenAdHoc = !session.templateId && !session.endedAt;
+
+    try {
+      if (isOpenAdHoc && !hasLoggedData) {
+        await db.sets.where("sessionId").equals(sessionId).delete();
+        await db.sessionItems.where("sessionId").equals(sessionId).delete();
+        await db.sessions.delete(sessionId);
+      } else if (isOpenAdHoc) {
+        await db.sessions.update(sessionId, {
+          notes: sessionNotes.trim() || undefined,
+          endedAt: Date.now(),
+        });
+      }
+
+      nav("/history");
+    } catch (err: any) {
+      window.alert(err?.message || "Could not leave session. Please try again.");
+    }
+  }
+
   /* ------------------------------------------------------------------------
      Breadcrumb 05.14 — Render
      ------------------------------------------------------------------------ */
@@ -888,7 +864,7 @@ export default function GymPage() {
             + Add Exercise
           </button>
 
-          <button className="btn" onClick={() => nav("/history")}>
+          <button className="btn" onClick={leaveSession}>
             Back to history
           </button>
         </div>
@@ -941,6 +917,7 @@ export default function GymPage() {
         sets={(sets ?? []) as SetEntryX[]}
         onFinish={finish}
         onCancel={cancelSession}
+        onBack={leaveSession}
       />
 
       {/* --------------------------------------------------------------------
@@ -2384,12 +2361,14 @@ function FinishSessionCard({
   sets,
   onFinish,
   onCancel,
+  onBack,
 }: {
   sessionId: string;
   tracks: Track[];
   sets: SetEntryX[];
   onFinish: () => Promise<void>;
   onCancel: () => Promise<void>;
+  onBack: () => Promise<void>;
 }) {
   const nav = useNavigate();
   const [showReview, setShowReview] = useState(false);
@@ -2543,7 +2522,7 @@ function FinishSessionCard({
           </button>
         </div>
 
-        <button className="btn" onClick={() => nav("/history")}>
+        <button className="btn" onClick={onBack}>
           Back to history
         </button>
       </div>

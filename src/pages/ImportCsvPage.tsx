@@ -32,6 +32,10 @@ import {
   buildExerciseResolverIndex,
   resolveExerciseFromIndex,
 } from "../domain/exercises/exerciseResolver";
+import {
+  defaultTrackTypeFromExerciseName,
+  inferTrackingModeFromExerciseName,
+} from "../domain/trackingMode";
 
 /* ============================================================================
    Breadcrumb 1 — Types
@@ -186,22 +190,11 @@ function parseWeight(loadRaw: unknown): number | undefined {
 }
 
 function inferTrackingMode(exerciseName: string): TrackingMode {
-  const s = exerciseName.toLowerCase();
-
-  if (s.includes("plank") || s.includes("hold")) return "timeSeconds";
-  if (s.includes("band") || s.includes("pull-apart") || s.includes("pull apart")) return "repsOnly";
-
-  return "weightedReps";
+  return inferTrackingModeFromExerciseName(exerciseName);
 }
 
 function defaultTrackType(exerciseName: string): TrackType {
-  const s = exerciseName.toLowerCase();
-
-  if (s.includes("breathing") || s.includes("reset") || s.includes("mobility")) {
-    return "corrective";
-  }
-
-  return "hypertrophy";
+  return defaultTrackTypeFromExerciseName(exerciseName);
 }
 
 function parseRir(row: JournalRow): number | undefined {
