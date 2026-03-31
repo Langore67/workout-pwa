@@ -20,10 +20,11 @@
                          ✅ Optional duration estimate from set timestamps (when endedAt missing)
    ============================================================================ */
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
 import { db, SetEntry } from "../db";
+import { ActionMenu as SharedActionMenu, MenuIcons, MenuItem } from "../components/ActionMenu";
 
 /* =============================================================================
    Breadcrumb 0 — Types + helpers
@@ -82,6 +83,16 @@ function safeParsePrsCount(prsJson?: string): number {
   } catch {
     return 0;
   }
+}
+
+function hasMeaningfulHistorySetData(se: SetEntry) {
+  return (
+    (typeof se.weight === "number" && Number.isFinite(se.weight)) ||
+    (typeof se.reps === "number" && se.reps > 0) ||
+    (typeof se.seconds === "number" && se.seconds > 0) ||
+    (typeof (se as any).distance === "number" && (se as any).distance > 0) ||
+    (typeof se.completedAt === "number" && Number.isFinite(se.completedAt) && se.completedAt > 0)
+  );
 }
 
 /* =============================================================================
@@ -292,6 +303,16 @@ export default function HistoryPage() {
     return map;
   }, [setsAll]);
 
+  const hasMeaningfulSetDataBySession = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const se of setsAll ?? []) {
+      if (!se?.sessionId) continue;
+      if (!hasMeaningfulHistorySetData(se)) continue;
+      map.set(se.sessionId, true);
+    }
+    return map;
+  }, [setsAll]);
+
   /* =============================================================================
      Breadcrumb 2b — Import-tolerant completion + duration estimate
      - If endedAt exists => completed (normal)
@@ -358,11 +379,16 @@ export default function HistoryPage() {
   }
 
   const { inProgress, completed } = useMemo(() => {
-    const all = sessions ?? [];
+    const all = (sessions ?? []).filter((s) => {
+      const endedAt = Number((s as any)?.endedAt);
+      if (Number.isFinite(endedAt) && endedAt > 0) return true;
+      if ((s.templateName ?? "").trim() !== "Ad-hoc") return true;
+      return !!hasMeaningfulSetDataBySession.get(s.id);
+    });
     const inProgress = all.filter((s) => isSessionInProgress(s));
     const completed = all.filter((s) => !isSessionInProgress(s));
     return { inProgress, completed };
-  }, [sessions, lastActivityBySession]);
+  }, [sessions, lastActivityBySession, hasMeaningfulSetDataBySession]);
 
   async function deleteSessionCascade(sessionId: string) {
     const ok = window.confirm("Delete this session? This cannot be undone.");
@@ -393,18 +419,6 @@ export default function HistoryPage() {
   }
 
   // one menu open at a time
-  const [openMenuId, setOpenMenuId] = useState<string>("");
-  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-
-  function closeMenu() {
-    setOpenMenuId("");
-    setAnchorEl(null);
-  }
-
-  function toggleMenu(sessionId: string, el: HTMLElement) {
-    setOpenMenuId((prev) => (prev === sessionId ? "" : sessionId));
-    setAnchorEl((prev) => (openMenuId === sessionId ? null : el));
-  }
 
   /* =============================================================================
      Breadcrumb 3 — Compact row layout
@@ -490,7 +504,11 @@ export default function HistoryPage() {
             <div className="list" style={{ marginTop: 12 }} data-testid="history-inprogress-list">
               {inProgress.length ? (
                 inProgress.map((s) => {
-                  const isMenuOpen = openMenuId === s.id;
+                  const menuItems: MenuItem[] = [
+                    { label: "Resume", icon: MenuIcons.edit, onClick: () => resumeSession(s.id) },
+                    { label: "View details", icon: MenuIcons.share, onClick: () => openSessionDetails(s.id) },
+                    { label: "Delete", icon: MenuIcons.trash, danger: true, onClick: () => deleteSessionCascade(s.id) },
+                  ];
 
                   return (
                     <div
@@ -516,20 +534,14 @@ export default function HistoryPage() {
                           onMouseDown={(e) => e.stopPropagation()}
                         >
                           <span className="badge">In progress</span>
-                          <MenuButton open={isMenuOpen} ariaLabel="Open session actions" onToggle={(el) => toggleMenu(s.id, el)} />
+                          <SharedActionMenu
+                            theme="dark"
+                            ariaLabel="Open session actions"
+                            items={menuItems}
+                            offsetX={6}
+                          />
                         </div>
                       </div>
-
-                      <ActionMenu
-                        open={isMenuOpen}
-                        anchorEl={isMenuOpen ? anchorEl : null}
-                        onClose={closeMenu}
-                        items={[
-                          { label: "Resume", onClick: () => resumeSession(s.id) },
-                          { label: "View details", onClick: () => openSessionDetails(s.id) },
-                          { label: "Delete", danger: true, onClick: () => deleteSessionCascade(s.id) },
-                        ]}
-                      />
                     </div>
                   );
                 })
@@ -553,7 +565,10 @@ export default function HistoryPage() {
             <div className="list" style={{ marginTop: 12 }} data-testid="history-completed-list">
               {completed.length ? (
                 completed.map((s) => {
-                  const isMenuOpen = openMenuId === s.id;
+                  const menuItems: MenuItem[] = [
+                    { label: "View details", icon: MenuIcons.share, onClick: () => openSessionDetails(s.id) },
+                    { label: "Delete", icon: MenuIcons.trash, danger: true, onClick: () => deleteSessionCascade(s.id) },
+                  ];
 
                   return (
                     <div
@@ -579,19 +594,14 @@ export default function HistoryPage() {
                           onMouseDown={(e) => e.stopPropagation()}
                         >
                           <span className="badge">Done</span>
-                          <MenuButton open={isMenuOpen} ariaLabel="Open session actions" onToggle={(el) => toggleMenu(s.id, el)} />
+                          <SharedActionMenu
+                            theme="dark"
+                            ariaLabel="Open session actions"
+                            items={menuItems}
+                            offsetX={6}
+                          />
                         </div>
                       </div>
-
-                      <ActionMenu
-                        open={isMenuOpen}
-                        anchorEl={isMenuOpen ? anchorEl : null}
-                        onClose={closeMenu}
-                        items={[
-                          { label: "View details", onClick: () => openSessionDetails(s.id) },
-                          { label: "Delete", danger: true, onClick: () => deleteSessionCascade(s.id) },
-                        ]}
-                      />
                     </div>
                   );
                 })

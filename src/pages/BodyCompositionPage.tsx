@@ -100,7 +100,11 @@ import {
   getBodyCompConfidenceLabel,
   getFluidBalanceNote,
 } from "../body/bodyCalculations";
-import { computeHydrationConfidence } from "../body/hydrationConfidence";
+import { computeHydrationConfidenceFromBodyRows } from "../body/hydrationConfidence";
+import {
+  buildPhaseQualityInputsFromBodyRows,
+  computeStrengthDeltaFromStrengthTrend,
+} from "../body/phaseQualityModel";
 import {
   computeStrengthTrend,
   type StrengthTrendRow,
@@ -160,63 +164,6 @@ const BODY_COMP_INFO_CONTENT = {
 } as const;
 
 
-
-type PhaseQualityStrengthResult = {
-  strengthDelta?: number;
-  strengthLabel: string;
-};
-
-function computeStrengthDeltaFromTrend(
-  trend: StrengthTrendRow[],
-  mode: Mode
-): PhaseQualityStrengthResult {
-  const sorted = (trend ?? [])
-    .slice()
-    .filter((r) =>
-      mode === "bulk"
-        ? Number.isFinite(r.absoluteIndex)
-        : Number.isFinite(r.relativeIndex)
-    )
-    .sort((a, b) => a.weekEndMs - b.weekEndMs);
-
-  const recent = sorted.slice(-4);
-
-  if (recent.length < 2) {
-    return {
-      strengthDelta: undefined,
-      strengthLabel:
-        mode === "bulk"
-          ? "Absolute strength trend needs more weekly data"
-          : "Relative strength trend needs more weekly data",
-    };
-  }
-
-  const first = recent[0];
-  const last = recent[recent.length - 1];
-
-  const firstValue =
-    mode === "bulk" ? first.absoluteIndex : first.relativeIndex;
-  const lastValue =
-    mode === "bulk" ? last.absoluteIndex : last.relativeIndex;
-
-  if (!Number.isFinite(firstValue) || !Number.isFinite(lastValue)) {
-    return {
-      strengthDelta: undefined,
-      strengthLabel:
-        mode === "bulk"
-          ? "Absolute strength trend unavailable"
-          : "Relative strength trend unavailable",
-    };
-  }
-
-  return {
-    strengthDelta: lastValue - firstValue,
-    strengthLabel:
-      mode === "bulk"
-        ? `Using Absolute Strength trend • last ${recent.length} weekly points`
-        : `Using Relative Strength trend • last ${recent.length} weekly points`,
-  };
-}
 
 function loadProfileGoals(): {
   targetWeightLb?: number;
@@ -658,54 +605,8 @@ export default function BodyCompositionPage() {
      Breadcrumb 3A-HC — Hydration confidence model
      ============================================================================ */
   const hydrationConfidence = useMemo(() => {
-    const latest = rows?.[0];
-    const prev = rows?.[1];
-  
-    if (!latest) {
-      return null;
-    }
-  
-    const waterPctNow = latest?.bodyWaterPct ?? null;
-  
-    // simple rolling avg from last few rows
-    const waterSamples = (rows ?? [])
-      .slice(1, 6)
-      .map((r) => r?.bodyWaterPct)
-      .filter((v) => typeof v === "number");
-  
-      const waterPctAvg =
-        waterSamples.length > 0
-          ? waterSamples.reduce((a, b) => a + b, 0) / waterSamples.length
-          : null;
-    
-      const waterPctRecentHigh =
-        waterSamples.length > 0 ? Math.max(...waterSamples) : null;
-    
-      const tbwNow =
-        latest?.icwLb != null && latest?.ecwLb != null
-          ? latest.icwLb + latest.ecwLb
-          : null;
-    
-      return computeHydrationConfidence({
-        waterPctNow,
-        waterPctAvg,
-    waterPctRecentHigh,
-    
-  
-      icwNow: latest?.icwLb ?? null,
-      ecwNow: latest?.ecwLb ?? null,
-      tbwNow,
-  
-      weightNow: latest?.weightLb ?? latest?.weight ?? null,
-      weightPrev: prev?.weightLb ?? prev?.weight ?? null,
-  
-      leanMassNow: latest?.leanMassLb ?? null,
-      leanMassPrev: prev?.leanMassLb ?? null,
-  
-      bodyFatPctNow: latest?.bodyFatPct ?? null,
-      bodyFatPctPrev: prev?.bodyFatPct ?? null,
-    });
-}, [rows]);
+    return computeHydrationConfidenceFromBodyRows((rows ?? []) as any);
+  }, [rows]);
   
 
   const summary = modeSummary(mode);
@@ -716,7 +617,7 @@ export default function BodyCompositionPage() {
   );
 
   const phaseQualityStrength = useMemo(
-    () => computeStrengthDeltaFromTrend(strengthTrend, mode),
+    () => computeStrengthDeltaFromStrengthTrend(strengthTrend, mode),
     [strengthTrend, mode]
   );
 
@@ -725,43 +626,22 @@ export default function BodyCompositionPage() {
      ============================================================================ */
 
   const phaseQualityInputs = useMemo(() => {
-    const window = chartRows.slice(-10);
-
-    if (window.length < 3) {
-      return {
-        strengthDelta: phaseQualityStrength.strengthDelta,
-        strengthLabel: phaseQualityStrength.strengthLabel,
-        sampleCount: window.length,
-      };
-    }
-
-    const first = window[0];
-    const last = window[window.length - 1];
-
-    const weightDelta =
-      (sharedPickWeightLb(last) ?? 0) - (sharedPickWeightLb(first) ?? 0);
-
-    const waistDelta =
-      (sharedPickWaistIn(last) ?? 0) - (sharedPickWaistIn(first) ?? 0);
-
-    const correctedLeanDelta =
-      (getCorrectedLeanMassLb(last as any) ?? 0) -
-      (getCorrectedLeanMassLb(first as any) ?? 0);
-
-    const correctedBodyFatDelta =
-      (getCorrectedBodyFatPct(last as any) ?? 0) -
-      (getCorrectedBodyFatPct(first as any) ?? 0);
+    const hydrationDistortionLikely = !!(
+      hydrationConfidence?.likelyHydrationDistortion ||
+      hydrationConfidence?.hydrationBaselineLow
+    );
 
     return {
-      weightDelta,
-      waistDelta,
-      correctedLeanDelta,
-      correctedBodyFatDelta,
+      ...buildPhaseQualityInputsFromBodyRows(
+        (chartRows ?? []) as any,
+        phaseQualityStrength.strengthDelta,
+        10,
+        hydrationDistortionLikely
+      ),
       strengthDelta: phaseQualityStrength.strengthDelta,
       strengthLabel: phaseQualityStrength.strengthLabel,
-      sampleCount: window.length,
     };
-  }, [chartRows, phaseQualityStrength]);
+  }, [chartRows, phaseQualityStrength, hydrationConfidence]);
 
   /* ==========================================================================
      Breadcrumb 3B — Chart config map

@@ -26,6 +26,15 @@ import React, { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, TemplateItem, SessionItem, Track, SetEntry } from "../db";
+import {
+  calcEffectiveStrengthWeightLb,
+  isBodyweightEffectiveLoadExerciseName,
+  latestBodyweightFromRows,
+} from "../strength/Strength";
+import {
+  normalizeTrackingMode,
+  type CanonTrackingMode,
+} from "../domain/trackingMode";
 
 /* =============================================================================
    Breadcrumb 0 — Types
@@ -101,36 +110,11 @@ function safeParsePrsCount(prsJson?: string): number {
    Breadcrumb 1b — trackingMode normalization (IMPORT-SAFE)
    ============================================================================= */
 
-type CanonMode = "weightedReps" | "repsOnly" | "timeSeconds" | "breaths" | "checkbox" | "unknown";
-
-function normalizeTrackingMode(raw: any): CanonMode {
-  const s = String(raw ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "_");
-
-  // Common variants seen in this project
-  if (
-    s === "weightedreps" ||
-    s === "weight_reps" ||
-    s === "weightreps" ||
-    s === "weight-reps" ||
-    s === "weighted_reps"
-  )
-    return "weightedReps";
-
-  if (s === "repsonly" || s === "reps_only" || s === "reps") return "repsOnly";
-
-  if (s === "timeseconds" || s === "time_seconds" || s === "seconds" || s === "time") return "timeSeconds";
-
-  if (s === "breaths") return "breaths";
-
-  if (s === "checkbox" || s === "check" || s === "bool") return "checkbox";
-
-  return "unknown";
-}
-
-function inferDisplayMode(track: Track, rows: SetEntry[]): CanonMode {
+function inferDisplayMode(
+  track: Track,
+  rows: SetEntry[],
+  weightEntryContextName: string
+): CanonTrackingMode {
   const normalized = normalizeTrackingMode((track as any).trackingMode);
 
   const hasSeconds = rows.some(
@@ -145,13 +129,24 @@ function inferDisplayMode(track: Track, rows: SetEntry[]): CanonMode {
       se.weight > 0
   );
 
+  const hasLoggedBodyweightWeight = isBodyweightEffectiveLoadExerciseName(weightEntryContextName)
+    ? rows.some(
+        (se) =>
+          se.weight !== undefined &&
+          se.weight !== null &&
+          Number.isFinite(se.weight) &&
+          se.reps !== undefined &&
+          se.reps !== null
+      )
+    : false;
+
   const hasReps = rows.some(
     (se) => se.reps !== undefined && se.reps !== null
   );
 
   // Let actual row data win over stale track metadata.
   if (hasSeconds) return "timeSeconds";
-  if (hasPositiveWeight && hasReps) return "weightedReps";
+  if ((hasPositiveWeight || hasLoggedBodyweightWeight) && hasReps) return "weightedReps";
   if (hasReps) return "repsOnly";
 
   return normalized;
@@ -289,6 +284,23 @@ export default function SessionDetailPage() {
 
   const trackById = useMemo(() => new Map((tracks ?? []).map((t) => [t.id, t])), [tracks]);
 
+  const exercises = useLiveQuery(async () => {
+    const ids = Array.from(new Set((tracks ?? []).map((t) => t.exerciseId).filter(Boolean)));
+    if (!ids.length) return [];
+    const arr = await db.exercises.bulkGet(ids);
+    return arr.filter(Boolean) as any[];
+  }, [tracks?.map((t) => t.exerciseId).join("|") ?? ""]);
+
+  const exerciseById = useMemo(() => new Map((exercises ?? []).map((e: any) => [e.id, e])), [exercises]);
+
+  const bodyMetrics = useLiveQuery(async () => {
+    const table = (db as any).bodyMetrics;
+    if (!table || typeof table.toArray !== "function") return [];
+    return (await table.toArray()) as any[];
+  }, []);
+
+  const latestBodyweight = useMemo(() => latestBodyweightFromRows(bodyMetrics ?? []), [bodyMetrics]);
+
   /* ---------------------------------------------------------------------------
      Breadcrumb 2g — Bucket sets by trackId
      --------------------------------------------------------------------------- */
@@ -319,14 +331,17 @@ export default function SessionDetailPage() {
     let total = 0;
     for (const se of sets ?? []) {
       if (se.setType === "warmup") continue;
-      if (typeof se.weight === "number" && typeof se.reps === "number") {
-        total += se.weight * se.reps;
-      }
+      if (typeof se.reps !== "number" || se.reps <= 0) continue;
+      const track = trackById.get(se.trackId);
+      const exercise = track ? exerciseById.get(track.exerciseId) : undefined;
+      const weightEntryContextName = [exercise?.name, track?.displayName].filter(Boolean).join(" ").trim();
+      const effectiveWeight = calcEffectiveStrengthWeightLb(se.weight as number, weightEntryContextName, latestBodyweight as number);
+      if (effectiveWeight > 0) total += effectiveWeight * se.reps;
     }
 
     const prs = safeParsePrsCount(session?.prsJson);
     return { dur, total, prs };
-  }, [session?.startedAt, session?.endedAt, session?.prsJson, sets]);
+  }, [session?.startedAt, session?.endedAt, session?.prsJson, sets, trackById, exerciseById, latestBodyweight]);
 
   /* ---------------------------------------------------------------------------
      Breadcrumb 2i — Guards
@@ -532,7 +547,12 @@ export default function SessionDetailPage() {
                     Warm-up
                   </div>
                   {bucket.warmup.length ? (
-                    <ReadOnlySetTable track={track} rows={bucket.warmup} tableTestId={`warmup-table:${track.id}`} />
+                    <ReadOnlySetTable
+                      track={track}
+                      exerciseName={String(exerciseById.get(track.exerciseId)?.name ?? "")}
+                      rows={bucket.warmup}
+                      tableTestId={`warmup-table:${track.id}`}
+                    />
                   ) : (
                     <p className="muted" style={{ margin: 0 }}>
                       No warm-up sets.
@@ -544,6 +564,7 @@ export default function SessionDetailPage() {
                             {workingRows.length ? (
 	                      <ReadOnlySetTable
 	                        track={track}
+	                        exerciseName={String(exerciseById.get(track.exerciseId)?.name ?? "")}
 	                        rows={workingRows}
 	                        tableTestId={`working-table:${track.id}`}
 	                      />
@@ -572,14 +593,17 @@ export default function SessionDetailPage() {
 
 function ReadOnlySetTable({
   track,
+  exerciseName,
   rows,
   tableTestId,
 }: {
   track: Track;
+  exerciseName: string;
   rows: SetEntry[];
   tableTestId?: string;
 }) {
-    const mode = inferDisplayMode(track, rows);
+    const weightEntryContextName = [exerciseName, track.displayName].filter(Boolean).join(" ").trim();
+    const mode = inferDisplayMode(track, rows, weightEntryContextName);
 
   const headers: string[] = (() => {
     switch (mode) {
@@ -609,12 +633,11 @@ function ReadOnlySetTable({
 
     switch (mode) {
             case "weightedReps": {
-	      const hasPositiveWeight =
+	      const hasLoggedWeight =
 	        typeof se.weight === "number" &&
-	        Number.isFinite(se.weight) &&
-	        se.weight > 0;
+	        Number.isFinite(se.weight);
 	    
-	      const w = hasPositiveWeight ? se.weight : "BW";
+	      const w = hasLoggedWeight ? (se.weight === 0 ? "BW" : se.weight) : "BW";
 	    
 	      const r =
 	        se.reps !== undefined && se.reps !== null

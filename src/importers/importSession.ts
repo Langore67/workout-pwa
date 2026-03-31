@@ -3,66 +3,16 @@
 
 import { db } from "../db";
 import { uuid } from "../utils";
+import {
+  localMiddayEpochMs,
+  normalizeImportedSets as normalizeImportedSetTimestamps,
+} from "../data/normalizeTimestamps";
 
 // Bring your SetEntry type if you want it strongly typed.
 // If not, keep it as any.
 import type { SetEntry } from "../db";
 
 type ImportedSet = Partial<SetEntry> & Record<string, any>;
-
-function localMiddayEpochMs(dateISO: string): number {
-  const [y, m, d] = dateISO.split("-").map((x) => Number(x));
-  const dt = new Date(y, (m ?? 1) - 1, d ?? 1, 12, 0, 0, 0);
-  return dt.getTime();
-}
-
-function isBadEpochMs(x: any): boolean {
-  return typeof x !== "number" || !Number.isFinite(x) || x <= 0;
-}
-
-function normalizeImportedSets(
-  sets: ImportedSet[],
-  opts: { startedAt: number; perSetMs?: number }
-) {
-  const perSetMs = opts.perSetMs ?? 30_000;
-
-  let fixedCreatedAt = 0;
-  let fixedCompletedAt = 0;
-  let fixedNegativeCreatedAt = 0;
-
-  const out = sets.map((s, idx) => {
-    const patch: any = { ...s };
-
-    // createdAt must be sane
-    if (typeof patch.createdAt === "number" && patch.createdAt < 0) fixedNegativeCreatedAt += 1;
-    if (isBadEpochMs(patch.createdAt)) {
-      patch.createdAt = opts.startedAt + idx * perSetMs;
-      fixedCreatedAt += 1;
-    }
-
-    // completedAt is what your UI uses for ✓
-    // If import says it's done but completedAt missing, set it.
-    // Heuristic: if it has performance data, treat it as completed.
-    const kind = String(patch.setType ?? "working");
-    const hasAnyMetric =
-      patch.reps !== undefined ||
-      patch.weight !== undefined ||
-      patch.distance !== undefined ||
-      patch.seconds !== undefined;
-
-    if ((patch.completedAt || (kind === "working" && hasAnyMetric)) && isBadEpochMs(patch.completedAt)) {
-      patch.completedAt = patch.createdAt;
-      fixedCompletedAt += 1;
-    }
-
-    return patch;
-  });
-
-  return {
-    sets: out,
-    stats: { scanned: sets.length, fixedCreatedAt, fixedCompletedAt, fixedNegativeCreatedAt },
-  };
-}
 
 export async function importSessionFromJournal(args: {
   // Required: date-only journal import
@@ -89,7 +39,9 @@ export async function importSessionFromJournal(args: {
   } as any);
 
   // Normalize sets (timestamps + completedAt semantics)
-  const { sets: normalized, stats } = normalizeImportedSets(args.sets, { startedAt });
+  const { sets: normalized, stats } = normalizeImportedSetTimestamps(args.sets as ImportedSet[], {
+    startedAt,
+  });
 
   // Attach sessionId
   const toInsert = normalized.map((s) => ({
@@ -100,5 +52,14 @@ export async function importSessionFromJournal(args: {
 
   await db.sets.bulkAdd(toInsert as any);
 
-  return { sessionId, startedAt, stats };
+  return {
+    sessionId,
+    startedAt,
+    stats: {
+      scanned: stats.scannedSets,
+      fixedCreatedAt: stats.fixedCreatedAt,
+      fixedCompletedAt: stats.fixedCompletedAt,
+      fixedNegativeCreatedAt: stats.fixedNegativeCreatedAt,
+    },
+  };
 }

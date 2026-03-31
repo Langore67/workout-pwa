@@ -31,6 +31,11 @@ import type { Template, TemplateItem, Track, Exercise, Folder, TrackType, Tracki
 import { uuid } from "../utils";
 import { Page, Section } from "../components/Page.tsx";
 import { ActionMenu, MenuIcons, MenuItem } from "../components/ActionMenu";
+import {
+  createTrackVariant as createTrackVariantShared,
+  findOrCreateExerciseByName as findOrCreateExerciseByNameShared,
+  findOrCreateReusableTrack as findOrCreateReusableTrackShared,
+} from "../lib/reusableTrackWorkflow";
 
 /* ========================================================================== */
 /*  Breadcrumb 01 — shared helpers                                            */
@@ -533,41 +538,36 @@ export default function TemplatesPage() {
   /*  Breadcrumb 06.1 — find or create exercise                               */
   /* ------------------------------------------------------------------------ */
   async function findOrCreateExerciseByName(rawName: string): Promise<string> {
-    const name = rawName.trim();
-    if (!name) throw new Error("Exercise name is required.");
+    return findOrCreateExerciseByNameShared({
+      rawName,
+      normalizeName: (name) =>
+        (db as any).normalizeName ? (db as any).normalizeName(name) : normalizeLoose(name),
+      resolveExisting: async (_name, normalizedName) => {
+        const hit = await db.exercises.where("normalizedName").equals(normalizedName).first();
+        if (hit && !(hit as any).mergedIntoExerciseId) {
+          return {
+            kind: "existing",
+            exerciseId: hit.id,
+            unarchive: !!(hit as any).archivedAt,
+          } as const;
+        }
 
-    const norm = (db as any).normalizeName ? (db as any).normalizeName(name) : normalizeLoose(name);
+        const all = await db.exercises.toArray();
+        const scan = all.find(
+          (ex: any) =>
+            normalizeLoose(String(ex.name ?? "")) === normalizedName && !ex.mergedIntoExerciseId
+        );
+        if (scan) {
+          return {
+            kind: "existing",
+            exerciseId: (scan as any).id,
+            unarchive: !!(scan as any).archivedAt,
+          } as const;
+        }
 
-    const hit = await db.exercises.where("normalizedName").equals(norm).first();
-    if (hit && !(hit as any).mergedIntoExerciseId) {
-      if ((hit as any).archivedAt) {
-        await db.exercises.update(hit.id, { archivedAt: undefined, updatedAt: Date.now() } as any);
-      }
-      return hit.id;
-    }
-
-    const all = await db.exercises.toArray();
-    const scan = all.find((ex: any) => normalizeLoose(String(ex.name ?? "")) === norm && !ex.mergedIntoExerciseId);
-    if (scan) {
-      if ((scan as any).archivedAt) {
-        await db.exercises.update((scan as any).id, { archivedAt: undefined, updatedAt: Date.now() } as any);
-      }
-      return (scan as any).id;
-    }
-
-    const now = Date.now();
-    const exerciseId = uuid();
-
-    await db.exercises.add({
-      id: exerciseId,
-      name,
-      normalizedName: norm,
-      equipmentTags: [],
-      createdAt: now,
-      updatedAt: now,
-    } as any);
-
-    return exerciseId;
+        return null;
+      },
+    });
   }
 
   /* ------------------------------------------------------------------------ */
@@ -579,43 +579,7 @@ export default function TemplatesPage() {
     trackType: TrackType;
     trackingMode: TrackingMode;
   }): Promise<string> {
-    const now = Date.now();
-    const trackId = uuid();
-
-    const defaults =
-      args.trackType === "corrective"
-        ? {
-            warmupSetsDefault: 0,
-            workingSetsDefault: 1,
-            repMin: 1,
-            repMax: 1,
-            restSecondsDefault: 60,
-            rirTargetMin: undefined,
-            rirTargetMax: undefined,
-            weightJumpDefault: 0,
-          }
-        : {
-            warmupSetsDefault: 2,
-            workingSetsDefault: 3,
-            repMin: args.trackType === "strength" ? 3 : 8,
-            repMax: args.trackType === "strength" ? 6 : 12,
-            restSecondsDefault: args.trackType === "strength" ? 180 : 120,
-            rirTargetMin: 1,
-            rirTargetMax: 2,
-            weightJumpDefault: 5,
-          };
-
-    await db.tracks.add({
-      id: trackId,
-      exerciseId: args.exerciseId,
-      trackType: args.trackType,
-      displayName: args.displayName,
-      trackingMode: args.trackingMode,
-      ...defaults,
-      createdAt: now,
-    } as any);
-
-    return trackId;
+    return createTrackVariantShared(args);
   }
 
   /* ------------------------------------------------------------------------ */
@@ -627,44 +591,11 @@ export default function TemplatesPage() {
     trackType: TrackType;
     trackingMode: TrackingMode;
   }): Promise<string> {
-    const allForExercise = await db.tracks.where("exerciseId").equals(args.exerciseId).toArray();
-
-    const matches = allForExercise.filter(
-      (t: any) => t.trackType === args.trackType && t.trackingMode === args.trackingMode
-    );
-
-    if (matches.length) {
-      const normWanted = normalizeReusableTrackDisplayName(args.desiredDisplayName);
-      const preferNoVariant = matches.filter((t: any) => t.variantId == null);
-
-      const exactNameNoVariant = preferNoVariant.filter(
-        (t: any) => normalizeReusableTrackDisplayName(String(t.displayName ?? "")) === normWanted
-      );
-      const pool =
-        exactNameNoVariant.length
-          ? exactNameNoVariant
-          : preferNoVariant.length
-            ? preferNoVariant
-            : matches;
-
-      pool.sort((a: any, b: any) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
-      const reused = pool[0];
-
-      if (
-        reused?.variantId == null &&
-        shouldRefreshReusedTrackDisplayName(String(reused.displayName ?? ""), args.desiredDisplayName)
-      ) {
-        await db.tracks.update(reused.id, { displayName: args.desiredDisplayName.trim() } as any);
-      }
-
-      return reused.id;
-    }
-
-    return await createTrackVariant({
-      exerciseId: args.exerciseId,
-      displayName: args.desiredDisplayName,
-      trackType: args.trackType,
-      trackingMode: args.trackingMode,
+    return findOrCreateReusableTrackShared({
+      ...args,
+      preferExactDisplayName: true,
+      normalizeDisplayName: normalizeReusableTrackDisplayName,
+      shouldRefreshDisplayName: shouldRefreshReusedTrackDisplayName,
     });
   }
 

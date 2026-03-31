@@ -54,6 +54,13 @@ import {
   type StrengthTrendRow,
 } from "../strength/Strength";
 import {
+  buildPhaseQualityInputsFromBodyRows,
+  computeStrengthDeltaFromStrengthTrend,
+  evaluatePhaseQuality,
+  type PhaseQualityResult,
+} from "../body/phaseQualityModel";
+import { computeHydrationConfidenceFromBodyRows } from "../body/hydrationConfidence";
+import {
   db,
   type BodyMetricEntry,
   type Exercise,
@@ -402,8 +409,42 @@ function buildPrimaryCoachingSignal(args: {
   bodySnapshot: DashboardBodySnapshot;
   weightTrend: MetricTrendSummary;
   waistTrend: MetricTrendSummary;
+  sharedCutQuality?: PhaseQualityResult | null;
 }) {
-  const { phase, strengthSignal, bodySnapshot, weightTrend, waistTrend } = args;
+  const { phase, strengthSignal, bodySnapshot, weightTrend, waistTrend, sharedCutQuality } = args;
+
+  if (phase === "CUT" && sharedCutQuality) {
+    const status =
+      sharedCutQuality.finalStatus === "High-Quality Cut"
+        ? "Strong"
+        : sharedCutQuality.finalStatus === "Acceptable Cut"
+          ? "Good"
+          : sharedCutQuality.finalStatus === "Recomp-Style Cut"
+            ? "Mixed"
+            : sharedCutQuality.finalStatus === "Aggressive Cut / Muscle-Risk Cut"
+              ? "Watch"
+              : "Mixed";
+
+    const score =
+      status === "Strong" ? 85 : status === "Good" ? 72 : status === "Watch" ? 45 : 58;
+
+    const strengthEfficiency =
+      bodySnapshot.weightValue && bodySnapshot.weightValue > 0
+        ? round2((strengthSignal.score / bodySnapshot.weightValue) * 100)
+        : undefined;
+
+    return {
+      title: "Cut Quality",
+      score,
+      badge: status,
+      summary: "Cut quality is using the shared Body Composition phase-quality logic.",
+      body: `${sharedCutQuality.finalStatus}. ${sharedCutQuality.quadrantNote} Confidence is ${sharedCutQuality.confidence.toLowerCase()}.`,
+      confidence: sharedCutQuality.confidence,
+      bullets: sharedCutQuality.drivers.slice(0, 3),
+      strengthEfficiencyLabel:
+        strengthEfficiency != null ? `${strengthEfficiency.toFixed(2)}` : "—",
+    };
+  }
 
   const strengthComponent = clamp((strengthSignal.score / 10) * 45, 0, 45);
 
@@ -1335,7 +1376,8 @@ function buildDashboardViewModel(
   exerciseHistory: ExerciseHistory[],
   bodySnapshot: DashboardBodySnapshot,
   bodyWeightTrendData: ChartDatum[],
-  waistTrendData: ChartDatum[]
+  waistTrendData: ChartDatum[],
+  sharedCutQuality?: PhaseQualityResult | null
 ): DashboardViewModel {
   const usingFallback = exerciseHistory.length < 1;
   const sourceHistory = usingFallback ? MOCK_EXERCISE_HISTORY : exerciseHistory;
@@ -1356,6 +1398,7 @@ function buildDashboardViewModel(
     bodySnapshot,
     weightTrend,
     waistTrend,
+    sharedCutQuality,
   });
 
   return {
@@ -1730,6 +1773,21 @@ export default function PerformanceDashboardPage() {
     [dbSource, activeRange]
   );
 
+  const sharedCutQuality = useMemo(() => {
+    if (activePhase !== "CUT") return null;
+    const bodyRows = dbSource?.bodyMetrics ?? [];
+    const hydration = computeHydrationConfidenceFromBodyRows(bodyRows as any);
+    const strengthDelta = computeStrengthDeltaFromStrengthTrend(sharedStrengthTrend, "cut");
+    const inputs = buildPhaseQualityInputsFromBodyRows(
+      bodyRows,
+      strengthDelta.strengthDelta,
+      10,
+      !!(hydration?.likelyHydrationDistortion || hydration?.hydrationBaselineLow)
+    );
+    if ((inputs.sampleCount ?? 0) < 1) return null;
+    return evaluatePhaseQuality("cut", inputs);
+  }, [activePhase, dbSource, sharedStrengthTrend]);
+
   const vm = useMemo(
     () =>
       buildDashboardViewModel(
@@ -1738,7 +1796,8 @@ export default function PerformanceDashboardPage() {
         exerciseHistory,
         bodySnapshot,
         bodyWeightChartData,
-        waistChartData
+        waistChartData,
+        sharedCutQuality
       ),
     [
       activePhase,
@@ -1747,6 +1806,7 @@ export default function PerformanceDashboardPage() {
       bodySnapshot,
       bodyWeightChartData,
       waistChartData,
+      sharedCutQuality,
     ]
   );
 
