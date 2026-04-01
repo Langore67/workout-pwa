@@ -20,6 +20,7 @@ type Props = {
   layout?: "default" | "strongColumn";
   rightColumnButtons?: RightColumnButton[];
   theme?: "default" | "ironforge";
+  position?: "fixed" | "static";
 };
 
 export default function NumericPad({
@@ -34,6 +35,7 @@ export default function NumericPad({
   layout = "default",
   rightColumnButtons = [],
   theme = "default",
+  position = "fixed",
 }: Props) {
   if (!visible) return null;
 
@@ -54,11 +56,11 @@ export default function NumericPad({
     <div
       data-testid="numeric-pad"
       style={{
-        position: "fixed",
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 2000,
+        position,
+        left: position === "fixed" ? 0 : undefined,
+        right: position === "fixed" ? 0 : undefined,
+        bottom: position === "fixed" ? 0 : undefined,
+        zIndex: position === "fixed" ? 2000 : undefined,
         padding: "10px 12px calc(10px + env(safe-area-inset-bottom))",
         ...surfaceStyle,
       }}
