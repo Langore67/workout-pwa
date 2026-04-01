@@ -131,6 +131,34 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // fall through to textarea fallback
+  }
+
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "true");
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    ta.style.top = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 /* ============================================================================
    Breadcrumb 3 — Page
    ============================================================================ */
@@ -144,7 +172,8 @@ export default function ProgressPage() {
       setCopyState("copying");
       const metrics = await buildCoachExportMetrics();
       const text = formatCoachExportText(metrics);
-      await navigator.clipboard.writeText(text);
+      const copied = await copyTextToClipboard(text);
+      if (!copied) throw new Error("copy failed");
       setCopyState("copied");
       window.setTimeout(() => {
         setCopyState((current) => (current === "copied" ? "idle" : current));
@@ -183,7 +212,7 @@ export default function ProgressPage() {
           <button className="btn primary" onClick={() => void onCopyCoachExport()} disabled={copyState === "copying"}>
             {copyState === "copying" ? "Building Export…" : "Copy Coach Export"}
           </button>
-          <div className="muted" style={{ fontSize: 13 }}>
+          <div className="muted" style={{ fontSize: 13, flex: "1 1 220px", minWidth: 0 }}>
             {copyState === "copied"
               ? "Coach export copied."
               : copyState === "error"
