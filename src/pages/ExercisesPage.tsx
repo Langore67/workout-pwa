@@ -33,7 +33,7 @@ import { uuid } from "../utils";
 import { Page, Section } from "../components/Page.tsx";
 import { seedExercises } from "../seed/seedExercises";
 import { CoachingPanel } from "../components/CoachingPanel";
-import { calcEffectiveStrengthWeightLb, computeE1RM, latestBodyweightFromRows } from "../strength/Strength";
+import { bodyweightFromRowsAt, calcEffectiveStrengthWeightLb, computeE1RM } from "../strength/Strength";
 
 /* ========================================================================== */
 /*  Breadcrumb 1 — Schema tolerance + design intent                            */
@@ -612,7 +612,6 @@ function useExercisePerformance(exerciseId?: string) {
     const trackById = new Map(tracks.map((t) => [t.id, t]));
     const exercise = await db.exercises.get(exerciseId);
     const bodyMetrics = (await (db as any).bodyMetrics?.toArray?.()) ?? [];
-    const latestBodyweight = latestBodyweightFromRows(bodyMetrics);
 
     // Pull sets for those tracks
     let sets: any[] = [];
@@ -664,11 +663,19 @@ function useExercisePerformance(exerciseId?: string) {
         let bestReps: number | undefined;
         let bestE1rm: number | undefined;
         let bestSetLabel: string | undefined;
+        const sessionAt =
+          (typeof s.endedAt === "number" && Number.isFinite(s.endedAt) ? s.endedAt : undefined) ??
+          (typeof s.startedAt === "number" && Number.isFinite(s.startedAt) ? s.startedAt : undefined);
+        const sessionBodyweight = bodyweightFromRowsAt(bodyMetrics, Number(sessionAt));
 
         for (const se of nonWarmup) {
           const track = trackById.get(se.trackId);
           const weightEntryContextName = [exercise?.name, track?.displayName].filter(Boolean).join(" ").trim();
-          const w = calcEffectiveStrengthWeightLb(Number(se.weight), weightEntryContextName, latestBodyweight as number);
+          const w = calcEffectiveStrengthWeightLb(
+            Number(se.weight),
+            weightEntryContextName,
+            sessionBodyweight as number
+          );
           const r = Number(se.reps);
           if (!Number.isFinite(w) || !Number.isFinite(r) || w <= 0 || r <= 0) continue;
 
