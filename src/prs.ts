@@ -1,4 +1,5 @@
 import { db, SetEntry, TrackPRs, Track } from './db';
+import { computeE1RM } from "./strength/Strength";
 
 export type PRType = 'volume' | 'weight' | 'e1rm';
 
@@ -12,7 +13,7 @@ export interface PRHit {
 }
 
 function epleyE1RM(weight: number, reps: number): number {
-  return weight * (1 + reps / 30);
+  return computeE1RM(weight, reps);
 }
 
 function prOrder(t: PRType): number {
