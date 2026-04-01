@@ -48,6 +48,7 @@ import PerformanceInsightsSection from "../components/performance/PerformanceIns
 import PerformanceOverviewSection from "../components/performance/PerformanceOverviewSection";
 import PerformanceStrengthSignalSection from "../components/performance/PerformanceStrengthSignalSection";
 import {
+  bodyweightFromRowsAt,
   calcEffectiveStrengthWeightLb,
   computeE1RM,
   computeStrengthIndex,
@@ -1081,25 +1082,6 @@ function inferMovement(exercise: Exercise, track: Track): ExerciseHistory["movem
   return movement === "exclude" ? "core" : movement;
 }
 
-function nearestBodyweightLb(bodyMetrics: BodyMetricEntry[], atMs: number): number | undefined {
-  const usable = bodyMetrics
-    .filter((m) => typeof m.weightLb === "number")
-    .map((m) => ({
-      at: pickBodyMetricTime(m),
-      weightLb: m.weightLb as number,
-    }))
-    .sort((a, b) => a.at - b.at);
-
-  if (!usable.length) return undefined;
-
-  let chosen = usable[0].weightLb;
-  for (const item of usable) {
-    if (item.at <= atMs) chosen = item.weightLb;
-    if (item.at > atMs) break;
-  }
-  return chosen;
-}
-
 function calcEffectiveWeightLb(
   set: SetEntry,
   exercise: Exercise,
@@ -1122,7 +1104,7 @@ function calcEffectiveWeightLb(
 
   if (!looksBodyweight) return explicit;
 
-  const bw = nearestBodyweightLb(bodyMetrics, sessionAt);
+  const bw = bodyweightFromRowsAt(bodyMetrics, sessionAt);
   if (typeof bw !== "number") return explicit;
 
   const effective = calcEffectiveStrengthWeightLb(explicit ?? 0, name, bw);
