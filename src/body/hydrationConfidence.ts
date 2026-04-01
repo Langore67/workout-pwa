@@ -66,6 +66,11 @@ function safeNum(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
+function bodyRowTimeMs(row: BodyMetricEntry | undefined): number {
+  const at = Number(row?.measuredAt ?? row?.takenAt ?? row?.createdAt);
+  return Number.isFinite(at) ? at : 0;
+}
+
 export function computeHydrationConfidence(
   input: HydrationConfidenceInput
 ): HydrationConfidenceResult {
@@ -289,11 +294,15 @@ export function computeHydrationConfidence(
 }
 
 export function computeHydrationConfidenceFromBodyRows(rows: BodyMetricEntry[]) {
-  const latest = rows?.[0];
+  const ordered = (rows ?? [])
+    .slice()
+    .sort((a, b) => bodyRowTimeMs(b) - bodyRowTimeMs(a));
+
+  const latest = ordered[0];
   if (!latest) return null;
 
-  const prev = rows?.[1];
-  const waterSamples = (rows ?? [])
+  const prev = ordered[1];
+  const waterSamples = ordered
     .slice(1, 6)
     .map((row) => row?.bodyWaterPct)
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value));

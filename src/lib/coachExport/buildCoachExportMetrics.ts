@@ -98,6 +98,28 @@ function buildMetric(
   };
 }
 
+function findBodyweightForTime(rows: BodyMetricEntry[], atMs: number): number | null {
+  const usable = rows
+    .map((row) => ({
+      at: pickTime(row as any),
+      weight: getWeightLb(row),
+    }))
+    .filter(
+      (row): row is { at: number; weight: number } =>
+        Number.isFinite(row.at) && row.at > 0 && row.weight != null && Number.isFinite(row.weight)
+    )
+    .sort((a, b) => a.at - b.at);
+
+  if (!usable.length) return null;
+
+  let chosen = usable[0].weight;
+  for (const row of usable) {
+    if (row.at <= atMs) chosen = row.weight;
+    if (row.at > atMs) break;
+  }
+  return chosen;
+}
+
 function buildHydration(rows: BodyMetricEntry[]) {
   const hydration = computeHydrationConfidenceFromBodyRows(rows);
   const latest = rows[0];
@@ -184,7 +206,6 @@ async function buildAnchorLifts(
   const exerciseIds = Array.from(new Set((tracks ?? []).map((track: any) => track?.exerciseId).filter(Boolean)));
   const exercises = await db.exercises.bulkGet(exerciseIds as any);
   const exerciseById = new Map((exercises ?? []).filter(Boolean).map((exercise: any) => [exercise.id, exercise]));
-  const latestBodyweight = latestBodyweightFromRows(bodyRows as any[]) ?? 0;
 
   const bestByPattern = new Map<StrengthPattern, CoachExportAnchorLift>();
 
@@ -199,11 +220,14 @@ async function buildAnchorLifts(
     const trackDisplayName = String(track?.displayName ?? "").trim();
     const pattern = classifyPattern(exerciseName, trackDisplayName);
     if (!pattern) continue;
+    const performedAt = cleanNumber(setRow.completedAt ?? setRow.createdAt);
+    const bodyweightAtSet =
+      performedAt != null ? findBodyweightForTime(bodyRows, performedAt) : null;
 
     const effectiveWeight = calcEffectiveStrengthWeightLb(
       setRow.weight,
       exerciseName || trackDisplayName,
-      latestBodyweight
+      bodyweightAtSet ?? 0
     );
     const e1rm = computeScoredE1RM(effectiveWeight, setRow.reps);
     if (!Number.isFinite(e1rm) || e1rm <= 0) continue;
@@ -218,7 +242,7 @@ async function buildAnchorLifts(
       effectiveWeightLb: effectiveWeight,
       reps: setRow.reps,
       e1rm,
-      performedAt: cleanNumber(setRow.completedAt ?? setRow.createdAt),
+      performedAt,
     });
   }
 

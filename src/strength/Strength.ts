@@ -156,7 +156,7 @@ export function latestBodyweightFromRows(rows: Array<any>): number | undefined {
 
   for (const row of rows ?? []) {
     const weight = Number(row?.weightLb ?? row?.weight);
-    const at = Number(row?.takenAt ?? row?.date ?? row?.createdAt);
+    const at = Number(row?.measuredAt ?? row?.takenAt ?? row?.date ?? row?.createdAt);
     if (!Number.isFinite(weight) || weight <= 0) continue;
     if (!Number.isFinite(at)) continue;
     if (at >= bestAt) {
