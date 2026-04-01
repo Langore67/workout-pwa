@@ -140,6 +140,63 @@ async function seedPerformanceBodyweightTiming(page: Page) {
   });
 }
 
+async function seedPerformanceSharedClassificationFallback(page: Page) {
+  return await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const uuid = () => crypto.randomUUID();
+
+    const exerciseId = uuid();
+    const trackId = uuid();
+    const sessionId = uuid();
+
+    await db.exercises.add({
+      id: exerciseId,
+      name: "Bridge Machine",
+      equipment: "Machine",
+      category: "Machine",
+      equipmentTags: ["machine"],
+      createdAt: now - 14 * dayMs,
+    });
+
+    await db.tracks.add({
+      id: trackId,
+      exerciseId,
+      trackType: "hypertrophy",
+      displayName: "Bridge Machine",
+      trackingMode: "weightedReps",
+      warmupSetsDefault: 0,
+      workingSetsDefault: 3,
+      repMin: 8,
+      repMax: 12,
+      restSecondsDefault: 120,
+      weightJumpDefault: 5,
+      createdAt: now - 14 * dayMs,
+    });
+
+    await db.sessions.add({
+      id: sessionId,
+      startedAt: now - 7 * dayMs,
+      endedAt: now - 7 * dayMs + 45 * 60 * 1000,
+    });
+
+    await db.sets.add({
+      id: uuid(),
+      sessionId,
+      trackId,
+      setType: "working",
+      weight: 225,
+      reps: 8,
+      completedAt: now - 7 * dayMs + 5 * 60 * 1000,
+      createdAt: now - 7 * dayMs + 5 * 60 * 1000,
+    });
+  });
+}
+
 test.describe("Performance bodyweight timing", () => {
   test.beforeEach(async ({ page }) => {
     await goto(page, "/");
@@ -157,5 +214,18 @@ test.describe("Performance bodyweight timing", () => {
     const topDrivers = page.locator(".card").filter({ hasText: "Top Exercise Drivers" }).first();
     await expect(topDrivers).toContainText("Pull Up", { timeout: 15000 });
     await expect(topDrivers).toContainText("-18.18% • 0.45", { timeout: 15000 });
+  });
+
+  test("falls back to shared Strength classification for unmatched hinge names", async ({ page }) => {
+    await seedPerformanceSharedClassificationFallback(page);
+
+    await goto(page, "/performance");
+    await expect(page.getByText("Strength Signal Details")).toBeVisible({ timeout: 15000 });
+
+    await page.getByRole("button", { name: "Show Details" }).click();
+
+    const detailsCard = page.locator(".card").filter({ hasText: "Strength Signal Details" }).first();
+    await expect(detailsCard).toContainText("Hinge (1)", { timeout: 15000 });
+    await expect(detailsCard).toContainText("Bridge Machine", { timeout: 15000 });
   });
 });
