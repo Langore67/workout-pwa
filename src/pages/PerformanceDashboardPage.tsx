@@ -50,6 +50,7 @@ import PerformanceStrengthSignalSection from "../components/performance/Performa
 import {
   bodyweightFromRowsAt,
   calcEffectiveStrengthWeightLb,
+  classifyStrengthPatternFromExerciseName,
   computeE1RM,
   computeStrengthIndex,
   computeStrengthTrend,
@@ -210,8 +211,6 @@ type DashboardBodySnapshot = {
   weightValue?: number;
   waistValue?: number;
 };
-
-type StrengthMovement = ExerciseHistory["movement"] | "exclude";
 
 type MetricTrendSummary = {
   points: number;
@@ -972,7 +971,10 @@ function buildStrengthChartPoints(
   return bucketed;
 }
 
-function classifyMovementPattern(exercise: Exercise, track: Track): StrengthMovement {
+function classifyMovementPattern(
+  exercise: Exercise,
+  track: Track
+): ExerciseHistory["movement"] | undefined {
   const name = `${exercise.name} ${track.displayName}`.toLowerCase();
 
   const excludeTerms = [
@@ -1003,7 +1005,7 @@ function classifyMovementPattern(exercise: Exercise, track: Track): StrengthMove
     "dorsiflexion",
   ];
 
-  if (excludeTerms.some((term) => name.includes(term))) return "exclude";
+  if (excludeTerms.some((term) => name.includes(term))) return undefined;
 
   if (
     name.includes("back squat") ||
@@ -1070,16 +1072,19 @@ function classifyMovementPattern(exercise: Exercise, track: Track): StrengthMove
     return "pull";
   }
 
-  return "exclude";
+  const sharedPattern = classifyStrengthPatternFromExerciseName(name);
+  if (sharedPattern) return sharedPattern;
+
+  return undefined;
 }
 
 function shouldIncludeInStrengthSignal(exercise: Exercise, track: Track): boolean {
-  return classifyMovementPattern(exercise, track) !== "exclude";
+  return classifyMovementPattern(exercise, track) != null;
 }
 
 function inferMovement(exercise: Exercise, track: Track): ExerciseHistory["movement"] {
   const movement = classifyMovementPattern(exercise, track);
-  return movement === "exclude" ? "core" : movement;
+  return movement ?? "core";
 }
 
 function calcEffectiveWeightLb(
