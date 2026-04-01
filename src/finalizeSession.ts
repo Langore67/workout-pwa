@@ -8,7 +8,7 @@ import { getSessionPRs } from "./progression";
  * - computes working-only volume + counts
  * - computes PR hits (post-session only)
  * - stores session.summary + session.prs
- * - updates template.lastRunAt (finish-only)
+ * - updates template.lastPerformedAt (finish-only)
  */
 export async function finalizeSession(
   sessionId: UUID,
@@ -85,7 +85,7 @@ export async function finalizeSession(
     });
 
     if (sess.templateId) {
-      await db.templates.update(sess.templateId, { lastRunAt: endedAt });
+      await db.templates.update(sess.templateId, { lastPerformedAt: endedAt });
     }
   });
 

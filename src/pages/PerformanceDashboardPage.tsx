@@ -49,6 +49,7 @@ import PerformanceOverviewSection from "../components/performance/PerformanceOve
 import PerformanceStrengthSignalSection from "../components/performance/PerformanceStrengthSignalSection";
 import {
   calcEffectiveStrengthWeightLb,
+  computeE1RM,
   computeStrengthIndex,
   computeStrengthTrend,
   type StrengthTrendRow,
@@ -269,10 +270,6 @@ function trendFromChange(changePct: number): TrendDirection {
 
 function scoreFromPctChange(changePct: number) {
   return clamp(5 + changePct / 4, 0, 10);
-}
-
-function calcE1RM(weight: number, reps: number) {
-  return weight * (1 + reps / 30);
 }
 
 function rangeStartMs(range: DashboardRange, now = Date.now()): number | undefined {
@@ -829,7 +826,7 @@ const MOCK_EXERCISE_HISTORY: ExerciseHistory[] = [
    ============================================================================ */
 
 function computeExerciseSignal(exercise: ExerciseHistory): ExerciseSignal {
-  const rawE1rms = exercise.sessions.map((session) => calcE1RM(session.weight, session.reps));
+  const rawE1rms = exercise.sessions.map((session) => computeE1RM(session.weight, session.reps));
   const e1rms = rawE1rms.filter((v) => Number.isFinite(v) && v > 0);
 
   const safeBaseline =
@@ -921,7 +918,7 @@ function buildStrengthChartPoints(
       if (!sessionSlice.length) return;
 
       const e1rms = sessionSlice
-        .map((session) => calcE1RM(session.weight, session.reps))
+        .map((session) => computeE1RM(session.weight, session.reps))
         .filter((v) => Number.isFinite(v) && v > 0);
 
       if (!e1rms.length) return;
@@ -1196,7 +1193,7 @@ function buildExerciseHistoryFromDb(source: DbStrengthSource): ExerciseHistory[]
       continue;
     }
 
-    const currentE1RM = calcE1RM(effectiveWeight, set.reps);
+    const currentE1RM = computeE1RM(effectiveWeight, set.reps);
     if (!Number.isFinite(currentE1RM) || currentE1RM <= 0) continue;
 
     const bucketKey = exercise.id;
@@ -1219,7 +1216,7 @@ function buildExerciseHistoryFromDb(source: DbStrengthSource): ExerciseHistory[]
       });
     } else {
       const prev = existing.items[sameSessionIdx];
-      const prevE1RM = calcE1RM(prev.weight, prev.reps);
+      const prevE1RM = computeE1RM(prev.weight, prev.reps);
       if (currentE1RM > prevE1RM) {
         existing.items[sameSessionIdx] = {
           at,
@@ -1249,7 +1246,7 @@ function buildExerciseHistoryFromDb(source: DbStrengthSource): ExerciseHistory[]
       const baselineSeed =
         sessions.length >= 2 ? sessions[0] : sessions[sessions.length - 1];
 
-      const baselineE1RM = calcE1RM(baselineSeed.weight, baselineSeed.reps);
+      const baselineE1RM = computeE1RM(baselineSeed.weight, baselineSeed.reps);
       if (!Number.isFinite(baselineE1RM) || baselineE1RM <= 0) return null;
 
       return {

@@ -1,6 +1,7 @@
 // /src/progression.ts
 import { db } from "./db";
 import type { Track, SetEntry } from "./db";
+import { computeE1RM } from "./strength/Strength";
 
 type SetKind = "warmup" | "working" | "drop" | "failure";
 
@@ -35,7 +36,7 @@ function getSetKind(s: any): SetKind {
 function epleyE1RM(weight: number, reps: number) {
   // Common simple estimator; stable and “good enough” for suggestions.
   // If reps=1, e1RM ~= weight.
-  return weight * (1 + reps / 30);
+  return computeE1RM(weight, reps);
 }
 
 function defaultWeightJump(track: Track): number {

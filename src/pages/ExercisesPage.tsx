@@ -33,7 +33,7 @@ import { uuid } from "../utils";
 import { Page, Section } from "../components/Page.tsx";
 import { seedExercises } from "../seed/seedExercises";
 import { CoachingPanel } from "../components/CoachingPanel";
-import { calcEffectiveStrengthWeightLb, latestBodyweightFromRows } from "../strength/Strength";
+import { calcEffectiveStrengthWeightLb, computeE1RM, latestBodyweightFromRows } from "../strength/Strength";
 
 /* ========================================================================== */
 /*  Breadcrumb 1 — Schema tolerance + design intent                            */
@@ -190,14 +190,6 @@ async function copyTextToClipboard(text: string) {
       window.alert("Copy failed. Your browser may block clipboard access.");
     }
   }
-}
-
-/** Epley est 1RM. Safe + simple. */
-function e1rm(weight: number, reps: number): number {
-  const w = Number(weight);
-  const r = Number(reps);
-  if (!Number.isFinite(w) || !Number.isFinite(r) || w <= 0 || r <= 0) return 0;
-  return w * (1 + r / 30);
 }
 
 function monthKeyFromMs(ms: number): string {
@@ -685,7 +677,7 @@ function useExercisePerformance(exerciseId?: string) {
           if (bestWeight == null || w > bestWeight) bestWeight = w;
           if (bestReps == null || r > bestReps) bestReps = r;
 
-          const e1 = e1rm(w, r);
+          const e1 = computeE1RM(w, r);
           if (Number.isFinite(e1) && (bestE1rm == null || e1 > bestE1rm)) {
             bestE1rm = e1;
             bestSetLabel = `${w} x ${r}`;
