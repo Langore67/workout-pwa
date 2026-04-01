@@ -269,7 +269,11 @@ async function findOrCreateReusableTrack(args: {
   trackType: TrackType;
   trackingMode: TrackingMode;
 }): Promise<string> {
-  return findOrCreateReusableTrackShared(args);
+  return findOrCreateReusableTrackShared({
+    ...args,
+    preferExactDisplayName: true,
+    normalizeDisplayName: normalizeLoose,
+  });
 }
 
 async function addTrackToSession(args: {
