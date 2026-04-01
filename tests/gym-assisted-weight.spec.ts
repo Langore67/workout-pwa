@@ -190,6 +190,42 @@ async function latestSetReps(page: Page, sessionId: string) {
   }, sessionId);
 }
 
+async function latestSetRir(page: Page, sessionId: string) {
+  return await page.evaluate(async (sid) => {
+    // @ts-ignore
+    const db = window.__db;
+    const sets = await db.sets.where("sessionId").equals(sid).sortBy("createdAt");
+    return sets.at(-1)?.rir ?? null;
+  }, sessionId);
+}
+
+async function seedExtraSets(page: Page, sessionId: string, count: number) {
+  await page.evaluate(async ({ sid, count }) => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const session = await db.sessions.get(sid);
+    if (!session) throw new Error("session missing");
+
+    const trackId = (await db.templateItems.where("templateId").equals(session.templateId).first())?.trackId;
+    if (!trackId) throw new Error("track missing");
+
+    const now = Date.now();
+    for (let i = 0; i < count; i += 1) {
+      await db.sets.add({
+        id: crypto.randomUUID(),
+        sessionId: sid,
+        trackId,
+        setType: "working",
+        weight: 45,
+        reps: 8,
+        createdAt: now + i,
+      });
+    }
+  }, { sid: sessionId, count });
+}
+
 async function activeElementName(page: Page) {
   return await page.evaluate(() => {
     const el = document.activeElement as HTMLInputElement | null;
@@ -239,6 +275,25 @@ test.describe("Gym assisted weight entry", () => {
     await tapPadKeys(page, ["1", "0"]);
     await page.getByTestId("gym-weight-accessory-dismiss").click();
     await expect.poll(async () => await latestSetReps(page, seeded.sessionId)).toBe(10);
+  });
+
+  test("rir field uses the same NumericPad system", async ({ page }) => {
+    const seeded = await seedSingleExerciseSession(page, { exerciseName: "Pull Up" });
+
+    await goto(page, `/gym/${seeded.sessionId}`);
+    await expectGymReady(page);
+
+    await addSetAndGetWeightInput(page);
+    const rir = page.getByRole("textbox", { name: "rir" }).first();
+    await rir.click();
+
+    await expect(page.getByTestId("numeric-pad")).toBeVisible();
+    await expect(page.getByTestId("gym-weight-accessory-sign")).toHaveCount(0);
+    await expect(page.getByTestId("gym-weight-accessory-sign-disabled")).toBeDisabled();
+
+    await tapPadKeys(page, ["1", ".", "5"]);
+    await page.getByTestId("gym-weight-accessory-dismiss").click();
+    await expect.poll(async () => await latestSetRir(page, seeded.sessionId)).toBe(1.5);
   });
 
   test("reps-only rows use the same NumericPad system", async ({ page }) => {
@@ -326,6 +381,47 @@ test.describe("Gym assisted weight entry", () => {
     await page.getByTestId("gym-weight-accessory-next").click();
     await expect.poll(async () => await activeElementName(page)).toBe("reps");
     await expect.poll(async () => await latestSetWeight(page, seeded.sessionId)).toBe(65);
+  });
+
+  test("Next advances from reps to RIR on loaded-reps rows", async ({ page }) => {
+    const seeded = await seedSingleExerciseSession(page, { exerciseName: "Pull Up" });
+
+    await goto(page, `/gym/${seeded.sessionId}`);
+    await expectGymReady(page);
+
+    await addSetAndGetWeightInput(page);
+    const reps = page.getByRole("textbox", { name: "reps" }).first();
+    await reps.click();
+
+    await tapPadKeys(page, ["8"]);
+    await page.getByTestId("gym-weight-accessory-next").click();
+    await expect.poll(async () => await activeElementName(page)).toBe("rir");
+    await expect.poll(async () => await latestSetReps(page, seeded.sessionId)).toBe(8);
+  });
+
+  test("page can scroll while docked NumericPad is open and active input stays above it", async ({ page }) => {
+    const seeded = await seedSingleExerciseSession(page, { exerciseName: "Pull Up" });
+    await seedExtraSets(page, seeded.sessionId, 14);
+
+    await goto(page, `/gym/${seeded.sessionId}`);
+    await expectGymReady(page);
+
+    const firstWeight = page.getByRole("textbox", { name: "weight" }).first();
+    await firstWeight.click();
+    await expect(page.getByTestId("numeric-pad")).toBeVisible();
+
+    const scrollBefore = await page.evaluate(() => window.scrollY);
+    await page.evaluate(() => window.scrollBy(0, 500));
+    await expect.poll(async () => await page.evaluate(() => window.scrollY)).toBeGreaterThan(scrollBefore);
+
+    const lastWeight = page.getByRole("textbox", { name: "weight" }).last();
+    await lastWeight.click();
+
+    const padBox = await page.getByTestId("numeric-pad").boundingBox();
+    const inputBox = await lastWeight.boundingBox();
+    expect(padBox).not.toBeNull();
+    expect(inputBox).not.toBeNull();
+    expect(inputBox!.y + inputBox!.height).toBeLessThan(padBox!.y);
   });
 
   test("existing assisted negative-save workflow is not broken", async ({ page }) => {

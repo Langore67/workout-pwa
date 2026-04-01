@@ -61,6 +61,21 @@ type CatalogGroup = {
   exercises: Exercise[];
 };
 
+type GymPadField = "weight" | "reps" | "rir";
+
+type ActiveGymPad = {
+  setId: string;
+  rowDomId: string;
+  field: GymPadField;
+  title: string;
+  decimalEnabled: boolean;
+  allowsNegativeWeight: boolean;
+  buffer: string;
+  onCommit: (buffer: string) => Promise<void>;
+  onDismiss: () => void;
+  onNext: () => void;
+};
+
 /* ============================================================================
    Breadcrumb 02 — Shared helpers
    ============================================================================ */
@@ -121,6 +136,10 @@ function parseNum(v: string): number | undefined {
   if (!t) return undefined;
   const x = Number(t);
   return Number.isFinite(x) ? x : undefined;
+}
+
+function normalizeDecimalInput(raw: string): string {
+  return (raw ?? "").replace(",", ".").trim();
 }
 
 function normalizeWeightInput(raw: string): string {
@@ -743,6 +762,64 @@ export default function GymPage() {
     setSessionNotes(session?.notes ?? "");
   }, [session?.id, session?.notes]);
 
+  const [activePad, setActivePad] = useState<ActiveGymPad | null>(null);
+
+  function openGymPad(pad: Omit<ActiveGymPad, "buffer"> & { initialValue: string }) {
+    const nextPad: ActiveGymPad = {
+      ...pad,
+      buffer: pad.initialValue,
+    };
+    setActivePad(nextPad);
+
+    window.requestAnimationFrame(() => {
+      const rowEl = document.getElementById(pad.rowDomId);
+      rowEl?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  }
+
+  async function closeGymPad(commitFirst: boolean) {
+    const pad = activePad;
+    if (!pad) return;
+    if (commitFirst) await pad.onCommit(pad.buffer);
+    pad.onDismiss();
+    setActivePad(null);
+  }
+
+  function handleGymPadKey(k: string) {
+    setActivePad((prev) => {
+      if (!prev) return prev;
+      const nextBuffer =
+        prev.field === "weight"
+          ? normalizeWeightInput(`${prev.buffer}${k}`)
+          : normalizeDecimalInput(`${prev.buffer}${k}`);
+      return { ...prev, buffer: nextBuffer };
+    });
+  }
+
+  function handleGymPadBackspace() {
+    setActivePad((prev) => (prev ? { ...prev, buffer: prev.buffer.slice(0, -1) } : prev));
+  }
+
+  function toggleGymPadWeightSign() {
+    setActivePad((prev) => {
+      if (!prev || prev.field !== "weight" || !prev.allowsNegativeWeight) return prev;
+      const normalized = normalizeWeightInput(prev.buffer);
+      let nextBuffer = "-";
+      if (!normalized) nextBuffer = "-";
+      else if (normalized === "-") nextBuffer = "";
+      else nextBuffer = normalized.startsWith("-") ? normalized.slice(1) : `-${normalized}`;
+      return { ...prev, buffer: nextBuffer };
+    });
+  }
+
+  async function focusNextFromGymPad() {
+    const pad = activePad;
+    if (!pad) return;
+    await pad.onCommit(pad.buffer);
+    pad.onNext();
+    setActivePad(null);
+  }
+
   /* ------------------------------------------------------------------------
      Breadcrumb 05.10 — Track lookup map
      ------------------------------------------------------------------------ */
@@ -831,8 +908,11 @@ export default function GymPage() {
   /* ------------------------------------------------------------------------
      Breadcrumb 05.14 — Render
      ------------------------------------------------------------------------ */
+  const accessorySignLabel = activePad?.buffer.trim().startsWith("-") ? "-/+ -" : "-/+ +";
+
   return (
-    <div className="grid">
+    <div style={{ display: "grid", gap: 12 }}>
+      <div className="grid" style={{ paddingBottom: activePad ? 320 : 0 }}>
       {/* --------------------------------------------------------------------
          Breadcrumb 05.14.a — Header card
          -------------------------------------------------------------------- */}
@@ -906,6 +986,8 @@ export default function GymPage() {
                 item={item as any}
                 track={track}
                 sets={(sets ?? []) as SetEntryX[]}
+                activePad={activePad}
+                onOpenPad={openGymPad}
               />
             </div>
           );
@@ -943,6 +1025,76 @@ export default function GymPage() {
         sets={(sets ?? []) as SetEntryX[]}
         tracks={(tracks ?? []) as Track[]}
       />
+      </div>
+
+      <div
+        data-testid="gym-numeric-pad-dock"
+        style={{
+          position: "fixed",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 2000,
+          pointerEvents: activePad ? "auto" : "none",
+        }}
+      >
+        <NumericPad
+          visible={!!activePad}
+          decimalEnabled={!!activePad?.decimalEnabled}
+          title={activePad?.title}
+          layout="strongColumn"
+          theme="ironforge"
+          position="static"
+          onKey={handleGymPadKey}
+          onBackspace={handleGymPadBackspace}
+          onClear={() => setActivePad((prev) => (prev ? { ...prev, buffer: "" } : prev))}
+          onDone={() => {
+            void closeGymPad(true);
+          }}
+          onNext={() => {
+            void focusNextFromGymPad();
+          }}
+          rightColumnButtons={[
+            {
+              key: "hide",
+              label: "Hide",
+              onClick: () => {
+                void closeGymPad(true);
+              },
+              testId: "gym-weight-accessory-dismiss",
+            },
+            {
+              key: "calc",
+              label: "Calc",
+              onClick: () => {},
+              disabled: true,
+              testId: "gym-weight-accessory-utility",
+            },
+            activePad?.field === "weight" && activePad.allowsNegativeWeight
+              ? {
+                  key: "sign",
+                  label: accessorySignLabel,
+                  onClick: toggleGymPadWeightSign,
+                  testId: "gym-weight-accessory-sign",
+                }
+              : {
+                  key: "sign-disabled",
+                  label: "-/+",
+                  onClick: () => {},
+                  disabled: true,
+                  testId: "gym-weight-accessory-sign-disabled",
+                },
+            {
+              key: "next",
+              label: "Next",
+              onClick: () => {
+                void focusNextFromGymPad();
+              },
+              testId: "gym-weight-accessory-next",
+            },
+          ]}
+        />
+      </div>
     </div>
   );
 }
@@ -955,11 +1107,15 @@ function ExerciseCard({
   item,
   track,
   sets,
+  activePad,
+  onOpenPad,
 }: {
   sessionId: string;
   item: any;
   track: Track;
   sets: SetEntryX[];
+  activePad: ActiveGymPad | null;
+  onOpenPad: (pad: Omit<ActiveGymPad, "buffer"> & { initialValue: string }) => void;
 }) {
   const nav = useNavigate();
 
@@ -1700,6 +1856,8 @@ function ExerciseCard({
                   loadedReps={loadedReps}
                   done={done}
                   compact={compact}
+                  activePad={activePad}
+                  onOpenPad={onOpenPad}
                   onTapPrev={onTapPrev}
                   onChange={updateSet}
                   onDelete={deleteSet}
@@ -1812,6 +1970,8 @@ function SetRow({
   loadedReps,
   done,
   compact,
+  activePad,
+  onOpenPad,
   onTapPrev,
   onChange,
   onDelete,
@@ -1831,6 +1991,8 @@ function SetRow({
   loadedReps: boolean;
   done: boolean;
   compact: boolean;
+  activePad: ActiveGymPad | null;
+  onOpenPad: (pad: Omit<ActiveGymPad, "buffer"> & { initialValue: string }) => void;
   onTapPrev: () => void;
   onChange: (id: string, patch: Partial<SetEntryX>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -1842,9 +2004,8 @@ function SetRow({
   const selectRef = useRef<HTMLSelectElement | null>(null);
   const weightInputRef = useRef<HTMLInputElement | null>(null);
   const repsInputRef = useRef<HTMLInputElement | null>(null);
+  const rirInputRef = useRef<HTMLInputElement | null>(null);
   const distanceInputRef = useRef<HTMLInputElement | null>(null);
-  const [activePadField, setActivePadField] = useState<"weight" | "reps" | null>(null);
-  const [padBuffer, setPadBuffer] = useState<string>("");
 
   function openTypePicker() {
     selectRef.current?.focus();
@@ -1882,10 +2043,6 @@ function SetRow({
         }
       : {};
 
-  function normalizeDecimalInput(raw: string): string {
-    return (raw ?? "").replace(",", ".").trim();
-  }
-
   function parseRirCommitted(raw: string): number | undefined {
     const t = normalizeDecimalInput(raw);
     if (!t) return undefined;
@@ -1895,35 +2052,15 @@ function SetRow({
     return Number.isFinite(n) ? Math.max(0, n) : undefined;
   }
 
-  const [rirText, setRirText] = useState<string>("");
-  const [weightText, setWeightText] = useState<string>("");
+  const showRir =
+    metricMode === "reps" && loadedReps && isWorking && track.trackType !== "corrective";
 
-  useEffect(() => {
-    const v = (se as any).rir;
-    setRirText(v === undefined || v === null ? "" : String(v));
-  }, [se.id, (se as any).rir]);
+  const activeFieldForRow = activePad?.setId === se.id ? activePad.field : null;
 
-  useEffect(() => {
-    setWeightText(se.weight === undefined || se.weight === null ? "" : String(se.weight));
-  }, [se.id, se.weight]);
-
-  async function commitPadDraft(field: "weight" | "reps") {
-    if (field === "weight") {
-      const committed = parseCommittedWeight(padBuffer, allowsNegativeWeight);
-      await onChange(se.id, { weight: committed });
-      setWeightText(committed === undefined ? "" : String(committed));
-      return committed;
-    }
-
-    const committed = parseNum(padBuffer);
-    await onChange(se.id, { reps: committed });
-    return committed;
-  }
-
-  function openPad(field: "weight" | "reps") {
+  function openPad(field: GymPadField) {
     if (locked) return;
 
-    if (field === "weight" && compact && isWorking && se.weight === undefined && !weightText) {
+    if (field === "weight" && compact && isWorking && se.weight === undefined) {
       onAcceptPrevWeight();
     }
 
@@ -1931,71 +2068,73 @@ function SetRow({
       onAcceptPrevReps();
     }
 
-    const currentValue = field === "weight" ? weightText : se.reps === undefined || se.reps === null ? "" : String(se.reps);
-    setPadBuffer(currentValue);
-    setActivePadField(field);
-  }
+    const initialValue =
+      field === "weight"
+        ? se.weight === undefined || se.weight === null
+          ? ""
+          : String(se.weight)
+        : field === "reps"
+        ? se.reps === undefined || se.reps === null
+          ? ""
+          : String(se.reps)
+        : (se as any).rir === undefined || (se as any).rir === null
+        ? ""
+        : String((se as any).rir);
 
-  async function closePad(commitFirst: boolean) {
-    const field = activePadField;
-    if (commitFirst && field) await commitPadDraft(field);
-    setActivePadField(null);
-    setPadBuffer("");
-    if (field === "weight") weightInputRef.current?.blur();
-    if (field === "reps") repsInputRef.current?.blur();
-  }
+    onOpenPad({
+      setId: se.id,
+      rowDomId,
+      field,
+      title: field === "weight" ? "Weight" : field === "reps" ? "Reps" : "RIR",
+      decimalEnabled: field !== "reps",
+      allowsNegativeWeight,
+      initialValue,
+      onCommit: async (buffer) => {
+        if (field === "weight") {
+          await onChange(se.id, { weight: parseCommittedWeight(buffer, allowsNegativeWeight) });
+          return;
+        }
+        if (field === "reps") {
+          await onChange(se.id, { reps: parseNum(buffer) });
+          return;
+        }
+        await onChange(se.id, { rir: parseRirCommitted(buffer) });
+      },
+      onDismiss: () => {
+        if (field === "weight") weightInputRef.current?.blur();
+        if (field === "reps") repsInputRef.current?.blur();
+        if (field === "rir") rirInputRef.current?.blur();
+      },
+      onNext: () => {
+        if (field === "weight" && metricMode === "reps" && loadedReps) {
+          repsInputRef.current?.focus();
+          return;
+        }
 
-  function handlePadKey(k: string) {
-    setPadBuffer((prev) => {
-      if (activePadField === "weight") return normalizeWeightInput(`${prev}${k}`);
-      return normalizeDecimalInput(`${prev}${k}`);
+        if (field === "weight" && metricMode === "distance" && showWeightInDistance) {
+          distanceInputRef.current?.focus();
+          return;
+        }
+
+        if (field === "reps" && showRir && !locked && kind !== "failure") {
+          rirInputRef.current?.focus();
+          return;
+        }
+
+        if (field === "reps") {
+          repsInputRef.current?.blur();
+          return;
+        }
+
+        if (field === "rir") {
+          rirInputRef.current?.blur();
+          return;
+        }
+
+        weightInputRef.current?.blur();
+      },
     });
   }
-
-  function handlePadBackspace() {
-    setPadBuffer((prev) => prev.slice(0, -1));
-  }
-
-  function toggleWeightDraftSign() {
-    if (!allowsNegativeWeight || activePadField !== "weight") return;
-    setPadBuffer((prev) => {
-      const normalized = normalizeWeightInput(prev);
-      if (!normalized) return "-";
-      if (normalized === "-") return "";
-      return normalized.startsWith("-") ? normalized.slice(1) : `-${normalized}`;
-    });
-  }
-
-  async function focusNextFromPad() {
-    const field = activePadField;
-    if (!field) return;
-
-    await commitPadDraft(field);
-    setActivePadField(null);
-    setPadBuffer("");
-
-    if (field === "weight" && metricMode === "reps" && loadedReps) {
-      repsInputRef.current?.focus();
-      return;
-    }
-
-    if (field === "weight" && metricMode === "distance" && showWeightInDistance) {
-      distanceInputRef.current?.focus();
-      return;
-    }
-
-    if (field === "reps") {
-      repsInputRef.current?.blur();
-      return;
-    }
-
-    weightInputRef.current?.blur();
-  }
-
-  const accessorySignLabel = padBuffer.trim().startsWith("-") ? "-/+ -" : "-/+ +";
-
-  const showRir =
-    metricMode === "reps" && loadedReps && isWorking && track.trackType !== "corrective";
 
   const [timeText, setTimeText] = useState<string>("");
 
@@ -2062,10 +2201,9 @@ function SetRow({
                   name="weight"
                   aria-label="weight"
                   placeholder={ghostWeight}
-                  value={activePadField === "weight" ? padBuffer : weightText}
+                  value={activeFieldForRow === "weight" ? activePad?.buffer ?? "" : se.weight ?? ""}
                   inputMode="none"
                   type="text"
-                  onChange={(e) => setWeightText(normalizeWeightInput(e.target.value))}
                   onFocus={() => openPad("weight")}
                   onClick={() => openPad("weight")}
                   readOnly
@@ -2078,9 +2216,8 @@ function SetRow({
                 name="reps"
                 aria-label="reps"
                 placeholder={ghostReps}
-                value={activePadField === "reps" ? padBuffer : (se.reps ?? "")}
+                value={activeFieldForRow === "reps" ? activePad?.buffer ?? "" : (se.reps ?? "")}
                 inputMode="none"
-                onChange={(e) => onChange(se.id, { reps: parseNum(e.target.value) })}
                 onFocus={() => openPad("reps")}
                 onClick={() => openPad("reps")}
                 readOnly
@@ -2089,25 +2226,17 @@ function SetRow({
 
               {showRir ? (
                 <input
+                  ref={rirInputRef}
                   className="cell-input"
+                  name="rir"
+                  aria-label="rir"
                   placeholder="rir"
-                  value={rirText}
-                  inputMode="decimal"
+                  value={activeFieldForRow === "rir" ? activePad?.buffer ?? "" : ((se as any).rir ?? "")}
+                  inputMode="none"
                   type="text"
-                  onChange={(e) => setRirText(e.target.value)}
-                  onBlur={() => {
-                    const committed = parseRirCommitted(rirText);
-                    onChange(se.id, { rir: committed });
-                    setRirText(committed === undefined ? "" : String(committed));
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
-                    if (e.key === "Escape") {
-                      const v = (se as any).rir;
-                      setRirText(v === undefined || v === null ? "" : String(v));
-                      (e.currentTarget as HTMLInputElement).blur();
-                    }
-                  }}
+                  onFocus={() => openPad("rir")}
+                  onClick={() => openPad("rir")}
+                  readOnly
                   disabled={locked || kind === "failure"}
                 />
               ) : (
@@ -2125,9 +2254,8 @@ function SetRow({
                 name="reps"
                 aria-label="reps"
                 placeholder="reps"
-                value={activePadField === "reps" ? padBuffer : (se.reps ?? "")}
+                value={activeFieldForRow === "reps" ? activePad?.buffer ?? "" : (se.reps ?? "")}
                 inputMode="none"
-                onChange={(e) => onChange(se.id, { reps: parseNum(e.target.value) })}
                 onFocus={() => openPad("reps")}
                 onClick={() => openPad("reps")}
                 readOnly
@@ -2162,9 +2290,8 @@ function SetRow({
                 name="reps"
                 aria-label="reps"
                 placeholder="breaths"
-                value={activePadField === "reps" ? padBuffer : (se.reps ?? "")}
+                value={activeFieldForRow === "reps" ? activePad?.buffer ?? "" : (se.reps ?? "")}
                 inputMode="none"
-                onChange={(e) => onChange(se.id, { reps: parseNum(e.target.value) })}
                 onFocus={() => openPad("reps")}
                 onClick={() => openPad("reps")}
                 readOnly
@@ -2201,10 +2328,9 @@ function SetRow({
                 name="weight"
                 aria-label="weight"
                 placeholder={ghostWeight}
-                value={activePadField === "weight" ? padBuffer : weightText}
+                value={activeFieldForRow === "weight" ? activePad?.buffer ?? "" : se.weight ?? ""}
                 inputMode="none"
                 type="text"
-                onChange={(e) => setWeightText(normalizeWeightInput(e.target.value))}
                 onFocus={() => openPad("weight")}
                 onClick={() => openPad("weight")}
                 readOnly
@@ -2296,62 +2422,6 @@ function SetRow({
           ✕
         </button>
       </div>
-
-      <NumericPad
-        visible={!!activePadField && !locked}
-        decimalEnabled={activePadField === "weight"}
-        title={activePadField === "reps" ? "Reps" : "Weight"}
-        layout="strongColumn"
-        theme="ironforge"
-        onKey={handlePadKey}
-        onBackspace={handlePadBackspace}
-        onClear={() => setPadBuffer("")}
-        onDone={() => {
-          void closePad(true);
-        }}
-        onNext={() => {
-          void focusNextFromPad();
-        }}
-        rightColumnButtons={[
-          {
-            key: "hide",
-            label: "Hide",
-            onClick: () => {
-              void closePad(true);
-            },
-            testId: "gym-weight-accessory-dismiss",
-          },
-          {
-            key: "calc",
-            label: "Calc",
-            onClick: () => {},
-            disabled: true,
-            testId: "gym-weight-accessory-utility",
-          },
-          activePadField === "weight" && allowsNegativeWeight
-            ? {
-                key: "sign",
-                label: accessorySignLabel,
-                onClick: toggleWeightDraftSign,
-                testId: "gym-weight-accessory-sign",
-              }
-            : {
-                key: "sign-disabled",
-                label: "-/+",
-                onClick: () => {},
-                disabled: true,
-                testId: "gym-weight-accessory-sign-disabled",
-              },
-          {
-            key: "next",
-            label: "Next",
-            onClick: () => {
-              void focusNextFromPad();
-            },
-            testId: "gym-weight-accessory-next",
-          },
-        ]}
-      />
     </div>
   );
 }
