@@ -150,13 +150,18 @@ export function calcEffectiveStrengthWeightLb(rawWeight: number, exerciseName: s
   return Number.isFinite(effective) && effective > 0 ? effective : 0;
 }
 
+export function bodyMetricTimeMs(row: any): number {
+  const at = Number(row?.measuredAt ?? row?.takenAt ?? row?.date ?? row?.createdAt);
+  return Number.isFinite(at) ? at : NaN;
+}
+
 export function latestBodyweightFromRows(rows: Array<any>): number | undefined {
   let bestAt = -Infinity;
   let bestWeight: number | undefined;
 
   for (const row of rows ?? []) {
     const weight = Number(row?.weightLb ?? row?.weight);
-    const at = Number(row?.measuredAt ?? row?.takenAt ?? row?.date ?? row?.createdAt);
+    const at = bodyMetricTimeMs(row);
     if (!Number.isFinite(weight) || weight <= 0) continue;
     if (!Number.isFinite(at)) continue;
     if (at >= bestAt) {
@@ -166,6 +171,31 @@ export function latestBodyweightFromRows(rows: Array<any>): number | undefined {
   }
 
   return bestWeight;
+}
+
+export function bodyweightFromRowsAt(rows: Array<any>, atMs: number): number | undefined {
+  const targetAt = Number(atMs);
+  if (!Number.isFinite(targetAt)) return latestBodyweightFromRows(rows);
+
+  const usable = (rows ?? [])
+    .map((row) => ({
+      at: bodyMetricTimeMs(row),
+      weight: Number(row?.weightLb ?? row?.weight),
+    }))
+    .filter(
+      (row): row is { at: number; weight: number } =>
+        Number.isFinite(row.at) && row.at > 0 && Number.isFinite(row.weight) && row.weight > 0
+    )
+    .sort((a, b) => a.at - b.at);
+
+  if (!usable.length) return undefined;
+
+  let chosen = usable[0].weight;
+  for (const row of usable) {
+    if (row.at <= targetAt) chosen = row.weight;
+    if (row.at > targetAt) break;
+  }
+  return chosen;
 }
 
 function normalizeByBodyweight(value: number, bodyweight: number) {

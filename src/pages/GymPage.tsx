@@ -770,7 +770,7 @@ export default function GymPage() {
   /* ------------------------------------------------------------------------
      Breadcrumb 05.12 — Finish pipeline
      ------------------------------------------------------------------------ */
-  async function finish() {
+  async function finalizeCurrentSession() {
     const endedAt = Date.now();
 
     await db.sessions.update(sessionId, {
@@ -784,7 +784,10 @@ export default function GymPage() {
     if (session?.templateId) {
       await db.templates.update(session.templateId, { lastPerformedAt: endedAt } as any);
     }
+  }
 
+  async function finish() {
+    await finalizeCurrentSession();
     nav(`/complete/${sessionId}`);
   }
 
@@ -816,10 +819,7 @@ export default function GymPage() {
         await db.sessionItems.where("sessionId").equals(sessionId).delete();
         await db.sessions.delete(sessionId);
       } else if (isOpenAdHoc) {
-        await db.sessions.update(sessionId, {
-          notes: sessionNotes.trim() || undefined,
-          endedAt: Date.now(),
-        });
+        await finalizeCurrentSession();
       }
 
       nav("/history");

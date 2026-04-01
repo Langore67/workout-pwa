@@ -27,9 +27,9 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, TemplateItem, SessionItem, Track, SetEntry } from "../db";
 import {
+  bodyweightFromRowsAt,
   calcEffectiveStrengthWeightLb,
   isBodyweightEffectiveLoadExerciseName,
-  latestBodyweightFromRows,
 } from "../strength/Strength";
 import {
   normalizeTrackingMode,
@@ -285,8 +285,6 @@ export default function SessionDetailPage() {
     return (await table.toArray()) as any[];
   }, []);
 
-  const latestBodyweight = useMemo(() => latestBodyweightFromRows(bodyMetrics ?? []), [bodyMetrics]);
-
   /* ---------------------------------------------------------------------------
      Breadcrumb 2g — Bucket sets by trackId
      --------------------------------------------------------------------------- */
@@ -315,19 +313,27 @@ export default function SessionDetailPage() {
     // Total "weight lifted": only weighted reps sets with both weight+reps
     // (excludes warmups)
     let total = 0;
+    const sessionBodyweight = bodyweightFromRowsAt(
+      bodyMetrics ?? [],
+      Number(session?.endedAt ?? session?.startedAt)
+    );
     for (const se of sets ?? []) {
       if (se.setType === "warmup") continue;
       if (typeof se.reps !== "number" || se.reps <= 0) continue;
       const track = trackById.get(se.trackId);
       const exercise = track ? exerciseById.get(track.exerciseId) : undefined;
       const weightEntryContextName = [exercise?.name, track?.displayName].filter(Boolean).join(" ").trim();
-      const effectiveWeight = calcEffectiveStrengthWeightLb(se.weight as number, weightEntryContextName, latestBodyweight as number);
+      const effectiveWeight = calcEffectiveStrengthWeightLb(
+        se.weight as number,
+        weightEntryContextName,
+        sessionBodyweight as number
+      );
       if (effectiveWeight > 0) total += effectiveWeight * se.reps;
     }
 
     const prs = safeParsePrsCount(session?.prsJson);
     return { dur, total, prs };
-  }, [session?.startedAt, session?.endedAt, session?.prsJson, sets, trackById, exerciseById, latestBodyweight]);
+  }, [session?.startedAt, session?.endedAt, session?.prsJson, sets, trackById, exerciseById, bodyMetrics]);
 
   /* ---------------------------------------------------------------------------
      Breadcrumb 2i — Guards
