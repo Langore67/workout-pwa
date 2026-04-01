@@ -26,7 +26,7 @@
    ✅ Keep implementation simple and navigation-only
    ============================================================================ */
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetrics";
 import { formatCoachExportText } from "../lib/coachExport/formatCoachExportText";
@@ -166,12 +166,25 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
 export default function ProgressPage() {
   const nav = useNavigate();
   const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "error">("idle");
+  const [manualCopyText, setManualCopyText] = useState<string | null>(null);
+  const manualCopyRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (!manualCopyText) return;
+    window.requestAnimationFrame(() => {
+      manualCopyRef.current?.focus();
+      manualCopyRef.current?.select();
+      manualCopyRef.current?.setSelectionRange(0, manualCopyText.length);
+    });
+  }, [manualCopyText]);
 
   async function onCopyCoachExport() {
+    let text = "";
     try {
       setCopyState("copying");
+      setManualCopyText(null);
       const metrics = await buildCoachExportMetrics();
-      const text = formatCoachExportText(metrics);
+      text = formatCoachExportText(metrics);
       const copied = await copyTextToClipboard(text);
       if (!copied) throw new Error("copy failed");
       setCopyState("copied");
@@ -180,6 +193,7 @@ export default function ProgressPage() {
       }, 2000);
     } catch {
       setCopyState("error");
+      setManualCopyText(text || "Could not generate coach export text.");
     }
   }
 
@@ -216,10 +230,50 @@ export default function ProgressPage() {
             {copyState === "copied"
               ? "Coach export copied."
               : copyState === "error"
-                ? "Could not copy export."
+                ? "Copy not available on this device. Tap and hold to copy manually."
                 : "Creates a copy/paste summary for ChatGPT analysis."}
           </div>
         </div>
+
+        {manualCopyText ? (
+          <div
+            className="card"
+            style={{
+              marginTop: 12,
+              padding: 12,
+              background: "rgba(248,250,252,0.9)",
+              border: "1px solid rgba(148,163,184,0.35)",
+            }}
+          >
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>Manual Copy</div>
+            <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
+              Copy not available on this device. Tap and hold to copy manually.
+            </div>
+            <textarea
+              ref={manualCopyRef}
+              className="input"
+              readOnly
+              value={manualCopyText}
+              rows={14}
+              style={{
+                width: "100%",
+                fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+                fontSize: 12,
+                lineHeight: 1.45,
+                whiteSpace: "pre",
+              }}
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <div className="row" style={{ gap: 8, marginTop: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              <button className="btn small" type="button" onClick={() => manualCopyRef.current?.select()}>
+                Select All
+              </button>
+              <button className="btn small" type="button" onClick={() => setManualCopyText(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {/* ======================================================================
