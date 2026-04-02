@@ -29,9 +29,14 @@ import {
 import { uuid } from "../utils";
 import { addAppLog } from "../appLog";
 import {
+  appendExerciseAlias,
   buildExerciseResolverIndex,
   resolveExerciseFromIndex,
 } from "../domain/exercises/exerciseResolver";
+import {
+  buildExerciseDuplicateCandidates,
+  type ExerciseDuplicateCandidate,
+} from "../domain/exercises/exerciseDuplicateCandidates";
 import {
   defaultTrackTypeFromExerciseName,
   inferTrackingModeFromExerciseName,
@@ -59,6 +64,17 @@ type LastImportRecord = {
   createdAt: number;
   sessionIds: string[];
   summary: string;
+};
+
+type ImportDuplicateReview = {
+  exerciseName: string;
+  candidates: ExerciseDuplicateCandidate[];
+};
+
+type ImportExerciseResolutionSummary = {
+  newExerciseNames: string[];
+  reviewExerciseNames: string[];
+  duplicateReviews: ImportDuplicateReview[];
 };
 
 /* ============================================================================
@@ -222,6 +238,70 @@ function buildSetNotes(row: JournalRow): string | undefined {
   return parts.length ? parts.join(" | ") : undefined;
 }
 
+async function analyzeImportedExerciseNames(
+  exerciseNames: string[]
+): Promise<ImportExerciseResolutionSummary> {
+  const exercises = await db.exercises.toArray();
+  const resolverIndex = buildExerciseResolverIndex(exercises);
+  const [tracks, templateItems, sessionItems, sets] = await Promise.all([
+    db.tracks.toArray(),
+    db.templateItems.toArray(),
+    db.sessionItems.toArray(),
+    db.sets.toArray(),
+  ]);
+
+  const newExerciseNames: string[] = [];
+  const reviewExerciseNames: string[] = [];
+  const duplicateReviews: ImportDuplicateReview[] = [];
+
+  for (const name of exerciseNames) {
+    const resolution = resolveExerciseFromIndex(
+      {
+        rawName: name,
+        allowAlias: true,
+        followMerged: true,
+        includeArchived: false,
+      },
+      resolverIndex
+    );
+
+    if (
+      resolution.status === "exact" ||
+      resolution.status === "alias" ||
+      resolution.status === "merged_redirect"
+    ) {
+      continue;
+    }
+
+    const candidates = buildExerciseDuplicateCandidates({
+      rawName: name,
+      exercises,
+      tracks,
+      templateItems,
+      sessionItems,
+      sets,
+      maxCandidates: 3,
+    }).filter((candidate) => candidate.confidence === "high");
+
+    if (candidates.length > 0) {
+      reviewExerciseNames.push(name);
+      duplicateReviews.push({
+        exerciseName: name,
+        candidates,
+      });
+      continue;
+    }
+
+    newExerciseNames.push(name);
+  }
+
+  return {
+    newExerciseNames,
+    reviewExerciseNames,
+    duplicateReviews,
+  };
+}
+
 /* ============================================================================
    Breadcrumb 5 — Page
    ============================================================================ */
@@ -231,14 +311,29 @@ export default function ImportCsvPage() {
     totalRows: number;
     liftRows: number;
     uniqueExercises: number;
+    newExerciseNames: string[];
+    reviewExerciseNames: string[];
+    duplicateReviews: ImportDuplicateReview[];
   } | null>(null);
   const [dryRun, setDryRun] = useState(true);
   const [fileObj, setFileObj] = useState<File | null>(null);
+  const [reviewAcknowledged, setReviewAcknowledged] = useState(false);
+  const [selectedExistingByName, setSelectedExistingByName] = useState<Record<string, string>>({});
+  const [rememberAliasByName, setRememberAliasByName] = useState<Record<string, boolean>>({});
 
   const [lastImport, setLastImport] = useState<LastImportRecord | null>(() => loadLastImport());
 
   const canImport = useMemo(() => !!preview && !!fileObj, [preview, fileObj]);
   const canRollback = useMemo(() => !!lastImport?.sessionIds?.length, [lastImport]);
+  const unresolvedReviewNames = useMemo(
+    () => preview?.reviewExerciseNames.filter((name) => !selectedExistingByName[name]) ?? [],
+    [preview, selectedExistingByName]
+  );
+  const effectiveNewCount = useMemo(
+    () => (preview?.newExerciseNames.length ?? 0) + unresolvedReviewNames.length,
+    [preview, unresolvedReviewNames]
+  );
+  const effectiveReviewCount = unresolvedReviewNames.length;
 
   const footer = useMemo(() => `${FILE_FOOTER} • v${PAGE_VERSION} • ${BUILD_ID}`, []);
 
@@ -280,24 +375,32 @@ export default function ImportCsvPage() {
     const uniqueExercises = new Set(
       liftRows.map((r) => normalizeExerciseName(String(r.exercise || ""))).filter((x) => x.length > 0)
     );
+    const duplicateSummary = await analyzeImportedExerciseNames(Array.from(uniqueExercises));
 
     setPreview({
       totalRows: rows.length,
       liftRows: liftRows.length,
       uniqueExercises: uniqueExercises.size,
+      newExerciseNames: duplicateSummary.newExerciseNames,
+      reviewExerciseNames: duplicateSummary.reviewExerciseNames,
+      duplicateReviews: duplicateSummary.duplicateReviews,
     });
+    setReviewAcknowledged(false);
+    setSelectedExistingByName({});
+    setRememberAliasByName({});
 
     await addAppLog({
       type: "import",
       level: "info",
       message: "Parsed CSV for preview",
-      detailsJson: JSON.stringify({
-        fileName: file.name,
-        totalRows: rows.length,
-        liftRows: liftRows.length,
-        uniqueExercises: uniqueExercises.size,
-      }),
-    });
+        detailsJson: JSON.stringify({
+          fileName: file.name,
+          totalRows: rows.length,
+          liftRows: liftRows.length,
+          uniqueExercises: uniqueExercises.size,
+          reviewExercises: duplicateSummary.reviewExerciseNames.length,
+        }),
+      });
 
     setStatus("Parsed ✓ Ready to import.");
   }
@@ -382,6 +485,27 @@ export default function ImportCsvPage() {
         liftRows.map((r) => normalizeExerciseName(String(r.exercise || ""))).filter((x) => x.length > 0)
       )
     );
+    const duplicateSummary = await analyzeImportedExerciseNames(exerciseNames);
+    const unresolvedReviewNames = duplicateSummary.reviewExerciseNames.filter(
+      (name) => !selectedExistingByName[name]
+    );
+
+    if (unresolvedReviewNames.length > 0 && !reviewAcknowledged) {
+      setPreview((prev) =>
+        prev
+          ? {
+              ...prev,
+              newExerciseNames: duplicateSummary.newExerciseNames,
+              reviewExerciseNames: duplicateSummary.reviewExerciseNames,
+              duplicateReviews: duplicateSummary.duplicateReviews,
+            }
+          : prev
+      );
+      setStatus(
+        `Import blocked: review possible duplicate exercises before continuing.\n${unresolvedReviewNames.join(", ")}`
+      );
+      return;
+    }
 
     const existingExercises = await db.exercises.toArray();
     const resolverIndex = buildExerciseResolverIndex(existingExercises);
@@ -393,10 +517,24 @@ export default function ImportCsvPage() {
     }
 
     const now = Date.now();
+    let aliasesRemembered = 0;
 
     const exerciseByImportedName = new Map<string, Exercise>();
     const newExercises: Exercise[] = [];
     for (const name of exerciseNames) {
+      const selectedExistingId = selectedExistingByName[name];
+      if (selectedExistingId) {
+        const selectedExercise = existingExercises.find((exercise) => exercise.id === selectedExistingId);
+        if (selectedExercise) {
+          if (!dryRun && rememberAliasByName[name]) {
+            const aliasResult = await appendExerciseAlias(selectedExercise.id, name);
+            if (aliasResult.added) aliasesRemembered += 1;
+          }
+          exerciseByImportedName.set(name, selectedExercise);
+          continue;
+        }
+      }
+
       const resolution = resolveExerciseFromIndex(
         {
           rawName: name,
@@ -647,7 +785,11 @@ export default function ImportCsvPage() {
       }),
     });
 
-    setStatus(`Imported ✓ ${summary}\nSaved rollback handle: ${importId}`);
+    setStatus(
+      `Imported ✓ ${summary}${
+        aliasesRemembered > 0 ? `\nAliases remembered: ${aliasesRemembered}` : ""
+      }\nSaved rollback handle: ${importId}`
+    );
   }
 
   /* --------------------------------------------------------------------------
@@ -690,6 +832,9 @@ export default function ImportCsvPage() {
         onChange={async (e) => {
           const file = e.target.files?.[0] || null;
           setFileObj(file);
+          setReviewAcknowledged(false);
+          setSelectedExistingByName({});
+          setRememberAliasByName({});
           if (!file) return;
           await parseForPreview(file);
         }}
@@ -710,6 +855,150 @@ export default function ImportCsvPage() {
             <span>Unique exercises</span>
             <span>{preview.uniqueExercises}</span>
           </div>
+          <div className="kv">
+            <span>Preview NEW</span>
+            <span>{effectiveNewCount}</span>
+          </div>
+          <div className="kv">
+            <span>Preview REVIEW</span>
+            <span>{effectiveReviewCount}</span>
+          </div>
+
+          {preview.reviewExerciseNames.length > 0 && (
+            <>
+              <hr />
+              <div
+                style={{
+                  display: "grid",
+                  gap: 10,
+                  padding: 12,
+                  borderRadius: 12,
+                  border: "1px solid rgba(245, 158, 11, 0.35)",
+                  background: "rgba(245, 158, 11, 0.08)",
+                }}
+              >
+                <div style={{ fontWeight: 700 }}>Review before create</div>
+                <div className="muted">
+                  Possible duplicates were found. IronForge will not create these exercises until you explicitly continue.
+                </div>
+                {preview.duplicateReviews.map((review) => (
+                  <div key={review.exerciseName} className="card" style={{ padding: 10 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        flexWrap: "wrap",
+                        marginBottom: 8,
+                      }}
+                    >
+                      <div style={{ fontWeight: 700 }}>{review.exerciseName}</div>
+                      {selectedExistingByName[review.exerciseName] ? (
+                        <span className="badge">USE EXISTING</span>
+                      ) : (
+                        <span className="badge" style={{ background: "#f59e0b", color: "#111827" }}>
+                          REVIEW
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>Possible duplicate</div>
+                      {review.candidates.map((candidate) => (
+                        <div
+                          key={`${review.exerciseName}-${candidate.exerciseId}`}
+                          className="muted"
+                          style={{ fontSize: 13 }}
+                        >
+                          <div style={{ color: "var(--text)", fontWeight: 700 }}>{candidate.name}</div>
+                          <div>{candidate.reason}</div>
+                          <div>
+                            Sets {candidate.evidence.setCount} • Tracks {candidate.evidence.trackCount}
+                            {candidate.evidence.equipment ? ` • ${candidate.evidence.equipment}` : ""}
+                            {candidate.evidence.bodyPart ? ` • ${candidate.evidence.bodyPart}` : ""}
+                          </div>
+                          <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => {
+                                setSelectedExistingByName((prev) => ({
+                                  ...prev,
+                                  [review.exerciseName]: candidate.exerciseId,
+                                }));
+                                setRememberAliasByName((prev) => ({
+                                  ...prev,
+                                  [review.exerciseName]: false,
+                                }));
+                                setReviewAcknowledged(false);
+                              }}
+                            >
+                              Use existing
+                            </button>
+                            {selectedExistingByName[review.exerciseName] === candidate.exerciseId && (
+                              <span style={{ color: "var(--text)", fontWeight: 700 }}>
+                                Using existing: {candidate.name}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {selectedExistingByName[review.exerciseName] && (
+                      <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                        <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                          <input
+                            type="checkbox"
+                            checked={!!rememberAliasByName[review.exerciseName]}
+                            onChange={(e) =>
+                              setRememberAliasByName((prev) => ({
+                                ...prev,
+                                [review.exerciseName]: e.target.checked,
+                              }))
+                            }
+                          />
+                          <span>Remember this as an alias for future imports</span>
+                        </label>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() =>
+                            {
+                              setSelectedExistingByName((prev) => {
+                                const next = { ...prev };
+                                delete next[review.exerciseName];
+                                return next;
+                              });
+                              setRememberAliasByName((prev) => {
+                                const next = { ...prev };
+                                delete next[review.exerciseName];
+                                return next;
+                              });
+                              setReviewAcknowledged(false);
+                            }
+                          }
+                        >
+                          Create new instead
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {unresolvedReviewNames.length > 0 && (
+                  <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <input
+                      type="checkbox"
+                      checked={reviewAcknowledged}
+                      onChange={(e) => setReviewAcknowledged(e.target.checked)}
+                    />
+                    <span>
+                      I reviewed these possible duplicates and want to continue creating new exercises if I proceed.
+                    </span>
+                  </label>
+                )}
+              </div>
+            </>
+          )}
         </>
       )}
 

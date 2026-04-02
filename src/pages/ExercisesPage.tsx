@@ -34,6 +34,11 @@ import { Page, Section } from "../components/Page.tsx";
 import { seedExercises } from "../seed/seedExercises";
 import { CoachingPanel } from "../components/CoachingPanel";
 import { bodyweightFromRowsAt, calcEffectiveStrengthWeightLb, computeE1RM } from "../strength/Strength";
+import {
+  buildExerciseDuplicateEvidenceRows,
+  classifyExerciseDuplicateRows,
+  exerciseDuplicateAuditKey,
+} from "../domain/exercises/exerciseDuplicateCandidates";
 
 /* ========================================================================== */
 /*  Breadcrumb 1 — Schema tolerance + design intent                            */
@@ -255,89 +260,11 @@ type ExerciseAuditSummary = {
   topUsageRows: ExerciseAuditRow[];
 };
 
-function auditKey(raw: string): string {
-  return normalizeName(String(raw || ""))
-    .replace(/\bdb\b/g, "dumbbell")
-    .replace(/\bbb\b/g, "barbell")
-    .replace(/\bkb\b/g, "kettlebell")
-    .replace(/\bbw\b/g, "bodyweight")
-    .replace(/\bpullups\b/g, "pull up")
-    .replace(/\bpullup\b/g, "pull up")
-    .replace(/\bpull-ups\b/g, "pull up")
-    .replace(/\bchinups\b/g, "chin up")
-    .replace(/\bchinup\b/g, "chin up")
-    .replace(/\bchin-ups\b/g, "chin up")
-    .replace(/\bpulldowns\b/g, "pulldown")
-    .replace(/\bpull downs\b/g, "pull down")
-    .replace(/[()/.]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function classifyAuditCluster(rows: ExerciseAuditRow[]): {
   recommendation: "safe merge" | "review" | "keep separate";
   reason: string;
 } {
-  const names = rows.map((r) => r.name);
-  const nameKeys = rows.map((r) => auditKey(r.name));
-
-  const distinctNameKeys = Array.from(new Set(nameKeys));
-  const distinctEquipment = Array.from(
-    new Set(rows.map((r) => String(r.equipment || "").trim()).filter(Boolean))
-  );
-  const distinctCategories = Array.from(
-    new Set(rows.map((r) => String(r.category || "").trim()).filter(Boolean))
-  );
-
-  const machineSignals = names.filter((n) => /machine|mts|selectorized|plate loaded/i.test(n)).length;
-
-  const aliasToOtherNameOverlap = rows.some((row, i) =>
-    row.aliasKeys.some((aliasKey) =>
-      rows.some((other, j) => i !== j && aliasKey === auditKey(other.name))
-    )
-  );
-
-  const aliasToOtherAliasOverlap = rows.some((row, i) =>
-    row.aliasKeys.some((aliasKey) =>
-      rows.some((other, j) => i !== j && other.aliasKeys.includes(aliasKey))
-    )
-  );
-
-  const exactNameMatch = distinctNameKeys.length === 1;
-  const sameMeta = distinctEquipment.length <= 1 && distinctCategories.length <= 1;
-
-  if (aliasToOtherNameOverlap && sameMeta) {
-    return {
-      recommendation: "safe merge",
-      reason: "One exercise name is already present as an alias on another exercise, which strongly suggests a duplicate.",
-    };
-  }
-
-  if (exactNameMatch && sameMeta && machineSignals === 0) {
-    return {
-      recommendation: "safe merge",
-      reason: "Same normalized name, same equipment/category, no machine-specific split detected.",
-    };
-  }
-
-  if (exactNameMatch && sameMeta && machineSignals > 0) {
-    return {
-      recommendation: "review",
-      reason: "Looks closely related, but one or more names suggest a machine-specific variant.",
-    };
-  }
-
-  if ((aliasToOtherAliasOverlap || aliasToOtherNameOverlap) && sameMeta) {
-    return {
-      recommendation: "review",
-      reason: "Alias overlap suggests a likely duplicate, but naming still deserves a quick review.",
-    };
-  }
-
-  return {
-    recommendation: "keep separate",
-    reason: "Names are related, but equipment/category or naming pattern suggests these may be distinct exercises.",
-  };
+  return classifyExerciseDuplicateRows(rows);
 }
 
 
@@ -352,62 +279,12 @@ function buildExerciseAuditSummary(args: {
 }): ExerciseAuditSummary {
   const { exercises, tracks, templateItems, sessionItems, sets } = args;
 
-  const trackCountByExerciseId = new Map<string, number>();
-  const templateItemCountByExerciseId = new Map<string, number>();
-  const sessionItemCountByExerciseId = new Map<string, number>();
-  const setCountByExerciseId = new Map<string, number>();
-
-  const trackById = new Map<string, any>();
-  for (const t of tracks) {
-    if (!t?.id) continue;
-    trackById.set(String(t.id), t);
-
-    const exId = String(t.exerciseId ?? "");
-    if (!exId) continue;
-    trackCountByExerciseId.set(exId, (trackCountByExerciseId.get(exId) ?? 0) + 1);
-  }
-
-  for (const item of templateItems) {
-    const track = trackById.get(String(item?.trackId ?? ""));
-    const exId = String(track?.exerciseId ?? "");
-    if (!exId) continue;
-    templateItemCountByExerciseId.set(exId, (templateItemCountByExerciseId.get(exId) ?? 0) + 1);
-  }
-
-  for (const item of sessionItems) {
-    const track = trackById.get(String(item?.trackId ?? ""));
-    const exId = String(track?.exerciseId ?? "");
-    if (!exId) continue;
-    sessionItemCountByExerciseId.set(exId, (sessionItemCountByExerciseId.get(exId) ?? 0) + 1);
-  }
-
-  for (const se of sets) {
-    const track = trackById.get(String(se?.trackId ?? ""));
-    const exId = String(track?.exerciseId ?? "");
-    if (!exId) continue;
-    setCountByExerciseId.set(exId, (setCountByExerciseId.get(exId) ?? 0) + 1);
-  }
-
-  const rows: ExerciseAuditRow[] = exercises.map((e) => {
-    const aliases = cleanStringArray((e as any).aliases);
-    const aliasKeys = aliases.map((a) => auditKey(a)).filter(Boolean);
-
-    return {
-      exerciseId: e.id,
-      name: e.name,
-      normalizedName: e.normalizedName,
-      aliases,
-      aliasKeys,
-      bodyPart: e.bodyPart,
-      category: (e as any).category,
-      equipment: (e as any).equipment,
-      trackCount: trackCountByExerciseId.get(e.id) ?? 0,
-      templateItemCount: templateItemCountByExerciseId.get(e.id) ?? 0,
-      sessionItemCount: sessionItemCountByExerciseId.get(e.id) ?? 0,
-      setCount: setCountByExerciseId.get(e.id) ?? 0,
-      archived: !!e.archivedAt,
-      merged: !!(e as any).mergedIntoExerciseId,
-    };
+  const rows: ExerciseAuditRow[] = buildExerciseDuplicateEvidenceRows({
+    exercises,
+    tracks,
+    templateItems,
+    sessionItems,
+    sets,
   });
 
     const clusterMap = new Map<string, ExerciseAuditRow[]>();
@@ -415,7 +292,7 @@ function buildExerciseAuditSummary(args: {
     for (const row of rows) {
       if (row.archived || row.merged) continue;
   
-      const keys = Array.from(new Set([auditKey(row.name), ...row.aliasKeys].filter(Boolean)));
+      const keys = Array.from(new Set([exerciseDuplicateAuditKey(row.name), ...row.aliasKeys].filter(Boolean)));
       for (const key of keys) {
         const arr = clusterMap.get(key) ?? [];
         arr.push(row);

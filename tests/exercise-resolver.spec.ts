@@ -212,3 +212,202 @@ test("exercise resolver v1 handles exact, alias, merged, archived, ambiguous, an
     matchedAlias: "Barbell Bench Press",
   });
 });
+
+test("exercise resolver normalizes case and supported spacing or punctuation across push pull hinge and squat", async ({
+  page,
+}) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  const result = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const now = Date.now();
+    const benchId = crypto.randomUUID();
+    const pullId = crypto.randomUUID();
+    const hingeId = crypto.randomUUID();
+    const squatId = crypto.randomUUID();
+
+    await db.exercises.bulkAdd([
+      { id: benchId, name: "Bench Press", normalizedName: "bench press", equipmentTags: [], createdAt: now, updatedAt: now },
+      { id: pullId, name: "Pull Up", normalizedName: "pull up", equipmentTags: [], createdAt: now, updatedAt: now },
+      { id: hingeId, name: "Romanian Deadlift", normalizedName: "romanian deadlift", equipmentTags: [], createdAt: now, updatedAt: now },
+      { id: squatId, name: "Hack Squat", normalizedName: "hack squat", equipmentTags: [], createdAt: now, updatedAt: now },
+    ]);
+
+    const { buildExerciseResolverIndex, resolveExerciseFromIndex } = await import("/src/domain/exercises/exerciseResolver.ts");
+    const index = buildExerciseResolverIndex(await db.exercises.toArray());
+
+    const cases = [
+      { rawName: "bench press", expectedId: benchId, label: "push lower" },
+      { rawName: "Bench press", expectedId: benchId, label: "push title" },
+      { rawName: "Pull-Up", expectedId: pullId, label: "pull hyphen" },
+      { rawName: "pull up", expectedId: pullId, label: "pull lower" },
+      { rawName: "romanian deadlift", expectedId: hingeId, label: "hinge lower" },
+      { rawName: "Romanian_deadlift", expectedId: hingeId, label: "hinge underscore" },
+      { rawName: "hack squat", expectedId: squatId, label: "squat lower" },
+      { rawName: "Hack   squat", expectedId: squatId, label: "squat spacing" },
+    ].map((entry) => {
+      const resolution = resolveExerciseFromIndex({ rawName: entry.rawName }, index);
+      return {
+        label: entry.label,
+        expectedId: entry.expectedId,
+        status: resolution.status,
+        exerciseId: resolution.exercise?.id ?? null,
+      };
+    });
+
+    return { cases };
+  });
+
+  for (const row of result.cases) {
+    expect(row.status, row.label).toBe("exact");
+    expect(row.exerciseId, row.label).toBe(row.expectedId);
+  }
+});
+
+test("duplicate candidate builder surfaces strong candidates for likely duplicates", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  const result = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const now = Date.now();
+    const exerciseId = crypto.randomUUID();
+    const trackId = crypto.randomUUID();
+
+    await db.exercises.add({
+      id: exerciseId,
+      name: "DB Bench Press",
+      normalizedName: "db bench press",
+      aliases: [],
+      equipmentTags: ["dumbbell"],
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await db.tracks.add({
+      id: trackId,
+      exerciseId,
+      displayName: "DB Bench Press",
+      trackType: "hypertrophy",
+      trackingMode: "weightedReps",
+      warmupSetsDefault: 2,
+      workingSetsDefault: 3,
+      repMin: 8,
+      repMax: 12,
+      restSecondsDefault: 120,
+      weightJumpDefault: 5,
+      createdAt: now,
+    });
+
+    await db.sessionItems.add({
+      id: crypto.randomUUID(),
+      sessionId: crypto.randomUUID(),
+      trackId,
+      orderIndex: 0,
+      createdAt: now,
+    });
+
+    await db.sets.add({
+      id: crypto.randomUUID(),
+      sessionId: crypto.randomUUID(),
+      trackId,
+      setType: "working",
+      weight: 65,
+      reps: 10,
+      createdAt: now,
+    });
+
+    const { buildExerciseDuplicateCandidates } = await import("/src/domain/exercises/exerciseDuplicateCandidates.ts");
+    const candidates = buildExerciseDuplicateCandidates({
+      rawName: "Dumbbell Bench Press",
+      exercises: await db.exercises.toArray(),
+      tracks: await db.tracks.toArray(),
+      templateItems: await db.templateItems.toArray(),
+      sessionItems: await db.sessionItems.toArray(),
+      sets: await db.sets.toArray(),
+      maxCandidates: 3,
+    });
+
+    return candidates.map((candidate: any) => ({
+      name: candidate.name,
+      confidence: candidate.confidence,
+      recommendation: candidate.recommendation,
+      reason: candidate.reason,
+      setCount: candidate.evidence.setCount,
+      trackCount: candidate.evidence.trackCount,
+    }));
+  });
+
+  expect(result[0]).toMatchObject({
+    name: "DB Bench Press",
+    confidence: "high",
+    recommendation: "safe merge",
+    setCount: 1,
+    trackCount: 1,
+  });
+  expect(result[0].reason).toContain("Same normalized name");
+});
+
+test("appendExerciseAlias persists a remembered alias that shared resolver respects", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  const result = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const now = Date.now();
+    const exerciseId = crypto.randomUUID();
+
+    await db.exercises.add({
+      id: exerciseId,
+      name: "DB Bench Press",
+      normalizedName: "db bench press",
+      aliases: [],
+      equipmentTags: ["dumbbell"],
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const {
+      appendExerciseAlias,
+      buildExerciseResolverIndex,
+      resolveExerciseFromIndex,
+    } = await import("/src/domain/exercises/exerciseResolver.ts");
+
+    const appendResult = await appendExerciseAlias(exerciseId, "Dumbbell Bench Press");
+    const exercises = await db.exercises.toArray();
+    const resolution = resolveExerciseFromIndex(
+      { rawName: "Dumbbell Bench Press", allowAlias: true, followMerged: true },
+      buildExerciseResolverIndex(exercises)
+    );
+
+    return {
+      appendResult,
+      aliases: exercises[0]?.aliases ?? [],
+      resolution: {
+        status: resolution.status,
+        source: resolution.source,
+        name: resolution.exercise?.name ?? null,
+        matchedAlias: resolution.matchedAlias ?? null,
+      },
+    };
+  });
+
+  expect(result.appendResult.added).toBe(true);
+  expect(result.aliases).toContain("Dumbbell Bench Press");
+  expect(result.resolution).toEqual({
+    status: "alias",
+    source: "alias",
+    name: "DB Bench Press",
+    matchedAlias: "Dumbbell Bench Press",
+  });
+});

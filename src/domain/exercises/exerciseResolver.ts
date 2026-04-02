@@ -162,6 +162,42 @@ export function normalizeExerciseQuery(rawName: string): string {
   return normalizeName(rawName);
 }
 
+export async function appendExerciseAlias(exerciseId: string, aliasRaw: string): Promise<{
+  added: boolean;
+  aliases: string[];
+}> {
+  const exercise = await db.exercises.get(exerciseId);
+  if (!exercise) return { added: false, aliases: [] };
+
+  const alias = String(aliasRaw || "").trim();
+  const aliasNorm = normalizeExerciseQuery(alias);
+  if (!aliasNorm) {
+    return {
+      added: false,
+      aliases: Array.isArray(exercise.aliases) ? exercise.aliases : [],
+    };
+  }
+
+  const nameNorm = normalizeExerciseQuery(exercise.name || "");
+  const existingAliases = Array.isArray(exercise.aliases) ? exercise.aliases : [];
+  const existingNorms = new Set(existingAliases.map((value) => normalizeExerciseQuery(String(value || ""))));
+
+  if (aliasNorm === nameNorm || existingNorms.has(aliasNorm)) {
+    return { added: false, aliases: existingAliases };
+  }
+
+  const nextAliases = [...existingAliases, alias];
+  await db.exercises.update(exercise.id, {
+    aliases: nextAliases,
+    updatedAt: Date.now(),
+  });
+
+  return {
+    added: true,
+    aliases: nextAliases,
+  };
+}
+
 export function buildExerciseResolverIndex(exercises: Exercise[]): ExerciseResolverIndex {
   const allExercises = Array.isArray(exercises) ? exercises.slice() : [];
   const canonicalById = new Map<string, Exercise>();

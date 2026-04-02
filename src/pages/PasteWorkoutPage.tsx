@@ -75,9 +75,14 @@ import {
 import { uuid } from "../utils";
 import { addAppLog } from "../appLog";
 import {
+  appendExerciseAlias,
   buildExerciseResolverIndex,
   resolveExerciseFromIndex,
 } from "../domain/exercises/exerciseResolver";
+import {
+  buildExerciseDuplicateCandidates,
+  type ExerciseDuplicateCandidate,
+} from "../domain/exercises/exerciseDuplicateCandidates";
 import {
   defaultTrackTypeFromExerciseName,
   inferTrackingModeFromExerciseName,
@@ -130,6 +135,11 @@ type PreviewSummary = {
   warningCount: number;
   failedLineCount: number;
   newExerciseNames: string[];
+  reviewExerciseNames: string[];
+  duplicateReviews: {
+    exerciseName: string;
+    candidates: ExerciseDuplicateCandidate[];
+  }[];
   wouldAddExercises: number;
   wouldAddTracks: number;
   wouldAddSessions: number;
@@ -733,12 +743,23 @@ export default function PasteWorkoutPage() {
   const [dryRun, setDryRun] = useState<boolean>(true);
   const [parsed, setParsed] = useState<ParsedWorkout | null>(null);
   const [preview, setPreview] = useState<PreviewSummary | null>(null);
+  const [reviewAcknowledged, setReviewAcknowledged] = useState<boolean>(false);
+  const [selectedExistingByName, setSelectedExistingByName] = useState<Record<string, string>>({});
+  const [rememberAliasByName, setRememberAliasByName] = useState<Record<string, boolean>>({});
   const [lastImport, setLastImport] = useState<LastPasteImportRecord | null>(() =>
     loadLastImport()
   );
 
   const canImport = useMemo(() => !!parsed && !!preview, [parsed, preview]);
   const canRollback = useMemo(() => !!lastImport?.sessionIds?.length, [lastImport]);
+  const unresolvedReviewNames = useMemo(
+    () => preview?.reviewExerciseNames.filter((name) => !selectedExistingByName[name]) ?? [],
+    [preview, selectedExistingByName]
+  );
+  const effectiveWouldAddExercises = useMemo(
+    () => (preview?.newExerciseNames.length ?? 0) + unresolvedReviewNames.length,
+    [preview, unresolvedReviewNames]
+  );
   const footer = useMemo(
     () => `${FILE_FOOTER} • v${PAGE_VERSION} • ${BUILD_ID}`,
     []
@@ -801,12 +822,19 @@ export default function PasteWorkoutPage() {
   async function buildPreview(parsedWorkout: ParsedWorkout): Promise<PreviewSummary> {
     const existingExercises = await db.exercises.toArray();
     const existingTracks = await db.tracks.toArray();
+    const [templateItems, sessionItems, sets] = await Promise.all([
+      db.templateItems.toArray(),
+      db.sessionItems.toArray(),
+      db.sets.toArray(),
+    ]);
     const resolverIndex = buildExerciseResolverIndex(existingExercises);
 
     const trackKeys = new Set(existingTracks.map((t) => normalizeName(t.displayName)));
 
     const importableExercises = parsedWorkout.exercises.filter((ex) => ex.sets.length > 0);
     const newExerciseNames = new Set<string>();
+    const reviewExerciseNames = new Set<string>();
+    const duplicateReviews: PreviewSummary["duplicateReviews"] = [];
 
     let wouldAddTracks = 0;
     let wouldAddSessions = 0;
@@ -830,6 +858,24 @@ export default function PasteWorkoutPage() {
 
       if (!isExistingExercise) {
         newExerciseNames.add(ex.exercise);
+
+        const duplicateCandidates = buildExerciseDuplicateCandidates({
+          rawName: ex.exercise,
+          exercises: existingExercises,
+          tracks: existingTracks,
+          templateItems,
+          sessionItems,
+          sets,
+          maxCandidates: 3,
+        }).filter((candidate) => candidate.confidence === "high");
+
+        if (duplicateCandidates.length) {
+          reviewExerciseNames.add(ex.exercise);
+          duplicateReviews.push({
+            exerciseName: ex.exercise,
+            candidates: duplicateCandidates,
+          });
+        }
       }
 
       const norm = normalizeName(ex.exercise);
@@ -857,6 +903,8 @@ export default function PasteWorkoutPage() {
       warningCount: parsedWorkout.warnings.length,
       failedLineCount: parsedWorkout.failedLines.length,
       newExerciseNames: Array.from(newExerciseNames),
+      reviewExerciseNames: Array.from(reviewExerciseNames),
+      duplicateReviews,
       wouldAddExercises: newExerciseNames.size,
       wouldAddTracks,
       wouldAddSessions: existingSession ? 0 : wouldAddSessions,
@@ -883,6 +931,9 @@ export default function PasteWorkoutPage() {
       warningCount: p.warnings.length,
       failedLineCount: p.failedLines.length,
     });
+    setReviewAcknowledged(false);
+    setSelectedExistingByName({});
+    setRememberAliasByName({});
 
     await addAppLog({
       type: "import",
@@ -977,6 +1028,13 @@ export default function PasteWorkoutPage() {
       return;
     }
 
+    if (unresolvedReviewNames.length > 0 && !reviewAcknowledged) {
+      setStatus(
+        `Import blocked: review possible duplicate exercises before continuing.\n${unresolvedReviewNames.join(", ")}`
+      );
+      return;
+    }
+
     setStatus(dryRun ? "Running dry import…" : "Importing pasted workout…");
 
     const existingExercises = await db.exercises.toArray();
@@ -989,11 +1047,25 @@ export default function PasteWorkoutPage() {
     }
 
     const now = Date.now();
+    let aliasesRemembered = 0;
     const importableExercises = parsed.exercises.filter((ex) => ex.sets.length > 0);
 
     const exerciseByImportedName = new Map<string, Exercise>();
     const newExercises: Exercise[] = [];
     for (const ex of importableExercises) {
+      const selectedExistingId = selectedExistingByName[ex.exercise];
+      if (selectedExistingId) {
+        const selectedExercise = existingExercises.find((exercise) => exercise.id === selectedExistingId);
+        if (selectedExercise) {
+          if (!dryRun && rememberAliasByName[ex.exercise]) {
+            const aliasResult = await appendExerciseAlias(selectedExercise.id, ex.exercise);
+            if (aliasResult.added) aliasesRemembered += 1;
+          }
+          exerciseByImportedName.set(ex.exercise, selectedExercise);
+          continue;
+        }
+      }
+
       const resolution = resolveExerciseFromIndex(
         {
           rawName: ex.exercise,
@@ -1257,7 +1329,11 @@ export default function PasteWorkoutPage() {
       }),
     });
 
-    setStatus(`Imported ✓ ${summary}\nSaved rollback handle: ${importId}`);
+    setStatus(
+      `Imported ✓ ${summary}${
+        aliasesRemembered > 0 ? `\nAliases remembered: ${aliasesRemembered}` : ""
+      }\nSaved rollback handle: ${importId}`
+    );
   }
 
   /* --------------------------------------------------------------------------
@@ -1298,7 +1374,12 @@ export default function PasteWorkoutPage() {
 
       <textarea
         value={pasteText}
-        onChange={(e) => setPasteText(e.target.value)}
+        onChange={(e) => {
+          setPasteText(e.target.value);
+          setReviewAcknowledged(false);
+          setSelectedExistingByName({});
+          setRememberAliasByName({});
+        }}
         style={{
           width: "100%",
           minHeight: 360,
@@ -1409,7 +1490,7 @@ export default function PasteWorkoutPage() {
                   <div className="muted" style={{ fontSize: 12 }}>
                     Exercises
                   </div>
-                  <div style={{ fontWeight: 700 }}>{preview.wouldAddExercises}</div>
+                  <div style={{ fontWeight: 700 }}>{effectiveWouldAddExercises}</div>
                 </div>
 
                 <div className="card" style={{ padding: 10 }}>
@@ -1508,7 +1589,7 @@ export default function PasteWorkoutPage() {
           </div>
           <div className="kv">
             <span>Would add Exercises</span>
-            <span>{preview.wouldAddExercises}</span>
+            <span>{effectiveWouldAddExercises}</span>
           </div>
           <div className="kv">
             <span>Would add Tracks</span>
@@ -1532,6 +1613,39 @@ export default function PasteWorkoutPage() {
               <hr />
               <div className="muted">
                 Import blocked until session name or date is changed.
+              </div>
+            </>
+          )}
+
+          {preview.reviewExerciseNames.length > 0 && (
+            <>
+              <hr />
+              <div
+                style={{
+                  display: "grid",
+                  gap: 10,
+                  padding: 12,
+                  borderRadius: 12,
+                  border: "1px solid rgba(245, 158, 11, 0.35)",
+                  background: "rgba(245, 158, 11, 0.08)",
+                }}
+              >
+                <div style={{ fontWeight: 700 }}>Review before create</div>
+                <div className="muted">
+                  Possible duplicates were found. IronForge will not create these exercises until you explicitly continue.
+                </div>
+                {unresolvedReviewNames.length > 0 && (
+                  <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <input
+                      type="checkbox"
+                      checked={reviewAcknowledged}
+                      onChange={(e) => setReviewAcknowledged(e.target.checked)}
+                    />
+                    <span>
+                      I reviewed these possible duplicates and want to continue creating new exercises if I proceed.
+                    </span>
+                  </label>
+                )}
               </div>
             </>
           )}
@@ -1568,6 +1682,10 @@ export default function PasteWorkoutPage() {
           <div style={{ display: "grid", gap: 12 }}>
             {parsed.exercises.map((ex, exIdx) => (
               <div key={`${ex.exercise}-${exIdx}`} className="card" style={{ padding: 12 }}>
+                {(() => {
+                  const review = preview.duplicateReviews.find((row) => row.exerciseName === ex.exercise);
+                  const showReview = preview.reviewExerciseNames.includes(ex.exercise) && !!review;
+                  return (
                 <div
                   style={{
                     display: "flex",
@@ -1578,10 +1696,112 @@ export default function PasteWorkoutPage() {
                   }}
                 >
                   <div style={{ fontWeight: 700 }}>{ex.exercise}</div>
-                  {preview.newExerciseNames.includes(ex.exercise) && (
+                  {selectedExistingByName[ex.exercise] ? (
+                    <span className="badge">USE EXISTING</span>
+                  ) : showReview ? (
+                    <span className="badge" style={{ background: "#f59e0b", color: "#111827" }}>
+                      REVIEW
+                    </span>
+                  ) : preview.newExerciseNames.includes(ex.exercise) ? (
                     <span className="badge">NEW</span>
-                  )}
+                  ) : null}
                 </div>
+                  );
+                })()}
+                {(() => {
+                  const review = preview.duplicateReviews.find((row) => row.exerciseName === ex.exercise);
+                  if (!review) return null;
+                  return (
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 8,
+                        marginBottom: 10,
+                        padding: 10,
+                        borderRadius: 10,
+                        border: "1px solid rgba(245, 158, 11, 0.35)",
+                        background: "rgba(245, 158, 11, 0.08)",
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>Possible duplicate</div>
+                      {review.candidates.map((candidate) => (
+                        <div key={`${ex.exercise}-${candidate.exerciseId}`} className="muted" style={{ fontSize: 13 }}>
+                          <div style={{ color: "var(--text)", fontWeight: 700 }}>{candidate.name}</div>
+                          <div>{candidate.reason}</div>
+                          <div>
+                            Sets {candidate.evidence.setCount} • Tracks {candidate.evidence.trackCount}
+                            {candidate.evidence.equipment ? ` • ${candidate.evidence.equipment}` : ""}
+                            {candidate.evidence.bodyPart ? ` • ${candidate.evidence.bodyPart}` : ""}
+                          </div>
+                        </div>
+                      ))}
+                      {review.candidates[0] && (
+                        <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => {
+                              setSelectedExistingByName((prev) => ({
+                                ...prev,
+                                [ex.exercise]: review.candidates[0].exerciseId,
+                              }));
+                              setRememberAliasByName((prev) => ({
+                                ...prev,
+                                [ex.exercise]: false,
+                              }));
+                              setReviewAcknowledged(false);
+                            }}
+                          >
+                            Use existing
+                          </button>
+                          {selectedExistingByName[ex.exercise] === review.candidates[0].exerciseId && (
+                            <span style={{ color: "var(--text)", fontWeight: 700 }}>
+                              Using existing: {review.candidates[0].name}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+                {selectedExistingByName[ex.exercise] && (
+                  <div style={{ marginBottom: 10, display: "grid", gap: 10 }}>
+                    <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <input
+                        type="checkbox"
+                        checked={!!rememberAliasByName[ex.exercise]}
+                        onChange={(e) =>
+                          setRememberAliasByName((prev) => ({
+                            ...prev,
+                            [ex.exercise]: e.target.checked,
+                          }))
+                        }
+                      />
+                      <span>Remember this as an alias for future imports</span>
+                    </label>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() =>
+                        {
+                          setSelectedExistingByName((prev) => {
+                            const next = { ...prev };
+                            delete next[ex.exercise];
+                            return next;
+                          });
+                          setRememberAliasByName((prev) => {
+                            const next = { ...prev };
+                            delete next[ex.exercise];
+                            return next;
+                          });
+                          setReviewAcknowledged(false);
+                        }
+                      }
+                    >
+                      Create new instead
+                    </button>
+                  </div>
+                )}
                 {!ex.sets.length ? (
                   <div className="muted">No parsed sets</div>
                 ) : (
