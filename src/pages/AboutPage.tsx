@@ -61,11 +61,27 @@ function CardTitle({
   );
 }
 
+function formatBuildTimestamp(value: string) {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return value;
+  return new Date(parsed).toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
 /* ============================================================================
    Breadcrumb 2 — Page
    ============================================================================ */
 
 export default function AboutPage() {
+  const builtAtDisplay = formatBuildTimestamp(buildInfo.builtAt);
+
   return (
     <Page>
       {/* ======================================================================
@@ -107,9 +123,18 @@ export default function AboutPage() {
           </div>
 
           <div style={{ display: "grid", gap: 8 }}>
-            <AboutRow label="Version" value={buildInfo.version} />
-	    <AboutRow label="Build" value={buildInfo.commit} />
-            <AboutRow label="Built" value={buildInfo.builtAt} />
+            <AboutRow
+              label="Version"
+              value={<span style={{ fontFamily: "monospace" }}>{buildInfo.version}</span>}
+            />
+            <AboutRow
+              label="Build"
+              value={<span style={{ fontFamily: "monospace" }}>{buildInfo.commit}</span>}
+            />
+            <AboutRow
+              label="Built"
+              value={<span style={{ fontFamily: "monospace" }}>{builtAtDisplay}</span>}
+            />
           </div>
         </div>
       </Section>

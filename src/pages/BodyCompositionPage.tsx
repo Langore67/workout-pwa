@@ -553,7 +553,7 @@ export default function BodyCompositionPage() {
     const confidenceLabel = getBodyCompConfidenceLabel(confidenceScore);
     const fluidNote = latest
       ? getFluidBalanceNote(latest as any)
-      : "Add ICW and ECW to assess fluid balance.";
+      : "Add ECW and ICW to assess fluid balance.";
 
     return {
       date: latest ? fmtSnapshotDate(sharedPickTime(latest)) : "—",
@@ -791,7 +791,7 @@ export default function BodyCompositionPage() {
         ] satisfies ChartSeriesConfig[],
         yDomainMode: "tight" as const,
         valueFormatter: (value: number | null | undefined) => formatBodyFatPct(value),
-        emptyMessage: "Add body fat %, weight, and ideally ICW / ECW to see corrected body fat.",
+        emptyMessage: "Add body fat %, weight, and ideally ECW / ICW to see corrected body fat.",
       },
       {
         title: "Fat Mass Trend",
@@ -840,11 +840,11 @@ export default function BodyCompositionPage() {
         ] satisfies ChartSeriesConfig[],
         yDomainMode: "auto" as const,
         valueFormatter: (value: number | null | undefined) => formatLbs(value),
-        emptyMessage: "Add weight, body fat %, and ideally ICW / ECW to see corrected lean mass.",
+        emptyMessage: "Add weight, body fat %, and ideally ECW / ICW to see corrected lean mass.",
       },
       {
         title: "TBW Trend",
-        subtitle: "Total body water from ICW + ECW",
+        subtitle: "Total body water from ECW + ICW",
         data: tbwData,
         series: [
           {
@@ -856,7 +856,7 @@ export default function BodyCompositionPage() {
         ] satisfies ChartSeriesConfig[],
         yDomainMode: "auto" as const,
         valueFormatter: (value: number | null | undefined) => formatLbs(value),
-        emptyMessage: "Add ICW and ECW entries to see TBW.",
+        emptyMessage: "Add ECW and ICW entries to see TBW.",
       },
       {
         title: "Fluid Ratio Trend",
@@ -874,7 +874,7 @@ export default function BodyCompositionPage() {
         yDomainMode: "tight" as const,
         valueFormatter: (value: number | null | undefined) =>
           value == null || !Number.isFinite(value) ? "—" : value.toFixed(3),
-        emptyMessage: "Add ICW and ECW entries to see fluid ratio.",
+        emptyMessage: "Add ECW and ICW entries to see fluid ratio.",
       },
       {
         title: "Confidence Trend",
