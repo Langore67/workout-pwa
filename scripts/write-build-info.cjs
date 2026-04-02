@@ -37,23 +37,10 @@ function getPackageVersion() {
   return pkg.version || "0.0.0";
 }
 
-function toIsoLocal(date) {
-  const pad = (n) => String(n).padStart(2, "0");
-
-  const yyyy = date.getFullYear();
-  const mm = pad(date.getMonth() + 1);
-  const dd = pad(date.getDate());
-  const hh = pad(date.getHours());
-  const min = pad(date.getMinutes());
-  const ss = pad(date.getSeconds());
-
-  return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
-}
-
 const version = getPackageVersion();
 const gitCommit = safeExec("git rev-parse --short HEAD");
 const gitBranch = safeExec("git rev-parse --abbrev-ref HEAD");
-const builtAt = toIsoLocal(new Date());
+const builtAt = new Date().toISOString();
 
 const fileContents = `/* ============================================================================
    buildInfo.ts
