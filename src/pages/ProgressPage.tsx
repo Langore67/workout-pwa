@@ -131,16 +131,17 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-async function copyTextToClipboard(text: string): Promise<boolean> {
-  try {
-    if (navigator?.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // fall through to textarea fallback
-  }
+type CopyDebugEvent = {
+  step: string;
+  detail: string;
+  at: string;
+};
 
+type FallbackCopyResult =
+  | { ok: true; method: "execCommand" }
+  | { ok: false; method: "execCommand"; detail: string };
+
+async function fallbackCopyTextToClipboard(text: string): Promise<FallbackCopyResult> {
   try {
     const ta = document.createElement("textarea");
     ta.value = text;
@@ -153,9 +154,16 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
     ta.setSelectionRange(0, ta.value.length);
     const ok = document.execCommand("copy");
     document.body.removeChild(ta);
-    return ok;
-  } catch {
-    return false;
+    if (!ok) {
+      return { ok: false, method: "execCommand", detail: "execCommand returned false" };
+    }
+    return { ok: true, method: "execCommand" };
+  } catch (err: any) {
+    return {
+      ok: false,
+      method: "execCommand",
+      detail: err?.message || "textarea fallback threw",
+    };
   }
 }
 
@@ -167,7 +175,22 @@ export default function ProgressPage() {
   const nav = useNavigate();
   const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "error">("idle");
   const [manualCopyText, setManualCopyText] = useState<string | null>(null);
+  const [copyDebug, setCopyDebug] = useState<CopyDebugEvent[]>([]);
   const manualCopyRef = useRef<HTMLTextAreaElement | null>(null);
+
+  function pushCopyDebug(step: string, detail: string) {
+    const event = {
+      step,
+      detail,
+      at: new Date().toLocaleTimeString(),
+    };
+    setCopyDebug((prev) => [...prev.slice(-7), event]);
+    try {
+      console.info("[CoachExportCopy]", event);
+    } catch {
+      // ignore console issues
+    }
+  }
 
   useEffect(() => {
     if (!manualCopyText) return;
@@ -183,17 +206,42 @@ export default function ProgressPage() {
     try {
       setCopyState("copying");
       setManualCopyText(null);
+      setCopyDebug([]);
+      pushCopyDebug("export:start", "Started coach export generation.");
       const metrics = await buildCoachExportMetrics();
+      pushCopyDebug("export:done", "Coach export metrics generated.");
       text = formatCoachExportText(metrics);
-      const copied = await copyTextToClipboard(text);
-      if (!copied) throw new Error("copy failed");
+      pushCopyDebug("format:done", `Export text built (${text.length} chars).`);
+      try {
+        if (!navigator?.clipboard?.writeText) {
+          pushCopyDebug("clipboard:unavailable", "navigator.clipboard.writeText is unavailable.");
+          throw new Error("clipboard unavailable");
+        }
+        pushCopyDebug("clipboard:start", "Attempting direct navigator.clipboard.writeText.");
+        await navigator.clipboard.writeText(text);
+        pushCopyDebug("clipboard:success", "Direct clipboard write succeeded.");
+      } catch (err: any) {
+        pushCopyDebug("clipboard:error", err?.message || "Direct clipboard write threw.");
+        pushCopyDebug("fallback:start", "Attempting textarea execCommand fallback.");
+        const copied = await fallbackCopyTextToClipboard(text);
+        if (!copied.ok) {
+          pushCopyDebug("fallback:error", copied.detail);
+          throw new Error("copy failed");
+        }
+        pushCopyDebug("fallback:success", "Textarea execCommand fallback succeeded.");
+      }
       setCopyState("copied");
+      pushCopyDebug("result:copied", "Coach export copied automatically.");
       window.setTimeout(() => {
         setCopyState((current) => (current === "copied" ? "idle" : current));
       }, 2000);
     } catch {
       setCopyState("error");
       setManualCopyText(text || "Could not generate coach export text.");
+      pushCopyDebug(
+        "manual:shown",
+        text ? "Automatic copy failed. Manual copy fallback shown." : "Export generation failed before copy."
+      );
     }
   }
 
@@ -271,6 +319,35 @@ export default function ProgressPage() {
               <button className="btn small" type="button" onClick={() => setManualCopyText(null)}>
                 Close
               </button>
+            </div>
+          </div>
+        ) : null}
+
+        {copyDebug.length ? (
+          <div
+            className="card"
+            style={{
+              marginTop: 12,
+              padding: 12,
+              background: "rgba(15,23,42,0.04)",
+              border: "1px solid rgba(148,163,184,0.35)",
+            }}
+          >
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>Copy Debug</div>
+            <div
+              style={{
+                display: "grid",
+                gap: 4,
+                fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+                fontSize: 12,
+                lineHeight: 1.45,
+              }}
+            >
+              {copyDebug.map((event, index) => (
+                <div key={`${event.step}-${index}`}>
+                  [{event.at}] {event.step} - {event.detail}
+                </div>
+              ))}
             </div>
           </div>
         ) : null}
