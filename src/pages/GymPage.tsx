@@ -34,7 +34,7 @@ import type {
 } from "../db";
 import { uuid } from "../utils";
 import { getBestSessionLastNDays, suggestionFromBest } from "../progression";
-import { computeAndStorePRsForSession } from "../prs";
+import { finalizeGymSessionWrites } from "../finalizeSession";
 import { resolveExercise } from "../domain/exercises/exerciseResolver";
 import { isBodyweightEffectiveLoadExerciseName } from "../strength/Strength";
 import NumericPad from "../components/NumericPad";
@@ -848,19 +848,9 @@ export default function GymPage() {
      Breadcrumb 05.12 — Finish pipeline
      ------------------------------------------------------------------------ */
   async function finalizeCurrentSession() {
-    const endedAt = Date.now();
-
-    await db.sessions.update(sessionId, {
-      notes: sessionNotes.trim() || undefined,
-      endedAt,
+    await finalizeGymSessionWrites(sessionId, {
+      notes: sessionNotes,
     });
-
-    const hits = await computeAndStorePRsForSession(sessionId);
-    await db.sessions.update(sessionId, { prsJson: JSON.stringify(hits ?? []) });
-
-    if (session?.templateId) {
-      await db.templates.update(session.templateId, { lastPerformedAt: endedAt } as any);
-    }
   }
 
   async function finish() {
