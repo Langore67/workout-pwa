@@ -77,6 +77,53 @@ work 65x10 @2`);
   await page.getByRole("button", { name: "Parse Preview" }).click();
 }
 
+async function seedPasteWorkoutTrack(
+  page: Parameters<typeof test>[0]["page"],
+  {
+    name,
+    normalizedName,
+    trackingMode,
+  }: { name: string; normalizedName: string; trackingMode: "weightedReps" | "repsOnly" }
+) {
+  await page.evaluate(
+    async ({ name, normalizedName, trackingMode }) => {
+      // @ts-ignore
+      const db = window.__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const now = Date.now();
+      const exerciseId = crypto.randomUUID();
+      const trackId = crypto.randomUUID();
+
+      await db.exercises.add({
+        id: exerciseId,
+        name,
+        normalizedName,
+        aliases: [],
+        equipmentTags: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await db.tracks.add({
+        id: trackId,
+        exerciseId,
+        displayName: name,
+        trackType: "hypertrophy",
+        trackingMode,
+        warmupSetsDefault: 2,
+        workingSetsDefault: 3,
+        repMin: 8,
+        repMax: 12,
+        restSecondsDefault: 120,
+        weightJumpDefault: 5,
+        createdAt: now,
+      });
+    },
+    { name, normalizedName, trackingMode }
+  );
+}
+
 test("Paste Workout REVIEW use-existing path imports against the existing exercise", async ({ page }) => {
   await seedBenchDuplicateCandidate(page);
   await openPasteWorkoutReview(page);
@@ -173,4 +220,114 @@ test("Paste Workout REVIEW requires acknowledgment before creating likely duplic
 
   expect(dbState.count).toBe(2);
   expect(dbState.importedExercise?.name).toBe("Dumbbell Bench Press");
+});
+
+test("Paste Workout import preserves weighted IF set fields for assisted and per-side lines", async ({
+  page,
+}) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  await seedPasteWorkoutTrack(page, {
+    name: "Assisted Pull Up",
+    normalizedName: "assisted pull up",
+    trackingMode: "repsOnly",
+  });
+  await seedPasteWorkoutTrack(page, {
+    name: "Standing DB Lateral Raise",
+    normalizedName: "standing db lateral raise",
+    trackingMode: "repsOnly",
+  });
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Pull + Delts
+Date: 2026-04-01
+Start: 08:00
+End: 09:00
+
+Assisted Pull Up
+work 42x2 @3
+work 42x10 @3
+work 42x10 @2
+work 42x6 @2
+
+Standing DB Lateral Raise
+work 10x15/side @2`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const dbState = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const session = (await db.sessions.toArray())
+      .filter((row: any) => row.templateName === "Pull + Delts")
+      .sort((a: any, b: any) => (b.startedAt ?? 0) - (a.startedAt ?? 0))[0];
+    if (!session) throw new Error("Imported session not found");
+
+    const items = await db.sessionItems.where("sessionId").equals(session.id).toArray();
+    const tracks = await db.tracks.bulkGet(items.map((item: any) => item.trackId));
+    const sets = await db.sets.where("sessionId").equals(session.id).sortBy("createdAt");
+
+    const byTrackName = new Map(
+      tracks.filter(Boolean).map((track: any) => [track.displayName, track])
+    );
+    const trackIdToName = new Map(
+      tracks.filter(Boolean).map((track: any) => [track.id, track.displayName])
+    );
+
+    return {
+      assistedTrackMode: byTrackName.get("Assisted Pull Up")?.trackingMode ?? null,
+      lateralTrackMode: byTrackName.get("Standing DB Lateral Raise")?.trackingMode ?? null,
+      sets: sets.map((set: any) => ({
+        trackName: trackIdToName.get(set.trackId) ?? null,
+        weight: set.weight ?? null,
+        reps: set.reps ?? null,
+        rir: set.rir ?? null,
+        notes: set.notes ?? null,
+      })),
+    };
+  });
+
+  expect(dbState.assistedTrackMode).toBe("weightedReps");
+  expect(dbState.lateralTrackMode).toBe("weightedReps");
+  expect(dbState.sets).toEqual([
+    {
+      trackName: "Assisted Pull Up",
+      weight: 42,
+      reps: 2,
+      rir: 3,
+      notes: null,
+    },
+    {
+      trackName: "Assisted Pull Up",
+      weight: 42,
+      reps: 10,
+      rir: 3,
+      notes: null,
+    },
+    {
+      trackName: "Assisted Pull Up",
+      weight: 42,
+      reps: 10,
+      rir: 2,
+      notes: null,
+    },
+    {
+      trackName: "Assisted Pull Up",
+      weight: 42,
+      reps: 6,
+      rir: 2,
+      notes: null,
+    },
+    {
+      trackName: "Standing DB Lateral Raise",
+      weight: 10,
+      reps: 15,
+      rir: 2,
+      notes: "per-side",
+    },
+  ]);
 });
