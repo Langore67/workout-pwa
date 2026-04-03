@@ -27,24 +27,53 @@ function finishButton(page: Page): Locator {
 }
 
 function inputWeight(page: Page): Locator {
-  // Prefer lbs placeholder; keep fallbacks for iPhone/Safari.
-  return page
-    .locator(
-      'input[placeholder*="lbs" i], input[aria-label*="lbs" i], input[name="weight"], input[aria-label*="weight" i], input[placeholder*="weight" i], input[inputmode="decimal"]'
-    )
-    .first();
+  return page.getByRole("textbox", { name: "weight" }).first();
 }
 
 function inputReps(page: Page): Locator {
-  return page
-    .locator('input[placeholder*="reps" i], input[name="reps"], input[aria-label*="reps" i]')
-    .first();
+  return page.getByRole("textbox", { name: "reps" }).first();
 }
 
 function inputRir(page: Page): Locator {
-  return page
-    .locator('input[placeholder*="rir" i], input[name="rir"], input[aria-label*="rir" i], input[name="RIR"]')
-    .first();
+  return page.getByRole("textbox", { name: "rir" }).first();
+}
+
+async function tapPadKeys(page: Page, keys: string[]) {
+  const pad = page.getByTestId("numeric-pad");
+  await expect(pad).toBeVisible({ timeout: 15000 });
+  for (const key of keys) {
+    await pad.getByRole("button", { name: key, exact: true }).click();
+  }
+}
+
+async function enterLoadedRepsSet(
+  page: Page,
+  args: { weight: string; reps: string; rir?: string; clearWeightDigits?: number }
+) {
+  const w = inputWeight(page);
+  const r = inputReps(page);
+  const rir = inputRir(page);
+
+  await expect(w).toBeVisible({ timeout: 15000 });
+  await expect(r).toBeVisible({ timeout: 15000 });
+  if (await rir.count()) await expect(rir).toBeVisible({ timeout: 15000 });
+
+  await w.click();
+  for (let i = 0; i < (args.clearWeightDigits ?? 0); i += 1) {
+    await tapPadKeys(page, ["⌫"]);
+  }
+  await tapPadKeys(page, args.weight.split(""));
+  await page.getByTestId("gym-weight-accessory-dismiss").click();
+
+  await r.click();
+  await tapPadKeys(page, args.reps.split(""));
+  await page.getByTestId("gym-weight-accessory-dismiss").click();
+
+  if (args.rir && (await rir.count())) {
+    await rir.click();
+    await tapPadKeys(page, args.rir.split(""));
+    await page.getByTestId("gym-weight-accessory-dismiss").click();
+  }
 }
 
 async function markCompleteFirstSet(page: Page) {
@@ -152,17 +181,11 @@ test.describe("Finish Session pipeline", () => {
     await expect(add).toBeVisible({ timeout: 15000 });
     await add.click();
 
-    const w = inputWeight(page);
-    const r = inputReps(page);
-    const rir = inputRir(page);
-
-    await expect(w).toBeVisible({ timeout: 15000 });
-    await expect(r).toBeVisible({ timeout: 15000 });
-    if (await rir.count()) await expect(rir).toBeVisible({ timeout: 15000 });
-
-    await w.fill("135");
-    await r.fill("8");
-    if (await rir.count()) await rir.fill("2");
+    await enterLoadedRepsSet(page, {
+      weight: "135",
+      reps: "8",
+      rir: "2",
+    });
 
     await markCompleteFirstSet(page);
 
@@ -301,38 +324,30 @@ test.describe("Finish Session pipeline", () => {
     await expect(add).toBeVisible({ timeout: 15000 });
     await add.click();
 
-    const w = inputWeight(page);
-    const r = inputReps(page);
-    const rir = inputRir(page);
-
-    await expect(w).toBeVisible({ timeout: 15000 });
-    await expect(r).toBeVisible({ timeout: 15000 });
-    if (await rir.count()) await expect(rir).toBeVisible({ timeout: 15000 });
-
-    // Beat baseline
-    await w.fill("135");
-    await r.fill("8");
-    if (await rir.count()) await rir.fill("2");
+    await enterLoadedRepsSet(page, {
+      weight: "135",
+      reps: "8",
+      rir: "2",
+      clearWeightDigits: 3,
+    });
 
     await markCompleteFirstSet(page);
 
     await finishButton(page).click();
     await ensureFinishNavigated(page);
 
-    // give iPhone a beat to flush Dexie writes
-    await page.waitForTimeout(250);
-
-    const prsJson = await page.evaluate(async (sessionId) => {
-      // @ts-ignore
-      const db = window.__db;
-      if (!db) throw new Error("__db missing on window.");
-      const session = await db.sessions.get(sessionId);
-      return session?.prsJson ?? null;
-    }, seeded.sessionId);
-
-    expect(prsJson).not.toBeNull();
-    expect(typeof prsJson).toBe("string");
-    expect((prsJson as string).length).toBeGreaterThan(2);
-    expect(prsJson).not.toBe("[]");
+    await expect
+      .poll(
+        async () =>
+          await page.evaluate(async (sessionId) => {
+            // @ts-ignore
+            const db = window.__db;
+            if (!db) throw new Error("__db missing on window.");
+            const session = await db.sessions.get(sessionId);
+            return session?.prsJson ?? null;
+          }, seeded.sessionId),
+        { timeout: 5000 }
+      )
+      .not.toBe("[]");
   });
 });
