@@ -1,5 +1,42 @@
 import { db, Readiness, SessionSummary, StoredPR, UUID } from "./db";
-import { getSessionPRs } from "./progression";
+import { computeAndStorePRsForSession } from "./prs";
+
+/**
+ * Shared helper for Gym's current live finalize write contract.
+ *
+ * This intentionally preserves Gym's existing runtime behavior:
+ * - sets endedAt
+ * - stores trimmed notes
+ * - stores prsJson using the current Gym PR engine
+ * - updates template.lastPerformedAt
+ *
+ * It does not adopt the richer finalizeSession() payload contract yet.
+ */
+export async function finalizeGymSessionWrites(
+  sessionId: UUID,
+  opts?: { notes?: string }
+): Promise<{ endedAt: number; prsJson: string }> {
+  const sess = await db.sessions.get(sessionId);
+  if (!sess) throw new Error("finalizeGymSessionWrites: session not found");
+
+  const endedAt = Date.now();
+  const notes = (opts?.notes ?? sess.notes ?? "").trim() || undefined;
+
+  await db.sessions.update(sessionId, {
+    notes,
+    endedAt,
+  });
+
+  const hits = await computeAndStorePRsForSession(sessionId);
+  const prsJson = JSON.stringify(hits ?? []);
+  await db.sessions.update(sessionId, { prsJson });
+
+  if (sess.templateId) {
+    await db.templates.update(sess.templateId, { lastPerformedAt: endedAt } as any);
+  }
+
+  return { endedAt, prsJson };
+}
 
 /**
  * Finalizes a session (finish-only intelligence):
@@ -56,15 +93,38 @@ export async function finalizeSession(
   const durationSeconds =
     endedAt && sess.startedAt ? Math.max(0, Math.round((endedAt - sess.startedAt) / 1000)) : undefined;
 
-  // PRs (post-session only)
-  const prHits = await getSessionPRs(sessionId);
-  const prs: StoredPR[] = prHits.map((p) => ({
-    trackId: p.trackId,
-    prType: p.prType,
-    value: p.value,
-    prevBest: p.prevBest,
-    setEntryId: p.setEntryId as any,
-  }));
+  // Legacy richer finalize path: approximate StoredPR rows from the current PR engine.
+  const prHits = await computeAndStorePRsForSession(sessionId);
+  const prs: StoredPR[] = [];
+  for (const hit of prHits) {
+    if (hit.hits.includes("volume") && hit.volume) {
+      prs.push({
+        trackId: hit.trackId,
+        prType: "volume" as any,
+        value: hit.volume.value,
+        prevBest: undefined,
+        setEntryId: undefined as any,
+      });
+    }
+    if (hit.hits.includes("weight") && hit.weight) {
+      prs.push({
+        trackId: hit.trackId,
+        prType: "weight" as any,
+        value: hit.weight.weight,
+        prevBest: undefined,
+        setEntryId: undefined as any,
+      });
+    }
+    if (hit.hits.includes("e1rm") && hit.e1rm) {
+      prs.push({
+        trackId: hit.trackId,
+        prType: "e1rm" as any,
+        value: hit.e1rm.value,
+        prevBest: undefined,
+        setEntryId: undefined as any,
+      });
+    }
+  }
 
   const summary: SessionSummary = {
     durationSeconds,
