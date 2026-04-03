@@ -1,5 +1,5 @@
 import { db, SetEntry, TrackPRs, Track } from './db';
-import { computeE1RM } from "./strength/Strength";
+import { computeE1RM, computeScoredE1RM } from "./strength/Strength";
 
 export type PRType = 'volume' | 'weight' | 'e1rm';
 
@@ -59,9 +59,9 @@ export async function computeAndStorePRsForSession(sessionId: string): Promise<P
 
       if (!bestWt || w > bestWt.weight || (w === bestWt.weight && r > bestWt.reps)) bestWt = { weight: w, reps: r, at };
 
-      if (r <= 12) {
-        const e = epleyE1RM(w, r);
-        if (!bestE || e > bestE.value) bestE = { weight: w, reps: r, value: e, at };
+      const e = computeScoredE1RM(w, r);
+      if (e > 0 && (!bestE || e > bestE.value)) {
+        bestE = { weight: w, reps: r, value: e, at };
       }
     }
 
