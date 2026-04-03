@@ -1238,6 +1238,17 @@ export default function PasteWorkoutPage() {
         const dbSetType: "warmup" | "working" =
           set.setKind === "warmup" ? "warmup" : "working";
 
+        const parsedHasFiniteWeight =
+          set.weight !== undefined &&
+          Number.isFinite(set.weight);
+        const parsedHasFiniteReps =
+          set.reps !== undefined &&
+          Number.isFinite(set.reps);
+        // Preserve valid parsed weighted-rep lines even if the resolved track
+        // mode is stale or mis-inferred during import.
+        const shouldPersistParsedWeightedRepFields =
+          parsedHasFiniteWeight && parsedHasFiniteReps;
+
         const seconds =
           track.trackingMode === "timeSeconds" ? set.seconds : undefined;
 
@@ -1253,9 +1264,15 @@ export default function PasteWorkoutPage() {
           createdAt,
           completedAt: createdAt,
           setType: dbSetType,
-          weight: track.trackingMode === "weightedReps" ? set.weight : undefined,
+          weight:
+            shouldPersistParsedWeightedRepFields ||
+            track.trackingMode === "weightedReps"
+              ? set.weight
+              : undefined,
           reps:
-            track.trackingMode === "weightedReps" || track.trackingMode === "repsOnly"
+            shouldPersistParsedWeightedRepFields ||
+            track.trackingMode === "weightedReps" ||
+            track.trackingMode === "repsOnly"
               ? set.reps
               : undefined,
           seconds,
