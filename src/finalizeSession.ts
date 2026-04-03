@@ -1,5 +1,6 @@
 import { db, Readiness, SessionSummary, StoredPR, UUID } from "./db";
 import { computeAndStorePRsForSession } from "./prs";
+import type { PRHit } from "./prs";
 
 /**
  * Shared helper for Gym's current live finalize write contract.
@@ -15,7 +16,7 @@ import { computeAndStorePRsForSession } from "./prs";
 export async function finalizeGymSessionWrites(
   sessionId: UUID,
   opts?: { notes?: string }
-): Promise<{ endedAt: number; prsJson: string }> {
+): Promise<{ endedAt: number; prsJson: string; prHits: PRHit[] }> {
   const sess = await db.sessions.get(sessionId);
   if (!sess) throw new Error("finalizeGymSessionWrites: session not found");
 
@@ -27,15 +28,15 @@ export async function finalizeGymSessionWrites(
     endedAt,
   });
 
-  const hits = await computeAndStorePRsForSession(sessionId);
-  const prsJson = JSON.stringify(hits ?? []);
+  const prHits = await computeAndStorePRsForSession(sessionId);
+  const prsJson = JSON.stringify(prHits ?? []);
   await db.sessions.update(sessionId, { prsJson });
 
   if (sess.templateId) {
     await db.templates.update(sess.templateId, { lastPerformedAt: endedAt } as any);
   }
 
-  return { endedAt, prsJson };
+  return { endedAt, prsJson, prHits };
 }
 
 /**
@@ -54,9 +55,9 @@ export async function finalizeSession(
   const sess = await db.sessions.get(sessionId);
   if (!sess) throw new Error("finalizeSession: session not found");
 
-  const endedAt = sess.endedAt ?? Date.now();
   const readiness = opts?.readiness ?? sess.readiness ?? "Normal";
   const notes = (opts?.notes ?? sess.notes ?? "").trim() || undefined;
+  const { endedAt, prHits } = await finalizeGymSessionWrites(sessionId, { notes });
 
   // Load session items for exercise count
   const sessionItems = await db.sessionItems.where("sessionId").equals(sessionId).toArray();
@@ -94,7 +95,6 @@ export async function finalizeSession(
     endedAt && sess.startedAt ? Math.max(0, Math.round((endedAt - sess.startedAt) / 1000)) : undefined;
 
   // Legacy richer finalize path: approximate StoredPR rows from the current PR engine.
-  const prHits = await computeAndStorePRsForSession(sessionId);
   const prs: StoredPR[] = [];
   for (const hit of prHits) {
     if (hit.hits.includes("volume") && hit.volume) {
@@ -135,18 +135,12 @@ export async function finalizeSession(
     // prExerciseNames filled later (we’ll do it in SessionCompletePage using track names)
   };
 
-  await db.transaction("rw", db.sessions, db.templates, async () => {
+  await db.transaction("rw", db.sessions, async () => {
     await db.sessions.update(sessionId, {
-      endedAt,
       readiness,
-      notes,
       summary,
       prs,
     });
-
-    if (sess.templateId) {
-      await db.templates.update(sess.templateId, { lastPerformedAt: endedAt });
-    }
   });
 
   return { endedAt, summary, prs };
