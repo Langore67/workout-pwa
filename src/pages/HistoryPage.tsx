@@ -23,9 +23,10 @@
 import React, { useMemo } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
-import { db, SetEntry } from "../db";
+import { db, SetEntry, type Exercise, type Track, type BodyMetricEntry } from "../db";
 import { ActionMenu as SharedActionMenu, MenuIcons, MenuItem } from "../components/ActionMenu";
 import { safeParsePrsCount } from "../lib/safeParsePrsCount";
+import { computeSessionTotalLifted } from "../lib/sessionTotalLifted";
 
 /* =============================================================================
    Breadcrumb 0 — Types + helpers
@@ -93,22 +94,61 @@ export default function HistoryPage() {
     return all as SessionRow[];
   }, []);
 
-  // Batch-load sets once, compute totals per session (weight * reps), excluding warmups.
+  // Batch-load sets once, compute totals per session.
   const setsAll = useLiveQuery(async () => {
     return (await db.sets.toArray()) as SetEntry[];
   }, []);
 
+  const tracks = useLiveQuery(async () => {
+    return (await db.tracks.toArray()) as Track[];
+  }, []);
+
+  const exercises = useLiveQuery(async () => {
+    const ids = Array.from(new Set((tracks ?? []).map((t) => t.exerciseId).filter(Boolean)));
+    if (!ids.length) return [] as Exercise[];
+    const arr = await db.exercises.bulkGet(ids);
+    return arr.filter(Boolean) as Exercise[];
+  }, [tracks?.map((t) => t.exerciseId).join("|") ?? ""]);
+
+  const bodyMetrics = useLiveQuery(async () => {
+    const table = (db as any).bodyMetrics;
+    if (!table || typeof table.toArray !== "function") return [] as BodyMetricEntry[];
+    return (await table.toArray()) as BodyMetricEntry[];
+  }, []);
+
   const totalsBySession = useMemo(() => {
-    const map = new Map<string, number>();
+    const sessionById = new Map((sessions ?? []).map((s) => [s.id, s]));
+    const trackById = new Map((tracks ?? []).map((t) => [t.id, t]));
+    const exerciseById = new Map((exercises ?? []).map((e) => [e.id, e]));
+    const groupedSets = new Map<string, SetEntry[]>();
+
     for (const se of setsAll ?? []) {
       if (!se?.sessionId) continue;
-      if (se.setType === "warmup") continue;
-      if (typeof se.weight === "number" && typeof se.reps === "number") {
-        map.set(se.sessionId, (map.get(se.sessionId) ?? 0) + se.weight * se.reps);
-      }
+      const bucket = groupedSets.get(se.sessionId) ?? [];
+      bucket.push(se);
+      groupedSets.set(se.sessionId, bucket);
     }
+
+    const map = new Map<string, number>();
+
+    for (const [sessionId, sessionSets] of groupedSets) {
+      const session = sessionById.get(sessionId);
+      if (!session) continue;
+      const sessionAt = Number(session.endedAt ?? session.startedAt);
+      map.set(
+        sessionId,
+        computeSessionTotalLifted({
+          sets: sessionSets,
+          sessionAt,
+          trackById,
+          exerciseById,
+          bodyMetrics: bodyMetrics ?? [],
+        })
+      );
+    }
+
     return map;
-  }, [setsAll]);
+  }, [setsAll, sessions, tracks, exercises, bodyMetrics]);
 
   const hasMeaningfulSetDataBySession = useMemo(() => {
     const map = new Map<string, boolean>();
