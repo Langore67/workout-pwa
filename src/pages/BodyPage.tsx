@@ -745,19 +745,6 @@ export default function BodyPage() {
               />
             </div>
             
-                       <div style={{ minWidth: 160, flex: 1 }}>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
-                ICW (lb)
-              </div>
-              <input
-                className="input"
-                value={icwLb}
-                onChange={(e) => setIcwLb(e.target.value)}
-                placeholder="—"
-                inputMode="decimal"
-              />
-            </div>
-
             <div style={{ minWidth: 160, flex: 1 }}>
               <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
                 ECW (lb)
@@ -766,6 +753,19 @@ export default function BodyPage() {
                 className="input"
                 value={ecwLb}
                 onChange={(e) => setEcwLb(e.target.value)}
+                placeholder="—"
+                inputMode="decimal"
+              />
+            </div>
+
+            <div style={{ minWidth: 160, flex: 1 }}>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                ICW (lb)
+              </div>
+              <input
+                className="input"
+                value={icwLb}
+                onChange={(e) => setIcwLb(e.target.value)}
                 placeholder="—"
                 inputMode="decimal"
               />
