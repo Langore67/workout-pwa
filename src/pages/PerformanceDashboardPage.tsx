@@ -1893,6 +1893,53 @@ export default function PerformanceDashboardPage() {
     return top?.pattern ? capitalize(top.pattern) : capitalize(vm.debug.topComposite);
   }, [sharedStrengthResult, vm.debug.topComposite, hasSharedStrengthChart]);
 
+  const sharedStrengthNarrative = useMemo(() => {
+    if (!hasSharedStrengthChart) return null;
+
+    const values = sharedStrengthChartData
+      .map((point) => point.value)
+      .filter(
+        (value): value is number => typeof value === "number" && Number.isFinite(value)
+      );
+
+    const start = values.length > 0 ? values[0] : null;
+    const current = values.length > 0 ? values[values.length - 1] : null;
+    const changePct =
+      start != null && start !== 0 && current != null
+        ? round2(((current - start) / start) * 100)
+        : 0;
+
+    const directionText =
+      changePct >= 5
+        ? "improving"
+        : changePct <= -3
+          ? "declining"
+          : "stable";
+
+    const currentLabel =
+      sharedCurrentStrengthSignal != null
+        ? sharedCurrentStrengthSignal.toFixed(2)
+        : current != null
+          ? current.toFixed(2)
+          : "—";
+
+    return {
+      heroSummary: `Shared Strength engine is active. Current Strength Signal is ${currentLabel} with ${directionText} trend over ${formatRangeLabel(activeRange).toLowerCase()}.`,
+      flagshipBody: `Strength narrative is using the shared Strength engine only. Current signal, chart trend, strongest pattern, and confidence now reflect the same shared source of truth.`,
+      evidence: [
+        `Shared Strength Signal: ${currentLabel}`,
+        `Trend: ${changePct > 0 ? "+" : ""}${changePct.toFixed(2)}% over ${formatRangeLabel(activeRange)}`,
+        `Strongest Pattern: ${sharedStrongestPatternLabel}`,
+      ],
+    };
+  }, [
+    activeRange,
+    hasSharedStrengthChart,
+    sharedCurrentStrengthSignal,
+    sharedStrengthChartData,
+    sharedStrongestPatternLabel,
+  ]);
+
   const volumeChartData = useMemo(
     () => buildVolumeTrend(dbSource?.sessions ?? [], dbSource?.sets ?? [], activeRange),
     [dbSource, activeRange]
@@ -1964,13 +2011,17 @@ export default function PerformanceDashboardPage() {
         <PerformanceOverviewSection
           activePhase={activePhase}
           setActivePhase={setActivePhase}
-          heroSummary={vm.heroSummary}
+          heroSummary={sharedStrengthNarrative?.heroSummary ?? vm.heroSummary}
           heroStats={effectiveHeroStats}
           flagshipTitle={vm.flagshipTitle}
           flagshipScore={vm.flagshipScore}
           flagshipBadge={vm.flagshipBadge}
-          flagshipBody={vm.flagshipBody}
-          firstInsight={vm.insights[0]}
+          flagshipBody={sharedStrengthNarrative?.flagshipBody ?? vm.flagshipBody}
+          firstInsight={
+            hasSharedStrengthChart
+              ? { evidence: sharedStrengthNarrative?.evidence ?? [] }
+              : vm.insights[0]
+          }
         />
       </Section>
 
