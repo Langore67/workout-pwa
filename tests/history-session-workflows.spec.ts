@@ -122,4 +122,81 @@ test.describe("history and ad hoc session workflows", () => {
     await expect(page.getByTestId("history-inprogress-count")).toHaveText("0");
     await expect(page.getByText("Ad-hoc")).toHaveCount(0);
   });
+
+  test("history and session detail use the same effective-load total lifted math", async ({ page }) => {
+    await goto(page, "/");
+    await resetDexieDb(page);
+
+    const seeded = await page.evaluate(async () => {
+      const db = (window as any).__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const now = Date.now();
+      const uuid = () => crypto.randomUUID();
+
+      const exerciseId = uuid();
+      const trackId = uuid();
+      const sessionId = uuid();
+
+      await db.exercises.add({
+        id: exerciseId,
+        name: "Assisted Pull Up",
+        normalizedName: "assisted pull up",
+        category: "Bodyweight",
+        equipment: "Bodyweight",
+        equipmentTags: [],
+        createdAt: now - 20_000,
+      });
+
+      await db.tracks.add({
+        id: trackId,
+        exerciseId,
+        trackType: "strength",
+        displayName: "Assisted Pull Up",
+        trackingMode: "weightedReps",
+        warmupSetsDefault: 0,
+        workingSetsDefault: 1,
+        repMin: 6,
+        repMax: 10,
+        restSecondsDefault: 120,
+        weightJumpDefault: 5,
+        createdAt: now - 19_000,
+      });
+
+      await db.bodyMetrics.add({
+        id: uuid(),
+        measuredAt: now - 60_000,
+        weightLb: 180,
+        createdAt: now - 60_000,
+      });
+
+      await db.sessions.add({
+        id: sessionId,
+        templateName: "Pull Day",
+        startedAt: now - 30 * 60 * 1000,
+        endedAt: now - 10 * 60 * 1000,
+      });
+
+      await db.sets.add({
+        id: uuid(),
+        sessionId,
+        trackId,
+        createdAt: now - 25 * 60 * 1000,
+        setType: "working",
+        weight: 30,
+        reps: 10,
+        completedAt: now - 25 * 60 * 1000 + 5_000,
+      });
+
+      return { sessionId };
+    });
+
+    await goto(page, "/history");
+    await expect(page.getByTestId(`history-completed-card:${seeded.sessionId}`)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId(`history-total:${seeded.sessionId}`)).toContainText("1500 lb");
+
+    await goto(page, `/session/${seeded.sessionId}`);
+    await expect(page.getByTestId("session-detail")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("session-total-lifted")).toContainText("1500 lb");
+  });
 });

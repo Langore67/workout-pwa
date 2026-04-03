@@ -1,6 +1,7 @@
 import { db, Readiness, SessionSummary, StoredPR, UUID } from "./db";
 import { computeAndStorePRsForSession } from "./prs";
 import type { PRHit } from "./prs";
+import { computeSessionTotalLifted } from "./lib/sessionTotalLifted";
 
 /**
  * Shared helper for Gym's current live finalize write contract.
@@ -83,13 +84,22 @@ export async function finalizeSession(
 
   const completedWorking = working.filter(isCompletedWorking);
 
-  // Volume = Σ(weight * reps), working only
-  const totalVolume = completedWorking.reduce((sum, s) => {
-    const w = typeof s.weight === "number" ? s.weight : 0;
-    const r = typeof s.reps === "number" ? s.reps : 0;
-    if (!(w > 0) || !(r > 0)) return sum;
-    return sum + w * r;
-  }, 0);
+  const trackIds = Array.from(new Set(completedWorking.map((s) => s.trackId).filter(Boolean)));
+  const tracks = (await db.tracks.bulkGet(trackIds)).filter(Boolean) as any[];
+  const trackById = new Map(tracks.map((track) => [track.id, track]));
+  const exerciseIds = Array.from(new Set(tracks.map((track) => track.exerciseId).filter(Boolean)));
+  const exercises = (await db.exercises.bulkGet(exerciseIds as any)).filter(Boolean) as any[];
+  const exerciseById = new Map(exercises.map((exercise) => [exercise.id, exercise]));
+  const bodyMetrics = ((await (db as any).bodyMetrics?.toArray?.()) ?? []) as any[];
+
+  const totalVolume = computeSessionTotalLifted({
+    sets: completedWorking,
+    sessionAt: endedAt,
+    trackById,
+    exerciseById,
+    bodyMetrics,
+    includeSetTypes: ["working"],
+  });
 
   const durationSeconds =
     endedAt && sess.startedAt ? Math.max(0, Math.round((endedAt - sess.startedAt) / 1000)) : undefined;

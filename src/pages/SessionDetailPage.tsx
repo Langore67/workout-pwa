@@ -27,8 +27,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, TemplateItem, SessionItem, Track, SetEntry } from "../db";
 import {
-  bodyweightFromRowsAt,
-  calcEffectiveStrengthWeightLb,
   isBodyweightEffectiveLoadExerciseName,
 } from "../strength/Strength";
 import {
@@ -36,6 +34,7 @@ import {
   type CanonTrackingMode,
 } from "../domain/trackingMode";
 import { safeParsePrsCount } from "../lib/safeParsePrsCount";
+import { computeSessionTotalLifted } from "../lib/sessionTotalLifted";
 
 /* =============================================================================
    Breadcrumb 0 — Types
@@ -309,27 +308,13 @@ export default function SessionDetailPage() {
      --------------------------------------------------------------------------- */
   const summary = useMemo(() => {
     const dur = fmtDuration(session?.startedAt, session?.endedAt);
-
-    // Total "weight lifted": only weighted reps sets with both weight+reps
-    // (excludes warmups)
-    let total = 0;
-    const sessionBodyweight = bodyweightFromRowsAt(
-      bodyMetrics ?? [],
-      Number(session?.endedAt ?? session?.startedAt)
-    );
-    for (const se of sets ?? []) {
-      if (se.setType === "warmup") continue;
-      if (typeof se.reps !== "number" || se.reps <= 0) continue;
-      const track = trackById.get(se.trackId);
-      const exercise = track ? exerciseById.get(track.exerciseId) : undefined;
-      const weightEntryContextName = [exercise?.name, track?.displayName].filter(Boolean).join(" ").trim();
-      const effectiveWeight = calcEffectiveStrengthWeightLb(
-        se.weight as number,
-        weightEntryContextName,
-        sessionBodyweight as number
-      );
-      if (effectiveWeight > 0) total += effectiveWeight * se.reps;
-    }
+    const total = computeSessionTotalLifted({
+      sets: sets ?? [],
+      sessionAt: Number(session?.endedAt ?? session?.startedAt),
+      trackById,
+      exerciseById,
+      bodyMetrics: bodyMetrics ?? [],
+    });
 
     const prs = safeParsePrsCount(session?.prsJson);
     return { dur, total, prs };
