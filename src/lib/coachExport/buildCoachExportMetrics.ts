@@ -1,11 +1,11 @@
 import { db, type BodyMetricEntry } from "../../db";
 import {
+  bodyweightFromRowsAt,
   computeStrengthIndexAt,
   computeStrengthTrend,
   computeScoredE1RM,
   calcEffectiveStrengthWeightLb,
   classifyStrengthPatternFromExerciseName,
-  latestBodyweightFromRows,
   type StrengthPattern,
 } from "../../strength/Strength";
 import {
@@ -96,28 +96,6 @@ function buildMetric(
     delta14d:
       latest.value != null && baseline14d != null ? latest.value - baseline14d : null,
   };
-}
-
-function findBodyweightForTime(rows: BodyMetricEntry[], atMs: number): number | null {
-  const usable = rows
-    .map((row) => ({
-      at: pickTime(row as any),
-      weight: getWeightLb(row),
-    }))
-    .filter(
-      (row): row is { at: number; weight: number } =>
-        Number.isFinite(row.at) && row.at > 0 && row.weight != null && Number.isFinite(row.weight)
-    )
-    .sort((a, b) => a.at - b.at);
-
-  if (!usable.length) return null;
-
-  let chosen = usable[0].weight;
-  for (const row of usable) {
-    if (row.at <= atMs) chosen = row.weight;
-    if (row.at > atMs) break;
-  }
-  return chosen;
 }
 
 function buildHydration(rows: BodyMetricEntry[]) {
@@ -222,7 +200,7 @@ async function buildAnchorLifts(
     if (!pattern) continue;
     const performedAt = cleanNumber(setRow.completedAt ?? setRow.createdAt);
     const bodyweightAtSet =
-      performedAt != null ? findBodyweightForTime(bodyRows, performedAt) : null;
+      performedAt != null ? bodyweightFromRowsAt(bodyRows, performedAt) ?? null : null;
 
     const effectiveWeight = calcEffectiveStrengthWeightLb(
       setRow.weight,
