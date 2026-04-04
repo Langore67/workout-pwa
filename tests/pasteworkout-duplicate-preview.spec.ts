@@ -238,6 +238,11 @@ test("Paste Workout import preserves weighted IF set fields for assisted and per
     normalizedName: "standing db lateral raise",
     trackingMode: "repsOnly",
   });
+  await seedPasteWorkoutTrack(page, {
+    name: "Bench Press",
+    normalizedName: "bench press",
+    trackingMode: "repsOnly",
+  });
 
   await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
   await page.getByRole("textbox").first().fill(`Session: Pull + Delts
@@ -245,11 +250,17 @@ Date: 2026-04-01
 Start: 08:00
 End: 09:00
 
+Bench Press
+work 25x2@1
+work 25 x 2 @ 1
+
 Assisted Pull Up
 work 42x2 @3
 work 42x10 @3
 work 42x10 @2
 work 42x6 @2
+work -65x10@2.5
+work -65 x 10 @ 2.5
 
 Standing DB Lateral Raise
 work 10x15/side @2`);
@@ -279,6 +290,7 @@ work 10x15/side @2`);
     );
 
     return {
+      benchTrackMode: byTrackName.get("Bench Press")?.trackingMode ?? null,
       assistedTrackMode: byTrackName.get("Assisted Pull Up")?.trackingMode ?? null,
       lateralTrackMode: byTrackName.get("Standing DB Lateral Raise")?.trackingMode ?? null,
       sets: sets.map((set: any) => ({
@@ -291,9 +303,24 @@ work 10x15/side @2`);
     };
   });
 
+  expect(dbState.benchTrackMode).toBe("weightedReps");
   expect(dbState.assistedTrackMode).toBe("weightedReps");
   expect(dbState.lateralTrackMode).toBe("weightedReps");
   expect(dbState.sets).toEqual([
+    {
+      trackName: "Bench Press",
+      weight: 25,
+      reps: 2,
+      rir: 1,
+      notes: null,
+    },
+    {
+      trackName: "Bench Press",
+      weight: 25,
+      reps: 2,
+      rir: 1,
+      notes: null,
+    },
     {
       trackName: "Assisted Pull Up",
       weight: -42,
@@ -320,6 +347,20 @@ work 10x15/side @2`);
       weight: -42,
       reps: 6,
       rir: 2,
+      notes: null,
+    },
+    {
+      trackName: "Assisted Pull Up",
+      weight: -65,
+      reps: 10,
+      rir: 2.5,
+      notes: null,
+    },
+    {
+      trackName: "Assisted Pull Up",
+      weight: -65,
+      reps: 10,
+      rir: 2.5,
       notes: null,
     },
     {
