@@ -296,28 +296,28 @@ work 10x15/side @2`);
   expect(dbState.sets).toEqual([
     {
       trackName: "Assisted Pull Up",
-      weight: 42,
+      weight: -42,
       reps: 2,
       rir: 3,
       notes: null,
     },
     {
       trackName: "Assisted Pull Up",
-      weight: 42,
+      weight: -42,
       reps: 10,
       rir: 3,
       notes: null,
     },
     {
       trackName: "Assisted Pull Up",
-      weight: 42,
+      weight: -42,
       reps: 10,
       rir: 2,
       notes: null,
     },
     {
       trackName: "Assisted Pull Up",
-      weight: 42,
+      weight: -42,
       reps: 6,
       rir: 2,
       notes: null,
