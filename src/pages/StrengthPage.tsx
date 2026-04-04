@@ -27,13 +27,12 @@ import { useNavigate } from "react-router-dom";
 import ProgressPageHeader from "../components/layout/ProgressPageHeader";
 import { Page, Section } from "../components/Page.tsx";
 import {
-  computeStrengthIndex,
-  computeStrengthTrend,
-  StrengthTrendRow,
+  computeStrengthSnapshot,
+  StrengthSnapshot,
 } from "../strength/Strength";
 import TrendChartCard from "../components/charts/TrendChartCard";
-import type { ChartSeriesConfig, ChartDatum } from "../components/charts/chartTypes";
 import { formatTwoDecimals } from "../components/charts/chartFormatters";
+import { buildStrengthPageViewModel } from "./strength/strengthPageViewModel";
 
 type StrengthPattern = "squat" | "hinge" | "push" | "pull";
 type Mode = "cut" | "maintain" | "bulk";
@@ -129,6 +128,32 @@ function Sparkline({
   );
 }
 
+function CollapseChevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      style={{
+        display: "block",
+        opacity: 0.8,
+        transform: open ? "rotate(90deg)" : "rotate(0deg)",
+        transition: "transform 160ms ease",
+      }}
+    >
+      <path
+        d="M6 4.5 10 8l-4 3.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /* ========================================================================== */
 /*  Breadcrumb 3 — Mode (persisted)                                           */
 /* ========================================================================== */
@@ -168,8 +193,9 @@ export default function StrengthPage() {
   const [mode, setMode] = useState<Mode>(() => loadMode());
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
-  const [result, setResult] = useState<any | null>(null);
-  const [trend, setTrend] = useState<StrengthTrendRow[]>([]);
+  const [snapshot, setSnapshot] = useState<StrengthSnapshot | null>(null);
+  const [patternScoresOpen, setPatternScoresOpen] = useState(false);
+  const [trendTableOpen, setTrendTableOpen] = useState(false);
 
   useEffect(() => {
     saveMode(mode);
@@ -182,19 +208,13 @@ export default function StrengthPage() {
       try {
         setLoading(true);
         setErr("");
-
-        const [r, t] = await Promise.all([
-          computeStrengthIndex(windowDays),
-          computeStrengthTrend(12, windowDays),
-        ]);
+        const nextSnapshot = await computeStrengthSnapshot(12, windowDays);
 
         if (!alive) return;
-        setResult(r ?? null);
-        setTrend(Array.isArray(t) ? t : []);
+        setSnapshot(nextSnapshot ?? null);
       } catch (e: any) {
         if (!alive) return;
-        setResult(null);
-        setTrend([]);
+        setSnapshot(null);
         setErr(String(e?.message ?? e ?? "Failed to compute strength signal."));
       } finally {
         if (!alive) return;
@@ -207,100 +227,20 @@ export default function StrengthPage() {
     };
   }, [windowDays]);
 
-  const patterns = useMemo(() => {
-    const p = result?.patterns;
-    return Array.isArray(p) ? p : [];
-  }, [result]);
-
-  const bwLabel = useMemo(() => {
-    if (!result || !Number.isFinite(Number(result.bodyweight))) return "—";
-    const n = Number(result.bodyweightDaysUsed);
-    const nLabel = Number.isFinite(n) && n > 0 ? ` • n=${n}` : "";
-    return `${fmt1(result.bodyweight)} (5-day avg${nLabel})`;
-  }, [result]);
-
-  const trendSorted = useMemo(() => {
-    return (trend ?? []).slice().sort((a, b) => b.weekEndMs - a.weekEndMs);
-  }, [trend]);
-
-  const bwSeries = useMemo(
-    () => trendSorted.map((r) => (Number.isFinite(r.bodyweight) ? r.bodyweight : null)),
-    [trendSorted],
-  );
-
-  const relSeries = useMemo(
-    () => trendSorted.map((r) => (Number.isFinite(r.relativeIndex) ? r.relativeIndex : null)),
-    [trendSorted],
-  );
-
-  const normalizedSeries = useMemo(
-    () => trendSorted.map((r) => (Number.isFinite(r.normalizedIndex) ? r.normalizedIndex : null)),
-    [trendSorted],
-  );
-
-  const absSeries = useMemo(
-    () => trendSorted.map((r) => (Number.isFinite(r.absoluteIndex) ? r.absoluteIndex : null)),
-    [trendSorted],
-  );
-
-  const strengthSignalValue = useMemo(() => {
-    const value = result?.normalizedIndex;
-    return Number.isFinite(Number(value)) ? Number(value) : null;
-  }, [result]);
-
-  const strengthSignalTrend = useMemo(() => {
-    const latestValue = Number(trendSorted[0]?.normalizedIndex);
-    const priorValue = Number(trendSorted[1]?.normalizedIndex);
-
-    if (!Number.isFinite(latestValue) || !Number.isFinite(priorValue)) {
-      return { label: "Building", detail: "Need at least 2 weekly points" };
-    }
-
-    const delta = latestValue - priorValue;
-    const direction = delta >= 0.05 ? "Rising" : delta <= -0.03 ? "Falling" : "Stable";
-    return {
-      label: direction,
-      detail: `${delta > 0 ? "+" : ""}${delta.toFixed(2)} vs prior week`,
-    };
-  }, [trendSorted]);
-
-  const strengthSignalConfidence = useMemo(() => {
-    const weeksLoaded = trend.filter((r) => Number.isFinite(Number(r?.normalizedIndex))).length;
-    const bwDaysUsed = Number(result?.bodyweightDaysUsed ?? 0);
-
-    if (weeksLoaded >= 8 && bwDaysUsed >= 3) return "High";
-    if (weeksLoaded >= 4) return "Moderate";
-    return "Low";
-  }, [trend, result]);
-
-  const relativeChartData: ChartDatum[] = useMemo(
-    () =>
-      trendSorted
-        .slice()
-        .reverse()
-        .map((r, index) => ({
-          label: r.label ?? `W${index + 1}`,
-          value: Number.isFinite(r.relativeIndex) ? r.relativeIndex : null,
-          date: r.label,
-          bodyweight: Number.isFinite(r.bodyweight) ? r.bodyweight : null,
-          absoluteIndex: Number.isFinite(r.absoluteIndex) ? r.absoluteIndex : null,
-        })),
-    [trendSorted],
-  );
-
-  const relativeStrengthSeries: ChartSeriesConfig[] = useMemo(
-    () => [
-      {
-        key: "value",
-        label: "Relative Strength",
-        shortLabel: "Rel Str",
-        formatter: formatTwoDecimals,
-        stroke: "var(--accent)",
-      },
-    ],
-    [],
-  );
-
+  const result = snapshot?.result ?? null;
+  const heroMeta = snapshot?.heroMeta ?? null;
+  const {
+    patterns,
+    bwLabel,
+    trendSorted,
+    bwSeries,
+    absSeries,
+    relativeChartData,
+    strengthSignalChartData,
+    relativeStrengthSeries,
+    strengthSignalSeries,
+    strengthSignalCompactMetaLine,
+  } = useMemo(() => buildStrengthPageViewModel(snapshot), [snapshot]);
     return (
     <Page>
 	  <Section>
@@ -369,6 +309,63 @@ export default function StrengthPage() {
             <div className="muted">No data yet (log some completed working sets).</div>
           ) : (
             <>
+              <div className="card" style={{ padding: 16, marginBottom: 12 }}>
+                <div
+                  className="muted"
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                    marginBottom: 6,
+                  }}
+                >
+                  Strength Signal
+                </div>
+
+                <div style={{ fontWeight: 900, fontSize: 34, lineHeight: 1 }}>
+                  {Number.isFinite(Number(result?.normalizedIndex))
+                    ? fmt2(result?.normalizedIndex)
+                    : "—"}
+                </div>
+
+                <div className="muted" style={{ marginTop: 8, lineHeight: 1.45 }}>
+                  Shared normalized signal using completed working sets and rolling bodyweight normalization over the last <b>{windowDays}</b> days.
+                </div>
+
+                <div
+                  className="row"
+                  style={{
+                    gap: 12,
+                    flexWrap: "wrap",
+                    marginTop: 10,
+                    fontSize: 12,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  <div className="muted">
+                    Trend: <b>{heroMeta?.trendLabel ?? "—"}</b>
+                  </div>
+                  <div className="muted">
+                    Confidence: <b>{heroMeta?.confidence ?? "—"}</b>
+                  </div>
+                  <div className="muted">
+                    Window: <b>{windowDays} days</b>
+                  </div>
+                </div>
+              </div>
+
+              <TrendChartCard
+                title="Strength Signal Trend"
+                subtitle="Weekly snapshots of normalized strength signal"
+                data={strengthSignalChartData}
+                series={strengthSignalSeries}
+                valueFormatter={formatTwoDecimals}
+                showTrendLine={true}
+                readoutMode="statRow"
+                compactMetaLineText={strengthSignalCompactMetaLine}
+              />
+
               {/* ===================== Dashboard ===================== */}
 	      <div
 		className="muted"
@@ -459,33 +456,6 @@ export default function StrengthPage() {
                   </div>
                 </div>
 
-                <div className="card" style={{ padding: 12, minWidth: 220, flex: 1, minHeight:170 }}>
-		    <div
-		      className="muted"
-		      style={{
-			fontSize: 12,
-			fontWeight: 800,
-			textTransform: "uppercase",
-			letterSpacing: 0.5,
-		      }}
-		    >
-		      Strength Signal
-                  </div>
-                  <div style={{ fontWeight: 900, fontSize: 22, marginTop: 6 }}>
-                    {strengthSignalValue != null
-                      ? fmt2(strengthSignalValue)
-                      : "—"}
-                  </div>
-		    <div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.4 }}>
-		      Shared normalized Strength Signal. This should match the Performance page exactly.
-                  </div>
-		    <div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.4 }}>
-		      Trend: <b>{strengthSignalTrend.label}</b> • {strengthSignalTrend.detail} • Confidence: <b>{strengthSignalConfidence}</b>
-                  </div>
-                  <div style={{ marginTop: 8 }}>
-                    <Sparkline values={normalizedSeries} />
-                  </div>
-                </div>
 
                 <div className="card" style={{ padding: 12, minWidth: 220, flex: 1, minHeight: 170 }}>
 		                  <div
@@ -517,76 +487,98 @@ export default function StrengthPage() {
               <hr style={{ marginTop: 12 }} />
 
               {/* ===================== Pattern scores ===================== */}
-                            <div
-	                      className="muted"
-	                      style={{
-	                        fontSize: 12,
-	                        fontWeight: 800,
-	                        textTransform: "uppercase",
-	                        letterSpacing: 0.5,
-	                        marginBottom: 8,
-	                      }}
-	                    >
-	                      Pattern Scores
-              </div>
+              <button
+                type="button"
+                className="row"
+                onClick={() => setPatternScoresOpen((open) => !open)}
+                aria-expanded={patternScoresOpen}
+                style={{
+                  width: "100%",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  background: "transparent",
+                  border: 0,
+                  padding: 0,
+                  cursor: "pointer",
+                  marginBottom: patternScoresOpen ? 8 : 0,
+                }}
+              >
+                <div
+                  className="muted"
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  Pattern Scores
+                </div>
+                <div className="muted" style={{ lineHeight: 1 }}>
+                  <CollapseChevron open={patternScoresOpen} />
+                </div>
+              </button>
 
-              <div style={{ display: "grid", gap: 8 }}>
-                {patterns.length ? (
-                  patterns.map((p: any) => (
-                    <div
-                      key={p.pattern as StrengthPattern}
-                      className="card"
-                      style={{ padding: 12 }}
-                    >
+              {patternScoresOpen ? (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {patterns.length ? (
+                    patterns.map((p: any) => (
                       <div
-                        className="row"
-                        style={{
-                          justifyContent: "space-between",
-                          alignItems: "baseline",
-                          gap: 10,
-                        }}
+                        key={p.pattern as StrengthPattern}
+                        className="card"
+                        style={{ padding: 12 }}
                       >
                         <div
+                          className="row"
                           style={{
-                            fontWeight: 900,
-                            textTransform: "capitalize",
+                            justifyContent: "space-between",
+                            alignItems: "baseline",
+                            gap: 10,
                           }}
                         >
-                          {p.pattern}
-                        </div>
-                        <div className="muted" style={{ fontSize: 12 }}>
-                          abs: <b>{Number.isFinite(Number(p.absolute)) ? fmt0(p.absolute) : "—"}</b>
-                          {"  "}•{"  "}
-                          rel: <b>{Number.isFinite(Number(p.relative)) ? fmt2(p.relative) : "—"}</b>
+                          <div
+                            style={{
+                              fontWeight: 900,
+                              textTransform: "capitalize",
+                            }}
+                          >
+                            {p.pattern}
+                          </div>
+                          <div className="muted" style={{ fontSize: 12 }}>
+                            abs: <b>{Number.isFinite(Number(p.absolute)) ? fmt0(p.absolute) : "—"}</b>
+                            {"  "}•{"  "}
+                            rel: <b>{Number.isFinite(Number(p.relative)) ? fmt2(p.relative) : "—"}</b>
+                          </div>
                         </div>
                       </div>
+                    ))
+                  ) : (
+                    <div className="muted">
+                      No pattern scores yet. Log completed working sets across your main lift patterns to build this section.
                     </div>
-                  ))
-                ) : (
-		    <div className="muted">
-		      No pattern scores yet. Log completed working sets across your main lift patterns to build this section.
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              ) : null}
 
               <hr style={{ marginTop: 12 }} />
 
-	    {/* ===================== Relative strength chart ===================== */}
-	                  <div
-	                    className="muted"
-	                    style={{
-	                      fontSize: 12,
-	                      fontWeight: 800,
-	                      textTransform: "uppercase",
-	                      letterSpacing: 0.5,
-	                      marginBottom: 6,
-	                    }}
-	                  >
-	                    Relative Strength Trend
+
+    {/* ===================== Relative strength chart ===================== */}
+                  <div
+                    className="muted"
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                      marginBottom: 6,
+                    }}
+                  >
+                    Relative Strength Trend
               </div>
               
-	    <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-	      Weekly snapshots of bodyweight-normalized strength across your recent training history.
+    <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+      Weekly snapshots of bodyweight-normalized strength across your recent training history.
               </div>
 
               <TrendChartCard
@@ -613,127 +605,149 @@ export default function StrengthPage() {
               <hr style={{ marginTop: 12 }} />
 
               {/* ===================== Trend table ===================== */}
-              
-                            <div
-	                      className="muted"
-	                      style={{
-	                        fontSize: 12,
-	                        fontWeight: 800,
-	                        textTransform: "uppercase",
-	                        letterSpacing: 0.5,
-	                        marginBottom: 6,
-	                      }}
-	                    >
-	                      Trend (Last 12 Weeks)
-              </div>
-		    <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-		     Weekly snapshots using the same Strength Signal rules. During a cut, Relative Strength is the primary signal.
-              </div>
+              <button
+                type="button"
+                className="row"
+                onClick={() => setTrendTableOpen((open) => !open)}
+                aria-expanded={trendTableOpen}
+                style={{
+                  width: "100%",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  background: "transparent",
+                  border: 0,
+                  padding: 0,
+                  cursor: "pointer",
+                  marginBottom: trendTableOpen ? 6 : 0,
+                }}
+              >
+                <div
+                  className="muted"
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  Trend (Last 12 Weeks)
+                </div>
+                <div className="muted" style={{ lineHeight: 1 }}>
+                  <CollapseChevron open={trendTableOpen} />
+                </div>
+              </button>
+              {trendTableOpen ? (
+                <>
+                  <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+                    Weekly snapshots using the same Strength Signal rules. During a cut, Relative Strength is the primary signal.
+                  </div>
 
-              <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ textAlign: "left" }}>
-                      <th
-                        style={{
-                          padding: "10px 12px",
-                          borderBottom: "1px solid var(--line)",
-                        }}
-                      >
-                        Week
-                      </th>
-                      <th
-                        style={{
-                          padding: "10px 12px",
-                          borderBottom: "1px solid var(--line)",
-                        }}
-                      >
-                        BW (avg)
-                      </th>
-                      <th
-                        style={{
-                          padding: "10px 12px",
-                          borderBottom: "1px solid var(--line)",
-                        }}
-                      >
-                        Rel
-                      </th>
-                      <th
-                        style={{
-                          padding: "10px 12px",
-                          borderBottom: "1px solid var(--line)",
-                        }}
-                      >
-                        Abs
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {trendSorted.length ? (
-                      trendSorted.map((r) => (
-                        <tr key={r.weekEndMs}>
-                          <td
+                  <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr style={{ textAlign: "left" }}>
+                          <th
                             style={{
                               padding: "10px 12px",
                               borderBottom: "1px solid var(--line)",
                             }}
                           >
-                            {r.label}
-                          </td>
-                          <td
+                            Week
+                          </th>
+                          <th
                             style={{
                               padding: "10px 12px",
                               borderBottom: "1px solid var(--line)",
                             }}
                           >
-                            {Number.isFinite(r.bodyweight) ? fmt1(r.bodyweight) : "—"}
-                            <span
-                              className="muted"
-                              style={{ marginLeft: 6, fontSize: 12 }}
-                            >
-                              {r.bodyweightDaysUsed ? `(n=${r.bodyweightDaysUsed})` : ""}
-                            </span>
-                          </td>
-                          <td
+                            BW (avg)
+                          </th>
+                          <th
                             style={{
                               padding: "10px 12px",
                               borderBottom: "1px solid var(--line)",
                             }}
                           >
-                            {Number.isFinite(r.relativeIndex)
-                              ? fmt2(r.relativeIndex)
-                              : "—"}
-                          </td>
-                          <td
+                            Rel
+                          </th>
+                          <th
                             style={{
                               padding: "10px 12px",
                               borderBottom: "1px solid var(--line)",
                             }}
                           >
-                            {Number.isFinite(r.absoluteIndex)
-                              ? fmt0(r.absoluteIndex)
-                              : "—"}
-                          </td>
+                            Abs
+                          </th>
                         </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td
-                          className="muted"
-                          style={{ padding: "10px 12px" }}
-                          colSpan={4}
-                        >
-                          No trend data yet.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                      </thead>
+                      <tbody>
+                        {trendSorted.length ? (
+                          trendSorted.map((r) => (
+                            <tr key={r.weekEndMs}>
+                              <td
+                                style={{
+                                  padding: "10px 12px",
+                                  borderBottom: "1px solid var(--line)",
+                                }}
+                              >
+                                {r.label}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "10px 12px",
+                                  borderBottom: "1px solid var(--line)",
+                                }}
+                              >
+                                {Number.isFinite(r.bodyweight) ? fmt1(r.bodyweight) : "—"}
+                                <span
+                                  className="muted"
+                                  style={{ marginLeft: 6, fontSize: 12 }}
+                                >
+                                  {r.bodyweightDaysUsed ? `(n=${r.bodyweightDaysUsed})` : ""}
+                                </span>
+                              </td>
+                              <td
+                                style={{
+                                  padding: "10px 12px",
+                                  borderBottom: "1px solid var(--line)",
+                                }}
+                              >
+                                {Number.isFinite(r.relativeIndex)
+                                  ? fmt2(r.relativeIndex)
+                                  : "—"}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "10px 12px",
+                                  borderBottom: "1px solid var(--line)",
+                                }}
+                              >
+                                {Number.isFinite(r.absoluteIndex)
+                                  ? fmt0(r.absoluteIndex)
+                                  : "—"}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td
+                              className="muted"
+                              style={{ padding: "10px 12px" }}
+                              colSpan={4}
+                            >
+                              No trend data yet.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
 
-		    <div className="muted" style={{ marginTop: 10, fontSize: 12, lineHeight: 1.45 }}>
-		      Tip: During a cut, watch <b>Relative Strength</b> first. If it stays stable while bodyweight trends down, you are likely preserving strength well.
-              </div>
+                  <div className="muted" style={{ marginTop: 10, fontSize: 12, lineHeight: 1.45 }}>
+                    Tip: During a cut, watch <b>Relative Strength</b> first. If it stays stable while bodyweight trends down, you are likely preserving strength well.
+                  </div>
+                </>
+              ) : null}
             </>
           )}
         </div>
@@ -745,3 +759,5 @@ export default function StrengthPage() {
 /* ========================================================================== */
 /*  End of file: src/pages/StrengthPage.tsx                                   */
 /* ========================================================================== */
+
+

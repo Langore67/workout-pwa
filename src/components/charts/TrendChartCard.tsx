@@ -211,6 +211,7 @@ export default function TrendChartCard({
   hideHeaderBadge = false,
   hideWindowSummary = false,
   hideDeltaSummary = false,
+  compactMetaLineText,
   valueFormatter,
   xLabelFormatter,
   tooltipLabelFormatter,
@@ -428,6 +429,7 @@ export default function TrendChartCard({
     : "";
 
   const compactMetaLine = (() => {
+    if (typeof compactMetaLineText === "string") return compactMetaLineText;
     if (!isSingleSeries || !data?.length) return "";
   
     const first = data[0]?.value;
