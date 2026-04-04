@@ -84,6 +84,9 @@ export type TrendChartCardProps = {
   /* hide the auto delta summary row */
   hideDeltaSummary?: boolean;
 
+  /* optional single-series helper line above the stat row */
+  compactMetaLineText?: string;
+
   valueFormatter?: (
     value: number | null | undefined,
     seriesKey?: string

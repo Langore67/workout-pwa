@@ -70,6 +70,19 @@ export type StrengthTrendRow = {
   normalizedIndex: number; // preferred relative trend
 };
 
+export type StrengthHeroMeta = {
+  value: number | null;
+  trendLabel: "Rising" | "Stable" | "Falling" | "Building";
+  trendDetail: string;
+  confidence: "High" | "Moderate" | "Low";
+};
+
+export type StrengthSnapshot = {
+  result: StrengthIndexResult;
+  trend: StrengthTrendRow[];
+  heroMeta: StrengthHeroMeta;
+};
+
 /* -------------------------------------------------------------------------- */
 /* Breadcrumb 2 — Constants / tuning knobs                                    */
 /* -------------------------------------------------------------------------- */
@@ -214,6 +227,50 @@ function avgTopN(values: number[], n: number) {
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
+}
+
+export function buildStrengthHeroMeta(
+  result: StrengthIndexResult | null | undefined,
+  trendRows: StrengthTrendRow[] | null | undefined,
+): StrengthHeroMeta {
+  const valueRaw = Number(result?.normalizedIndex);
+  const value = Number.isFinite(valueRaw) ? valueRaw : null;
+
+  const sorted = (trendRows ?? [])
+    .filter((row) => Number.isFinite(Number(row?.weekEndMs)))
+    .slice()
+    .sort((a, b) => Number(b.weekEndMs) - Number(a.weekEndMs));
+
+  const latestValue = Number(sorted[0]?.normalizedIndex);
+  const priorValue = Number(sorted[1]?.normalizedIndex);
+
+  let trendLabel: StrengthHeroMeta["trendLabel"] = "Building";
+  let trendDetail = "Need at least 2 weekly points";
+
+  if (Number.isFinite(latestValue) && Number.isFinite(priorValue)) {
+    const delta = latestValue - priorValue;
+    trendLabel = delta >= 0.05 ? "Rising" : delta <= -0.03 ? "Falling" : "Stable";
+    trendDetail = `${delta > 0 ? "+" : ""}${delta.toFixed(2)} vs prior week`;
+  }
+
+  const weeksLoaded = sorted.filter((row) =>
+    Number.isFinite(Number(row?.normalizedIndex)),
+  ).length;
+  const bwDaysUsed = Number(result?.bodyweightDaysUsed ?? 0);
+
+  const confidence: StrengthHeroMeta["confidence"] =
+    weeksLoaded >= 8 && bwDaysUsed >= 3
+      ? "High"
+      : weeksLoaded >= 4
+        ? "Moderate"
+        : "Low";
+
+  return {
+    value,
+    trendLabel,
+    trendDetail,
+    confidence,
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -612,6 +669,22 @@ export async function computeStrengthTrend(weeks = 12, windowDays = 28): Promise
 
   rows.sort((a, b) => b.weekEndMs - a.weekEndMs);
   return rows;
+}
+
+export async function computeStrengthSnapshot(
+  weeks = 12,
+  windowDays = 28,
+): Promise<StrengthSnapshot> {
+  const [result, trend] = await Promise.all([
+    computeStrengthIndex(windowDays),
+    computeStrengthTrend(weeks, windowDays),
+  ]);
+
+  return {
+    result,
+    trend,
+    heroMeta: buildStrengthHeroMeta(result, trend),
+  };
 }
 
 /* ========================================================================== */
