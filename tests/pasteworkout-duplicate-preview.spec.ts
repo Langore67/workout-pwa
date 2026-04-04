@@ -222,7 +222,7 @@ test("Paste Workout REVIEW requires acknowledgment before creating likely duplic
   expect(dbState.importedExercise?.name).toBe("Dumbbell Bench Press");
 });
 
-test("Paste Workout import preserves weighted IF set fields for assisted and per-side lines", async ({
+test("Paste Workout preview and import preserve per-set weight semantics", async ({
   page,
 }) => {
   await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
@@ -255,19 +255,16 @@ work 25x2@1
 work 25 x 2 @ 1
 
 Assisted Pull Up
-work 42x2 @3
 work -25 x 2 @ 1
-work 42x10 @3
-work 42x10 @2
-work 42x6 @2
-work -65x10@2.5
-work -65 x 10 @ 2.5
+work 25 x 10 @ 2
+work BW x 12 @ 10
 
 Standing DB Lateral Raise
 work 10x15/side @2`);
   await page.getByRole("button", { name: "Parse Preview" }).click();
   await expect(page.getByText(/work .* -25 x 2 @1/i)).toBeVisible();
-  await expect(page.getByText(/work .* -65 x 10 @2\.5/i)).toHaveCount(2);
+  await expect(page.getByText(/work .* 25 x 10 @2/i)).toBeVisible();
+  await expect(page.getByText(/work .* BW x 12 @10/i)).toBeVisible();
   await page.getByLabel(/Dry run/i).uncheck();
   await page.getByRole("button", { name: "Import Now" }).click();
 
@@ -326,13 +323,6 @@ work 10x15/side @2`);
     },
     {
       trackName: "Assisted Pull Up",
-      weight: -42,
-      reps: 2,
-      rir: 3,
-      notes: null,
-    },
-    {
-      trackName: "Assisted Pull Up",
       weight: -25,
       reps: 2,
       rir: 1,
@@ -340,37 +330,16 @@ work 10x15/side @2`);
     },
     {
       trackName: "Assisted Pull Up",
-      weight: -42,
       reps: 10,
-      rir: 3,
-      notes: null,
-    },
-    {
-      trackName: "Assisted Pull Up",
-      weight: -42,
-      reps: 10,
+      weight: 25,
       rir: 2,
       notes: null,
     },
     {
       trackName: "Assisted Pull Up",
-      weight: -42,
-      reps: 6,
-      rir: 2,
-      notes: null,
-    },
-    {
-      trackName: "Assisted Pull Up",
-      weight: -65,
-      reps: 10,
-      rir: 2.5,
-      notes: null,
-    },
-    {
-      trackName: "Assisted Pull Up",
-      weight: -65,
-      reps: 10,
-      rir: 2.5,
+      weight: 0,
+      reps: 12,
+      rir: 10,
       notes: null,
     },
     {

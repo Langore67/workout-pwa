@@ -88,7 +88,6 @@ import {
   inferTrackingModeFromExerciseName,
   inferTrackingModeFromSetSignals,
 } from "../domain/trackingMode";
-import { isExplicitlyAssistedBodyweightExerciseName } from "../strength/Strength";
 
 /* ============================================================================
    Breadcrumb 1 — Types
@@ -1230,13 +1229,6 @@ export default function PasteWorkoutPage() {
     for (const ex of importableExercises) {
       const track = trackByDisplay.get(normalizeName(ex.exercise));
       if (!track) continue;
-      const normalizeImportedWeight = (weight: number | undefined) => {
-        if (weight === undefined || !Number.isFinite(weight)) return undefined;
-        if (isExplicitlyAssistedBodyweightExerciseName(ex.exercise)) {
-          return -Math.abs(weight);
-        }
-        return weight;
-      };
 
       sessionItemsToAdd.push({
         id: uuid(),
@@ -1259,7 +1251,7 @@ export default function PasteWorkoutPage() {
         const parsedHasFiniteReps =
           set.reps !== undefined &&
           Number.isFinite(set.reps);
-        const persistedWeight = normalizeImportedWeight(set.weight);
+        const persistedWeight = set.weight;
         // Preserve valid parsed weighted-rep lines even if the resolved track
         // mode is stale or mis-inferred during import.
         const shouldPersistParsedWeightedRepFields =
