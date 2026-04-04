@@ -233,10 +233,45 @@ export default function StrengthPage() {
     [trendSorted],
   );
 
+  const normalizedSeries = useMemo(
+    () => trendSorted.map((r) => (Number.isFinite(r.normalizedIndex) ? r.normalizedIndex : null)),
+    [trendSorted],
+  );
+
   const absSeries = useMemo(
     () => trendSorted.map((r) => (Number.isFinite(r.absoluteIndex) ? r.absoluteIndex : null)),
     [trendSorted],
   );
+
+  const strengthSignalValue = useMemo(() => {
+    const value = result?.normalizedIndex;
+    return Number.isFinite(Number(value)) ? Number(value) : null;
+  }, [result]);
+
+  const strengthSignalTrend = useMemo(() => {
+    const latestValue = Number(trendSorted[0]?.normalizedIndex);
+    const priorValue = Number(trendSorted[1]?.normalizedIndex);
+
+    if (!Number.isFinite(latestValue) || !Number.isFinite(priorValue)) {
+      return { label: "Building", detail: "Need at least 2 weekly points" };
+    }
+
+    const delta = latestValue - priorValue;
+    const direction = delta >= 0.05 ? "Rising" : delta <= -0.03 ? "Falling" : "Stable";
+    return {
+      label: direction,
+      detail: `${delta > 0 ? "+" : ""}${delta.toFixed(2)} vs prior week`,
+    };
+  }, [trendSorted]);
+
+  const strengthSignalConfidence = useMemo(() => {
+    const weeksLoaded = trend.filter((r) => Number.isFinite(Number(r?.normalizedIndex))).length;
+    const bwDaysUsed = Number(result?.bodyweightDaysUsed ?? 0);
+
+    if (weeksLoaded >= 8 && bwDaysUsed >= 3) return "High";
+    if (weeksLoaded >= 4) return "Moderate";
+    return "Low";
+  }, [trend, result]);
 
   const relativeChartData: ChartDatum[] = useMemo(
     () =>
@@ -434,18 +469,21 @@ export default function StrengthPage() {
 			letterSpacing: 0.5,
 		      }}
 		    >
-		      Relative Strength
+		      Strength Signal
                   </div>
                   <div style={{ fontWeight: 900, fontSize: 22, marginTop: 6 }}>
-                    {Number.isFinite(Number(result.relativeIndex))
-                      ? fmt2(result.relativeIndex)
+                    {strengthSignalValue != null
+                      ? fmt2(strengthSignalValue)
                       : "—"}
                   </div>
 		    <div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.4 }}>
-		      Bodyweight-normalized signal. This is the primary metric to watch during a cut.
+		      Shared normalized Strength Signal. This should match the Performance page exactly.
+                  </div>
+		    <div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.4 }}>
+		      Trend: <b>{strengthSignalTrend.label}</b> • {strengthSignalTrend.detail} • Confidence: <b>{strengthSignalConfidence}</b>
                   </div>
                   <div style={{ marginTop: 8 }}>
-                    <Sparkline values={relSeries} />
+                    <Sparkline values={normalizedSeries} />
                   </div>
                 </div>
 
