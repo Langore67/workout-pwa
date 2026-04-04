@@ -602,15 +602,15 @@ function formatParsedSetPreview(set: ParsedSet): string {
     return `${prefix}${String(set.notes || "").trim() || "—"}`;
   }
 
-  const hasPositiveWeight =
+  const hasNumericWeight =
     typeof set.weight === "number" &&
     Number.isFinite(set.weight) &&
-    set.weight > 0;
+    !set.isBodyweight;
 
   const isTimeOnly =
-    set.seconds !== undefined && !hasPositiveWeight;
+    set.seconds !== undefined && !hasNumericWeight;
 
-  const loadLabel = hasPositiveWeight ? String(set.weight) : "BW";
+  const loadLabel = hasNumericWeight ? String(set.weight) : "BW";
 
   const base = isTimeOnly
     ? previewDurationToken(set.seconds as number)

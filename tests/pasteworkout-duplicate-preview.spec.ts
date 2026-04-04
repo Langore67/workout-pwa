@@ -256,6 +256,7 @@ work 25 x 2 @ 1
 
 Assisted Pull Up
 work 42x2 @3
+work -25 x 2 @ 1
 work 42x10 @3
 work 42x10 @2
 work 42x6 @2
@@ -265,6 +266,8 @@ work -65 x 10 @ 2.5
 Standing DB Lateral Raise
 work 10x15/side @2`);
   await page.getByRole("button", { name: "Parse Preview" }).click();
+  await expect(page.getByText(/work .* -25 x 2 @1/i)).toBeVisible();
+  await expect(page.getByText(/work .* -65 x 10 @2\.5/i)).toHaveCount(2);
   await page.getByLabel(/Dry run/i).uncheck();
   await page.getByRole("button", { name: "Import Now" }).click();
 
@@ -326,6 +329,13 @@ work 10x15/side @2`);
       weight: -42,
       reps: 2,
       rir: 3,
+      notes: null,
+    },
+    {
+      trackName: "Assisted Pull Up",
+      weight: -25,
+      reps: 2,
+      rir: 1,
       notes: null,
     },
     {
