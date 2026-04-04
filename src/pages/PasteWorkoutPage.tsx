@@ -440,8 +440,15 @@ function previewDurationToken(seconds: number): string {
   return `${seconds}s`;
 }
 
+function normalizeSetLineForParsing(line: string): string {
+  return line
+    .trim()
+    .replace(/\s*x\s*/gi, "x")
+    .replace(/\s*@\s*/g, "@");
+}
+
 function parseSetLine(line: string): ParsedSet | null {
-  const trimmed = line.trim();
+  const trimmed = normalizeSetLineForParsing(line);
   if (!trimmed) return null;
 
   const cardioMatch = trimmed.match(/^(cardio)\s+(.+)$/i);
@@ -457,7 +464,7 @@ function parseSetLine(line: string): ParsedSet | null {
      Breadcrumb — Standard weighted / BW / bar sets
      --------------------------------------------------------------------- */
   const standardMatch = trimmed.match(
-    /^(warmup|work|technique|test)\s+(BW|Bar|-?\d+(?:\.\d+)?)x(\d+)(s)?(?:\/(side))?(?:\s+@(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+    /^(warmup|work|technique|test)\s+(BW|Bar|-?\d+(?:\.\d+)?)x(\d+)(s)?(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
   );
 
   if (standardMatch) {
@@ -492,7 +499,7 @@ function parseSetLine(line: string): ParsedSet | null {
      Breadcrumb — Distance sets
      --------------------------------------------------------------------- */
   const distanceMatch = trimmed.match(
-    /^(warmup|work|technique|test)\s+(BW|Bar|-?\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(m|meter|meters|ft|yd)(?:\/(side))?(?:\s+@(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+    /^(warmup|work|technique|test)\s+(BW|Bar|-?\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(m|meter|meters|ft|yd)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
   );
 
   if (distanceMatch) {
@@ -529,7 +536,7 @@ function parseSetLine(line: string): ParsedSet | null {
      Breadcrumb — Time-only sets
      --------------------------------------------------------------------- */
     const timeOnlyMatch = trimmed.match(
-      /^(warmup|work|technique|test)\s+(\d+(?:\.\d+)?)(s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours)(?:\/(side))?(?:\s+@(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+      /^(warmup|work|technique|test)\s+(\d+(?:\.\d+)?)(s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
     );
   
     if (timeOnlyMatch) {
@@ -561,7 +568,7 @@ function parseSetLine(line: string): ParsedSet | null {
      - work x12 @3
      --------------------------------------------------------------------- */
   const repsOnlyNoLoadMatch = trimmed.match(
-    /^(warmup|work|technique|test)\s+x(\d+)(?:\/(side))?(?:\s+@(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+    /^(warmup|work|technique|test)\s+x(\d+)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
   );
 
   if (repsOnlyNoLoadMatch) {
