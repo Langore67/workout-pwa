@@ -369,6 +369,31 @@ export default function StrengthPage() {
             <div className="muted">No data yet (log some completed working sets).</div>
           ) : (
             <>
+              <div className="card" style={{ padding: 16, marginBottom: 12 }}>
+                <div
+                  className="muted"
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                    marginBottom: 6,
+                  }}
+                >
+                  Strength Signal
+                </div>
+
+                <div style={{ fontWeight: 900, fontSize: 34, lineHeight: 1 }}>
+                  {Number.isFinite(Number(result?.normalizedIndex))
+                    ? fmt2(result?.normalizedIndex)
+                    : "—"}
+                </div>
+
+                <div className="muted" style={{ marginTop: 8, lineHeight: 1.45 }}>
+                  Shared normalized signal using completed working sets and rolling bodyweight normalization over the last <b>{windowDays}</b> days.
+                </div>
+              </div>
+
               {/* ===================== Dashboard ===================== */}
 	      <div
 		className="muted"
@@ -459,6 +484,7 @@ export default function StrengthPage() {
                   </div>
                 </div>
 
+<<<<<<< HEAD
                 <div className="card" style={{ padding: 12, minWidth: 220, flex: 1, minHeight:170 }}>
 		    <div
 		      className="muted"
@@ -486,6 +512,8 @@ export default function StrengthPage() {
                     <Sparkline values={normalizedSeries} />
                   </div>
                 </div>
+=======
+>>>>>>> 2a8840d (feat: promote Strength Signal to hero card on Strength page)
 
                 <div className="card" style={{ padding: 12, minWidth: 220, flex: 1, minHeight: 170 }}>
 		                  <div
