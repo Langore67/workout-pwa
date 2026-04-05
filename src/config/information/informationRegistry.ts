@@ -13,6 +13,59 @@
 import type { InformationRegistry } from "./informationTypes";
 
 export const informationRegistry = {
+    strength: {
+      strengthSignal: {
+        title: "Strength Signal",
+        ownerPage: "StrengthPage",
+        ownerComponent: "Strength Signal hero and methodology copy",
+        status: "reviewed",
+        lastReviewedBuild: "2026-04-05-INFO-SS-01",
+        lastReviewedAt: "2026-04-05",
+
+        summary:
+          "Strength Signal is IronForge's primary strength trend metric. It blends recent training performance across squat, hinge, push, and pull patterns into one bodyweight-aware signal.",
+
+        whyItMatters:
+          "One lift or one workout can swing from fatigue, exercise selection, or normal session noise. Strength Signal uses a broader composite so trend interpretation is more stable and easier to compare over time.",
+
+        howItWorks:
+          "The engine scores completed working sets across the four main movement patterns, builds a blended strength composite for each pattern, then averages the four pattern buckets into one primary trend metric. Relative Strength remains available as a secondary linear bodyweight comparison, but it is not the canonical Strength Signal.",
+
+        howItsCalculated:
+          "Strength Signal uses Epley-based estimated 1RM values from completed working sets inside a rolling 28-day training window. High-rep sets above 12 reps are excluded from scored e1RM because they are less reliable for estimating maximal strength. Each pattern blends top-set strength, best working-set strength, and exposure, then applies allometric normalization using bodyweight raised to the 0.67 power (BW^0.67). Weekly trend points are snapshots built from overlapping 28-day windows.",
+
+        howToUseIt:
+          "Use Strength Signal as the primary strength trend readout. Compare the current value with recent weekly direction, confidence, and context from bodyweight trend. Relative Strength can still help as a secondary comparison lens, but the main product trend should follow Strength Signal.",
+
+        interpretation: [
+          "Stable or rising Strength Signal usually supports a favorable interpretation, especially when bodyweight is moving in the intended direction.",
+          "Strength Signal is a blended training-performance indicator, not a direct lab measure of force production or muscle mass.",
+          "Missing movement patterns can depress the composite because the system averages across four pattern buckets.",
+        ],
+
+        technicalNotes: [
+          "Formula label: Blended strength signal.",
+          "e1RM method: Epley.",
+          "Rep cap: 12 scored reps.",
+          "Normalization: Allometric (BW^0.67).",
+          "Trend method: Weekly snapshots from overlapping 28-day windows.",
+          "Confidence note: Requires bodyweight data for full confidence.",
+          "Caveat note: Composite averages across four movement pattern buckets.",
+          "BW^0.67 is a practical, literature-backed convention for bodyweight normalization, not a universal constant.",
+        ],
+
+        improveConfidence: [
+          "Log bodyweight consistently so normalization has real body data.",
+          "Train enough of squat, hinge, push, and pull patterns to avoid a thin composite.",
+          "Interpret short-term weekly moves cautiously because each point uses an overlapping 28-day window.",
+        ],
+
+        notes: [
+          "Review this entry whenever Strength Signal formula details, normalization rules, rep caps, trend windows, or user-facing interpretation change.",
+        ],
+      },
+    },
+
     mps: {
       currentStatus: {
         title: "Current Status",

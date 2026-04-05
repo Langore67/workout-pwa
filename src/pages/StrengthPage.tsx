@@ -174,12 +174,12 @@ function saveMode(m: Mode) {
 
 function modeHint(mode: Mode) {
   if (mode === "cut") {
-    return "Cut: Relative Strength is the main signal because it accounts for bodyweight changes.";
+    return "Cut: Strength Signal is the primary trend metric. Relative Strength stays useful as a secondary comparison against bodyweight change.";
   }
   if (mode === "bulk") {
-    return "Bulk: Absolute Strength often rises first, while Relative Strength may lag as bodyweight increases.";
+    return "Bulk: Strength Signal is the primary trend metric. Absolute Strength often rises first, while Relative Strength can lag as bodyweight increases.";
   }
-  return "Maintain: Look for stable-to-rising strength signals and consistency across squat, hinge, push, and pull.";
+  return "Maintain: Look for stable-to-rising Strength Signal and consistency across squat, hinge, push, and pull patterns.";
 }
 
 /* ========================================================================== */
@@ -276,8 +276,9 @@ export default function StrengthPage() {
 	            </div>
 	  
 	            <div className="muted" style={{ marginTop: 8, fontSize: 13, lineHeight: 1.45 }}>
-	              Relative Strength is the main signal during a cut. Absolute Strength helps show
-	              raw lifting progress, especially during maintain and bulk phases.
+	              Strength Signal is IronForge&apos;s primary strength trend metric. It blends
+	              squat, hinge, push, and pull performance, uses allometric normalization
+	              (BW^0.67), and keeps Relative Strength as a secondary comparison lens.
 	            </div>
 	  
           <hr style={{ marginTop: 12 }} />
@@ -330,7 +331,8 @@ export default function StrengthPage() {
                 </div>
 
                 <div className="muted" style={{ marginTop: 8, lineHeight: 1.45 }}>
-                  Shared normalized signal using completed working sets and rolling bodyweight normalization over the last <b>{windowDays}</b> days.
+                  Primary blended strength trend using Epley-based e1RM scoring, allometric
+                  normalization (BW^0.67), and weekly snapshots from overlapping <b>{windowDays}</b>-day windows.
                 </div>
 
                 <div
@@ -639,7 +641,7 @@ export default function StrengthPage() {
               {trendTableOpen ? (
                 <>
                   <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-                    Weekly snapshots using the same Strength Signal rules. During a cut, Relative Strength is the primary signal.
+                    Weekly snapshots using the same Strength Signal rules. Relative Strength remains a secondary linear bodyweight comparison.
                   </div>
 
                   <div className="card" style={{ padding: 0, overflow: "hidden" }}>
@@ -744,7 +746,7 @@ export default function StrengthPage() {
                   </div>
 
                   <div className="muted" style={{ marginTop: 10, fontSize: 12, lineHeight: 1.45 }}>
-                    Tip: During a cut, watch <b>Relative Strength</b> first. If it stays stable while bodyweight trends down, you are likely preserving strength well.
+                    Tip: Watch <b>Strength Signal</b> first for the primary blended trend. Use <b>Relative Strength</b> as a secondary comparison when bodyweight is changing quickly.
                   </div>
                 </>
               ) : null}
