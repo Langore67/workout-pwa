@@ -210,9 +210,12 @@ export default function AboutPage() {
             <div className="card">
               <div style={{ fontWeight: 700, marginBottom: 6 }}>Strength Signal</div>
               <div className="muted" style={{ fontSize: 14, lineHeight: 1.5 }}>
-                Strength analysis is built from recent training performance, combining top
-                sets, working sets, and exposure into a broader signal instead of relying on
-                one lift or one workout alone.
+                Strength Signal is IronForge&apos;s primary strength trend metric. It blends
+                Epley-based e1RM estimates from completed working sets across squat, hinge,
+                push, and pull patterns, excludes scored sets above 12 reps, applies
+                allometric normalization with BW^0.67, and trends weekly snapshots from
+                overlapping 28-day windows. It is a blended training-performance indicator,
+                not a direct lab measure of force or muscle mass.
               </div>
             </div>
 
