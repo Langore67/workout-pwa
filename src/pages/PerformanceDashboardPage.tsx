@@ -56,6 +56,10 @@ import {
 } from "../strength/Strength";
 import { classifyStrengthPattern } from "../domain/exercises/strengthPatternClassifier";
 import {
+  buildExerciseResolverIndex,
+  resolveExerciseFromIndex,
+} from "../domain/exercises/exerciseResolver";
+import {
   buildPhaseQualityInputsFromBodyRows,
   computeStrengthDeltaFromStrengthTrend,
   evaluatePhaseQuality,
@@ -821,6 +825,7 @@ function buildPatternExerciseContributors(
 
   const trackById = new Map((source.tracks ?? []).map((track) => [track.id, track]));
   const exerciseById = new Map((source.exercises ?? []).map((exercise) => [exercise.id, exercise]));
+  const resolverIndex = buildExerciseResolverIndex(source.exercises ?? []);
 
   const contributors = new Map<
     string,
@@ -846,10 +851,27 @@ function buildPatternExerciseContributors(
     const exerciseName = String(
       exercise?.name ?? track.displayName ?? exercise?.normalizedName ?? ""
     ).trim();
+    const resolvedExercise = resolveExerciseFromIndex(
+      {
+        rawName: exerciseName || track.displayName || "",
+        allowAlias: true,
+        followMerged: true,
+      },
+      resolverIndex
+    );
+    const canonicalExercise =
+      resolvedExercise.canonicalExercise ?? resolvedExercise.exercise ?? exercise ?? null;
+    const canonicalLabel = String(
+      canonicalExercise?.name ??
+        canonicalExercise?.normalizedName ??
+        exerciseName ??
+        track.displayName ??
+        "Unknown Exercise"
+    ).trim();
     const movement = classifyStrengthPattern({
-      exerciseId: track.exerciseId,
-      exercise: exercise ?? null,
-      exerciseName,
+      exerciseId: canonicalExercise?.id ?? track.exerciseId,
+      exercise: canonicalExercise ?? null,
+      exerciseName: canonicalLabel,
       trackDisplayName: track.displayName,
     });
     if (!movement) continue;
@@ -858,11 +880,11 @@ function buildPatternExerciseContributors(
     const scored = computeScoredE1RM(effectiveWeight, set.reps);
     if (!Number.isFinite(scored) || scored <= 0) continue;
 
-    const contributorKey = String(track.exerciseId);
+    const contributorKey = String(canonicalExercise?.id ?? track.exerciseId);
     const current =
       contributors.get(contributorKey) ??
       ({
-        label: exerciseName || track.displayName || "Unknown Exercise",
+        label: canonicalLabel,
         movement,
         top: 0,
         working: [],

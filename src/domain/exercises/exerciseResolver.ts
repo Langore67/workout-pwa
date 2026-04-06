@@ -1,4 +1,8 @@
 import { db, normalizeName, type Exercise } from "../../db";
+import {
+  getCanonicalExerciseNormalizedName,
+  isMappedExerciseAlias,
+} from "./exerciseAliasMap";
 
 export type ExerciseResolutionStatus =
   | "exact"
@@ -261,6 +265,30 @@ export function resolveExerciseFromIndex(
 
   if (!normalizedInput) {
     return buildNotFound(inputName, normalizedInput, ["Exercise name is empty after normalization."]);
+  }
+
+  if (allowAlias && isMappedExerciseAlias(normalizedInput)) {
+    const canonicalNormalized = getCanonicalExerciseNormalizedName(normalizedInput);
+    const mappedRows = canonicalNormalized
+      ? uniqueExercises(index.activeByNormalizedName.get(canonicalNormalized))
+      : [];
+
+    if (mappedRows.length === 1) {
+      return {
+        status: "alias",
+        source: "alias",
+        inputName,
+        normalizedInput,
+        exercise: mappedRows[0],
+        canonicalExercise: mappedRows[0],
+        matchedAlias: inputName,
+        warnings: [],
+      };
+    }
+
+    if (mappedRows.length > 1) {
+      return buildAmbiguous(inputName, normalizedInput, "alias", mappedRows);
+    }
   }
 
   const exact = resolveBucket(

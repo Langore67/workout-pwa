@@ -262,6 +262,82 @@ async function seedPerformanceExplicitClassificationMetadata(page: Page) {
   });
 }
 
+async function seedPerformanceCanonicalAliasContributor(page: Page) {
+  return await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const uuid = () => crypto.randomUUID();
+
+    const canonicalId = uuid();
+    const aliasId = uuid();
+    const trackId = uuid();
+    const sessionId = uuid();
+
+    await db.exercises.bulkAdd([
+      {
+        id: canonicalId,
+        name: "Dumbbell Bench Press",
+        normalizedName: "dumbbell bench press",
+        aliases: [],
+        equipmentTags: ["dumbbell"],
+        createdAt: now - 20 * dayMs,
+      },
+      {
+        id: aliasId,
+        name: "DB Bench Press",
+        normalizedName: "db bench press",
+        aliases: [],
+        equipmentTags: ["dumbbell"],
+        createdAt: now - 20 * dayMs,
+      },
+    ]);
+
+    await db.bodyMetrics.add({
+      id: uuid(),
+      weightLb: 185,
+      measuredAt: now - 1 * dayMs,
+      takenAt: now - 1 * dayMs,
+      createdAt: now - 1 * dayMs,
+    });
+
+    await db.tracks.add({
+      id: trackId,
+      exerciseId: aliasId,
+      trackType: "hypertrophy",
+      displayName: "DB Bench Press",
+      trackingMode: "weightedReps",
+      warmupSetsDefault: 0,
+      workingSetsDefault: 3,
+      repMin: 8,
+      repMax: 12,
+      restSecondsDefault: 120,
+      weightJumpDefault: 5,
+      createdAt: now - 20 * dayMs,
+    });
+
+    await db.sessions.add({
+      id: sessionId,
+      startedAt: now - 5 * dayMs,
+      endedAt: now - 5 * dayMs + 45 * 60 * 1000,
+    });
+
+    await db.sets.add({
+      id: uuid(),
+      sessionId,
+      trackId,
+      setType: "working",
+      weight: 85,
+      reps: 8,
+      completedAt: now - 5 * dayMs + 5 * 60 * 1000,
+      createdAt: now - 5 * dayMs + 5 * 60 * 1000,
+    });
+  });
+}
+
 test.describe("Performance bodyweight timing", () => {
   test.beforeEach(async ({ page }) => {
     await goto(page, "/");
@@ -322,5 +398,18 @@ test.describe("Performance bodyweight timing", () => {
     await page.getByRole("button", { name: "Squat" }).click();
     const movementBreakdown = page.locator(".card").filter({ hasText: "Movement Breakdown" }).first();
     await expect(movementBreakdown).toContainText("Leg Press", { timeout: 15000 });
+  });
+
+  test("uses canonical exercise identity for mapped aliases in contributors", async ({ page }) => {
+    await seedPerformanceCanonicalAliasContributor(page);
+
+    await goto(page, "/performance");
+    await expect(page.getByText("Movement Breakdown")).toBeVisible({ timeout: 15000 });
+
+    await page.getByRole("button", { name: "Push" }).click();
+
+    const movementBreakdown = page.locator(".card").filter({ hasText: "Movement Breakdown" }).first();
+    await expect(movementBreakdown).toContainText("Dumbbell Bench Press", { timeout: 15000 });
+    await expect(movementBreakdown).not.toContainText("DB Bench Press");
   });
 });

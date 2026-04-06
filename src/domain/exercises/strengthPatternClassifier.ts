@@ -1,4 +1,5 @@
 import { normalizeName, type Exercise } from "../../db";
+import { getCanonicalExerciseNormalizedName } from "./exerciseAliasMap";
 
 export type StrengthPattern = "squat" | "hinge" | "push" | "pull";
 
@@ -35,7 +36,7 @@ const STRENGTH_PATTERN_NAME_METADATA: Record<string, StrengthPattern> = {
 };
 
 function normalizePatternKey(value: string | undefined): string {
-  return normalizeName(String(value ?? ""));
+  return getCanonicalExerciseNormalizedName(String(value ?? "")) ?? "";
 }
 
 function resolveStrengthPatternFromMetadata(
