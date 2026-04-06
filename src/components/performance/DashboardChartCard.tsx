@@ -264,7 +264,7 @@ function StrengthMovementBreakdown({
                     marginBottom: 8,
                   }}
                 >
-                  Included exercises
+                  Included signals
                 </div>
 
                 <div

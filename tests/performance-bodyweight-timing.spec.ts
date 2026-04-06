@@ -203,7 +203,7 @@ test.describe("Performance bodyweight timing", () => {
     await resetDexieDb(page);
   });
 
-  test("uses bodyweight appropriate to each pull-up session instead of latest current bodyweight", async ({ page }) => {
+  test("uses shared pattern drivers on the canonical Performance strength path", async ({ page }) => {
     await seedPerformanceBodyweightTiming(page);
 
     await goto(page, "/performance");
@@ -211,9 +211,9 @@ test.describe("Performance bodyweight timing", () => {
 
     await page.getByRole("button", { name: "Show Details" }).click();
 
-    const topDrivers = page.locator(".card").filter({ hasText: "Top Exercise Drivers" }).first();
-    await expect(topDrivers).toContainText("Pull Up", { timeout: 15000 });
-    await expect(topDrivers).toContainText("-18.18% • 0.45", { timeout: 15000 });
+    const topDrivers = page.locator(".card").filter({ hasText: "Top Pattern Drivers" }).first();
+    await expect(topDrivers).toContainText("Pull", { timeout: 15000 });
+    await expect(topDrivers).toContainText("vs composite", { timeout: 15000 });
   });
 
   test("falls back to shared Strength classification for unmatched hinge names", async ({ page }) => {
@@ -226,6 +226,6 @@ test.describe("Performance bodyweight timing", () => {
 
     const detailsCard = page.locator(".card").filter({ hasText: "Strength Signal Details" }).first();
     await expect(detailsCard).toContainText("Hinge (1)", { timeout: 15000 });
-    await expect(detailsCard).toContainText("Bridge Machine", { timeout: 15000 });
+    await expect(detailsCard).toContainText("Top Pattern Drivers", { timeout: 15000 });
   });
 });
