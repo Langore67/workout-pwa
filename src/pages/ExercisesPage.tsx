@@ -33,7 +33,13 @@ import { uuid } from "../utils";
 import { Page, Section } from "../components/Page.tsx";
 import { seedExercises } from "../seed/seedExercises";
 import { CoachingPanel } from "../components/CoachingPanel";
-import { bodyweightFromRowsAt, calcEffectiveStrengthWeightLb, computeE1RM } from "../strength/Strength";
+import {
+  bodyweightFromRowsAt,
+  calcEffectiveStrengthWeightLb,
+  computeE1RM,
+  isBodyweightEffectiveLoadExerciseName,
+  isExplicitlyAssistedBodyweightExerciseName,
+} from "../strength/Strength";
 import {
   buildExerciseDuplicateEvidenceRows,
   classifyExerciseDuplicateRows,
@@ -540,6 +546,8 @@ function useExercisePerformance(exerciseId?: string) {
         let bestReps: number | undefined;
         let bestE1rm: number | undefined;
         let bestSetLabel: string | undefined;
+        let usedBodyweightEffective = false;
+        let usedAssisted = false;
         const sessionAt =
           (typeof s.endedAt === "number" && Number.isFinite(s.endedAt) ? s.endedAt : undefined) ??
           (typeof s.startedAt === "number" && Number.isFinite(s.startedAt) ? s.startedAt : undefined);
@@ -548,6 +556,12 @@ function useExercisePerformance(exerciseId?: string) {
         for (const se of nonWarmup) {
           const track = trackById.get(se.trackId);
           const weightEntryContextName = [exercise?.name, track?.displayName].filter(Boolean).join(" ").trim();
+          if (isBodyweightEffectiveLoadExerciseName(weightEntryContextName)) {
+            usedBodyweightEffective = true;
+          }
+          if (isExplicitlyAssistedBodyweightExerciseName(weightEntryContextName)) {
+            usedAssisted = true;
+          }
           const w = calcEffectiveStrengthWeightLb(
             Number(se.weight),
             weightEntryContextName,
@@ -581,6 +595,8 @@ function useExercisePerformance(exerciseId?: string) {
           maxReps: bestReps,
           bestE1rm,
           bestSetLabel,
+          usedBodyweightEffective,
+          usedAssisted,
         };
       });
 
@@ -786,7 +802,21 @@ function ExerciseDetailsModal({
             <div className="card" style={{ padding: 12 }}>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
                 <div style={{ fontWeight: 900 }}>Recent sessions</div>
-                <div className="muted" style={{ fontSize: 12 }}>{perf.sessionCount ? `${perf.sessionCount} total` : "—"}</div>
+                <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    {perf.sessionCount ? `${perf.sessionCount} total` : "—"}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() =>
+                      copyTextToClipboard(buildExerciseHistoryExportText(exercise, perf))
+                    }
+                    title="Copy recent exercise history for coach handoff"
+                  >
+                    Copy Export
+                  </button>
+                </div>
               </div>
 
               <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>Completed sessions only (endedAt + completed sets).</div>
@@ -936,6 +966,67 @@ function buildClipboardText(e: Exercise, patchPreview?: any) {
     lines.push("Video:");
     lines.push(videoUrl);
     lines.push("");
+  }
+
+  return lines.join("\n").trim() + "\n";
+}
+
+function buildExerciseHistoryExportText(
+  exercise: Exercise,
+  perf: ReturnType<typeof useExercisePerformance>
+) {
+  const metricMode: MetricMode = normalizeMetricMode((exercise as any).metricMode);
+  const rows = (perf.historyRows ?? []).slice(0, 8);
+  const generatedAt = new Date().toLocaleString();
+  const usesBodyweightEffective =
+    isBodyweightEffectiveLoadExerciseName(exercise.name) ||
+    rows.some((row: any) => row.usedBodyweightEffective);
+  const usesAssisted = rows.some((row: any) => row.usedAssisted);
+
+  const lines: string[] = [];
+  lines.push("IronForge Exercise Export");
+  lines.push(`Exercise: ${exercise.name}`);
+  lines.push(`Metric: ${prettyMetricLabel(metricMode)}`);
+  lines.push(`Generated: ${generatedAt}`);
+
+  if (usesBodyweightEffective) {
+    lines.push(
+      usesAssisted
+        ? "Note: Bodyweight-aware effective load is used here. Assisted sets subtract assistance from bodyweight; weighted sets add external load."
+        : "Note: Bodyweight-aware effective load is used here. Weighted/bodyweight sets are shown as effective load for coach interpretation."
+    );
+  }
+
+  lines.push("");
+  lines.push("Recent completed sessions:");
+
+  if (!rows.length) {
+    lines.push("- No completed history yet for this exercise.");
+    return lines.join("\n").trim() + "\n";
+  }
+
+  for (const row of rows) {
+    const fields: string[] = [];
+    if (row.bestSetLabel) {
+      fields.push(
+        `${usesBodyweightEffective ? "Best set (effective load)" : "Best set"}: ${row.bestSetLabel}`
+      );
+    }
+    if (Number.isFinite(row.bestE1rm)) {
+      fields.push(`e1RM: ${Math.round(row.bestE1rm)}`);
+    }
+    if (Number.isFinite(row.totalVolume)) {
+      fields.push(`Volume: ${Math.round(row.totalVolume)}`);
+    }
+    if (Number.isFinite(row.maxReps)) {
+      fields.push(`Max reps: ${row.maxReps}`);
+    }
+
+    const headerBits = [row.dateLabel, row.templateName].filter(Boolean);
+    lines.push(`- ${headerBits.join(" • ") || "Session"}`);
+    if (fields.length) {
+      lines.push(`  ${fields.join(" • ")}`);
+    }
   }
 
   return lines.join("\n").trim() + "\n";
