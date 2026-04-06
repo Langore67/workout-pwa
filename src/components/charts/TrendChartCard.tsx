@@ -673,64 +673,15 @@ export default function TrendChartCard({
 
       {data.length > safeWindowSize ? (
         paneNavigationMode === "movingPane" ? (
-        <>
-        <ChartViewportSlider
-          totalCount={data.length}
-          windowSize={safeWindowSize}
-          startIndex={windowStartIndex}
-          onStartIndexChange={setWindowStartIndex}
-          ariaLabel={`${title} viewport`}
-        />
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2" style={{ display: "none" }}>
-          <div className="text-xs text-[var(--muted)]">
-            Showing {windowStartIndex + 1}–{currentWindowEndIndex + 1} of {totalCount}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              aria-label="Show older pane"
-              onClick={() =>
-                setWindowStartIndex((prev) =>
-                  getOlderPaneStartIndex(prev, data.length, safeWindowSize)
-                )
-              }
-              disabled={!canPageOlder}
-              className="inline-flex h-8 items-center justify-center rounded-full border border-[var(--line)] px-3 text-xs font-medium text-[var(--text)] transition hover:bg-[var(--bg)] disabled:opacity-35 disabled:hover:bg-transparent"
-            >
-              Older
-            </button>
-
-            <button
-              type="button"
-              aria-label="Show newer pane"
-              onClick={() =>
-                setWindowStartIndex((prev) =>
-                  getNewerPaneStartIndex(prev, data.length, safeWindowSize)
-                )
-              }
-              disabled={!canPageNewer}
-              className="inline-flex h-8 items-center justify-center rounded-full border border-[var(--line)] px-3 text-xs font-medium text-[var(--text)] transition hover:bg-[var(--bg)] disabled:opacity-35 disabled:hover:bg-transparent"
-            >
-              Newer
-            </button>
-
-            <button
-              type="button"
-              aria-label="Jump to latest pane"
-              onClick={() =>
-                setWindowStartIndex(getLatestPaneStartIndex(data.length, safeWindowSize))
-              }
-              disabled={!canPageNewer}
-              className="inline-flex h-8 items-center justify-center rounded-full border border-[var(--line)] px-3 text-xs font-medium text-[var(--text)] transition hover:bg-[var(--bg)] disabled:opacity-35 disabled:hover:bg-transparent"
-            >
-              Latest
-            </button>
-          </div>
-        </div>
-        </>
+          <ChartViewportSlider
+            totalCount={data.length}
+            windowSize={safeWindowSize}
+            startIndex={windowStartIndex}
+            onStartIndexChange={setWindowStartIndex}
+            ariaLabel={`${title} viewport`}
+          />
         ) : (
-        <div className="mt-2 flex items-center justify-end gap-2">
+          <div className="mt-2 flex items-center justify-end gap-2">
           <button
             type="button"
             aria-label="Show older data"
@@ -758,7 +709,7 @@ export default function TrendChartCard({
           >
             ›
           </button>
-        </div>
+          </div>
         )
       ) : null}
     </div>
@@ -769,3 +720,4 @@ export default function TrendChartCard({
    FOOTER COMMENT
    FILE: src/components/charts/TrendChartCard.tsx
    ============================================================== */
+
