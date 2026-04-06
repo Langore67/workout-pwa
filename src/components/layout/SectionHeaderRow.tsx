@@ -16,15 +16,25 @@
 
 import React from "react";
 import InfoStubButton from "../information/InfoStubButton";
+import { informationRegistry } from "../../config/information/informationRegistry";
 
 type SectionHeaderRowProps = {
   title: string;
+  infoPageKey?: keyof typeof informationRegistry;
   infoKey?: string;
+  infoContext?: {
+    waistEntryCount?: number;
+    waistTargetCount?: number;
+    waistEntriesNeeded?: number;
+    confidenceLabel?: string;
+  };
 };
 
 export default function SectionHeaderRow({
   title,
+  infoPageKey,
   infoKey,
+  infoContext,
 }: SectionHeaderRowProps) {
   return (
     <div
@@ -46,7 +56,13 @@ export default function SectionHeaderRow({
         {title}
       </div>
 
-      {infoKey ? <InfoStubButton infoKey={infoKey} /> : null}
+      {infoKey ? (
+        <InfoStubButton
+          pageKey={infoPageKey}
+          infoKey={infoKey}
+          context={infoContext}
+        />
+      ) : null}
     </div>
   );
 }

@@ -45,6 +45,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { db } from "../db";
 import ProgressPageHeader from "../components/layout/ProgressPageHeader";
 import SectionHeaderRow from "../components/layout/SectionHeaderRow";
+import InfoStubButton from "../components/information/InfoStubButton";
 import { computeStrengthTrend } from "../strength/Strength";
 import {
   pickTime as sharedPickTime,
@@ -117,17 +118,6 @@ type MpsModel = {
    ============================================================================ */
 
 const HEIGHT_META_KEY = "profile.heightIn";
-
-const MPS_INFO_KEYS = {
-  coreSignal: "core_signal",
-} as const;
-
-const MPS_INFO_CONTENT = {
-  [MPS_INFO_KEYS.coreSignal]: {
-    title: "Core Signal",
-    body: "Explains the main muscle-preservation signal and how the key MPS metrics are interpreted.",
-  },
-} as const;
 
 function fmtNum(n?: number, digits = 1) {
   if (!Number.isFinite(n)) return "—";
@@ -912,7 +902,7 @@ export default function MpsPage() {
     /* ==========================================================================
        Breadcrumb 6AA — Local-only page state
        --------------------------------------------------------------------------
-       Information framework removed for local compatibility.
+       Information modals now use the shared registry-driven framework.
      ========================================================================= */
 
   useEffect(() => {
@@ -1042,7 +1032,16 @@ export default function MpsPage() {
                   Current Status
                 </div>
       
-               {null}
+               <InfoStubButton
+                 pageKey="mps"
+                 infoKey="currentStatus"
+                 context={{
+                   waistEntryCount: model?.waistEntryCount,
+                   waistTargetCount: model?.waistTargetCount,
+                   waistEntriesNeeded: model?.waistEntriesNeeded,
+                   confidenceLabel: model?.confidenceLabel,
+                 }}
+               />
               </div>
       
               <div style={{ marginTop: 6 }}>
@@ -1316,7 +1315,11 @@ export default function MpsPage() {
 	             Breadcrumb 6G — Interpretation
 	            ==================================================================== */}
 	         <div className="card" style={{ padding: 12, marginBottom: 16 }}>
-  <SectionHeaderRow title="INTERPRETATION" />
+	         <SectionHeaderRow
+	           title="INTERPRETATION"
+	           infoPageKey="mps"
+	           infoKey="normalizedStrength"
+	         />
 
   <div className="muted" style={{ lineHeight: 1.55 }}>
     This signal uses a dual-anchor model. The 14-day comparison acts as the short-term
