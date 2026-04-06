@@ -15,6 +15,23 @@ const STRENGTH_PATTERN_EXERCISE_ID_METADATA: Record<string, StrengthPattern> = {
 
 const STRENGTH_PATTERN_NAME_METADATA: Record<string, StrengthPattern> = {
   "bridge machine": "hinge",
+  "pull up": "pull",
+  "assisted pull up": "pull",
+  "chin up": "pull",
+  "assisted chin up": "pull",
+  "lat pulldown": "pull",
+  "lat pull down": "pull",
+  "barbell row": "pull",
+  "seated cable row": "pull",
+  "chest supported row": "pull",
+  "chest-supported row": "pull",
+  "barbell bench press": "push",
+  "dumbbell bench press": "push",
+  "incline dumbbell bench press": "push",
+  "romanian deadlift": "hinge",
+  "deadlift": "hinge",
+  "leg press": "squat",
+  "hack squat": "squat",
 };
 
 function normalizePatternKey(value: string | undefined): string {

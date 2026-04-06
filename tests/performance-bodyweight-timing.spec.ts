@@ -197,6 +197,71 @@ async function seedPerformanceSharedClassificationFallback(page: Page) {
   });
 }
 
+async function seedPerformanceExplicitClassificationMetadata(page: Page) {
+  return await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const uuid = () => crypto.randomUUID();
+
+    const exerciseId = uuid();
+    const trackId = uuid();
+    const sessionId = uuid();
+
+    await db.exercises.add({
+      id: exerciseId,
+      name: "Leg Press",
+      equipment: "Machine",
+      category: "Machine",
+      equipmentTags: ["machine"],
+      createdAt: now - 14 * dayMs,
+    });
+
+    await db.bodyMetrics.add({
+      id: uuid(),
+      weightLb: 190,
+      measuredAt: now - 1 * dayMs,
+      takenAt: now - 1 * dayMs,
+      createdAt: now - 1 * dayMs,
+    });
+
+    await db.tracks.add({
+      id: trackId,
+      exerciseId,
+      trackType: "hypertrophy",
+      displayName: "Leg Press",
+      trackingMode: "weightedReps",
+      warmupSetsDefault: 0,
+      workingSetsDefault: 3,
+      repMin: 8,
+      repMax: 12,
+      restSecondsDefault: 120,
+      weightJumpDefault: 10,
+      createdAt: now - 14 * dayMs,
+    });
+
+    await db.sessions.add({
+      id: sessionId,
+      startedAt: now - 6 * dayMs,
+      endedAt: now - 6 * dayMs + 45 * 60 * 1000,
+    });
+
+    await db.sets.add({
+      id: uuid(),
+      sessionId,
+      trackId,
+      setType: "working",
+      weight: 360,
+      reps: 10,
+      completedAt: now - 6 * dayMs + 5 * 60 * 1000,
+      createdAt: now - 6 * dayMs + 5 * 60 * 1000,
+    });
+  });
+}
+
 test.describe("Performance bodyweight timing", () => {
   test.beforeEach(async ({ page }) => {
     await goto(page, "/");
@@ -241,5 +306,21 @@ test.describe("Performance bodyweight timing", () => {
     const detailsCard = page.locator(".card").filter({ hasText: "Strength Signal Details" }).first();
     await expect(detailsCard).toContainText("Hinge (1)", { timeout: 15000 });
     await expect(detailsCard).toContainText("Top Pattern Drivers", { timeout: 15000 });
+  });
+
+  test("uses explicit shared classification metadata for high-impact lifts", async ({ page }) => {
+    await seedPerformanceExplicitClassificationMetadata(page);
+
+    await goto(page, "/performance");
+    await expect(page.getByText("Strength Signal Details")).toBeVisible({ timeout: 15000 });
+
+    await page.getByRole("button", { name: "Show Details" }).click();
+
+    const detailsCard = page.locator(".card").filter({ hasText: "Strength Signal Details" }).first();
+    await expect(detailsCard).toContainText("Squat (1)", { timeout: 15000 });
+
+    await page.getByRole("button", { name: "Squat" }).click();
+    const movementBreakdown = page.locator(".card").filter({ hasText: "Movement Breakdown" }).first();
+    await expect(movementBreakdown).toContainText("Leg Press", { timeout: 15000 });
   });
 });
