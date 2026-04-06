@@ -26,6 +26,10 @@
 /* ========================================================================== */
 
 import { db } from "../db";
+import {
+  classifyStrengthPattern,
+  classifyStrengthPatternFromExerciseName as classifyStrengthPatternFromSharedSource,
+} from "../domain/exercises/strengthPatternClassifier";
 
 /* -------------------------------------------------------------------------- */
 /* Breadcrumb 1 — Types                                                       */
@@ -277,63 +281,8 @@ export function buildStrengthHeroMeta(
 /* Breadcrumb 4 — Pattern classification                                      */
 /* -------------------------------------------------------------------------- */
 
-const EXERCISE_ID_OVERRIDES: Record<string, StrengthPattern> = {
-  // Optional: pin specific UUIDs once you know them.
-};
-
-function norm(s: any): string {
-  return String(s ?? "")
-    .toLowerCase()
-    .replace(/[_\-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function patternFromName(name: string): StrengthPattern | undefined {
-  const n = norm(name);
-
-  if (n.includes("squat") || n.includes("front squat") || n.includes("box squat")) return "squat";
-
-  if (
-    n.includes("deadlift") ||
-    n.includes("rdl") ||
-    n.includes("romanian") ||
-    n.includes("glute bridge") ||
-    n.includes("bridge machine") ||
-    n.includes("hip thrust") ||
-    n.includes("good morning") ||
-    n.includes("hip hinge")
-  ) {
-    return "hinge";
-  }
-
-  if (
-    (n.includes("bench") || n.includes("press") || n.includes("overhead") || n.includes("incline")) &&
-    !n.includes("leg press")
-  ) {
-    return "push";
-  }
-
-    if (
-      n.includes("row") ||
-      n.includes("pulldown") ||
-      n.includes("pull down") ||
-      n.includes("lat pulldown") ||
-      n.includes("lat pull down") ||
-      n.includes("pullup") ||
-      n.includes("pull-up") ||
-      n.includes("pull up") ||
-      n.includes("chin") ||
-      n.includes("lat pull")
-    ) {
-      return "pull";
-  }
-
-  return undefined;
-}
-
 export function classifyStrengthPatternFromExerciseName(name: string): StrengthPattern | undefined {
-  return patternFromName(name);
+  return classifyStrengthPatternFromSharedSource(name);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -563,12 +512,12 @@ export async function computeStrengthIndexAt(endAtMs: number, windowDays = 28): 
   for (const ex of exercisesArr) if (ex?.id) exerciseById.set(ex.id, ex);
 
   function patternFast(exerciseId: string): StrengthPattern | undefined {
-    const override = EXERCISE_ID_OVERRIDES[exerciseId];
-    if (override) return override;
-  
     const ex = exerciseById.get(exerciseId);
-    const name = ex?.name ?? ex?.displayName ?? ex?.title ?? "";
-    return patternFromName(name);
+    return classifyStrengthPattern({
+      exerciseId,
+      exercise: ex ?? null,
+      exerciseName: ex?.name ?? ex?.displayName ?? ex?.title ?? "",
+    });
   }
 
   /* ------------------------------------------------------------------------ */
