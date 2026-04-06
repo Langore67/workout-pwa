@@ -216,6 +216,20 @@ test.describe("Performance bodyweight timing", () => {
     await expect(topDrivers).toContainText("vs composite", { timeout: 15000 });
   });
 
+  test("shows actual exercise contributors inside expanded movement breakdown rows", async ({ page }) => {
+    await seedPerformanceBodyweightTiming(page);
+
+    await goto(page, "/performance");
+    await expect(page.getByText("Movement Breakdown")).toBeVisible({ timeout: 15000 });
+
+    await page.getByRole("button", { name: "Pull" }).click();
+
+    const movementBreakdown = page.locator(".card").filter({ hasText: "Movement Breakdown" }).first();
+    await expect(movementBreakdown).toContainText("Included exercises", { timeout: 15000 });
+    await expect(movementBreakdown).toContainText("Pull Up", { timeout: 15000 });
+    await expect(movementBreakdown).not.toContainText("Included signals");
+  });
+
   test("falls back to shared Strength classification for unmatched hinge names", async ({ page }) => {
     await seedPerformanceSharedClassificationFallback(page);
 

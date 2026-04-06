@@ -264,7 +264,7 @@ function StrengthMovementBreakdown({
                     marginBottom: 8,
                   }}
                 >
-                  Included signals
+                  Included exercises
                 </div>
 
                 <div
@@ -276,7 +276,10 @@ function StrengthMovementBreakdown({
                 </div>
 
                 <div style={{ display: "grid", gap: 6 }}>
-                  {item.includedExercises.map((exercise) => (
+                  {item.includedExercises
+                    .slice()
+                    .sort((a, b) => b.score - a.score || a.label.localeCompare(b.label))
+                    .map((exercise) => (
                     <div
                       key={exercise.label}
                       className="kv"

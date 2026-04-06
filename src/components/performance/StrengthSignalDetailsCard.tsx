@@ -1,4 +1,5 @@
 import React from "react";
+import InfoStubButton from "../information/InfoStubButton";
 
 function capitalize(value: string) {
   if (!value) return value;
@@ -55,13 +56,22 @@ export default function StrengthSignalDetailsCard({
         }}
       >
         <h3 style={{ margin: 0 }}>Strength Signal Details</h3>
-        <button
-          type="button"
-          className="btn small"
-          onClick={() => setShowDebug((v) => !v)}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
         >
-          {showDebug ? "Hide Details" : "Show Details"}
-        </button>
+          <InfoStubButton pageKey="strength" infoKey="strengthSignal" />
+          <button
+            type="button"
+            className="btn small"
+            onClick={() => setShowDebug((v) => !v)}
+          >
+            {showDebug ? "Hide Details" : "Show Details"}
+          </button>
+        </div>
       </div>
 
       <div className="kv">

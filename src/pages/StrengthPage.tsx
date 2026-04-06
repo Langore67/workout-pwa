@@ -32,6 +32,7 @@ import {
 } from "../strength/Strength";
 import TrendChartCard from "../components/charts/TrendChartCard";
 import { formatTwoDecimals } from "../components/charts/chartFormatters";
+import InfoStubButton from "../components/information/InfoStubButton";
 import { buildStrengthPageViewModel } from "./strength/strengthPageViewModel";
 
 type StrengthPattern = "squat" | "hinge" | "push" | "pull";
@@ -269,7 +270,17 @@ export default function StrengthPage() {
 	              Strength Analytics
 	            </div>
 	  
-	            <div style={{ fontWeight: 900, fontSize: 22 }}>Strength Signal</div>
+	            <div
+	              style={{
+	                display: "flex",
+	                alignItems: "center",
+	                justifyContent: "space-between",
+	                gap: 8,
+	              }}
+	            >
+	              <div style={{ fontWeight: 900, fontSize: 22 }}>Strength Signal</div>
+	              <InfoStubButton pageKey="strength" infoKey="strengthSignal" />
+	            </div>
 	  
 	            <div className="muted" style={{ marginTop: 6, lineHeight: 1.45 }}>
 	              Window: last <b>{windowDays}</b> days • Completed working sets only • e1RM (Epley)

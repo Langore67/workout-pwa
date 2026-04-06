@@ -48,6 +48,9 @@ import PerformanceInsightsSection from "../components/performance/PerformanceIns
 import PerformanceOverviewSection from "../components/performance/PerformanceOverviewSection";
 import PerformanceStrengthSignalSection from "../components/performance/PerformanceStrengthSignalSection";
 import {
+  calcEffectiveStrengthWeightLb,
+  classifyStrengthPatternFromExerciseName,
+  computeScoredE1RM,
   computeStrengthIndex,
   computeStrengthTrend,
   type StrengthTrendRow,
@@ -61,9 +64,11 @@ import {
 import { computeHydrationConfidenceFromBodyRows } from "../body/hydrationConfidence";
 import {
   db,
+  type Exercise,
   type BodyMetricEntry,
   type Session,
   type SetEntry,
+  type Track,
 } from "../db";
 
 /* ============================================================================
@@ -160,6 +165,10 @@ type CompositeSignal = {
   movement: ExerciseSignal["movement"];
   score: number;
   exerciseCount: number;
+  includedExercises: Array<{
+    label: string;
+    score: number;
+  }>;
 };
 
 type StrengthSignalResult = {
@@ -175,6 +184,8 @@ type DbStrengthSource = {
   sessions: Session[];
   sets: SetEntry[];
   bodyMetrics: BodyMetricEntry[];
+  tracks: Track[];
+  exercises: Exercise[];
 };
 
 type DashboardBodySnapshot = {
@@ -733,13 +744,15 @@ function buildVolumeTrend(
    ============================================================================ */
 
 async function loadStrengthSource(): Promise<DbStrengthSource> {
-  const [sessions, sets, bodyMetrics] = await Promise.all([
+  const [sessions, sets, bodyMetrics, tracks, exercises] = await Promise.all([
     db.sessions.toArray(),
     db.sets.toArray(),
     db.bodyMetrics.toArray(),
+    db.tracks.toArray(),
+    db.exercises.toArray(),
   ]);
 
-  return { sessions, sets, bodyMetrics };
+  return { sessions, sets, bodyMetrics, tracks, exercises };
 }
 
 function analyzeStrengthChart(points: Array<{ week: string; value: number }>) {
@@ -770,8 +783,132 @@ function buildMomentumMessage(changePct: number) {
   return "Momentum has dipped recently.";
 }
 
+function avgTopN(values: number[], count: number) {
+  const clean = values
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => b - a)
+    .slice(0, count);
+
+  if (!clean.length) return 0;
+  return clean.reduce((sum, value) => sum + value, 0) / clean.length;
+}
+
+function buildPatternExerciseContributors(
+  source: DbStrengthSource | null,
+  bodyweight: number
+): Record<ExerciseSignal["movement"], Array<{ label: string; score: number }>> {
+  const empty = {
+    squat: [],
+    hinge: [],
+    push: [],
+    pull: [],
+  } satisfies Record<ExerciseSignal["movement"], Array<{ label: string; score: number }>>;
+
+  if (!source) return empty;
+
+  const now = Date.now();
+  const cutoff = now - 28 * DAY_MS;
+  const sessionIds = new Set(
+    (source.sessions ?? [])
+      .filter((session) => {
+        const endedAt = Number(session.endedAt);
+        return Number.isFinite(endedAt) && endedAt >= cutoff && endedAt <= now;
+      })
+      .map((session) => session.id)
+  );
+
+  if (!sessionIds.size) return empty;
+
+  const trackById = new Map((source.tracks ?? []).map((track) => [track.id, track]));
+  const exerciseById = new Map((source.exercises ?? []).map((exercise) => [exercise.id, exercise]));
+
+  const contributors = new Map<
+    string,
+    {
+      label: string;
+      movement: ExerciseSignal["movement"];
+      top: number;
+      working: number[];
+      completedWorkingSets: number;
+    }
+  >();
+
+  for (const set of source.sets ?? []) {
+    if (!sessionIds.has(set.sessionId)) continue;
+    if (set.setType !== "working") continue;
+    if (!set.completedAt || Number(set.completedAt) > now) continue;
+    if (typeof set.weight !== "number" || typeof set.reps !== "number") continue;
+
+    const track = trackById.get(set.trackId);
+    if (!track?.exerciseId) continue;
+
+    const exercise = exerciseById.get(track.exerciseId);
+    const exerciseName = String(
+      exercise?.name ?? track.displayName ?? exercise?.normalizedName ?? ""
+    ).trim();
+    const movement = classifyStrengthPatternFromExerciseName(exerciseName);
+    if (!movement) continue;
+
+    const effectiveWeight = calcEffectiveStrengthWeightLb(set.weight, exerciseName, bodyweight);
+    const scored = computeScoredE1RM(effectiveWeight, set.reps);
+    if (!Number.isFinite(scored) || scored <= 0) continue;
+
+    const contributorKey = String(track.exerciseId);
+    const current =
+      contributors.get(contributorKey) ??
+      ({
+        label: exerciseName || track.displayName || "Unknown Exercise",
+        movement,
+        top: 0,
+        working: [],
+        completedWorkingSets: 0,
+      } satisfies {
+        label: string;
+        movement: ExerciseSignal["movement"];
+        top: number;
+        working: number[];
+        completedWorkingSets: number;
+      });
+
+    current.top = Math.max(current.top, scored);
+    current.working.push(scored);
+    current.completedWorkingSets += 1;
+    contributors.set(contributorKey, current);
+  }
+
+  for (const movement of Object.keys(empty) as Array<ExerciseSignal["movement"]>) {
+    empty[movement] = Array.from(contributors.values())
+      .filter((contributor) => contributor.movement === movement)
+      .map((contributor) => {
+        const working = avgTopN(contributor.working, 3);
+        const exposure = Math.max(
+          0,
+          Math.min(1, contributor.completedWorkingSets / 6)
+        );
+        const absolute =
+          contributor.top * 0.55 +
+          working * 0.3 +
+          contributor.top * exposure * 0.15;
+        const score =
+          Number.isFinite(bodyweight) && bodyweight > 0
+            ? round2(absolute / Math.pow(bodyweight, 0.67))
+            : 0;
+
+        return {
+          label: normalizeExerciseDisplayLabel(contributor.label),
+          score,
+        };
+      })
+      .filter((item) => Number.isFinite(item.score) && item.score > 0)
+      .sort((a, b) => b.score - a.score || a.label.localeCompare(b.label));
+  }
+
+  return empty;
+}
+
 function buildStrengthSignalFromShared(
   phase: DashboardPhase,
+  source: DbStrengthSource | null,
   result: Awaited<ReturnType<typeof computeStrengthIndex>> | null,
   trendRows: StrengthTrendRow[]
 ): StrengthSignalResult {
@@ -787,6 +924,10 @@ function buildStrengthSignalFromShared(
   const scoreRaw =
     result && Number.isFinite(result.normalizedIndex) ? result.normalizedIndex : analysis.current;
   const score = Number.isFinite(scoreRaw) ? round2(scoreRaw) : 0;
+  const patternContributors = buildPatternExerciseContributors(
+    source,
+    Number(result?.bodyweight ?? 0)
+  );
 
   const exerciseSignals = (result?.patterns ?? [])
     .filter((pattern) => Number.isFinite(pattern.normalized))
@@ -809,7 +950,8 @@ function buildStrengthSignalFromShared(
   const composites = exerciseSignals.map((signal) => ({
     movement: signal.movement,
     score: signal.normalizedScore,
-    exerciseCount: 1,
+    exerciseCount: patternContributors[signal.movement].length,
+    includedExercises: patternContributors[signal.movement],
   }));
 
   const summary =
@@ -914,13 +1056,7 @@ function buildDashboardViewModel(
             movement: item.movement,
             score: item.score,
             exerciseCount: item.exerciseCount,
-            includedExercises: strengthSignal.exerciseSignals
-              .filter((signal) => signal.movement === item.movement)
-              .map((signal) => ({
-                label: normalizeExerciseDisplayLabel(signal.label),
-                score: signal.normalizedScore,
-              }))
-              .sort((a, b) => a.label.localeCompare(b.label)),
+            includedExercises: item.includedExercises,
           })),
       },
 
@@ -1187,8 +1323,14 @@ export default function PerformanceDashboardPage() {
   );
 
   const sharedStrengthSignal = useMemo(
-    () => buildStrengthSignalFromShared(activePhase, sharedStrengthResult, sharedStrengthTrend),
-    [activePhase, sharedStrengthResult, sharedStrengthTrend]
+    () =>
+      buildStrengthSignalFromShared(
+        activePhase,
+        dbSource,
+        sharedStrengthResult,
+        sharedStrengthTrend
+      ),
+    [activePhase, dbSource, sharedStrengthResult, sharedStrengthTrend]
   );
 
   const sharedStrengthChartData: ChartDatum[] = useMemo(() => {
