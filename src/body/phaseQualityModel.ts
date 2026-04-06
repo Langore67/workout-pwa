@@ -482,7 +482,7 @@ export function computeStrengthDeltaFromStrengthTrend(
   const sorted = (trend ?? [])
     .slice()
     .filter((row) =>
-      mode === "bulk" ? Number.isFinite(row.absoluteIndex) : Number.isFinite(row.relativeIndex)
+      mode === "bulk" ? Number.isFinite(row.absoluteIndex) : Number.isFinite(row.normalizedIndex)
     )
     .sort((a, b) => a.weekEndMs - b.weekEndMs);
 
@@ -494,14 +494,14 @@ export function computeStrengthDeltaFromStrengthTrend(
       strengthLabel:
         mode === "bulk"
           ? "Absolute strength trend needs more weekly data"
-          : "Relative strength trend needs more weekly data",
+          : "Strength Signal trend needs more weekly data",
     };
   }
 
   const first = recent[0];
   const last = recent[recent.length - 1];
-  const firstValue = mode === "bulk" ? first.absoluteIndex : first.relativeIndex;
-  const lastValue = mode === "bulk" ? last.absoluteIndex : last.relativeIndex;
+  const firstValue = mode === "bulk" ? first.absoluteIndex : first.normalizedIndex;
+  const lastValue = mode === "bulk" ? last.absoluteIndex : last.normalizedIndex;
 
   if (!Number.isFinite(firstValue) || !Number.isFinite(lastValue)) {
     return {
@@ -509,7 +509,7 @@ export function computeStrengthDeltaFromStrengthTrend(
       strengthLabel:
         mode === "bulk"
           ? "Absolute strength trend unavailable"
-          : "Relative strength trend unavailable",
+          : "Strength Signal trend unavailable",
     };
   }
 
@@ -518,7 +518,7 @@ export function computeStrengthDeltaFromStrengthTrend(
     strengthLabel:
       mode === "bulk"
         ? `Using Absolute Strength trend • last ${recent.length} weekly points`
-        : `Using Relative Strength trend • last ${recent.length} weekly points`,
+        : `Using Strength Signal trend • last ${recent.length} weekly points`,
   };
 }
 
