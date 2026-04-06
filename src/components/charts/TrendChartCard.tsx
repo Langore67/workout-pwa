@@ -25,6 +25,13 @@ import {
 } from "recharts";
 
 import ChartTooltipContent from "./ChartTooltipContent";
+import ChartViewportSlider from "./ChartViewportSlider";
+import {
+  getLatestPaneStartIndex,
+  getNewerPaneStartIndex,
+  getOlderPaneStartIndex,
+  getPaneWindow,
+} from "./chartPaneModel";
 import { getPaddedDomain, getSeriesValues } from "./chartDomain";
 import type {
   ChartDatum,
@@ -204,6 +211,7 @@ export default function TrendChartCard({
   xKey = "label",
   height = 280,
   windowSize = 12,
+  paneNavigationMode = "default",
   yDomainMode = "auto",
   showTrendLine = false,
   readoutMode = "auto",
@@ -220,7 +228,9 @@ export default function TrendChartCard({
   const safeWindowSize = Math.max(1, windowSize);
   const safeHeight = Number.isFinite(height) && height > 0 ? height : 280;
 
-    const [windowEndIndex, setWindowEndIndex] = useState(Math.max(0, data.length - 1));
+    const [windowStartIndex, setWindowStartIndex] = useState(
+      getLatestPaneStartIndex(data.length, safeWindowSize)
+    );
     const [hover, setHover] = useState<HoverReadoutState>(EMPTY_HOVER);
     const [hasUserInteracted, setHasUserInteracted] = useState(false);
   
@@ -229,8 +239,8 @@ export default function TrendChartCard({
       const [chartCanRender, setChartCanRender] = useState(false);
 
   useEffect(() => {
-    setWindowEndIndex(data.length ? data.length - 1 : 0);
-  }, [data.length]);
+    setWindowStartIndex(getLatestPaneStartIndex(data.length, safeWindowSize));
+  }, [data.length, safeWindowSize]);
 
   const setHoverSafe = (next: HoverReadoutState) => {
     setHover((prev) => {
@@ -245,11 +255,16 @@ export default function TrendChartCard({
     });
   };
 
-  const windowStartIndex = Math.max(0, windowEndIndex - (safeWindowSize - 1));
+  const paneWindow = useMemo(
+    () => getPaneWindow(windowStartIndex, data.length, safeWindowSize),
+    [windowStartIndex, data.length, safeWindowSize]
+  );
+
+  const currentWindowEndIndex = paneWindow.endIndex;
 
   const visibleData = useMemo(() => {
-    return data.slice(windowStartIndex, windowEndIndex + 1);
-  }, [data, windowStartIndex, windowEndIndex]);
+    return data.slice(windowStartIndex, currentWindowEndIndex + 1);
+  }, [data, windowStartIndex, currentWindowEndIndex]);
   
     useLayoutEffect(() => {
       const node = chartHostRef.current;
@@ -289,19 +304,19 @@ export default function TrendChartCard({
         observer.disconnect();
         if (frameId) window.cancelAnimationFrame(frameId);
       };
-  }, [safeHeight, data.length, windowStartIndex, windowEndIndex]);
+  }, [safeHeight, data.length, windowStartIndex, currentWindowEndIndex]);
   
 
   useEffect(() => {
     setHover(EMPTY_HOVER);
     setHasUserInteracted(false);
-  }, [windowStartIndex, windowEndIndex, data.length]);
+  }, [windowStartIndex, currentWindowEndIndex, data.length]);
 
   const isSingleSeries = series.length === 1;
   const resolvedReadoutMode = resolveReadoutMode(readoutMode, isSingleSeries);
 
   const canPageOlder = windowStartIndex > 0;
-  const canPageNewer = windowEndIndex < data.length - 1;
+  const canPageNewer = currentWindowEndIndex < data.length - 1;
 
   const trendKey = isSingleSeries ? `__trend_${series[0].key}` : "__trend";
 
@@ -394,7 +409,7 @@ export default function TrendChartCard({
 
   const autoWindowBadgeText =
     totalCount > safeWindowSize
-      ? `${visibleCount} pts • ${windowStartIndex + 1}–${windowEndIndex + 1} of ${totalCount}`
+      ? `${visibleCount} pts • ${windowStartIndex + 1}–${currentWindowEndIndex + 1} of ${totalCount}`
       : `${visibleCount} pts`;
 
   const resolvedHeaderBadgeText = headerBadgeText ?? autoWindowBadgeText;
@@ -657,13 +672,71 @@ export default function TrendChartCard({
       </div>
 
       {data.length > safeWindowSize ? (
+        paneNavigationMode === "movingPane" ? (
+        <>
+        <ChartViewportSlider
+          totalCount={data.length}
+          windowSize={safeWindowSize}
+          startIndex={windowStartIndex}
+          onStartIndexChange={setWindowStartIndex}
+          ariaLabel={`${title} viewport`}
+        />
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2" style={{ display: "none" }}>
+          <div className="text-xs text-[var(--muted)]">
+            Showing {windowStartIndex + 1}–{currentWindowEndIndex + 1} of {totalCount}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="Show older pane"
+              onClick={() =>
+                setWindowStartIndex((prev) =>
+                  getOlderPaneStartIndex(prev, data.length, safeWindowSize)
+                )
+              }
+              disabled={!canPageOlder}
+              className="inline-flex h-8 items-center justify-center rounded-full border border-[var(--line)] px-3 text-xs font-medium text-[var(--text)] transition hover:bg-[var(--bg)] disabled:opacity-35 disabled:hover:bg-transparent"
+            >
+              Older
+            </button>
+
+            <button
+              type="button"
+              aria-label="Show newer pane"
+              onClick={() =>
+                setWindowStartIndex((prev) =>
+                  getNewerPaneStartIndex(prev, data.length, safeWindowSize)
+                )
+              }
+              disabled={!canPageNewer}
+              className="inline-flex h-8 items-center justify-center rounded-full border border-[var(--line)] px-3 text-xs font-medium text-[var(--text)] transition hover:bg-[var(--bg)] disabled:opacity-35 disabled:hover:bg-transparent"
+            >
+              Newer
+            </button>
+
+            <button
+              type="button"
+              aria-label="Jump to latest pane"
+              onClick={() =>
+                setWindowStartIndex(getLatestPaneStartIndex(data.length, safeWindowSize))
+              }
+              disabled={!canPageNewer}
+              className="inline-flex h-8 items-center justify-center rounded-full border border-[var(--line)] px-3 text-xs font-medium text-[var(--text)] transition hover:bg-[var(--bg)] disabled:opacity-35 disabled:hover:bg-transparent"
+            >
+              Latest
+            </button>
+          </div>
+        </div>
+        </>
+        ) : (
         <div className="mt-2 flex items-center justify-end gap-2">
           <button
             type="button"
             aria-label="Show older data"
             onClick={() =>
-              setWindowEndIndex((prev) =>
-                Math.max(safeWindowSize - 1, prev - safeWindowSize)
+              setWindowStartIndex((prev) =>
+                getOlderPaneStartIndex(prev, data.length, safeWindowSize)
               )
             }
             disabled={!canPageOlder}
@@ -676,8 +749,8 @@ export default function TrendChartCard({
             type="button"
             aria-label="Show newer data"
             onClick={() =>
-              setWindowEndIndex((prev) =>
-                Math.min(data.length - 1, prev + safeWindowSize)
+              setWindowStartIndex((prev) =>
+                getNewerPaneStartIndex(prev, data.length, safeWindowSize)
               )
             }
             disabled={!canPageNewer}
@@ -686,6 +759,7 @@ export default function TrendChartCard({
             ›
           </button>
         </div>
+        )
       ) : null}
     </div>
   );

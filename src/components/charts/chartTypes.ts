@@ -51,6 +51,7 @@ export type YDomainMode = "auto" | "tight" | "zeroBased";
 export type ReadoutMode = "auto" | "statRow" | "tooltipOnly" | "none";
 
 export type HeaderBadgeMode = "auto" | "hidden";
+export type PaneNavigationMode = "default" | "movingPane";
 
 export type TrendChartCardProps = {
   title: string;
@@ -61,8 +62,11 @@ export type TrendChartCardProps = {
   xKey?: string;
   height?: number;
 
-  /* number of visible points in paged mode */
+  /* number of visible points in the chart viewport */
   windowSize?: number;
+
+  /* opt-in shared draggable viewport navigation */
+  paneNavigationMode?: PaneNavigationMode;
 
   yDomainMode?: YDomainMode;
 

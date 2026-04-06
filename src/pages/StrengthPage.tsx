@@ -362,6 +362,8 @@ export default function StrengthPage() {
                 subtitle="Weekly snapshots of normalized strength signal"
                 data={strengthSignalChartData}
                 series={strengthSignalSeries}
+            windowSize={6}
+            paneNavigationMode="movingPane"
                 valueFormatter={formatTwoDecimals}
                 showTrendLine={true}
                 readoutMode="statRow"
