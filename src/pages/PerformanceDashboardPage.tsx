@@ -49,12 +49,12 @@ import PerformanceOverviewSection from "../components/performance/PerformanceOve
 import PerformanceStrengthSignalSection from "../components/performance/PerformanceStrengthSignalSection";
 import {
   calcEffectiveStrengthWeightLb,
-  classifyStrengthPatternFromExerciseName,
   computeScoredE1RM,
   computeStrengthIndex,
   computeStrengthTrend,
   type StrengthTrendRow,
 } from "../strength/Strength";
+import { classifyStrengthPattern } from "../domain/exercises/strengthPatternClassifier";
 import {
   buildPhaseQualityInputsFromBodyRows,
   computeStrengthDeltaFromStrengthTrend,
@@ -846,7 +846,12 @@ function buildPatternExerciseContributors(
     const exerciseName = String(
       exercise?.name ?? track.displayName ?? exercise?.normalizedName ?? ""
     ).trim();
-    const movement = classifyStrengthPatternFromExerciseName(exerciseName);
+    const movement = classifyStrengthPattern({
+      exerciseId: track.exerciseId,
+      exercise: exercise ?? null,
+      exerciseName,
+      trackDisplayName: track.displayName,
+    });
     if (!movement) continue;
 
     const effectiveWeight = calcEffectiveStrengthWeightLb(set.weight, exerciseName, bodyweight);
