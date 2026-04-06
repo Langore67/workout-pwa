@@ -46,6 +46,7 @@ import { db } from "../db";
 import ProgressPageHeader from "../components/layout/ProgressPageHeader";
 import SectionHeaderRow from "../components/layout/SectionHeaderRow";
 import InfoStubButton from "../components/information/InfoStubButton";
+import { getInformationEntry } from "../config/information/getInformationEntry";
 import { computeStrengthTrend } from "../strength/Strength";
 import {
   pickTime as sharedPickTime,
@@ -898,6 +899,14 @@ function MetricCard({
 export default function MpsPage() {
   const [loading, setLoading] = useState(true);
   const [model, setModel] = useState<MpsModel | null>(null);
+  const normalizedStrengthInfo = useMemo(
+    () => getInformationEntry("mps", "normalizedStrength"),
+    []
+  );
+  const strengthSignalInfo = useMemo(
+    () => getInformationEntry("strength", "strengthSignal"),
+    []
+  );
 
     /* ==========================================================================
        Breadcrumb 6AA — Local-only page state
@@ -991,6 +1000,25 @@ export default function MpsPage() {
   }, []);
 
   const theme = useMemo(() => stateTheme(model?.state ?? "partial"), [model?.state]);
+  const interpretationParagraphs = useMemo(() => {
+    const paragraphs: string[] = [];
+
+    if (normalizedStrengthInfo?.howToUseIt) {
+      paragraphs.push(normalizedStrengthInfo.howToUseIt);
+    }
+
+    if (strengthSignalInfo?.howItWorks) {
+      paragraphs.push(
+        `MPS uses the same shared Strength Signal foundation as the rest of IronForge: ${strengthSignalInfo.howItWorks}`
+      );
+    }
+
+    paragraphs.push(
+      "On MPS, the current normalized value is compared to a 14-day anchor for the short-term coaching signal, while the 90-day best acts as a reserve check. Waist is the main short-term body confirmation signal, and lean mass, body fat, and waist-to-height ratio remain supporting context."
+    );
+
+    return paragraphs;
+  }, [normalizedStrengthInfo, strengthSignalInfo]);
 
   return (
     <div className="container">
@@ -1321,12 +1349,13 @@ export default function MpsPage() {
 	           infoKey="normalizedStrength"
 	         />
 
-  <div className="muted" style={{ lineHeight: 1.55 }}>
-    This signal uses a dual-anchor model. The 14-day comparison acts as the short-term
-    coaching signal, while the 90-day best normalized strength acts as a reserve check.
-    Waist is the main short-term body confirmation signal. Lean mass and body-fat trends
-    provide supporting context, and waist-to-height ratio serves as a slower structural
-    indicator.
+  <div
+    className="muted"
+    style={{ display: "grid", gap: 10, lineHeight: 1.55 }}
+  >
+    {interpretationParagraphs.map((paragraph) => (
+      <div key={paragraph}>{paragraph}</div>
+    ))}
   </div>
 </div>	   
 	               {null}
