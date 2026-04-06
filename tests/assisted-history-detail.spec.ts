@@ -115,4 +115,70 @@ test.describe("assisted history and session detail", () => {
     await expect(page.getByText(/e1RM:\s*184/i)).toBeVisible({ timeout: 15000 });
     await expect(page.getByText(/Volume:\s*1380/i)).toBeVisible({ timeout: 15000 });
   });
+
+  test("exercise history copy export formats assisted bodyweight context clearly", async ({
+    page,
+    context,
+  }) => {
+    await seedAssistedHistorySession(page);
+    let useClipboardStub = false;
+    try {
+      await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+        origin: BASE_URL,
+      });
+    } catch {
+      useClipboardStub = true;
+    }
+
+    await goto(page, "/exercises");
+    if (useClipboardStub) {
+      await page.evaluate(() => {
+        const clipboardState = { lastText: "" };
+        // @ts-ignore
+        window.__copiedText = clipboardState;
+        const clipboard = {
+          writeText: async (text: string) => {
+            clipboardState.lastText = text;
+          },
+        };
+        Object.defineProperty(navigator, "clipboard", {
+          value: clipboard,
+          configurable: true,
+        });
+        /*
+         * No readText needed in the app path for this test; the copied value is
+         * read back from window.__copiedText when the shim is active.
+         */
+        Object.defineProperty(navigator.clipboard, "writeText", {
+          value: async (text: string) => {
+            clipboardState.lastText = text;
+          },
+          configurable: true,
+        });
+      });
+    }
+    await page.getByRole("button", { name: /Pull Up/i }).first().click();
+    await expect(page.getByText("Recent sessions")).toBeVisible({ timeout: 15000 });
+
+    page.on("dialog", async (dialog) => {
+      await dialog.dismiss();
+    });
+
+    await page.getByRole("button", { name: "Copy Export" }).click();
+
+    const copiedText = await page.evaluate(async (useStub) => {
+      if (useStub) {
+        // @ts-ignore
+        return window.__copiedText?.lastText ?? "";
+      }
+      return await navigator.clipboard.readText();
+    }, useClipboardStub);
+
+    expect(copiedText).toContain("IronForge Exercise Export");
+    expect(copiedText).toContain("Exercise: Pull Up");
+    expect(copiedText).toContain("Best set (effective load): 138 x 10");
+    expect(copiedText).toContain(
+      "Assisted sets subtract assistance from bodyweight"
+    );
+  });
 });
