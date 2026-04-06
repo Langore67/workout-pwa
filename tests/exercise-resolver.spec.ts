@@ -411,3 +411,64 @@ test("appendExerciseAlias persists a remembered alias that shared resolver respe
     matchedAlias: "Dumbbell Bench Press",
   });
 });
+
+test("shared alias map resolves high-confidence aliases to canonical exercises", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  const result = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const now = Date.now();
+    const canonicalId = crypto.randomUUID();
+    const aliasRowId = crypto.randomUUID();
+
+    await db.exercises.bulkAdd([
+      {
+        id: canonicalId,
+        name: "Dumbbell Bench Press",
+        normalizedName: "dumbbell bench press",
+        aliases: [],
+        equipmentTags: ["dumbbell"],
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: aliasRowId,
+        name: "DB Bench Press",
+        normalizedName: "db bench press",
+        aliases: [],
+        equipmentTags: ["dumbbell"],
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+
+    const { buildExerciseResolverIndex, resolveExerciseFromIndex } = await import(
+      "/src/domain/exercises/exerciseResolver.ts"
+    );
+
+    const resolution = resolveExerciseFromIndex(
+      { rawName: "DB Bench Press", allowAlias: true, followMerged: true },
+      buildExerciseResolverIndex(await db.exercises.toArray())
+    );
+
+    return {
+      status: resolution.status,
+      source: resolution.source,
+      name: resolution.exercise?.name ?? null,
+      canonical: resolution.canonicalExercise?.name ?? null,
+      matchedAlias: resolution.matchedAlias ?? null,
+    };
+  });
+
+  expect(result).toEqual({
+    status: "alias",
+    source: "alias",
+    name: "Dumbbell Bench Press",
+    canonical: "Dumbbell Bench Press",
+    matchedAlias: "DB Bench Press",
+  });
+});
