@@ -80,7 +80,7 @@ export default function StrengthSignalDetailsCard({
       </div>
 
       <div className="kv" style={{ marginTop: 8 }}>
-        <span>Exercises Included</span>
+        <span>Pattern Drivers Loaded</span>
         <span style={{ color: "var(--text)", fontWeight: 700 }}>{exercisesIncluded}</span>
       </div>
 
@@ -122,7 +122,7 @@ export default function StrengthSignalDetailsCard({
           </div>
 
           <div className="card">
-            <strong>Top Exercise Drivers</strong>
+            <strong>Top Pattern Drivers</strong>
             <div className="list" style={{ marginTop: 10 }}>
               {debugTopExercises.map((item) => (
                 <div key={item.label} className="kv">

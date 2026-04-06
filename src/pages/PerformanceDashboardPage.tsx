@@ -48,10 +48,6 @@ import PerformanceInsightsSection from "../components/performance/PerformanceIns
 import PerformanceOverviewSection from "../components/performance/PerformanceOverviewSection";
 import PerformanceStrengthSignalSection from "../components/performance/PerformanceStrengthSignalSection";
 import {
-  bodyweightFromRowsAt,
-  calcEffectiveStrengthWeightLb,
-  classifyStrengthPatternFromExerciseName,
-  computeE1RM,
   computeStrengthIndex,
   computeStrengthTrend,
   type StrengthTrendRow,
@@ -66,10 +62,8 @@ import { computeHydrationConfidenceFromBodyRows } from "../body/hydrationConfide
 import {
   db,
   type BodyMetricEntry,
-  type Exercise,
   type Session,
   type SetEntry,
-  type Track,
 } from "../db";
 
 /* ============================================================================
@@ -154,35 +148,16 @@ type DashboardViewModel = {
   };
 };
 
-type SignalSet = {
-  date: string;
-  weight: number;
-  reps: number;
-  rir?: number;
-};
-
-type ExerciseHistory = {
-  exerciseId: string;
-  label: string;
-  movement: "push" | "pull" | "squat" | "hinge" | "lunge" | "carry" | "core";
-  baselineE1RM: number;
-  sessions: SignalSet[];
-};
-
 type ExerciseSignal = {
   exerciseId: string;
   label: string;
-  movement: ExerciseHistory["movement"];
-  latestE1RM: number;
-  baselineE1RM: number;
-  baselineAvgE1RM: number;
-  recentAvgE1RM: number;
+  movement: "push" | "pull" | "squat" | "hinge";
   changePct: number;
   normalizedScore: number;
 };
 
 type CompositeSignal = {
-  movement: ExerciseHistory["movement"];
+  movement: ExerciseSignal["movement"];
   score: number;
   exerciseCount: number;
 };
@@ -197,8 +172,6 @@ type StrengthSignalResult = {
 };
 
 type DbStrengthSource = {
-  exercises: Exercise[];
-  tracks: Track[];
   sessions: Session[];
   sets: SetEntry[];
   bodyMetrics: BodyMetricEntry[];
@@ -268,10 +241,6 @@ function trendFromChange(changePct: number): TrendDirection {
   return "watch";
 }
 
-function scoreFromPctChange(changePct: number) {
-  return clamp(5 + changePct / 4, 0, 10);
-}
-
 function rangeStartMs(range: DashboardRange, now = Date.now()): number | undefined {
   if (range === "4W") return now - 28 * DAY_MS;
   if (range === "8W") return now - 56 * DAY_MS;
@@ -280,13 +249,6 @@ function rangeStartMs(range: DashboardRange, now = Date.now()): number | undefin
     const d = new Date(now);
     return new Date(d.getFullYear(), 0, 1).getTime();
   }
-  return undefined;
-}
-
-function getExpectedPointCount(range: DashboardRange): number | undefined {
-  if (range === "4W") return 4;
-  if (range === "8W") return 8;
-  if (range === "12W") return 12;
   return undefined;
 }
 
@@ -770,556 +732,14 @@ function buildVolumeTrend(
    Breadcrumb 4 — Mock fallback data
    ============================================================================ */
 
-const MOCK_EXERCISE_HISTORY: ExerciseHistory[] = [
-  {
-    exerciseId: "back-squat",
-    label: "Back Squat",
-    movement: "squat",
-    baselineE1RM: 225,
-    sessions: [
-      { date: "2026-01-12", weight: 155, reps: 12, rir: 3 },
-      { date: "2026-01-19", weight: 165, reps: 10, rir: 3 },
-      { date: "2026-01-26", weight: 175, reps: 10, rir: 2.5 },
-      { date: "2026-02-02", weight: 185, reps: 8, rir: 2 },
-    ],
-  },
-  {
-    exerciseId: "bench-press",
-    label: "Bench Press",
-    movement: "push",
-    baselineE1RM: 185,
-    sessions: [
-      { date: "2026-01-12", weight: 115, reps: 10, rir: 3 },
-      { date: "2026-01-19", weight: 120, reps: 10, rir: 3 },
-      { date: "2026-01-26", weight: 125, reps: 9, rir: 2.5 },
-      { date: "2026-02-02", weight: 130, reps: 8, rir: 2 },
-    ],
-  },
-  {
-    exerciseId: "barbell-row",
-    label: "Barbell Row",
-    movement: "pull",
-    baselineE1RM: 145,
-    sessions: [
-      { date: "2026-01-12", weight: 95, reps: 12, rir: 4 },
-      { date: "2026-01-19", weight: 105, reps: 12, rir: 3.5 },
-      { date: "2026-01-26", weight: 115, reps: 10, rir: 3 },
-      { date: "2026-02-02", weight: 125, reps: 10, rir: 2 },
-    ],
-  },
-  {
-    exerciseId: "rdl",
-    label: "Romanian Deadlift",
-    movement: "hinge",
-    baselineE1RM: 215,
-    sessions: [
-      { date: "2026-01-12", weight: 115, reps: 12, rir: 3.5 },
-      { date: "2026-01-19", weight: 125, reps: 12, rir: 3 },
-      { date: "2026-01-26", weight: 135, reps: 10, rir: 3 },
-      { date: "2026-02-02", weight: 145, reps: 10, rir: 2.5 },
-    ],
-  },
-];
-
-/* ============================================================================
-   Breadcrumb 5 — Strength Signal model + source loading
-   ============================================================================ */
-
-function computeExerciseSignal(exercise: ExerciseHistory): ExerciseSignal {
-  const rawE1rms = exercise.sessions.map((session) => computeE1RM(session.weight, session.reps));
-  const e1rms = rawE1rms.filter((v) => Number.isFinite(v) && v > 0);
-
-  const safeBaseline =
-    Number.isFinite(exercise.baselineE1RM) && exercise.baselineE1RM > 0
-      ? exercise.baselineE1RM
-      : 1;
-
-  const latestE1RM = e1rms.length > 0 ? e1rms[e1rms.length - 1] : safeBaseline;
-
-  const baselineWindow =
-    e1rms.length >= 2 ? e1rms.slice(0, Math.min(2, e1rms.length)) : [e1rms[0] ?? safeBaseline];
-
-  const recentWindow =
-    e1rms.length >= 2
-      ? e1rms.slice(Math.max(0, e1rms.length - 2))
-      : [e1rms[0] ?? safeBaseline];
-
-  const baselineAvgRaw = average(baselineWindow);
-  const recentAvgRaw = average(recentWindow);
-
-  const baselineAvgE1RM =
-    Number.isFinite(baselineAvgRaw) && baselineAvgRaw > 0 ? baselineAvgRaw : safeBaseline;
-
-  const recentAvgE1RM =
-    Number.isFinite(recentAvgRaw) && recentAvgRaw > 0 ? recentAvgRaw : latestE1RM;
-
-  const changePctRaw = ((recentAvgE1RM - baselineAvgE1RM) / baselineAvgE1RM) * 100;
-  const changePct = Number.isFinite(changePctRaw) ? changePctRaw : 0;
-
-  const normalizedScoreRaw = scoreFromPctChange(changePct);
-  const normalizedScore = Number.isFinite(normalizedScoreRaw) ? normalizedScoreRaw : 5;
-
-  return {
-    exerciseId: exercise.exerciseId,
-    label: exercise.label,
-    movement: exercise.movement,
-    latestE1RM: round2(latestE1RM),
-    baselineE1RM: round2(safeBaseline),
-    baselineAvgE1RM: round2(baselineAvgE1RM),
-    recentAvgE1RM: round2(recentAvgE1RM),
-    changePct: round2(changePct),
-    normalizedScore: round2(normalizedScore),
-  };
-}
-
-function computeCompositeSignals(exerciseSignals: ExerciseSignal[]): CompositeSignal[] {
-  const byMovement = new Map<ExerciseHistory["movement"], ExerciseSignal[]>();
-
-  exerciseSignals.forEach((item) => {
-    if (!Number.isFinite(item.normalizedScore)) return;
-    const bucket = byMovement.get(item.movement) ?? [];
-    bucket.push(item);
-    byMovement.set(item.movement, bucket);
-  });
-
-  return Array.from(byMovement.entries())
-    .map(([movement, items]) => {
-      if (!items.length) return null;
-
-      const usable = items.filter((x) => Number.isFinite(x.normalizedScore));
-      if (!usable.length) return null;
-
-      const score = average(usable.map((x) => x.normalizedScore));
-
-      return {
-        movement,
-        exerciseCount: usable.length,
-        score: round2(score),
-      } satisfies CompositeSignal;
-    })
-    .filter((x): x is CompositeSignal => Boolean(x));
-}
-
-function buildStrengthChartPoints(
-  history: ExerciseHistory[],
-  range: DashboardRange
-): Array<{ week: string; value: number }> {
-  const safeHistory = history.length > 0 ? history : MOCK_EXERCISE_HISTORY;
-  const expectedPoints = getExpectedPointCount(range);
-
-  const maxSessions = Math.max(...safeHistory.map((exercise) => exercise.sessions.length), 0);
-  const rawPoints: Array<{ week: string; value: number }> = [];
-
-  for (let i = 0; i < maxSessions; i += 1) {
-    const scores: number[] = [];
-
-    safeHistory.forEach((exercise) => {
-      const sessionSlice = exercise.sessions.slice(0, i + 1);
-      if (!sessionSlice.length) return;
-
-      const e1rms = sessionSlice
-        .map((session) => computeE1RM(session.weight, session.reps))
-        .filter((v) => Number.isFinite(v) && v > 0);
-
-      if (!e1rms.length) return;
-
-      const safeBaseline =
-        Number.isFinite(exercise.baselineE1RM) && exercise.baselineE1RM > 0
-          ? exercise.baselineE1RM
-          : 1;
-
-      const baselineWindow = e1rms.slice(0, Math.min(2, e1rms.length));
-      const recentWindow = e1rms.slice(Math.max(0, e1rms.length - 2));
-
-      const baselineAvgRaw = average(baselineWindow);
-      const recentAvgRaw = average(recentWindow);
-
-      const baselineAvg =
-        Number.isFinite(baselineAvgRaw) && baselineAvgRaw > 0 ? baselineAvgRaw : safeBaseline;
-      const recentAvg =
-        Number.isFinite(recentAvgRaw) && recentAvgRaw > 0 ? recentAvgRaw : baselineAvg;
-
-      const changePctRaw = ((recentAvg - baselineAvg) / baselineAvg) * 100;
-      const changePct = Number.isFinite(changePctRaw) ? changePctRaw : 0;
-
-      scores.push(scoreFromPctChange(changePct));
-    });
-
-    rawPoints.push({
-      week: `W${i + 1}`,
-      value: round2(scores.length > 0 ? average(scores) : 5),
-    });
-  }
-
-  if (!expectedPoints || rawPoints.length <= expectedPoints) {
-    return rawPoints;
-  }
-
-  const bucketed: Array<{ week: string; value: number }> = [];
-  const bucketSize = rawPoints.length / expectedPoints;
-
-  for (let i = 0; i < expectedPoints; i += 1) {
-    const start = Math.floor(i * bucketSize);
-    const end = Math.floor((i + 1) * bucketSize);
-    const slice = rawPoints.slice(start, Math.max(start + 1, end));
-    bucketed.push({
-      week: `W${i + 1}`,
-      value: round2(average(slice.map((p) => p.value))),
-    });
-  }
-
-  return bucketed;
-}
-
-function classifyMovementPattern(
-  exercise: Exercise,
-  track: Track
-): ExerciseHistory["movement"] | undefined {
-  const name = `${exercise.name} ${track.displayName}`.toLowerCase();
-
-  const excludeTerms = [
-    "lateral raise",
-    "lat raise",
-    "rear delt",
-    "reverse pec deck",
-    "rear pec deck",
-    "face pull",
-    "pull apart",
-    "pull-apart",
-    "pec deck",
-    "fly",
-    "curl",
-    "pushdown",
-    "push down",
-    "tricep extension",
-    "kickback",
-    "leg extension",
-    "leg curl",
-    "hamstring curl",
-    "calf raise",
-    "shrug",
-    "wall sit",
-    "mobility",
-    "corrective",
-    "breathing",
-    "dorsiflexion",
-  ];
-
-  if (excludeTerms.some((term) => name.includes(term))) return undefined;
-
-  if (
-    name.includes("back squat") ||
-    name.includes("front squat") ||
-    name.includes("box squat") ||
-    name.includes("safety bar squat") ||
-    name.includes("goblet squat") ||
-    name.includes("leg press") ||
-    name.includes("hack squat") ||
-    name.includes("smith squat")
-  ) {
-    return "squat";
-  }
-
-  if (
-    name.includes("deadlift") ||
-    name.includes("romanian deadlift") ||
-    name.includes(" rdl") ||
-    name.startsWith("rdl") ||
-    name.includes("trap bar deadlift") ||
-    name.includes("hip thrust") ||
-    name.includes("glute bridge") ||
-    name.includes("good morning")
-  ) {
-    return "hinge";
-  }
-
-  if (
-    name.includes("bench press") ||
-    name.includes("incline press") ||
-    name.includes("decline press") ||
-    name.includes("overhead press") ||
-    name.includes("shoulder press") ||
-    name.includes("chest press") ||
-    name.includes("dip")
-  ) {
-    return "push";
-  }
-
-  if (
-    name.includes("pull-up") ||
-    name.includes("pull up") ||
-    name.includes("pullup") ||
-    name.includes("chin-up") ||
-    name.includes("chin up") ||
-    name.includes("chinup") ||
-    name.includes("pulldown") ||
-    name.includes("pull down") ||
-    name.includes("pull-down") ||
-    name.includes("lat pulldown") ||
-    name.includes("lat pull down") ||
-    name.includes("lat pull-down") ||
-    name.includes("barbell row") ||
-    name.includes("pendlay row") ||
-    name.includes("dumbbell row") ||
-    name.includes("3-point row") ||
-    name.includes("3 point row") ||
-    name.includes("chest-supported row") ||
-    name.includes("chest supported row") ||
-    name.includes("seated cable row") ||
-    name.includes("machine row") ||
-    name.includes("cable row")
-  ) {
-    return "pull";
-  }
-
-  const sharedPattern = classifyStrengthPatternFromExerciseName(name);
-  if (sharedPattern) return sharedPattern;
-
-  return undefined;
-}
-
-function shouldIncludeInStrengthSignal(exercise: Exercise, track: Track): boolean {
-  return classifyMovementPattern(exercise, track) != null;
-}
-
-function inferMovement(exercise: Exercise, track: Track): ExerciseHistory["movement"] {
-  const movement = classifyMovementPattern(exercise, track);
-  return movement ?? "core";
-}
-
-function calcEffectiveWeightLb(
-  set: SetEntry,
-  exercise: Exercise,
-  track: Track,
-  bodyMetrics: BodyMetricEntry[],
-  sessionAt: number
-): number | undefined {
-  const explicit = typeof set.weight === "number" ? set.weight : undefined;
-  const name = `${exercise.name} ${track.displayName}`.toLowerCase();
-  const looksBodyweight =
-    exercise.equipment === "Bodyweight" ||
-    exercise.category === "Bodyweight" ||
-    name.includes("pull up") ||
-    name.includes("pull-up") ||
-    name.includes("pullup") ||
-    name.includes("chin up") ||
-    name.includes("chin-up") ||
-    name.includes("chinup") ||
-    name.includes("dip");
-
-  if (!looksBodyweight) return explicit;
-
-  const bw = bodyweightFromRowsAt(bodyMetrics, sessionAt);
-  if (typeof bw !== "number") return explicit;
-
-  const effective = calcEffectiveStrengthWeightLb(explicit ?? 0, name, bw);
-
-  return Number.isFinite(effective) && effective > 0 ? effective : undefined;
-}
-
 async function loadStrengthSource(): Promise<DbStrengthSource> {
-  const [exercises, tracks, sessions, sets, bodyMetrics] = await Promise.all([
-    db.exercises.toArray(),
-    db.tracks.toArray(),
+  const [sessions, sets, bodyMetrics] = await Promise.all([
     db.sessions.toArray(),
     db.sets.toArray(),
     db.bodyMetrics.toArray(),
   ]);
 
-  return { exercises, tracks, sessions, sets, bodyMetrics };
-}
-
-function buildExerciseHistoryFromDb(source: DbStrengthSource): ExerciseHistory[] {
-  const exerciseById = new Map(source.exercises.map((e) => [e.id, e]));
-  const trackById = new Map(source.tracks.map((t) => [t.id, t]));
-  const sessionById = new Map(
-    source.sessions.filter((s) => !s.deletedAt).map((s) => [s.id, s])
-  );
-
-  const perExerciseSessionBest = new Map<
-    string,
-    {
-      exerciseId: string;
-      label: string;
-      movement: ExerciseHistory["movement"];
-      items: Array<{ at: number; weight: number; reps: number; rir?: number }>;
-    }
-  >();
-
-  for (const set of source.sets) {
-    if (set.deletedAt) continue;
-    if (set.setType !== "working") continue;
-    if (!set.completedAt) continue;
-    if (typeof set.reps !== "number" || set.reps <= 0) continue;
-
-    const track = trackById.get(set.trackId);
-    if (!track) continue;
-
-    const exercise = exerciseById.get(track.exerciseId);
-    if (!exercise) continue;
-
-    if (!shouldIncludeInStrengthSignal(exercise, track)) continue;
-
-    const session = sessionById.get(set.sessionId);
-    if (!session) continue;
-
-    const at = session.startedAt ?? set.completedAt ?? set.createdAt;
-    const effectiveWeight = calcEffectiveWeightLb(
-      set,
-      exercise,
-      track,
-      source.bodyMetrics,
-      at
-    );
-
-    if (
-      typeof effectiveWeight !== "number" ||
-      !Number.isFinite(effectiveWeight) ||
-      effectiveWeight <= 0
-    ) {
-      continue;
-    }
-
-    const currentE1RM = computeE1RM(effectiveWeight, set.reps);
-    if (!Number.isFinite(currentE1RM) || currentE1RM <= 0) continue;
-
-    const bucketKey = exercise.id;
-    const existing =
-      perExerciseSessionBest.get(bucketKey) ?? {
-        exerciseId: exercise.id,
-        label: track.displayName || exercise.name,
-        movement: inferMovement(exercise, track),
-        items: [],
-      };
-
-    const sameSessionIdx = existing.items.findIndex((x) => x.at === at);
-
-    if (sameSessionIdx === -1) {
-      existing.items.push({
-        at,
-        weight: effectiveWeight,
-        reps: set.reps,
-        rir: set.rir,
-      });
-    } else {
-      const prev = existing.items[sameSessionIdx];
-      const prevE1RM = computeE1RM(prev.weight, prev.reps);
-      if (currentE1RM > prevE1RM) {
-        existing.items[sameSessionIdx] = {
-          at,
-          weight: effectiveWeight,
-          reps: set.reps,
-          rir: set.rir,
-        };
-      }
-    }
-
-    perExerciseSessionBest.set(bucketKey, existing);
-  }
-
-  return Array.from(perExerciseSessionBest.values())
-    .map((entry) => {
-      const sessions = entry.items
-        .sort((a, b) => a.at - b.at)
-        .map((item) => ({
-          date: new Date(item.at).toISOString().slice(0, 10),
-          weight: item.weight,
-          reps: item.reps,
-          rir: item.rir,
-        }));
-
-      if (sessions.length < 1) return null;
-
-      const baselineSeed =
-        sessions.length >= 2 ? sessions[0] : sessions[sessions.length - 1];
-
-      const baselineE1RM = computeE1RM(baselineSeed.weight, baselineSeed.reps);
-      if (!Number.isFinite(baselineE1RM) || baselineE1RM <= 0) return null;
-
-      return {
-        exerciseId: entry.exerciseId,
-        label: entry.label,
-        movement: entry.movement,
-        baselineE1RM,
-        sessions,
-      } satisfies ExerciseHistory;
-    })
-    .filter((x): x is ExerciseHistory => Boolean(x));
-}
-
-function computeStrengthSignal(
-  phase: DashboardPhase,
-  range: DashboardRange,
-  exerciseHistory: ExerciseHistory[]
-): StrengthSignalResult {
-  const safeHistory = exerciseHistory.length > 0 ? exerciseHistory : MOCK_EXERCISE_HISTORY;
-
-  const exerciseSignals = safeHistory
-    .map(computeExerciseSignal)
-    .filter(
-      (item) =>
-        Number.isFinite(item.latestE1RM) &&
-        Number.isFinite(item.baselineAvgE1RM) &&
-        Number.isFinite(item.recentAvgE1RM) &&
-        Number.isFinite(item.changePct) &&
-        Number.isFinite(item.normalizedScore)
-    );
-
-  const composites = computeCompositeSignals(exerciseSignals);
-
-  const MOVEMENT_WEIGHTS: Record<ExerciseHistory["movement"], number> = {
-    squat: 3,
-    hinge: 3,
-    push: 2,
-    pull: 2,
-    lunge: 1,
-    carry: 1,
-    core: 0,
-  };
-
-  const weightedItems = composites.filter(
-    (item) => Number.isFinite(item.score) && (MOVEMENT_WEIGHTS[item.movement] ?? 0) > 0
-  );
-
-  const totalWeight = weightedItems.reduce(
-    (sum, item) => sum + (MOVEMENT_WEIGHTS[item.movement] ?? 0),
-    0
-  );
-
-  const rawScore =
-    totalWeight > 0
-      ? weightedItems.reduce(
-          (sum, item) => sum + item.score * (MOVEMENT_WEIGHTS[item.movement] ?? 0),
-          0
-        ) / totalWeight
-      : 5;
-
-  const score = Number.isFinite(rawScore) ? round2(rawScore) : 5;
-
-  const avgChangePct =
-    exerciseSignals.length > 0
-      ? exerciseSignals.reduce((sum, item) => sum + item.changePct, 0) / exerciseSignals.length
-      : 0;
-
-  const safeAvgChangePct = Number.isFinite(avgChangePct) ? avgChangePct : 0;
-
-  const chartPoints = buildStrengthChartPoints(safeHistory, range);
-
-  const summary =
-    phase === "CUT"
-      ? "Strength Signal is rising on a rolling 2-session basis while cutting, which supports muscle preservation."
-      : phase === "MAINTAIN"
-        ? "Strength Signal is stable-to-rising on a rolling 2-session basis, which supports performance stability."
-        : "Strength Signal is rising on a rolling 2-session basis, which supports productive growth quality.";
-
-  return {
-    score,
-    trend: trendFromChange(safeAvgChangePct),
-    exerciseSignals,
-    composites,
-    chartPoints,
-    summary,
-  };
+  return { sessions, sets, bodyMetrics };
 }
 
 function analyzeStrengthChart(points: Array<{ week: string; value: number }>) {
@@ -1350,6 +770,65 @@ function buildMomentumMessage(changePct: number) {
   return "Momentum has dipped recently.";
 }
 
+function buildStrengthSignalFromShared(
+  phase: DashboardPhase,
+  result: Awaited<ReturnType<typeof computeStrengthIndex>> | null,
+  trendRows: StrengthTrendRow[]
+): StrengthSignalResult {
+  const chartPoints = [...(trendRows ?? [])]
+    .sort((a, b) => a.weekEndMs - b.weekEndMs)
+    .filter((row) => Number.isFinite(row.normalizedIndex))
+    .map((row, index) => ({
+      week: row.label ?? `W${index + 1}`,
+      value: round2(row.normalizedIndex),
+    }));
+
+  const analysis = analyzeStrengthChart(chartPoints);
+  const scoreRaw =
+    result && Number.isFinite(result.normalizedIndex) ? result.normalizedIndex : analysis.current;
+  const score = Number.isFinite(scoreRaw) ? round2(scoreRaw) : 0;
+
+  const exerciseSignals = (result?.patterns ?? [])
+    .filter((pattern) => Number.isFinite(pattern.normalized))
+    .map((pattern) => {
+      const changePct = score > 0 ? round2(((pattern.normalized - score) / score) * 100) : 0;
+
+      return {
+        exerciseId: pattern.pattern,
+        label: capitalize(pattern.pattern),
+        movement: pattern.pattern,
+        latestE1RM: round2(pattern.topSet),
+        baselineE1RM: round2(pattern.topSet),
+        baselineAvgE1RM: round2(pattern.working),
+        recentAvgE1RM: round2(pattern.normalized),
+        changePct: Number.isFinite(changePct) ? changePct : 0,
+        normalizedScore: round2(pattern.normalized),
+      } satisfies ExerciseSignal;
+    });
+
+  const composites = exerciseSignals.map((signal) => ({
+    movement: signal.movement,
+    score: signal.normalizedScore,
+    exerciseCount: 1,
+  }));
+
+  const summary =
+    phase === "CUT"
+      ? "Strength Signal is following the shared normalized strength trend while cutting."
+      : phase === "MAINTAIN"
+        ? "Strength Signal is using the shared normalized trend to track performance stability."
+        : "Strength Signal is using the shared normalized trend to track productive growth quality.";
+
+  return {
+    score,
+    trend: trendFromChange(analysis.changePct),
+    exerciseSignals,
+    composites,
+    chartPoints,
+    summary,
+  };
+}
+
 /* ============================================================================
    Breadcrumb 6 — Dashboard view model builder
    ============================================================================ */
@@ -1357,16 +836,12 @@ function buildMomentumMessage(changePct: number) {
 function buildDashboardViewModel(
   phase: DashboardPhase,
   range: DashboardRange,
-  exerciseHistory: ExerciseHistory[],
+  strengthSignal: StrengthSignalResult,
   bodySnapshot: DashboardBodySnapshot,
   bodyWeightTrendData: ChartDatum[],
   waistTrendData: ChartDatum[],
   sharedCutQuality?: PhaseQualityResult | null
 ): DashboardViewModel {
-  const usingFallback = exerciseHistory.length < 1;
-  const sourceHistory = usingFallback ? MOCK_EXERCISE_HISTORY : exerciseHistory;
-
-  const strengthSignal = computeStrengthSignal(phase, range, sourceHistory);
   const strengthAnalysis = analyzeStrengthChart(strengthSignal.chartPoints);
   const momentumMessage = buildMomentumMessage(strengthAnalysis.changePct);
 
@@ -1407,7 +882,7 @@ function buildDashboardViewModel(
         direction: strengthSignal.trend,
         momentumMessage,
         analysisRows: [
-          { label: "Formula", value: "Rolling 2-session composite strength" },
+          { label: "Formula", value: "Shared Strength engine (normalized Strength Signal)" },
           { label: "Start Value", value: strengthAnalysis.start.toFixed(2) },
           { label: "Current Value", value: strengthAnalysis.current.toFixed(2) },
           {
@@ -1417,7 +892,7 @@ function buildDashboardViewModel(
           { label: "Highest Value", value: strengthAnalysis.high.toFixed(2) },
           { label: "Lowest Value", value: strengthAnalysis.low.toFixed(2) },
           {
-            label: "Exercises Included",
+            label: "Pattern Buckets",
             value: String(strengthSignal.exerciseSignals.length),
           },
           { label: "Top Composite", value: topComposite },
@@ -1550,12 +1025,12 @@ function buildDashboardViewModel(
       "Next: allow exercise inclusion and exclusion for Strength Signal.",
     ],
     debug: {
-      dataSource: usingFallback ? "Fallback demo data" : "Logged workout data",
+      dataSource: "Shared Strength engine",
       dateWindowUsed: formatRangeLabel(range),
       confidenceLevel:
-        usingFallback || strengthSignal.exerciseSignals.length < 3
+        strengthSignal.exerciseSignals.length < 2
           ? "Low"
-          : strengthSignal.exerciseSignals.length < 5
+          : strengthSignal.exerciseSignals.length < 4
             ? "Moderate"
             : "High",
       exercisesCounted: strengthSignal.exerciseSignals.length,
@@ -1571,11 +1046,11 @@ function buildDashboardViewModel(
         })),
       topExercises: strengthSignal.exerciseSignals
         .slice()
-        .sort((a, b) => b.changePct - a.changePct)
+        .sort((a, b) => b.normalizedScore - a.normalizedScore)
         .slice(0, 5)
         .map((item) => ({
           label: normalizeExerciseDisplayLabel(item.label),
-          changePct: `${item.changePct > 0 ? "+" : ""}${item.changePct.toFixed(2)}%`,
+          changePct: `vs composite ${item.changePct > 0 ? "+" : ""}${item.changePct.toFixed(2)}%`,
           score: item.normalizedScore.toFixed(2),
         })),
     },
@@ -1631,9 +1106,6 @@ export default function PerformanceDashboardPage() {
 
   const [activePhase, setActivePhase] = useState<DashboardPhase>("CUT");
   const [activeRange, setActiveRange] = useState<DashboardRange>("8W");
-  const [exerciseHistory, setExerciseHistory] = useState<ExerciseHistory[]>(
-    MOCK_EXERCISE_HISTORY
-  );
   const [dbSource, setDbSource] = useState<DbStrengthSource | null>(null);
   const [sharedStrengthResult, setSharedStrengthResult] = useState<
     Awaited<ReturnType<typeof computeStrengthIndex>> | null
@@ -1647,17 +1119,14 @@ export default function PerformanceDashboardPage() {
     async function load() {
       try {
         const source = await loadStrengthSource();
-        const realHistory = buildExerciseHistoryFromDb(source);
 
         if (cancelled) return;
 
         setDbSource(source);
-        setExerciseHistory(realHistory.length > 0 ? realHistory : MOCK_EXERCISE_HISTORY);
       } catch (err) {
         console.error("PerformanceDashboardPage load failed:", err);
         if (!cancelled) {
           setDbSource(null);
-          setExerciseHistory(MOCK_EXERCISE_HISTORY);
         }
       }
     }
@@ -1717,14 +1186,9 @@ export default function PerformanceDashboardPage() {
     [dbSource]
   );
 
-  const strengthChartData: ChartDatum[] = useMemo(
-    () =>
-      buildStrengthChartPoints(exerciseHistory, activeRange).map((point) => ({
-        label: point.week,
-        value: point.value,
-        date: point.week,
-      })),
-    [exerciseHistory, activeRange]
+  const sharedStrengthSignal = useMemo(
+    () => buildStrengthSignalFromShared(activePhase, sharedStrengthResult, sharedStrengthTrend),
+    [activePhase, sharedStrengthResult, sharedStrengthTrend]
   );
 
   const sharedStrengthChartData: ChartDatum[] = useMemo(() => {
@@ -1737,15 +1201,15 @@ export default function PerformanceDashboardPage() {
         typeof row.weekEndMs === "number" && Number.isFinite(row.weekEndMs)
           ? new Date(row.weekEndMs).toISOString().slice(0, 10)
           : row.label ?? `W${index + 1}`,
-    }));
+      }));
   }, [sharedStrengthTrend]);
+
+  const hasSharedStrengthChart = sharedStrengthChartData.length > 0;
 
   const sharedCurrentStrengthSignal = useMemo(() => {
     const value = sharedStrengthResult?.normalizedIndex;
     return Number.isFinite(value) ? Number(value) : null;
   }, [sharedStrengthResult]);
-
-  const hasSharedStrengthChart = sharedStrengthChartData.length > 0;
 
   const bodyWeightChartData = useMemo(
     () => buildBodyWeightTrend(dbSource?.bodyMetrics ?? [], activeRange),
@@ -1777,7 +1241,7 @@ export default function PerformanceDashboardPage() {
       buildDashboardViewModel(
         activePhase,
         activeRange,
-        exerciseHistory,
+        sharedStrengthSignal,
         bodySnapshot,
         bodyWeightChartData,
         waistChartData,
@@ -1786,7 +1250,7 @@ export default function PerformanceDashboardPage() {
     [
       activePhase,
       activeRange,
-      exerciseHistory,
+      sharedStrengthSignal,
       bodySnapshot,
       bodyWeightChartData,
       waistChartData,
@@ -2051,41 +1515,21 @@ export default function PerformanceDashboardPage() {
 
             <PerformanceStrengthSignalSection
               chart={effectiveStrengthChart}
-              chartData={hasSharedStrengthChart ? sharedStrengthChartData : strengthChartData}
+              chartData={sharedStrengthChartData}
               series={strengthSeries}
               showDebug={showDebug}
               setShowDebug={setShowDebug}
-              sourceUsed={
-                hasSharedStrengthChart ? "Shared Strength Engine" : vm.debug.dataSource
-              }
-              dateWindowUsed={
-                hasSharedStrengthChart ? formatRangeLabel(activeRange) : vm.debug.dateWindowUsed
-              }
-              confidenceLevel={
-                hasSharedStrengthChart
-                  ? sharedStrengthConfidenceLabel
-                  : vm.debug.confidenceLevel
-              }
-              exercisesIncluded={
-                hasSharedStrengthChart
-                  ? `${vm.debug.exercisesCounted} (drilldown)`
-                  : String(vm.debug.exercisesCounted)
-              }
+              sourceUsed="Shared Strength Engine"
+              dateWindowUsed={formatRangeLabel(activeRange)}
+              confidenceLevel={sharedStrengthConfidenceLabel}
+              exercisesIncluded={String(vm.debug.exercisesCounted)}
               currentStrengthSignal={
-                hasSharedStrengthChart && sharedCurrentStrengthSignal != null
+                sharedCurrentStrengthSignal != null
                   ? sharedCurrentStrengthSignal.toFixed(2)
                   : vm.debug.currentSignal
               }
-              strongestPattern={
-                hasSharedStrengthChart
-                  ? sharedStrongestPatternLabel
-                  : capitalize(vm.debug.topComposite)
-              }
-              note={
-                hasSharedStrengthChart
-                  ? "Note: Current Strength Signal and the chart trend now prefer the shared Strength engine when shared chart data is available. Secondary drill-downs below may still reflect legacy Performance-specific breakdown logic."
-                  : "Note: This view is using legacy Performance chart/debug fallback until shared chart history is available."
-              }
+              strongestPattern={sharedStrongestPatternLabel}
+              note="Note: Performance Strength Signal now uses the shared Strength engine for the current value, chart trend, strongest pattern, and details panel."
               debugComposites={vm.debug.composites}
               debugTopExercises={vm.debug.topExercises}
             />
