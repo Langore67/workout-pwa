@@ -106,6 +106,47 @@ export function isNonStrengthTrackType(raw: unknown): boolean {
   );
 }
 
+export const TRACK_INTENT_OPTIONS: Array<{ value: TrackType; label: string }> = [
+  { value: "strength", label: "Strength" },
+  { value: "technique", label: "Technique" },
+  { value: "mobility", label: "Mobility" },
+  { value: "corrective", label: "Corrective" },
+  { value: "conditioning", label: "Conditioning" },
+];
+
+export function defaultTrackingModeForTrackIntent(trackIntent: TrackType): TrackingMode {
+  switch (trackIntent) {
+    case "mobility":
+    case "corrective":
+      return "repsOnly";
+    case "conditioning":
+      return "timeSeconds";
+    case "technique":
+    case "strength":
+    default:
+      return "weightedReps";
+  }
+}
+
+export function buildTrackDisplayNameForIntent(
+  baseExerciseName: string,
+  trackIntent: TrackType
+): string {
+  const base = String(baseExerciseName ?? "").trim();
+  if (!base) return "";
+
+  if (trackIntent === "strength" || trackIntent === "hypertrophy") {
+    return base;
+  }
+
+  return `${base} - ${trackIntent}`;
+}
+
+type DefaultTrackTypeOptions = {
+  extraCorrectiveTerms?: string[];
+  enableCardioTerms?: boolean;
+};
+
 export function inferTrackTypeFromParsedSetKinds(
   exerciseName: string,
   rawKinds: unknown[],
@@ -136,11 +177,6 @@ export function inferTrackTypeFromParsedSetKinds(
   return defaultTrackTypeFromExerciseName(exerciseName, options);
 }
 
-type DefaultTrackTypeOptions = {
-  extraCorrectiveTerms?: string[];
-  enableCardioTerms?: boolean;
-};
-
 export function defaultTrackTypeFromExerciseName(
   exerciseName: string,
   options: DefaultTrackTypeOptions = {}
@@ -152,7 +188,9 @@ export function defaultTrackTypeFromExerciseName(
     "knee to wall",
     "90/90",
     "hip rotation",
-    ...(options.extraCorrectiveTerms ?? []).filter((term) => /stretch|mobility|rotation|knee to wall/i.test(term)),
+    ...(options.extraCorrectiveTerms ?? []).filter((term) =>
+      /stretch|mobility|rotation|knee to wall/i.test(term)
+    ),
   ];
   const correctiveTerms = [
     "breathing",
