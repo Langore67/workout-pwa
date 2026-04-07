@@ -43,6 +43,7 @@ import {
   findOrCreateExerciseByName as findOrCreateExerciseByNameShared,
   findOrCreateReusableTrack as findOrCreateReusableTrackShared,
 } from "../lib/reusableTrackWorkflow";
+import { isNonStrengthTrackType, isStrengthTrackType } from "../domain/trackingMode";
 
 /* ============================================================================
    Breadcrumb 01 — Local widenings / UI-only types
@@ -224,7 +225,40 @@ function isLoadedRepsTrack(track: Track, metricMode: MetricModeX): boolean {
   if (metricMode !== "reps") return false;
   if (track.trackType === "corrective") return false;
 
-  return track.trackingMode === "weightedReps" || track.trackingMode === "repsOnly";
+  if (track.trackingMode === "weightedReps") return true;
+  if (track.trackingMode === "repsOnly") return isStrengthTrackType(track.trackType);
+  return false;
+}
+
+function requiresRirForTrack(track: Track, metricMode: MetricModeX): boolean {
+  return metricMode === "reps" && track.trackingMode === "weightedReps" && isStrengthTrackType(track.trackType);
+}
+
+const GYM_TRACK_INTENT_OPTIONS: Array<{
+  value: TrackType;
+  label: string;
+  defaultMode: TrackingMode;
+}> = [
+  { value: "strength", label: "Strength", defaultMode: "weightedReps" },
+  { value: "technique", label: "Technique", defaultMode: "weightedReps" },
+  { value: "mobility", label: "Mobility", defaultMode: "repsOnly" },
+  { value: "corrective", label: "Corrective", defaultMode: "repsOnly" },
+  { value: "conditioning", label: "Conditioning", defaultMode: "timeSeconds" },
+];
+
+function defaultTrackingModeForIntent(trackType: TrackType): TrackingMode {
+  return (
+    GYM_TRACK_INTENT_OPTIONS.find((option) => option.value === trackType)?.defaultMode ??
+    "weightedReps"
+  );
+}
+
+function buildTrackDisplayNameForIntent(baseRaw: string, trackType: TrackType): string {
+  const base = baseRaw.trim();
+  if (!base) return "";
+  if (trackType === "strength") return base;
+  if (base.toLowerCase().includes(trackType)) return base;
+  return `${base} - ${trackType}`;
 }
 
 /* ============================================================================
@@ -355,8 +389,10 @@ function AddExerciseModal({
   onClose: () => void;
 }) {
   const [quickAddName, setQuickAddName] = useState("");
-  const [variantType, setVariantType] = useState<TrackType>("hypertrophy");
-  const [variantMode, setVariantMode] = useState<TrackingMode>("weightedReps");
+  const [variantType, setVariantType] = useState<TrackType>("strength");
+  const [variantMode, setVariantMode] = useState<TrackingMode>(
+    defaultTrackingModeForIntent("strength")
+  );
   const [busy, setBusy] = useState(false);
 
   const exercises = useLiveQuery(async () => {
@@ -369,8 +405,8 @@ function AddExerciseModal({
   useEffect(() => {
     if (!open) return;
     setQuickAddName("");
-    setVariantType("hypertrophy");
-    setVariantMode("weightedReps");
+    setVariantType("strength");
+    setVariantMode(defaultTrackingModeForIntent("strength"));
   }, [open]);
 
   useEffect(() => {
@@ -439,13 +475,10 @@ function AddExerciseModal({
     return undefined as Exercise | undefined;
   }, [catalogGroups]);
 
-  const suggestedTrackName = useMemo(() => {
-    const base = quickAddName.trim();
-    if (!base) return "";
-    const vt = variantType;
-    if (base.toLowerCase().includes(vt)) return base;
-    return `${base} — ${vt}`;
-  }, [quickAddName, variantType]);
+  const suggestedTrackName = useMemo(
+    () => buildTrackDisplayNameForIntent(quickAddName, variantType),
+    [quickAddName, variantType]
+  );
 
   async function doAdd(exerciseName: string, displayName: string) {
     const exName = exerciseName.trim();
@@ -527,14 +560,20 @@ function AddExerciseModal({
               <select
                 className="input"
                 value={variantType}
-                onChange={(e) => setVariantType(e.target.value as TrackType)}
+                onChange={(e) => {
+                  const nextType = e.target.value as TrackType;
+                  setVariantType(nextType);
+                  setVariantMode(defaultTrackingModeForIntent(nextType));
+                }}
                 style={{ width: "auto", minWidth: 160 }}
-                aria-label="Variant type"
+                aria-label="Track intent"
                 disabled={busy}
               >
-                <option value="strength">strength</option>
-                <option value="hypertrophy">hypertrophy</option>
-                <option value="corrective">corrective</option>
+                {GYM_TRACK_INTENT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
 
               <select
@@ -554,7 +593,7 @@ function AddExerciseModal({
             </div>
 
             <div className="muted" style={{ marginTop: 8, fontSize: 13 }}>
-              Reuse rule: exercise + type + mode. If no matching track exists, a new one is created.
+              Reuse rule: exercise + intent + mode. If no matching track exists, a new one is created.
             </div>
 
             <div style={{ marginTop: 12 }}>
@@ -630,7 +669,7 @@ function AddExerciseModal({
                               onClick={() =>
                                 doAdd(
                                   ex.name ?? "",
-                                  `${(ex.name ?? "").trim()} — ${variantType}`
+                                  buildTrackDisplayNameForIntent(ex.name ?? "", variantType)
                                 )
                               }
                             >
@@ -763,8 +802,19 @@ export default function GymPage() {
   }, [session?.id, session?.notes]);
 
   const [activePad, setActivePad] = useState<ActiveGymPad | null>(null);
+  const activePadRef = useRef<ActiveGymPad | null>(null);
 
-  function openGymPad(pad: Omit<ActiveGymPad, "buffer"> & { initialValue: string }) {
+  useEffect(() => {
+    activePadRef.current = activePad;
+  }, [activePad]);
+
+  async function openGymPad(pad: Omit<ActiveGymPad, "buffer"> & { initialValue: string }) {
+    const prevPad = activePad;
+    if (prevPad && (prevPad.setId !== pad.setId || prevPad.field !== pad.field)) {
+      await prevPad.onCommit(prevPad.buffer);
+      prevPad.onDismiss();
+    }
+
     const nextPad: ActiveGymPad = {
       ...pad,
       buffer: pad.initialValue,
@@ -783,6 +833,18 @@ export default function GymPage() {
     if (commitFirst) await pad.onCommit(pad.buffer);
     pad.onDismiss();
     setActivePad(null);
+  }
+
+  async function flushActivePadDraft() {
+    const pad = activePadRef.current;
+    if (!pad) return;
+
+    await pad.onCommit(pad.buffer);
+    pad.onDismiss();
+    activePadRef.current = null;
+    setActivePad((current) =>
+      current?.setId === pad.setId && current.field === pad.field ? null : current
+    );
   }
 
   function handleGymPadKey(k: string) {
@@ -848,6 +910,7 @@ export default function GymPage() {
      Breadcrumb 05.12 — Finish pipeline
      ------------------------------------------------------------------------ */
   async function finalizeCurrentSession() {
+    await flushActivePadDraft();
     await finalizeGymSessionWrites(sessionId, {
       notes: sessionNotes,
     });
@@ -877,6 +940,7 @@ export default function GymPage() {
   }
 
   async function leaveSession() {
+    await flushActivePadDraft();
     const hasLoggedData = ((sets ?? []) as SetEntryX[]).some((se) => hasMeaningfulSetData(se));
     const isOpenAdHoc = !session.templateId && !session.endedAt;
 
@@ -978,6 +1042,7 @@ export default function GymPage() {
                 sets={(sets ?? []) as SetEntryX[]}
                 activePad={activePad}
                 onOpenPad={openGymPad}
+                onFlushActivePad={flushActivePadDraft}
               />
             </div>
           );
@@ -991,6 +1056,7 @@ export default function GymPage() {
         sessionId={sessionId}
         tracks={(tracks ?? []) as Track[]}
         sets={(sets ?? []) as SetEntryX[]}
+        onFlushActivePad={flushActivePadDraft}
         onFinish={finish}
         onCancel={cancelSession}
         onBack={leaveSession}
@@ -1099,6 +1165,7 @@ function ExerciseCard({
   sets,
   activePad,
   onOpenPad,
+  onFlushActivePad,
 }: {
   sessionId: string;
   item: any;
@@ -1106,6 +1173,7 @@ function ExerciseCard({
   sets: SetEntryX[];
   activePad: ActiveGymPad | null;
   onOpenPad: (pad: Omit<ActiveGymPad, "buffer"> & { initialValue: string }) => void;
+  onFlushActivePad: () => Promise<void>;
 }) {
   const nav = useNavigate();
 
@@ -1342,10 +1410,10 @@ function ExerciseCard({
     let alive = true;
 
     (async () => {
-      if (track.trackType === "corrective") {
+      if (!isStrengthTrackType(track.trackType)) {
         if (!alive) return;
         setBestSummary("");
-        setSuggestion("Complete this corrective (does not affect progression).");
+        setSuggestion("");
         setPrefillWeight(undefined);
         return;
       }
@@ -1441,7 +1509,7 @@ function ExerciseCard({
       wantsWeight &&
       (
         track.trackingMode === "weightedReps" ||
-        (metricMode === "reps" && track.trackType !== "corrective")
+        (metricMode === "reps" && isStrengthTrackType(track.trackType))
       )
     ) {
       if (lastWorkingLike?.weight !== undefined) entry.weight = lastWorkingLike.weight;
@@ -1724,21 +1792,18 @@ function ExerciseCard({
           <div style={{ minWidth: 0 }}>
             <h3 style={{ marginBottom: 6 }}>{track.displayName}</h3>
 
-            {track.trackType !== "corrective" && loadedReps && (
+            {isStrengthTrackType(track.trackType) && loadedReps && (
               <div className="muted">
                 Rep range: <b>{repMin}–{repMax}</b>{" "}
-                <span className="badge green" style={{ marginLeft: 8 }}>
-                  {track.trackType}
-                </span>
                 <span className="badge" style={{ marginLeft: 8 }}>
                   targets WU {warmupTarget} / WK {workingTarget}
                 </span>
               </div>
             )}
 
-            {track.trackType === "corrective" && (
+            {isNonStrengthTrackType(track.trackType) && (
               <div className="muted">
-                <span className="badge">corrective</span> • mode {track.trackingMode}
+                <span className="badge">{track.trackType}</span> • mode {track.trackingMode}
               </div>
             )}
 
@@ -1748,13 +1813,13 @@ function ExerciseCard({
               </div>
             )}
 
-            {track.trackType !== "corrective" && bestSummary && (
+            {isStrengthTrackType(track.trackType) && bestSummary && (
               <div className="muted" style={{ marginTop: 6 }}>
                 {bestSummary}
               </div>
             )}
 
-            {track.trackType !== "corrective" && suggestion && (
+            {isStrengthTrackType(track.trackType) && suggestion && (
               <div className="muted" style={{ marginTop: 6 }}>
                 {suggestion}
               </div>
@@ -1858,6 +1923,7 @@ function ExerciseCard({
                     await updateSet(se.id, patch);
                   }}
                   onToggleDone={async (next) => {
+                    await onFlushActivePad();
                     const kind = ((se.setType as SetKind) ?? "working") as SetKind;
 
                     if (next) {
@@ -2009,6 +2075,7 @@ function SetRow({
   const distance = (se as any).distance as number | undefined;
   const distanceUnit = ((se as any).distanceUnit as string | undefined) ?? "mi";
 
+  const showsWeightedRepsFields = metricMode === "reps" && track.trackingMode === "weightedReps";
   const showWeightInDistance = track.trackingMode === "weightedReps";
   const allowsNegativeWeight = isBodyweightEffectiveLoadExerciseName(weightEntryContextName);
 
@@ -2042,8 +2109,7 @@ function SetRow({
     return Number.isFinite(n) ? Math.max(0, n) : undefined;
   }
 
-  const showRir =
-    metricMode === "reps" && loadedReps && isWorking && track.trackType !== "corrective";
+  const showRir = isWorking && requiresRirForTrack(track, metricMode);
 
   const activeFieldForRow = activePad?.setId === se.id ? activePad.field : null;
 
@@ -2096,7 +2162,7 @@ function SetRow({
         if (field === "rir") rirInputRef.current?.blur();
       },
       onNext: () => {
-        if (field === "weight" && metricMode === "reps" && loadedReps) {
+        if (field === "weight" && showsWeightedRepsFields) {
           repsInputRef.current?.focus();
           return;
         }
@@ -2183,7 +2249,7 @@ function SetRow({
 
       {metricMode === "reps" && (
         <>
-          {loadedReps && (
+          {showsWeightedRepsFields && (
             <>
               <input
                   ref={weightInputRef}
@@ -2235,7 +2301,7 @@ function SetRow({
             </>
           )}
 
-          {!loadedReps && track.trackingMode === "repsOnly" && (
+          {!showsWeightedRepsFields && track.trackingMode === "repsOnly" && (
             <>
               <div className="muted">—</div>
               <input
@@ -2423,6 +2489,7 @@ function FinishSessionCard({
   sessionId,
   tracks,
   sets,
+  onFlushActivePad,
   onFinish,
   onCancel,
   onBack,
@@ -2430,6 +2497,7 @@ function FinishSessionCard({
   sessionId: string;
   tracks: Track[];
   sets: SetEntryX[];
+  onFlushActivePad: () => Promise<void>;
   onFinish: () => Promise<void>;
   onCancel: () => Promise<void>;
   onBack: () => Promise<void>;
@@ -2475,7 +2543,7 @@ function FinishSessionCard({
       if (!tr) return false;
 
       const mm = metricModeForTrack(tr);
-      if (!isLoadedRepsTrack(tr, mm)) return false;
+      if (!requiresRirForTrack(tr, mm)) return false;
 
       const hasWR = typeof (s as any).weight === "number" && typeof (s as any).reps === "number";
       if (!hasWR) return false;
@@ -2519,10 +2587,43 @@ function FinishSessionCard({
   }
 
   async function onClickFinish() {
-    if (review.canFinish) {
+    await onFlushActivePad();
+
+    const freshSets = await db.sets.where("sessionId").equals(sessionId).sortBy("createdAt");
+    const freshReview = (() => {
+      const working = (freshSets ?? []).filter(
+        (s) => (((s.setType as SetKind) ?? "working") as SetKind) === "working"
+      );
+
+      const unchecked = working.filter((s) => !s.completedAt);
+
+      const missingRir = working.filter((s) => {
+        if (!s.completedAt) return false;
+
+        const tr = trackById.get(s.trackId);
+        if (!tr) return false;
+
+        const mm = metricModeForTrack(tr);
+        if (!requiresRirForTrack(tr, mm)) return false;
+
+        const hasWR = typeof (s as any).weight === "number" && typeof (s as any).reps === "number";
+        if (!hasWR) return false;
+
+        const rir = (s as any).rir;
+        const rirOk = typeof rir === "number" && Number.isFinite(rir);
+        return !rirOk;
+      });
+
+      return {
+        canFinish: unchecked.length === 0 && missingRir.length === 0,
+      };
+    })();
+
+    if (freshReview.canFinish) {
       await onFinish();
       return;
     }
+
     setShowReview(true);
   }
 
@@ -2893,3 +2994,7 @@ function DevGymOverlay({
 /* ============================================================================
    End of file: src/pages/GymPage.tsx
    ============================================================================ */
+
+
+
+
