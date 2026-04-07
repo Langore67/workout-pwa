@@ -1986,6 +1986,11 @@ async function applyExerciseMerge(params: {
         <div style={{ display: "grid", gap: 6 }}>
           {selectedCluster.rows.map((row) => {
             const isKeep = selectedKeepExerciseId === row.exerciseId;
+            const resolvedExercise = (allExercises ?? []).find((exercise) => exercise.id === row.exerciseId);
+            const redirectTargetId = String((resolvedExercise as any)?.mergedIntoExerciseId ?? "").trim();
+            const redirectTargetName = redirectTargetId
+              ? exerciseNameById.get(redirectTargetId) ?? redirectTargetId
+              : "";
 
             return (
               <div
@@ -2029,6 +2034,19 @@ async function applyExerciseMerge(params: {
                   </div>
                 ) : null}
 
+                {redirectTargetName ? (
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "#0f766e",
+                    }}
+                  >
+                    Redirects to: {redirectTargetName}
+                  </div>
+                ) : null}
+
                 <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
                   Tracks {row.trackCount} • Template Items {row.templateItemCount} • Session Items{" "}
                   {row.sessionItemCount} • Sets {row.setCount}
@@ -2052,6 +2070,11 @@ async function applyExerciseMerge(params: {
             .map((row) => {
               const isSelected = selectedMergeSourceIds.includes(row.exerciseId);
               const disabled = !selectedKeepExerciseId;
+              const resolvedExercise = (allExercises ?? []).find((exercise) => exercise.id === row.exerciseId);
+              const redirectTargetId = String((resolvedExercise as any)?.mergedIntoExerciseId ?? "").trim();
+              const redirectTargetName = redirectTargetId
+                ? exerciseNameById.get(redirectTargetId) ?? redirectTargetId
+                : "";
 
               return (
                 <div
@@ -2097,6 +2120,19 @@ async function applyExerciseMerge(params: {
                   {row.aliases.length ? (
                     <div className="muted" style={{ fontSize: 12 }}>
                       Aliases: {row.aliases.join(", ")}
+                    </div>
+                  ) : null}
+
+                  {redirectTargetName ? (
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: "#0f766e",
+                      }}
+                    >
+                      Redirects to: {redirectTargetName}
                     </div>
                   ) : null}
 
@@ -2188,30 +2224,50 @@ async function applyExerciseMerge(params: {
                 </div>
 
                 <div style={{ display: "grid", gap: 4 }}>
-                  {cluster.rows.map((row) => (
-                    <div
-                      key={row.exerciseId}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        alignItems: "baseline",
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontWeight: 600 }}>{row.name}</div>
-                        {row.aliases.length ? (
-                          <div className="muted" style={{ fontSize: 12 }}>
-                            Aliases: {row.aliases.join(", ")}
-                          </div>
-                        ) : null}
-                      </div>
+                  {cluster.rows.map((row) => {
+                    const resolvedExercise = (allExercises ?? []).find((exercise) => exercise.id === row.exerciseId);
+                    const redirectTargetId = String((resolvedExercise as any)?.mergedIntoExerciseId ?? "").trim();
+                    const redirectTargetName = redirectTargetId
+                      ? exerciseNameById.get(redirectTargetId) ?? redirectTargetId
+                      : "";
 
-                      <div className="muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
-                        Sets {row.setCount}
+                    return (
+                      <div
+                        key={row.exerciseId}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          alignItems: "baseline",
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{row.name}</div>
+                          {row.aliases.length ? (
+                            <div className="muted" style={{ fontSize: 12 }}>
+                              Aliases: {row.aliases.join(", ")}
+                            </div>
+                          ) : null}
+                          {redirectTargetName ? (
+                            <div
+                              style={{
+                                marginTop: 2,
+                                fontSize: 12,
+                                fontWeight: 700,
+                                color: "#0f766e",
+                              }}
+                            >
+                              Redirects to: {redirectTargetName}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
+                          Sets {row.setCount}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}
