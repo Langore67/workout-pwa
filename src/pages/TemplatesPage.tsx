@@ -131,8 +131,8 @@ export default function TemplatesPage() {
 
   const [quickAddName, setQuickAddName] = useState<string>("");
 
-  const [variantType, setVariantType] = useState<TrackType>("hypertrophy");
-  const [variantMode, setVariantMode] = useState<TrackingMode>("weightedReps");
+  const [trackIntent, setTrackIntent] = useState<TrackType>("hypertrophy");
+  const [trackingMode, setTrackingMode] = useState<TrackingMode>("weightedReps");
 
   const [, setTrackSearch] = useState<string>("");
   const [, setSelectedTrackId] = useState<string>("");
@@ -141,18 +141,18 @@ export default function TemplatesPage() {
   /*  Breadcrumb 02.3 — corrective default safety                             */
   /* ------------------------------------------------------------------------ */
   useEffect(() => {
-    if (variantType !== "corrective") return;
-    if (variantMode !== "weightedReps") return;
+    if (trackIntent !== "corrective") return;
+    if (trackingMode !== "weightedReps") return;
 
     const q = normalizeLoose(quickAddName);
 
     if (q.includes("breathing") || q.includes("breath")) {
-      setVariantMode("breaths");
+      setTrackingMode("breaths");
       return;
     }
 
-    setVariantMode("repsOnly");
-  }, [variantType, variantMode, quickAddName]);
+    setTrackingMode("repsOnly");
+  }, [trackIntent, trackingMode, quickAddName]);
 
   /* ------------------------------------------------------------------------ */
   /*  Breadcrumb 03 — derived maps / counts                                   */
@@ -307,10 +307,10 @@ export default function TemplatesPage() {
   const suggestedTrackName = useMemo(() => {
     const base = quickAddName.trim();
     if (!base) return "";
-    const vt = variantType;
-    if (base.toLowerCase().includes(vt)) return base;
-    return `${base} — ${vt}`;
-  }, [quickAddName, variantType]);
+    const intent = trackIntent;
+    if (base.toLowerCase().includes(intent)) return base;
+    return `${base} — ${intent}`;
+  }, [quickAddName, trackIntent]);
 
   /* ------------------------------------------------------------------------ */
   /*  Breadcrumb 04 — template actions                                        */
@@ -501,8 +501,8 @@ export default function TemplatesPage() {
     setTrackSearch("");
     setSelectedTrackId("");
     setQuickAddName("");
-    setVariantType("hypertrophy");
-    setVariantMode("weightedReps");
+    setTrackIntent("hypertrophy");
+    setTrackingMode("weightedReps");
   }
 
   function closeEditor() {
@@ -571,9 +571,9 @@ export default function TemplatesPage() {
   }
 
   /* ------------------------------------------------------------------------ */
-  /*  Breadcrumb 06.2 — create track variant                                  */
+  /*  Breadcrumb 06.2 — create track helper                                                                    */
   /* ------------------------------------------------------------------------ */
-  async function createTrackVariant(args: {
+  async function createTrackForIntent(args: {
     exerciseId: string;
     displayName: string;
     trackType: TrackType;
@@ -1030,8 +1030,8 @@ export default function TemplatesPage() {
 
                   <select
                     className="input"
-                    value={variantType}
-                    onChange={(e) => setVariantType(e.target.value as TrackType)}
+                    value={trackIntent}
+                    onChange={(e) => setTrackIntent(e.target.value as TrackType)}
                     style={{ width: "auto", minWidth: 160 }}
                     aria-label="Variant type"
                     title="Variant type"
@@ -1043,8 +1043,8 @@ export default function TemplatesPage() {
 
                   <select
                     className="input"
-                    value={variantMode}
-                    onChange={(e) => setVariantMode(e.target.value as TrackingMode)}
+                    value={trackingMode}
+                    onChange={(e) => setTrackingMode(e.target.value as TrackingMode)}
                     style={{ width: "auto", minWidth: 170 }}
                     aria-label="Tracking mode"
                     title="Tracking mode"
@@ -1086,8 +1086,8 @@ export default function TemplatesPage() {
                           templateId: editingTemplate.id,
                           exerciseName: quickAddName,
                           trackDisplayName: suggestedTrackName || quickAddName.trim(),
-                          trackType: variantType,
-                          trackingMode: variantMode,
+                          trackType: trackIntent,
+                          trackingMode: trackingMode,
                         });
                       }}
                       title="Reuses an existing track if one exists; otherwise creates one"
@@ -1147,9 +1147,9 @@ export default function TemplatesPage() {
                                       await createAndAddTrackToTemplate({
                                         templateId: editingTemplate.id,
                                         exerciseName: base,
-                                        trackDisplayName: `${base} — ${variantType}`,
-                                        trackType: variantType,
-                                        trackingMode: variantMode,
+                                        trackDisplayName: `${base} — ${trackIntent}`,
+                                        trackType: trackIntent,
+                                        trackingMode: trackingMode,
                                       });
                                     }}
                                   >
@@ -1229,3 +1229,4 @@ export default function TemplatesPage() {
     </Page>
   );
 }
+
