@@ -8,6 +8,7 @@ import {
   classifyStrengthPatternFromExerciseName,
   type StrengthPattern,
 } from "../../strength/Strength";
+import { isStrengthTrackType } from "../../domain/trackingMode";
 import {
   getBodyFatPctRaw,
   getLeanMassLb,
@@ -193,6 +194,7 @@ async function buildAnchorLifts(
 
     const track = trackById.get(setRow.trackId);
     if (!track) continue;
+    if (!isStrengthTrackType(track.trackType)) continue;
     const exercise = exerciseById.get(track.exerciseId);
     const exerciseName = String(exercise?.name ?? "").trim();
     const trackDisplayName = String(track?.displayName ?? "").trim();

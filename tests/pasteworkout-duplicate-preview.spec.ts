@@ -351,3 +351,66 @@ work 10x15/side @2`);
     },
   ]);
 });
+
+test("Paste Workout accepts non-strength intents without false no-parsed-set warnings and stores their track types", async ({
+  page,
+}) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Lower B
+Date: 2026-04-07
+Start: 08:00
+End: 09:00
+
+Locked Clams
+corrective BWx15
+
+Knee to Wall
+mobility BWx10 /side
+
+Barbell RDL
+technique 95x10
+technique 20x10 @4 4 sec eccentric
+
+Air Bike
+conditioning BWx30s`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+
+  await expect(page.getByText(/Exercise has no parsed sets/i)).toHaveCount(0);
+  await expect(page.getByText(/Logged as corrective work\. Excluded from strength metrics\./i)).toBeVisible();
+  await expect(page.getByText(/Logged as mobility work\. Excluded from strength metrics\./i)).toBeVisible();
+  await expect(page.getByText(/Logged as technique work\. Excluded from strength metrics\./i)).toBeVisible();
+  await expect(page.getByText(/Logged as conditioning work\. Excluded from strength metrics\./i)).toBeVisible();
+  await expect(page.getByText(/corrective .* BW x 15/i)).toBeVisible();
+  await expect(page.getByText(/mobility .* BW x 10 \/side/i)).toBeVisible();
+  await expect(page.getByText(/technique .* 95 x 10/i)).toBeVisible();
+
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const dbState = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const tracks = await db.tracks.toArray();
+    return tracks
+      .filter((track: any) =>
+        ["Locked Clams", "Knee to Wall", "Barbell RDL", "Air Bike"].includes(track.displayName)
+      )
+      .map((track: any) => ({
+        displayName: track.displayName,
+        trackType: track.trackType,
+        trackingMode: track.trackingMode,
+      }))
+      .sort((a: any, b: any) => a.displayName.localeCompare(b.displayName));
+  });
+
+  expect(dbState).toEqual([
+    { displayName: "Air Bike", trackType: "conditioning", trackingMode: "timeSeconds" },
+    { displayName: "Barbell RDL", trackType: "technique", trackingMode: "weightedReps" },
+    { displayName: "Knee to Wall", trackType: "mobility", trackingMode: "repsOnly" },
+    { displayName: "Locked Clams", trackType: "corrective", trackingMode: "repsOnly" },
+  ]);
+});

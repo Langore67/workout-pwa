@@ -30,6 +30,7 @@ import {
   classifyStrengthPattern,
   classifyStrengthPatternFromExerciseName as classifyStrengthPatternFromSharedSource,
 } from "../domain/exercises/strengthPatternClassifier";
+import { isStrengthTrackType } from "../domain/trackingMode";
 
 /* -------------------------------------------------------------------------- */
 /* Breadcrumb 1 — Types                                                       */
@@ -528,6 +529,7 @@ export async function computeStrengthIndexAt(endAtMs: number, windowDays = 28): 
   for (const s of working) {
     const track = trackById.get(s.trackId);
     if (!track) continue;
+    if (!isStrengthTrackType(track.trackType)) continue;
   
     const exId = String(track.exerciseId ?? "");
     if (!exId) continue;
