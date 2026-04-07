@@ -36,6 +36,12 @@ import {
   findOrCreateExerciseByName as findOrCreateExerciseByNameShared,
   findOrCreateReusableTrack as findOrCreateReusableTrackShared,
 } from "../lib/reusableTrackWorkflow";
+import {
+  buildTrackDisplayNameForIntent,
+  TRACK_INTENT_OPTIONS,
+  defaultTrackingModeForTrackIntent,
+  isNonStrengthTrackType,
+} from "../domain/trackingMode";
 
 /* ========================================================================== */
 /*  Breadcrumb 01 — shared helpers                                            */
@@ -61,8 +67,7 @@ function shouldRefreshReusedTrackDisplayName(existingDisplayName: string, desire
   const current = (existingDisplayName || "").trim();
   const desired = (desiredDisplayName || "").trim();
   if (!current || !desired) return false;
-  if (current === desired) return false;
-  return normalizeReusableTrackDisplayName(current) === normalizeReusableTrackDisplayName(desired);
+  return current !== desired;
 }
 
 function makeUniqueName(base: string, existingNames: Set<string>) {
@@ -131,8 +136,10 @@ export default function TemplatesPage() {
 
   const [quickAddName, setQuickAddName] = useState<string>("");
 
-  const [variantType, setVariantType] = useState<TrackType>("hypertrophy");
-  const [variantMode, setVariantMode] = useState<TrackingMode>("weightedReps");
+  const [variantType, setVariantType] = useState<TrackType>("strength");
+  const [variantMode, setVariantMode] = useState<TrackingMode>(
+    defaultTrackingModeForTrackIntent("strength")
+  );
 
   const [, setTrackSearch] = useState<string>("");
   const [, setSelectedTrackId] = useState<string>("");
@@ -304,13 +311,11 @@ export default function TemplatesPage() {
     return undefined as Exercise | undefined;
   }, [catalogGroups]);
 
-  const suggestedTrackName = useMemo(() => {
-    const base = quickAddName.trim();
-    if (!base) return "";
-    const vt = variantType;
-    if (base.toLowerCase().includes(vt)) return base;
-    return `${base} — ${vt}`;
-  }, [quickAddName, variantType]);
+
+  const suggestedTrackName = useMemo(
+    () => buildTrackDisplayNameForIntent(quickAddName, variantType),
+    [quickAddName, variantType]
+  );
 
   /* ------------------------------------------------------------------------ */
   /*  Breadcrumb 04 — template actions                                        */
@@ -501,8 +506,8 @@ export default function TemplatesPage() {
     setTrackSearch("");
     setSelectedTrackId("");
     setQuickAddName("");
-    setVariantType("hypertrophy");
-    setVariantMode("weightedReps");
+    setVariantType("strength");
+    setVariantMode(defaultTrackingModeForTrackIntent("strength"));
   }
 
   function closeEditor() {
@@ -1031,14 +1036,20 @@ export default function TemplatesPage() {
                   <select
                     className="input"
                     value={variantType}
-                    onChange={(e) => setVariantType(e.target.value as TrackType)}
+                    onChange={(e) => {
+                      const nextType = e.target.value as TrackType;
+                      setVariantType(nextType);
+                      setVariantMode(defaultTrackingModeForTrackIntent(nextType));
+                    }}
                     style={{ width: "auto", minWidth: 160 }}
-                    aria-label="Variant type"
-                    title="Variant type"
+                    aria-label="Track intent"
+                    title="Track intent"
                   >
-                    <option value="strength">strength</option>
-                    <option value="hypertrophy">hypertrophy</option>
-                    <option value="corrective">corrective</option>
+                    {TRACK_INTENT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
 
                   <select
@@ -1058,7 +1069,7 @@ export default function TemplatesPage() {
                 </div>
 
                 <div className="muted" style={{ marginTop: 8, fontSize: 13 }}>
-                  Reuse rule: {`exerciseId + type + mode`} (prefers no variant). Only creates a new Track if none exists.
+                  Reuse rule: {`exerciseId + intent + mode`} (prefers no variant). Only creates a new Track if none exists.
                 </div>
 
                 <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
@@ -1085,7 +1096,7 @@ export default function TemplatesPage() {
                         await createAndAddTrackToTemplate({
                           templateId: editingTemplate.id,
                           exerciseName: quickAddName,
-                          trackDisplayName: suggestedTrackName || quickAddName.trim(),
+                          trackDisplayName: buildTrackDisplayNameForIntent(quickAddName, variantType),
                           trackType: variantType,
                           trackingMode: variantMode,
                         });
@@ -1147,7 +1158,7 @@ export default function TemplatesPage() {
                                       await createAndAddTrackToTemplate({
                                         templateId: editingTemplate.id,
                                         exerciseName: base,
-                                        trackDisplayName: `${base} — ${variantType}`,
+                                        trackDisplayName: buildTrackDisplayNameForIntent(base, variantType),
                                         trackType: variantType,
                                         trackingMode: variantMode,
                                       });
@@ -1193,6 +1204,11 @@ export default function TemplatesPage() {
                             <div className="muted" style={{ marginTop: 3, fontSize: 13 }}>
                               orderIndex: {it.orderIndex}
                             </div>
+                            {tr && isNonStrengthTrackType(tr.trackType) ? (
+                              <div className="muted" style={{ marginTop: 3, fontSize: 13 }}>
+                                {tr.trackType} • {tr.trackingMode}
+                              </div>
+                            ) : null}
                           </div>
 
                           <button
