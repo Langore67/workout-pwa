@@ -202,6 +202,66 @@ export async function appendExerciseAlias(exerciseId: string, aliasRaw: string):
   };
 }
 
+export async function resolveExerciseToCanonicalAlias(params: {
+  canonicalExerciseId: string;
+  sourceExerciseId: string;
+}): Promise<{
+  canonicalExerciseId: string;
+  sourceExerciseId: string;
+  aliases: string[];
+}> {
+  const canonicalExerciseId = String(params.canonicalExerciseId || "").trim();
+  const sourceExerciseId = String(params.sourceExerciseId || "").trim();
+
+  if (!canonicalExerciseId || !sourceExerciseId || canonicalExerciseId === sourceExerciseId) {
+    throw new Error("Choose a source exercise and a different canonical exercise.");
+  }
+
+  await db.transaction("rw", db.exercises, async () => {
+    const [canonical, source] = await Promise.all([
+      db.exercises.get(canonicalExerciseId),
+      db.exercises.get(sourceExerciseId),
+    ]);
+
+    if (!canonical) throw new Error("Canonical exercise not found.");
+    if (!source) throw new Error("Source exercise not found.");
+
+    const existingAliases = Array.isArray(canonical.aliases) ? canonical.aliases : [];
+    const existingNorms = new Set(
+      existingAliases.map((value) => normalizeExerciseQuery(String(value || "")))
+    );
+    existingNorms.add(normalizeExerciseQuery(canonical.name || ""));
+
+    const nextAliases = existingAliases.slice();
+    for (const aliasRaw of [source.name, ...(Array.isArray(source.aliases) ? source.aliases : [])]) {
+      const alias = String(aliasRaw || "").trim();
+      const aliasNorm = normalizeExerciseQuery(alias);
+      if (!aliasNorm || existingNorms.has(aliasNorm)) continue;
+      existingNorms.add(aliasNorm);
+      nextAliases.push(alias);
+    }
+
+    const now = Date.now();
+    await db.exercises.update(canonical.id, {
+      aliases: nextAliases,
+      updatedAt: now,
+    });
+
+    await db.exercises.update(source.id, {
+      mergedIntoExerciseId: canonical.id,
+      mergeNote: `Resolved to ${canonical.name} as canonical on ${new Date(now).toISOString()}`,
+      updatedAt: now,
+    });
+  });
+
+  const canonical = await db.exercises.get(canonicalExerciseId);
+  return {
+    canonicalExerciseId,
+    sourceExerciseId,
+    aliases: Array.isArray(canonical?.aliases) ? canonical.aliases : [],
+  };
+}
+
 export function buildExerciseResolverIndex(exercises: Exercise[]): ExerciseResolverIndex {
   const allExercises = Array.isArray(exercises) ? exercises.slice() : [];
   const canonicalById = new Map<string, Exercise>();

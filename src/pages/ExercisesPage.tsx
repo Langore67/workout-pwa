@@ -47,6 +47,7 @@ import {
 } from "../domain/exercises/exerciseDuplicateCandidates";
 import {
   buildExerciseResolverIndex,
+  resolveExerciseToCanonicalAlias,
   resolveExerciseFromIndex,
 } from "../domain/exercises/exerciseResolver";
 
@@ -1856,16 +1857,16 @@ async function applyExerciseMerge(params: {
 
       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
         {selectedKeepExerciseId
-          ? `Keeping: ${
+          ? `Canonical: ${
               selectedCluster.rows.find((row) => row.exerciseId === selectedKeepExerciseId)?.name ?? "Unknown"
             }`
-          : "Choose the exercise to keep."}
+          : "Choose the canonical exercise."}
       </div>
 
       <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
         {selectedMergeSourceIds.length
-          ? `Ready to merge ${selectedMergeSourceIds.length} exercise(s) into the kept one.`
-          : "No merge sources selected yet."}
+          ? `Ready to resolve ${selectedMergeSourceIds.length} duplicate exercise(s) to the canonical one.`
+          : "No duplicate exercises selected yet."}
       </div>
       
       {selectedKeepExerciseId && selectedMergeSourceIds.length ? (
@@ -1878,15 +1879,15 @@ async function applyExerciseMerge(params: {
             marginBottom: 12,
           }}
         >
-          <div style={{ fontWeight: 800, marginBottom: 6 }}>Merge preview</div>
+          <div style={{ fontWeight: 800, marginBottom: 6 }}>Canonical resolution preview</div>
       
           <div style={{ fontSize: 13, marginBottom: 6 }}>
-            <strong>Keep:</strong>{" "}
+            <strong>Canonical:</strong>{" "}
             {selectedCluster.rows.find((row) => row.exerciseId === selectedKeepExerciseId)?.name ?? "Unknown"}
           </div>
       
           <div style={{ fontSize: 13, marginBottom: 8 }}>
-            <strong>Merge:</strong>{" "}
+            <strong>Resolve:</strong>{" "}
             {selectedCluster.rows
               .filter((row) => selectedMergeSourceIds.includes(row.exerciseId))
               .map((row) => row.name)
@@ -1912,10 +1913,10 @@ async function applyExerciseMerge(params: {
             return (
               <>
                 <div className="muted" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 10 }}>
-                  <div>Tracks affected: {totals.tracks}</div>
-                  <div>Template items affected: {totals.templateItems}</div>
-                  <div>Session items affected: {totals.sessionItems}</div>
-                  <div>Sets affected: {totals.sets}</div>
+                  <div>Resolver aliases added to canonical exercise.</div>
+                  <div>Tracks remain untouched in this v1 workflow.</div>
+                  <div>Existing usage rows still point to the source exercise ids.</div>
+                  <div>Usage represented by selected duplicates: {totals.sets} sets across {totals.tracks} tracks.</div>
                 </div>
       
                 <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -1933,35 +1934,31 @@ async function applyExerciseMerge(params: {
 		        .map((row) => row.name);
 		
 		      const ok = window.confirm(
-		        `Merge ${mergeNames.join(", ")} into ${keepName}?\n\n` +
-		          `This will relink tracks to the kept exercise, add aliases, and archive the merged exercises.`
+		        `Resolve ${mergeNames.join(", ")} to ${keepName} as the canonical exercise?\n\n` +
+		          `This v1 workflow will add alias coverage to the canonical exercise and mark the duplicates as redirects. Tracks will not be relinked in this slice.`
 		      );
 		      if (!ok) return;
 		
 		      try {
-		        const snapshot = await createExerciseMergeRollbackSnapshot({
-		          keepExerciseId: selectedKeepExerciseId,
-		          mergeSourceIds: selectedMergeSourceIds,
-		        });
+		        for (const sourceExerciseId of selectedMergeSourceIds) {
+		          await resolveExerciseToCanonicalAlias({
+		            canonicalExerciseId: selectedKeepExerciseId,
+		            sourceExerciseId,
+		          });
+		        }
 		
-		        await applyExerciseMerge({
-		          keepExerciseId: selectedKeepExerciseId,
-		          mergeSourceIds: selectedMergeSourceIds,
-		        });
-		
-		        setLastMergeSnapshot(snapshot);
 		        setSelectedAuditClusterKey(null);
 		        setSelectedKeepExerciseId(null);
 		        setSelectedMergeSourceIds([]);
 		
-		        alert(`Merged into ${keepName}.`);
+		        alert(`Resolved to ${keepName}.`);
 		      } catch (err) {
-		        console.error("Exercise merge failed", err);
-		        alert(err instanceof Error ? err.message : "Exercise merge failed.");
+		        console.error("Exercise resolution failed", err);
+		        alert(err instanceof Error ? err.message : "Exercise resolution failed.");
 		      }
 		    }}
 		  >
-		    Apply Merge
+		    Resolve to Canonical
 		  </button>
 		
 		  <button
@@ -1974,31 +1971,6 @@ async function applyExerciseMerge(params: {
 		  >
 		    Clear Selection
 		  </button>
-		
-		  {lastMergeSnapshot ? (
-		    <button
-		      type="button"
-		      className="btn small"
-		      onClick={async () => {
-		        const ok = window.confirm("Undo the last exercise merge?");
-		        if (!ok) return;
-		
-		        try {
-		          await undoExerciseMerge(lastMergeSnapshot);
-		          setLastMergeSnapshot(null);
-		          setSelectedAuditClusterKey(null);
-		          setSelectedKeepExerciseId(null);
-		          setSelectedMergeSourceIds([]);
-		          alert("Last merge undone.");
-		        } catch (err) {
-		          console.error("Undo exercise merge failed", err);
-		          alert(err instanceof Error ? err.message : "Undo exercise merge failed.");
-		        }
-		      }}
-		    >
-		      Undo Last Merge
-		    </button>
-		  ) : null}
 		</div>
               </>
             );
@@ -2008,7 +1980,7 @@ async function applyExerciseMerge(params: {
 
       <div style={{ marginTop: 12 }}>
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
-          Choose the exercise to keep.
+          Choose the canonical exercise.
         </div>
 
         <div style={{ display: "grid", gap: 6 }}>
@@ -2047,7 +2019,7 @@ async function applyExerciseMerge(params: {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {isKeep ? "KEEP" : "Tap to keep"}
+                    {isKeep ? "CANONICAL" : "Tap to mark canonical"}
                   </div>
                 </div>
 
@@ -2070,8 +2042,8 @@ async function applyExerciseMerge(params: {
       <div style={{ marginTop: 12 }}>
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
           {selectedKeepExerciseId
-            ? "Choose exercise(s) to merge into the kept one."
-            : "Choose the exercise to keep before selecting merge sources."}
+            ? "Choose duplicate exercise(s) to resolve to the canonical one."
+            : "Choose the canonical exercise before selecting duplicates."}
         </div>
 
         <div style={{ display: "grid", gap: 6 }}>
