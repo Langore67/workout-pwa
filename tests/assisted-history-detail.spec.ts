@@ -180,5 +180,8 @@ test.describe("assisted history and session detail", () => {
     expect(copiedText).toContain(
       "Assisted sets subtract assistance from bodyweight"
     );
+    expect(copiedText).toContain(
+      "Coach prompt: suggest next working weight/reps based on these sessions."
+    );
   });
 });

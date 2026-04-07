@@ -45,6 +45,10 @@ import {
   classifyExerciseDuplicateRows,
   exerciseDuplicateAuditKey,
 } from "../domain/exercises/exerciseDuplicateCandidates";
+import {
+  buildExerciseResolverIndex,
+  resolveExerciseFromIndex,
+} from "../domain/exercises/exerciseResolver";
 
 /* ========================================================================== */
 /*  Breadcrumb 1 — Schema tolerance + design intent                            */
@@ -695,12 +699,14 @@ function useExercisePerformance(exerciseId?: string) {
 
 function ExerciseDetailsModal({
   exercise,
+  allExercises,
   tab,
   setTab,
   onClose,
   onEdit,
 }: {
   exercise: any; // Exercise type in your db; keep `any` here to avoid import churn
+  allExercises: Exercise[];
   tab: "details" | "history" | "charts" | "records";
   setTab: (t: "details" | "history" | "charts" | "records") => void;
   onClose: () => void;
@@ -810,7 +816,9 @@ function ExerciseDetailsModal({
                     type="button"
                     className="btn small"
                     onClick={() =>
-                      copyTextToClipboard(buildExerciseHistoryExportText(exercise, perf))
+                      copyTextToClipboard(
+                        buildExerciseHistoryExportText(exercise, perf, allExercises ?? [])
+                      )
                     }
                     title="Copy recent exercise history for coach handoff"
                   >
@@ -973,11 +981,18 @@ function buildClipboardText(e: Exercise, patchPreview?: any) {
 
 function buildExerciseHistoryExportText(
   exercise: Exercise,
-  perf: ReturnType<typeof useExercisePerformance>
+  perf: ReturnType<typeof useExercisePerformance>,
+  allExercises: Exercise[]
 ) {
   const metricMode: MetricMode = normalizeMetricMode((exercise as any).metricMode);
   const rows = (perf.historyRows ?? []).slice(0, 8);
   const generatedAt = new Date().toLocaleString();
+  const resolvedExercise = resolveExerciseFromIndex(
+    { rawName: exercise.name, allowAlias: true, followMerged: true },
+    buildExerciseResolverIndex(allExercises)
+  );
+  const exportExerciseName =
+    resolvedExercise.canonicalExercise?.name ?? resolvedExercise.exercise?.name ?? exercise.name;
   const usesBodyweightEffective =
     isBodyweightEffectiveLoadExerciseName(exercise.name) ||
     rows.some((row: any) => row.usedBodyweightEffective);
@@ -985,7 +1000,7 @@ function buildExerciseHistoryExportText(
 
   const lines: string[] = [];
   lines.push("IronForge Exercise Export");
-  lines.push(`Exercise: ${exercise.name}`);
+  lines.push(`Exercise: ${exportExerciseName}`);
   lines.push(`Metric: ${prettyMetricLabel(metricMode)}`);
   lines.push(`Generated: ${generatedAt}`);
 
@@ -1028,6 +1043,9 @@ function buildExerciseHistoryExportText(
       lines.push(`  ${fields.join(" • ")}`);
     }
   }
+
+  lines.push("");
+  lines.push("Coach prompt: suggest next working weight/reps based on these sessions.");
 
   return lines.join("\n").trim() + "\n";
 }
@@ -2644,6 +2662,7 @@ async function applyExerciseMerge(params: {
       {viewingExercise ? (
         <ExerciseDetailsModal
           exercise={viewingExercise}
+          allExercises={allExercises ?? []}
           tab={detailsTab}
           setTab={setDetailsTab}
           onClose={closeDetails}
