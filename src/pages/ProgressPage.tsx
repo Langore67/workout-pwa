@@ -141,6 +141,10 @@ type FallbackCopyResult =
   | { ok: true; method: "execCommand" }
   | { ok: false; method: "execCommand"; detail: string };
 
+type CopyResult =
+  | { ok: true; method: "clipboard" | "execCommand" }
+  | { ok: false; method: "clipboard" | "execCommand"; detail: string };
+
 async function fallbackCopyTextToClipboard(text: string): Promise<FallbackCopyResult> {
   try {
     const ta = document.createElement("textarea");
@@ -167,13 +171,33 @@ async function fallbackCopyTextToClipboard(text: string): Promise<FallbackCopyRe
   }
 }
 
+async function copyTextToClipboard(text: string): Promise<CopyResult> {
+  try {
+    if (!navigator?.clipboard?.writeText) {
+      return { ok: false, method: "clipboard", detail: "clipboard unavailable" };
+    }
+    await navigator.clipboard.writeText(text);
+    return { ok: true, method: "clipboard" };
+  } catch (err: any) {
+    const fallback = await fallbackCopyTextToClipboard(text);
+    if (fallback.ok) return fallback;
+    return {
+      ok: false,
+      method: fallback.method,
+      detail: err?.message || fallback.detail || "copy failed",
+    };
+  }
+}
+
 /* ============================================================================
    Breadcrumb 3 — Page
    ============================================================================ */
 
 export default function ProgressPage() {
   const nav = useNavigate();
-  const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "error">("idle");
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [coachExportText, setCoachExportText] = useState<string>("");
+  const [coachExportReadyState, setCoachExportReadyState] = useState<"preparing" | "ready" | "error">("preparing");
   const [manualCopyText, setManualCopyText] = useState<string | null>(null);
   const [copyDebug, setCopyDebug] = useState<CopyDebugEvent[]>([]);
   const manualCopyRef = useRef<HTMLTextAreaElement | null>(null);
@@ -201,47 +225,62 @@ export default function ProgressPage() {
     });
   }, [manualCopyText]);
 
-  async function onCopyCoachExport() {
-    let text = "";
-    try {
-      setCopyState("copying");
-      setManualCopyText(null);
-      setCopyDebug([]);
-      pushCopyDebug("export:start", "Started coach export generation.");
-      const metrics = await buildCoachExportMetrics();
-      pushCopyDebug("export:done", "Coach export metrics generated.");
-      text = formatCoachExportText(metrics);
-      pushCopyDebug("format:done", `Export text built (${text.length} chars).`);
+  useEffect(() => {
+    let cancelled = false;
+
+    async function prepareCoachExport() {
+      setCoachExportReadyState("preparing");
+      pushCopyDebug("prepare:start", "Started coach export preparation.");
       try {
-        if (!navigator?.clipboard?.writeText) {
-          pushCopyDebug("clipboard:unavailable", "navigator.clipboard.writeText is unavailable.");
-          throw new Error("clipboard unavailable");
-        }
-        pushCopyDebug("clipboard:start", "Attempting direct navigator.clipboard.writeText.");
-        await navigator.clipboard.writeText(text);
-        pushCopyDebug("clipboard:success", "Direct clipboard write succeeded.");
+        const metrics = await buildCoachExportMetrics();
+        if (cancelled) return;
+        pushCopyDebug("prepare:metrics", "Coach export metrics generated.");
+        const nextText = formatCoachExportText(metrics);
+        if (cancelled) return;
+        setCoachExportText(nextText);
+        setCoachExportReadyState("ready");
+        pushCopyDebug("prepare:ready", `Coach export prepared (${nextText.length} chars).`);
       } catch (err: any) {
-        pushCopyDebug("clipboard:error", err?.message || "Direct clipboard write threw.");
-        pushCopyDebug("fallback:start", "Attempting textarea execCommand fallback.");
-        const copied = await fallbackCopyTextToClipboard(text);
-        if (!copied.ok) {
-          pushCopyDebug("fallback:error", copied.detail);
-          throw new Error("copy failed");
-        }
-        pushCopyDebug("fallback:success", "Textarea execCommand fallback succeeded.");
+        if (cancelled) return;
+        setCoachExportText("");
+        setCoachExportReadyState("error");
+        pushCopyDebug("prepare:error", err?.message || "Coach export preparation failed.");
       }
+    }
+
+    void prepareCoachExport();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function onCopyCoachExport() {
+    const text = coachExportText;
+    if (!text) {
+      setCopyState("error");
+      setManualCopyText("Could not generate coach export text.");
+      pushCopyDebug("copy:missing", "Coach export text was not ready at tap time.");
+      return;
+    }
+
+    try {
+      setManualCopyText(null);
+      pushCopyDebug("copy:start", "Attempting immediate coach export copy.");
+      const copied = await copyTextToClipboard(text);
+      if (!copied.ok) {
+        pushCopyDebug("copy:error", copied.detail);
+        throw new Error(copied.detail);
+      }
+      pushCopyDebug("copy:success", `Coach export copied via ${copied.method}.`);
       setCopyState("copied");
-      pushCopyDebug("result:copied", "Coach export copied automatically.");
       window.setTimeout(() => {
         setCopyState((current) => (current === "copied" ? "idle" : current));
       }, 2000);
     } catch {
       setCopyState("error");
       setManualCopyText(text || "Could not generate coach export text.");
-      pushCopyDebug(
-        "manual:shown",
-        text ? "Automatic copy failed. Manual copy fallback shown." : "Export generation failed before copy."
-      );
+      pushCopyDebug("manual:shown", "Automatic copy failed. Manual copy fallback shown.");
     }
   }
 
@@ -271,11 +310,17 @@ export default function ProgressPage() {
         </div>
 
         <div className="row" style={{ gap: 10, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
-          <button className="btn primary" onClick={() => void onCopyCoachExport()} disabled={copyState === "copying"}>
-            {copyState === "copying" ? "Building Export…" : "Copy Coach Export"}
+          <button
+            className="btn primary"
+            onClick={() => void onCopyCoachExport()}
+            disabled={coachExportReadyState === "preparing"}
+          >
+            {coachExportReadyState === "preparing" ? "Preparing Export…" : "Copy Coach Export"}
           </button>
           <div className="muted" style={{ fontSize: 13, flex: "1 1 220px", minWidth: 0 }}>
-            {copyState === "copied"
+            {coachExportReadyState === "preparing"
+              ? "Preparing a copy/paste summary for ChatGPT."
+              : copyState === "copied"
               ? "Coach export copied."
               : copyState === "error"
                 ? "Copy not available on this device. Tap and hold to copy manually."
