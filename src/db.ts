@@ -27,7 +27,13 @@ import Dexie, { Table } from "dexie";
 
 export type UUID = string;
 
-export type TrackType = "strength" | "hypertrophy" | "corrective";
+export type TrackType =
+  | "strength"
+  | "hypertrophy"
+  | "technique"
+  | "mobility"
+  | "corrective"
+  | "conditioning";
 export type SetType = "warmup" | "working" | "drop" | "failure";
 export type TrackingMode =
   | "weightedReps"

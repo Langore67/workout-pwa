@@ -84,16 +84,24 @@ import {
   type ExerciseDuplicateCandidate,
 } from "../domain/exercises/exerciseDuplicateCandidates";
 import {
-  defaultTrackTypeFromExerciseName,
-  inferTrackingModeFromExerciseName,
+  inferTrackTypeFromParsedSetKinds,
   inferTrackingModeFromSetSignals,
+  isNonStrengthTrackType,
 } from "../domain/trackingMode";
 
 /* ============================================================================
    Breadcrumb 1 — Types
    ============================================================================ */
 
-type ParsedSetKind = "warmup" | "work" | "technique" | "test" | "cardio";
+type ParsedSetKind =
+  | "warmup"
+  | "work"
+  | "technique"
+  | "mobility"
+  | "corrective"
+  | "conditioning"
+  | "test"
+  | "cardio";
 
 type ParsedSet = {
   rawLine: string;
@@ -324,18 +332,6 @@ function normalizeExerciseDisplayName(name: string): string {
   return name.replace(/\s+/g, " ").trim();
 }
 
-function inferTrackingMode(
-  exerciseName: string,
-  hasWeight: boolean,
-  hasReps: boolean
-): TrackingMode {
-  return inferTrackingModeFromExerciseName(exerciseName, {
-    hasWeight,
-    hasReps,
-    treatHangAsTime: true,
-  });
-}
-
 function inferBetterTrackingModeFromParsedSets(
   exerciseName: string,
   sets: ParsedSet[]
@@ -361,27 +357,37 @@ function inferBetterTrackingModeFromParsedSets(
   );
 }
 
-function defaultTrackType(exerciseName: string): TrackType {
-  return defaultTrackTypeFromExerciseName(exerciseName, {
-    extraCorrectiveTerms: [
-      "stretch",
-      "clamshell",
-      "clams",
-      "wall slide",
-      "hip rotation",
-      "walkout",
-      "knee to wall",
-    ],
-    enableCardioTerms: true,
-  });
+function inferTrackTypeFromParsedSets(exerciseName: string, sets: ParsedSet[]): TrackType {
+  return inferTrackTypeFromParsedSetKinds(
+    exerciseName,
+    sets.map((set) => set.setKind),
+    {
+      extraCorrectiveTerms: [
+        "stretch",
+        "clamshell",
+        "clams",
+        "wall slide",
+        "hip rotation",
+        "walkout",
+        "knee to wall",
+      ],
+      enableCardioTerms: true,
+    }
+  );
+}
+
+function trackIntentKey(displayName: string, trackType: TrackType): string {
+  return `${normalizeName(displayName)}::${trackType}`;
 }
 
 function buildSetNotes(set: ParsedSet): string | undefined {
   const parts: string[] = [];
 
   if (set.setKind === "technique") parts.push("technique");
+  if (set.setKind === "mobility") parts.push("mobility");
+  if (set.setKind === "corrective") parts.push("corrective");
+  if (set.setKind === "conditioning" || set.setKind === "cardio") parts.push("conditioning");
   if (set.setKind === "test") parts.push("test");
-  if (set.setKind === "cardio") parts.push("cardio");
 
   const noteText = String(set.notes || "").trim();
   if (noteText) parts.push(noteText);
@@ -443,6 +449,7 @@ function normalizeSetLineForParsing(line: string): string {
   return line
     .trim()
     .replace(/\s*x\s*/gi, "x")
+    .replace(/\s*\/\s*side\b/gi, "/side")
     .replace(/\s*@\s*/g, "@");
 }
 
@@ -450,20 +457,11 @@ function parseSetLine(line: string): ParsedSet | null {
   const trimmed = normalizeSetLineForParsing(line);
   if (!trimmed) return null;
 
-  const cardioMatch = trimmed.match(/^(cardio)\s+(.+)$/i);
-  if (cardioMatch) {
-    return {
-      rawLine: line,
-      setKind: "cardio",
-      notes: cardioMatch[2].trim(),
-    };
-  }
-
   /* ------------------------------------------------------------------------
      Breadcrumb — Standard weighted / BW / bar sets
      --------------------------------------------------------------------- */
   const standardMatch = trimmed.match(
-    /^(warmup|work|technique|test)\s+(BW|Bar|-?\d+(?:\.\d+)?)x(\d+)(s)?(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+    /^(warmup|work|technique|mobility|corrective|conditioning|test)\s+(BW|Bar|-?\d+(?:\.\d+)?)x(\d+)(s)?(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
   );
 
   if (standardMatch) {
@@ -498,7 +496,7 @@ function parseSetLine(line: string): ParsedSet | null {
      Breadcrumb — Distance sets
      --------------------------------------------------------------------- */
   const distanceMatch = trimmed.match(
-    /^(warmup|work|technique|test)\s+(BW|Bar|-?\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(m|meter|meters|ft|yd)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+    /^(warmup|work|technique|mobility|corrective|conditioning|test)\s+(BW|Bar|-?\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(m|meter|meters|ft|yd)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
   );
 
   if (distanceMatch) {
@@ -535,7 +533,7 @@ function parseSetLine(line: string): ParsedSet | null {
      Breadcrumb — Time-only sets
      --------------------------------------------------------------------- */
     const timeOnlyMatch = trimmed.match(
-      /^(warmup|work|technique|test)\s+(\d+(?:\.\d+)?)(s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+      /^(warmup|work|technique|mobility|corrective|conditioning|test)\s+(\d+(?:\.\d+)?)(s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
     );
   
     if (timeOnlyMatch) {
@@ -567,7 +565,7 @@ function parseSetLine(line: string): ParsedSet | null {
      - work x12 @3
      --------------------------------------------------------------------- */
   const repsOnlyNoLoadMatch = trimmed.match(
-    /^(warmup|work|technique|test)\s+x(\d+)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+    /^(warmup|work|technique|mobility|corrective|conditioning|test)\s+x(\d+)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
   );
 
   if (repsOnlyNoLoadMatch) {
@@ -590,6 +588,15 @@ function parseSetLine(line: string): ParsedSet | null {
     };
   }
 
+  const cardioMatch = trimmed.match(/^(cardio|conditioning)\s+(.+)$/i);
+  if (cardioMatch) {
+    return {
+      rawLine: line,
+      setKind: "conditioning",
+      notes: cardioMatch[2].trim(),
+    };
+  }
+
   return null;
 }
 
@@ -597,7 +604,7 @@ function formatParsedSetPreview(set: ParsedSet): string {
   const prefix = `${set.setKind} • `;
 
   // Cardio note-only preview
-  if (set.setKind === "cardio") {
+  if (set.setKind === "cardio" || set.setKind === "conditioning") {
     return `${prefix}${String(set.notes || "").trim() || "—"}`;
   }
 
@@ -700,7 +707,7 @@ function parseWorkoutText(text: string): ParsedWorkout {
       continue;
     }
 
-    if (/^(warmup|work|technique|test|cardio)\b/i.test(line)) {
+    if (/^(warmup|work|technique|mobility|corrective|conditioning|test|cardio)\b/i.test(line)) {
       warnings.push(
         `Unsupported set format under ${currentExercise?.exercise ?? "unknown exercise"}: ${line}`
       );
@@ -836,7 +843,9 @@ export default function PasteWorkoutPage() {
     ]);
     const resolverIndex = buildExerciseResolverIndex(existingExercises);
 
-    const trackKeys = new Set(existingTracks.map((t) => normalizeName(t.displayName)));
+    const trackKeys = new Set(
+      existingTracks.map((t) => trackIntentKey(t.displayName, t.trackType as TrackType))
+    );
 
     const importableExercises = parsedWorkout.exercises.filter((ex) => ex.sets.length > 0);
     const newExerciseNames = new Set<string>();
@@ -849,6 +858,7 @@ export default function PasteWorkoutPage() {
     let wouldAddSets = 0;
 
     for (const ex of importableExercises) {
+      const desiredTrackType = inferTrackTypeFromParsedSets(ex.exercise, ex.sets);
       const resolution = resolveExerciseFromIndex(
         {
           rawName: ex.exercise,
@@ -885,10 +895,10 @@ export default function PasteWorkoutPage() {
         }
       }
 
-      const norm = normalizeName(ex.exercise);
-      if (!trackKeys.has(norm)) {
+      const trackKey = trackIntentKey(ex.exercise, desiredTrackType);
+      if (!trackKeys.has(trackKey)) {
         wouldAddTracks += 1;
-        trackKeys.add(norm);
+        trackKeys.add(trackKey);
       }
 
       wouldAddSessionItems += 1;
@@ -1050,7 +1060,7 @@ export default function PasteWorkoutPage() {
 
     const trackByDisplay = new Map<string, Track>();
     for (const t of existingTracks) {
-      trackByDisplay.set(normalizeName(t.displayName), t);
+      trackByDisplay.set(trackIntentKey(t.displayName, t.trackType), t);
     }
 
     const now = Date.now();
@@ -1137,8 +1147,8 @@ export default function PasteWorkoutPage() {
     const tracksToUpdate: Track[] = [];
 
     for (const ex of importableExercises) {
-      const norm = normalizeName(ex.exercise);
-      const existingTrack = trackByDisplay.get(norm);
+      const desiredTrackType = inferTrackTypeFromParsedSets(ex.exercise, ex.sets);
+      const existingTrack = trackByDisplay.get(trackIntentKey(ex.exercise, desiredTrackType));
 
       const desiredTrackingMode = inferBetterTrackingModeFromParsedSets(
         ex.exercise,
@@ -1153,16 +1163,11 @@ export default function PasteWorkoutPage() {
                 const updatedTrack: Track = {
                   ...existingTrack,
                   trackingMode: desiredTrackingMode,
-                  trackType:
-                    desiredTrackingMode === "weightedReps"
-                      ? existingTrack.trackType === "cardio"
-                        ? "hypertrophy"
-                        : existingTrack.trackType
-                      : existingTrack.trackType,
+                  trackType: existingTrack.trackType,
                 };
       
                 tracksToUpdate.push(updatedTrack);
-                trackByDisplay.set(norm, updatedTrack);
+                trackByDisplay.set(trackIntentKey(updatedTrack.displayName, updatedTrack.trackType), updatedTrack);
               }
       
               continue;
@@ -1175,19 +1180,31 @@ export default function PasteWorkoutPage() {
         id: uuid(),
         exerciseId: exercise.id,
         displayName: ex.exercise,
-        trackType: defaultTrackType(ex.exercise),
+        trackType: desiredTrackType,
         trackingMode: desiredTrackingMode,
-        warmupSetsDefault: 2,
-        workingSetsDefault: 3,
-        repMin: 6,
-        repMax: 12,
-        restSecondsDefault: 120,
-        weightJumpDefault: 5,
+        warmupSetsDefault:
+          desiredTrackType === "strength" || desiredTrackType === "hypertrophy" ? 2 : 0,
+        workingSetsDefault:
+          desiredTrackType === "strength" || desiredTrackType === "hypertrophy"
+            ? 3
+            : desiredTrackType === "technique"
+              ? 2
+              : 1,
+        repMin: desiredTrackType === "strength" ? 3 : desiredTrackType === "technique" ? 3 : 1,
+        repMax:
+          desiredTrackType === "strength"
+            ? 6
+            : desiredTrackType === "technique"
+              ? 8
+              : 12,
+        restSecondsDefault: desiredTrackType === "strength" ? 180 : desiredTrackType === "technique" ? 90 : 60,
+        weightJumpDefault:
+          desiredTrackType === "strength" || desiredTrackType === "hypertrophy" ? 5 : 0,
         createdAt: now,
       };
 
       newTracks.push(t);
-      trackByDisplay.set(norm, t);
+      trackByDisplay.set(trackIntentKey(t.displayName, t.trackType), t);
     }
 
     const importId = `paste_import_${new Date().toISOString()}`;
@@ -1227,7 +1244,8 @@ export default function PasteWorkoutPage() {
     let createdAt = startedAt + 1000;
 
     for (const ex of importableExercises) {
-      const track = trackByDisplay.get(normalizeName(ex.exercise));
+      const desiredTrackType = inferTrackTypeFromParsedSets(ex.exercise, ex.sets);
+      const track = trackByDisplay.get(trackIntentKey(ex.exercise, desiredTrackType));
       if (!track) continue;
 
       sessionItemsToAdd.push({
@@ -1710,6 +1728,7 @@ export default function PasteWorkoutPage() {
                 {(() => {
                   const review = preview.duplicateReviews.find((row) => row.exerciseName === ex.exercise);
                   const showReview = preview.reviewExerciseNames.includes(ex.exercise) && !!review;
+                  const inferredTrackType = inferTrackTypeFromParsedSets(ex.exercise, ex.sets);
                   return (
                 <div
                   style={{
@@ -1730,7 +1749,21 @@ export default function PasteWorkoutPage() {
                   ) : preview.newExerciseNames.includes(ex.exercise) ? (
                     <span className="badge">NEW</span>
                   ) : null}
+                  {isNonStrengthTrackType(inferredTrackType) ? (
+                    <span className="badge" style={{ background: "rgba(15, 118, 110, 0.12)", color: "#115e59" }}>
+                      {inferredTrackType}
+                    </span>
+                  ) : null}
                 </div>
+                  );
+                })()}
+                {(() => {
+                  const inferredTrackType = inferTrackTypeFromParsedSets(ex.exercise, ex.sets);
+                  if (!isNonStrengthTrackType(inferredTrackType)) return null;
+                  return (
+                    <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+                      Logged as {inferredTrackType} work. Excluded from strength metrics.
+                    </div>
                   );
                 })()}
                 {(() => {

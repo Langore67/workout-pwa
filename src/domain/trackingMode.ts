@@ -93,6 +93,49 @@ export function inferTrackingModeFromSetSignals(
   });
 }
 
+export function isStrengthTrackType(raw: unknown): boolean {
+  return raw === "strength" || raw === "hypertrophy";
+}
+
+export function isNonStrengthTrackType(raw: unknown): boolean {
+  return (
+    raw === "technique" ||
+    raw === "mobility" ||
+    raw === "corrective" ||
+    raw === "conditioning"
+  );
+}
+
+export function inferTrackTypeFromParsedSetKinds(
+  exerciseName: string,
+  rawKinds: unknown[],
+  options: DefaultTrackTypeOptions = {}
+): TrackType {
+  const kinds = (rawKinds ?? [])
+    .map((value) => String(value ?? "").trim().toLowerCase())
+    .filter(Boolean);
+
+  const hasStrengthLikeIntent = kinds.some((kind) => kind === "work" || kind === "test");
+  const nonStrengthKinds = kinds.filter((kind) =>
+    kind === "technique" ||
+    kind === "mobility" ||
+    kind === "corrective" ||
+    kind === "conditioning" ||
+    kind === "cardio"
+  );
+
+  if (!hasStrengthLikeIntent && nonStrengthKinds.length) {
+    if (nonStrengthKinds.every((kind) => kind === "technique")) return "technique";
+    if (nonStrengthKinds.every((kind) => kind === "mobility")) return "mobility";
+    if (nonStrengthKinds.every((kind) => kind === "corrective")) return "corrective";
+    if (nonStrengthKinds.every((kind) => kind === "conditioning" || kind === "cardio")) {
+      return "conditioning";
+    }
+  }
+
+  return defaultTrackTypeFromExerciseName(exerciseName, options);
+}
+
 type DefaultTrackTypeOptions = {
   extraCorrectiveTerms?: string[];
   enableCardioTerms?: boolean;
@@ -103,12 +146,23 @@ export function defaultTrackTypeFromExerciseName(
   options: DefaultTrackTypeOptions = {}
 ): TrackType {
   const s = String(exerciseName || "").toLowerCase();
+  const mobilityTerms = [
+    "mobility",
+    "stretch",
+    "knee to wall",
+    "90/90",
+    "hip rotation",
+    ...(options.extraCorrectiveTerms ?? []).filter((term) => /stretch|mobility|rotation|knee to wall/i.test(term)),
+  ];
   const correctiveTerms = [
     "breathing",
     "reset",
-    "mobility",
     ...(options.extraCorrectiveTerms ?? []),
   ];
+
+  if (mobilityTerms.some((term) => s.includes(term))) {
+    return "mobility";
+  }
 
   if (correctiveTerms.some((term) => s.includes(term))) {
     return "corrective";
@@ -117,7 +171,7 @@ export function defaultTrackTypeFromExerciseName(
   if (options.enableCardioTerms) {
     const cardioTerms = ["walk", "bike", "cardio", "treadmill", "hang"];
     if (cardioTerms.some((term) => s.includes(term))) {
-      return "cardio";
+      return "conditioning";
     }
   }
 

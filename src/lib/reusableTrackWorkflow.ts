@@ -37,7 +37,33 @@ type FindOrCreateReusableTrackArgs = {
 };
 
 function buildTrackDefaults(trackType: TrackType) {
-  if (trackType === "corrective") {
+  if (trackType === "corrective" || trackType === "mobility") {
+    return {
+      warmupSetsDefault: 0,
+      workingSetsDefault: 1,
+      repMin: 1,
+      repMax: 1,
+      restSecondsDefault: 60,
+      rirTargetMin: undefined,
+      rirTargetMax: undefined,
+      weightJumpDefault: 0,
+    };
+  }
+
+  if (trackType === "technique") {
+    return {
+      warmupSetsDefault: 0,
+      workingSetsDefault: 2,
+      repMin: 3,
+      repMax: 8,
+      restSecondsDefault: 90,
+      rirTargetMin: undefined,
+      rirTargetMax: undefined,
+      weightJumpDefault: 0,
+    };
+  }
+
+  if (trackType === "conditioning") {
     return {
       warmupSetsDefault: 0,
       workingSetsDefault: 1,
