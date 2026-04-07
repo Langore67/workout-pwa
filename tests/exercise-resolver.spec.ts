@@ -472,3 +472,83 @@ test("shared alias map resolves high-confidence aliases to canonical exercises",
     matchedAlias: "DB Bench Press",
   });
 });
+
+test("guided canonical resolution marks a duplicate as redirect and adds its name to canonical aliases", async ({
+  page,
+}) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  const result = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const now = Date.now();
+    const canonicalId = crypto.randomUUID();
+    const sourceId = crypto.randomUUID();
+
+    await db.exercises.bulkAdd([
+      {
+        id: canonicalId,
+        name: "Dumbbell Bench Press",
+        normalizedName: "dumbbell bench press",
+        aliases: [],
+        equipmentTags: ["dumbbell"],
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: sourceId,
+        name: "Flat DB Bench",
+        normalizedName: "flat db bench",
+        aliases: ["DB Flat Bench"],
+        equipmentTags: ["dumbbell"],
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+
+    const {
+      buildExerciseResolverIndex,
+      resolveExerciseFromIndex,
+      resolveExerciseToCanonicalAlias,
+    } = await import("/src/domain/exercises/exerciseResolver.ts");
+
+    await resolveExerciseToCanonicalAlias({
+      canonicalExerciseId: canonicalId,
+      sourceExerciseId: sourceId,
+    });
+
+    const exercises = await db.exercises.toArray();
+    const index = buildExerciseResolverIndex(exercises);
+    const source = exercises.find((row: any) => row.id === sourceId);
+    const canonical = exercises.find((row: any) => row.id === canonicalId);
+    const resolution = resolveExerciseFromIndex(
+      { rawName: "Flat DB Bench", allowAlias: true, followMerged: true },
+      index
+    );
+
+    return {
+      sourceMergedInto: source?.mergedIntoExerciseId ?? null,
+      canonicalAliases: canonical?.aliases ?? [],
+      resolution: {
+        status: resolution.status,
+        source: resolution.source,
+        name: resolution.exercise?.name ?? null,
+        canonical: resolution.canonicalExercise?.name ?? null,
+      },
+    };
+  });
+
+  expect(result.sourceMergedInto).toBeTruthy();
+  expect(result.canonicalAliases).toContain("Flat DB Bench");
+  expect(result.canonicalAliases).toContain("DB Flat Bench");
+  expect(["alias", "merged_redirect"]).toContain(result.resolution.status);
+  expect(result.resolution).toEqual({
+    status: result.resolution.status,
+    source: result.resolution.source,
+    name: "Dumbbell Bench Press",
+    canonical: "Dumbbell Bench Press",
+  });
+});
