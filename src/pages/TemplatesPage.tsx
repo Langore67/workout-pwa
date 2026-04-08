@@ -99,6 +99,13 @@ const TRACKING_MODE_OPTIONS_BY_INTENT: Record<TrackType, TrackingMode[]> = {
   conditioning: ["timeSeconds", "repsOnly", "checkbox"],
 };
 
+function formatTrackingModeLabel(mode: TrackingMode): string {
+  if (mode === "weightedReps") return "weighted reps";
+  if (mode === "repsOnly") return "reps only";
+  if (mode === "timeSeconds") return "time";
+  return mode;
+}
+
 /* ========================================================================== */
 /*  Breadcrumb 02 — page component                                            */
 /* ========================================================================== */
@@ -149,6 +156,7 @@ export default function TemplatesPage() {
   const [trackingMode, setTrackingMode] = useState<TrackingMode>(
     defaultTrackingModeForTrackIntent("strength")
   );
+  const [showAdvancedTrackOptions, setShowAdvancedTrackOptions] = useState(false);
 
   const [, setTrackSearch] = useState<string>("");
   const [, setSelectedTrackId] = useState<string>("");
@@ -532,6 +540,7 @@ export default function TemplatesPage() {
     setQuickAddName("");
     setTrackIntent("strength");
     setTrackingMode(defaultTrackingModeForTrackIntent("strength"));
+    setShowAdvancedTrackOptions(false);
   }
 
   function closeEditor() {
@@ -539,6 +548,7 @@ export default function TemplatesPage() {
     setTrackSearch("");
     setSelectedTrackId("");
     setQuickAddName("");
+    setShowAdvancedTrackOptions(false);
   }
 
   async function addExerciseToTemplate(templateId: string, trackId: string) {
@@ -1076,27 +1086,52 @@ export default function TemplatesPage() {
                     ))}
                   </select>
 
-                  <select
-                    className="input"
-                    value={trackingMode}
-                    onChange={(e) => setTrackingMode(e.target.value as TrackingMode)}
-                    style={{ width: "auto", minWidth: 170 }}
-                    aria-label="Tracking mode"
-                    title="Tracking mode"
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() => setShowAdvancedTrackOptions((open) => !open)}
+                    aria-expanded={showAdvancedTrackOptions}
+                    aria-controls="template-track-advanced-options"
+                    title="Show tracking mode override"
                   >
-                    {allowedTrackingModes.map((mode) => (
-                      <option key={mode} value={mode}>
-                        {mode === "weightedReps"
-                          ? "weighted reps"
-                          : mode === "repsOnly"
-                            ? "reps only"
-                            : mode === "timeSeconds"
-                              ? "time"
-                              : mode}
-                      </option>
-                    ))}
-                  </select>
+                    Advanced
+                  </button>
                 </div>
+
+                {showAdvancedTrackOptions ? (
+                  <div
+                    id="template-track-advanced-options"
+                    className="row"
+                    style={{ gap: 10, alignItems: "center", marginTop: 10 }}
+                  >
+                    <div className="muted" style={{ fontSize: 13, minWidth: 96 }}>
+                      Tracking mode
+                    </div>
+
+                    <select
+                      className="input"
+                      value={trackingMode}
+                      onChange={(e) => setTrackingMode(e.target.value as TrackingMode)}
+                      style={{ width: "auto", minWidth: 170 }}
+                      aria-label="Tracking mode"
+                      title="Tracking mode"
+                    >
+                      {allowedTrackingModes.map((mode) => (
+                        <option key={mode} value={mode}>
+                          {formatTrackingModeLabel(mode)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div
+                    id="template-track-advanced-options"
+                    className="muted"
+                    style={{ marginTop: 8, fontSize: 13 }}
+                  >
+                    Default mode: {formatTrackingModeLabel(trackingMode)}
+                  </div>
+                )}
 
                 <div className="muted" style={{ marginTop: 8, fontSize: 13 }}>
                   Reuse rule: {`exerciseId + track intent + tracking mode`} (prefers no variant). Only creates a new Track if none exists.
