@@ -16,7 +16,7 @@
 /*    * Use existing createAndAddTrackToTemplate / catalogGroups helpers      */
 /*  - 2026-02-20 TP-05                                                        */
 /*    * Reuse existing Tracks (exerciseId+trackType+trackingMode) to avoid dup*/
-/*    * Prefer variantId undefined; pick oldest createdAt if multiple         */
+/*    * Prefer no intent-specific variantId; pick oldest createdAt if multiple*/
 /*  - 2026-03-06 TP-06                                                        */
 /*    * Refine breadcrumbs                                                    */
 /*    * Safer corrective defaults in editor                                   */
@@ -36,6 +36,11 @@ import {
   findOrCreateExerciseByName as findOrCreateExerciseByNameShared,
   findOrCreateReusableTrack as findOrCreateReusableTrackShared,
 } from "../lib/reusableTrackWorkflow";
+import {
+  TRACK_INTENT_OPTIONS,
+  buildTrackDisplayNameForIntent,
+  defaultTrackingModeForTrackIntent,
+} from "../domain/trackingMode";
 
 /* ========================================================================== */
 /*  Breadcrumb 01 — shared helpers                                            */
@@ -131,8 +136,10 @@ export default function TemplatesPage() {
 
   const [quickAddName, setQuickAddName] = useState<string>("");
 
-  const [trackIntent, setTrackIntent] = useState<TrackType>("hypertrophy");
-  const [trackingMode, setTrackingMode] = useState<TrackingMode>("weightedReps");
+  const [trackIntent, setTrackIntent] = useState<TrackType>("strength");
+  const [trackingMode, setTrackingMode] = useState<TrackingMode>(
+    defaultTrackingModeForTrackIntent("strength")
+  );
 
   const [, setTrackSearch] = useState<string>("");
   const [, setSelectedTrackId] = useState<string>("");
@@ -304,13 +311,10 @@ export default function TemplatesPage() {
     return undefined as Exercise | undefined;
   }, [catalogGroups]);
 
-  const suggestedTrackName = useMemo(() => {
-    const base = quickAddName.trim();
-    if (!base) return "";
-    const intent = trackIntent;
-    if (base.toLowerCase().includes(intent)) return base;
-    return `${base} — ${intent}`;
-  }, [quickAddName, trackIntent]);
+  const suggestedTrackName = useMemo(
+    () => buildTrackDisplayNameForIntent(quickAddName, trackIntent),
+    [quickAddName, trackIntent]
+  );
 
   /* ------------------------------------------------------------------------ */
   /*  Breadcrumb 04 — template actions                                        */
@@ -501,8 +505,8 @@ export default function TemplatesPage() {
     setTrackSearch("");
     setSelectedTrackId("");
     setQuickAddName("");
-    setTrackIntent("hypertrophy");
-    setTrackingMode("weightedReps");
+    setTrackIntent("strength");
+    setTrackingMode(defaultTrackingModeForTrackIntent("strength"));
   }
 
   function closeEditor() {
@@ -571,7 +575,7 @@ export default function TemplatesPage() {
   }
 
   /* ------------------------------------------------------------------------ */
-  /*  Breadcrumb 06.2 — create track helper                                                                    */
+  /*  Breadcrumb 06.2 — create track-intent helper                             */
   /* ------------------------------------------------------------------------ */
   async function createTrackForIntent(args: {
     exerciseId: string;
@@ -1031,14 +1035,20 @@ export default function TemplatesPage() {
                   <select
                     className="input"
                     value={trackIntent}
-                    onChange={(e) => setTrackIntent(e.target.value as TrackType)}
+                    onChange={(e) => {
+                      const nextIntent = e.target.value as TrackType;
+                      setTrackIntent(nextIntent);
+                      setTrackingMode(defaultTrackingModeForTrackIntent(nextIntent));
+                    }}
                     style={{ width: "auto", minWidth: 160 }}
-                    aria-label="Variant type"
-                    title="Variant type"
+                    aria-label="Track intent"
+                    title="Track intent"
                   >
-                    <option value="strength">strength</option>
-                    <option value="hypertrophy">hypertrophy</option>
-                    <option value="corrective">corrective</option>
+                    {TRACK_INTENT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.value}
+                      </option>
+                    ))}
                   </select>
 
                   <select
@@ -1058,7 +1068,7 @@ export default function TemplatesPage() {
                 </div>
 
                 <div className="muted" style={{ marginTop: 8, fontSize: 13 }}>
-                  Reuse rule: {`exerciseId + type + mode`} (prefers no variant). Only creates a new Track if none exists.
+                  Reuse rule: {`exerciseId + track intent + tracking mode`} (prefers no variant). Only creates a new Track if none exists.
                 </div>
 
                 <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
@@ -1147,7 +1157,7 @@ export default function TemplatesPage() {
                                       await createAndAddTrackToTemplate({
                                         templateId: editingTemplate.id,
                                         exerciseName: base,
-                                        trackDisplayName: `${base} — ${trackIntent}`,
+                                        trackDisplayName: buildTrackDisplayNameForIntent(base, trackIntent),
                                         trackType: trackIntent,
                                         trackingMode: trackingMode,
                                       });
