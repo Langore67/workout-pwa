@@ -33,7 +33,7 @@ import type {
   TrackingMode,
 } from "../db";
 import { uuid } from "../utils";
-import { getBestSessionLastNDays, suggestionFromBest } from "../progression";
+import { getBestSessionLastNDays } from "../progression";
 import { finalizeGymSessionWrites } from "../finalizeSession";
 import { resolveExercise } from "../domain/exercises/exerciseResolver";
 import { isBodyweightEffectiveLoadExerciseName } from "../strength/Strength";
@@ -278,6 +278,15 @@ function formatNextWorkingRecommendationText(rec: ReturnType<typeof getNextWorki
   if (!targetBits) return rec.rationale;
 
   return `${rec.rationale}. Next working target: ${targetBits}.`;
+}
+
+function formatBestSessionSummary(best: Awaited<ReturnType<typeof getBestSessionLastNDays>>): string {
+  if (!best || typeof best.bestWeight !== "number" || typeof best.bestReps !== "number") {
+    return "No recent baseline found.";
+  }
+
+  const endedTxt = best.endedAt ? ` on ${new Date(best.endedAt).toLocaleDateString()}` : "";
+  return `Best in recent sessions: ${best.bestWeight} x ${best.bestReps}${endedTxt}.`;
 }
 
 /* ============================================================================
@@ -1438,7 +1447,6 @@ function ExerciseCard({
       }
 
       const best = await getBestSessionLastNDays(track.id, 5);
-      const res = suggestionFromBest(track, repMin, repMax, workingTarget, best);
       const recommendation = getNextWorkingRecommendation({
         trackId: track.id,
         trackType: track.trackType,
@@ -1461,9 +1469,9 @@ function ExerciseCard({
       });
 
       if (!alive) return;
-      setBestSummary(res.summary);
+      setBestSummary(formatBestSessionSummary(best));
       setSuggestion(formatNextWorkingRecommendationText(recommendation));
-      setPrefillWeight(res.prefillWeight);
+      setPrefillWeight(recommendation.targetWeight ?? undefined);
     })();
 
     return () => {
