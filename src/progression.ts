@@ -15,6 +15,22 @@ export type BestSessionResult = {
   totalWorkingSets?: number;
 };
 
+export type BestSetLike = {
+  bestWeight?: number;
+  bestReps?: number;
+  endedAt?: number;
+};
+
+export type WeightedRepsProgressionPlan = {
+  targetWeight: number | null;
+  targetReps: number | null;
+  action: "increase" | "hold" | "reduce" | "rebuild";
+  confidence: "low" | "medium" | "high";
+  rationale: string;
+  summary: string;
+  suggestion: string;
+};
+
 function isFiniteNum(x: any): x is number {
   return typeof x === "number" && Number.isFinite(x);
 }
@@ -50,6 +66,77 @@ function defaultPlateStep(track: Track): number {
   const inc = (track as any).roundingIncrement ?? (track as any).plateIncrement;
   if (isFiniteNum(inc) && inc > 0) return inc;
   return 5; // default to 5 lb rounding for simplicity
+}
+
+export function buildWeightedRepsProgressionPlan(params: {
+  best: BestSetLike | null;
+  repMin?: number;
+  repMax?: number;
+  weightJump?: number;
+  roundStep?: number;
+  rirTargetMin?: number;
+}): WeightedRepsProgressionPlan {
+  const repLo = isFiniteNum(params.repMin) ? params.repMin : 8;
+  const repHi = isFiniteNum(params.repMax) ? params.repMax : repLo;
+  const jump = isFiniteNum(params.weightJump) && params.weightJump > 0 ? params.weightJump : 5;
+  const step = isFiniteNum(params.roundStep) && params.roundStep > 0 ? params.roundStep : 5;
+  const rirTargetMin = params.rirTargetMin;
+  const best = params.best;
+
+  if (!best || !isFiniteNum(best.bestWeight) || !isFiniteNum(best.bestReps)) {
+    return {
+      targetWeight: null,
+      targetReps: repLo,
+      action: "rebuild",
+      confidence: "low",
+      rationale: "No recent completed weighted set found",
+      summary: "No recent baseline found.",
+      suggestion: `Start conservative. Aim ${repLo}â€“${repHi} reps for your next working set.`,
+    };
+  }
+
+  const lastW = best.bestWeight;
+  const lastR = best.bestReps;
+  const endedTxt = best.endedAt ? ` on ${new Date(best.endedAt).toLocaleDateString()}` : "";
+  const summary = `Best in recent sessions: ${lastW} x ${lastR}${endedTxt}.`;
+  const rirHint =
+    isFiniteNum(rirTargetMin) ? ` Target RIR >= ${clamp(rirTargetMin, 0, 6)}.` : "";
+
+  if (lastR >= repHi) {
+    const nextW = roundToStep(lastW + jump, step);
+    return {
+      targetWeight: nextW,
+      targetReps: repLo,
+      action: "increase",
+      confidence: "medium",
+      rationale: `Progressing from last best set ${lastW}x${lastR}`,
+      summary,
+      suggestion: `You topped the range last time (${lastW} x ${lastR}). Add ${jump} lb and stay in ${repLo}â€“${repHi}.${rirHint}`,
+    };
+  }
+
+  if (lastR < repLo) {
+    const nextW = roundToStep(Math.max(0, lastW - jump), step);
+    return {
+      targetWeight: nextW,
+      targetReps: repLo,
+      action: "reduce",
+      confidence: "medium",
+      rationale: `Last best set ${lastW}x${lastR} was below the target rep range`,
+      summary,
+      suggestion: `You were under range last time (${lastW} x ${lastR}). Drop ${jump} lb and rebuild into ${repLo}â€“${repHi}.${rirHint}`,
+    };
+  }
+
+  return {
+    targetWeight: roundToStep(lastW, step),
+    targetReps: Math.min(repHi, Math.max(repLo, lastR + 1)),
+    action: "hold",
+    confidence: "high",
+    rationale: `Holding load after last best set ${lastW}x${lastR} and pushing reps`,
+    summary,
+    suggestion: `Keep ${lastW} lb and try to add reps toward ${repHi} while staying >= ${repLo}.${rirHint}`,
+  };
 }
 
 /**
@@ -151,42 +238,18 @@ export function suggestionFromBest(
     return { summary, suggestion };
   }
 
-  // WeightedReps suggestions
-  if (!best || !isFiniteNum(best.bestWeight) || !isFiniteNum(best.bestReps)) {
-    const summary = `No recent baseline found.`;
-    const suggestion = `Start conservative. Aim ${repLo}–${repHi} reps for ${workingTarget} working set(s).`;
-    return { summary, suggestion, prefillWeight: undefined };
-  }
+  const plan = buildWeightedRepsProgressionPlan({
+    best,
+    repMin: repLo,
+    repMax: repHi,
+    weightJump: jump,
+    roundStep: step,
+    rirTargetMin,
+  });
 
-  const lastW = best.bestWeight!;
-  const lastR = best.bestReps!;
-
-  // Decide next target weight:
-  // - If you hit or exceeded repMax last time -> add jump
-  // - If below repMin -> reduce jump
-  // - Else keep weight (try to add reps)
-  let nextW = lastW;
-  let planText = "";
-
-  if (lastR >= repHi) {
-    nextW = lastW + jump;
-    planText = `You topped the range last time (${lastW} x ${lastR}). Add ${jump} lb and stay in ${repLo}–${repHi}.`;
-  } else if (lastR < repLo) {
-    nextW = Math.max(0, lastW - jump);
-    planText = `You were under range last time (${lastW} x ${lastR}). Drop ${jump} lb and rebuild into ${repLo}–${repHi}.`;
-  } else {
-    nextW = lastW;
-    planText = `Keep ${lastW} lb and try to add reps toward ${repHi} while staying >= ${repLo}.`;
-  }
-
-  nextW = roundToStep(nextW, step);
-
-  const endedTxt = best.endedAt ? ` on ${new Date(best.endedAt).toLocaleDateString()}` : "";
-  const summary = `Best in last sessions: ${lastW} x ${lastR}${endedTxt}.`;
-  const rirHint =
-    isFiniteNum(rirTargetMin) ? ` Target RIR >= ${clamp(rirTargetMin, 0, 6)}.` : "";
-
-  const suggestion = `${planText}${rirHint ? " " + rirHint : ""}`;
-
-  return { summary, suggestion, prefillWeight: nextW };
+  return {
+    summary: plan.summary,
+    suggestion: plan.suggestion,
+    prefillWeight: plan.targetWeight ?? undefined,
+  };
 }
