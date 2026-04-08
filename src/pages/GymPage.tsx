@@ -33,10 +33,11 @@ import type {
   TrackingMode,
 } from "../db";
 import { uuid } from "../utils";
-import { getBestSessionLastNDays, suggestionFromBest } from "../progression";
+import { getBestSessionLastNDays } from "../progression";
 import { finalizeGymSessionWrites } from "../finalizeSession";
 import { resolveExercise } from "../domain/exercises/exerciseResolver";
 import { isBodyweightEffectiveLoadExerciseName } from "../strength/Strength";
+import { getNextWorkingRecommendation } from "../domain/coaching/nextWorkingRecommendation";
 import NumericPad from "../components/NumericPad";
 import {
   createTrackVariant as createTrackVariantShared,
@@ -259,6 +260,33 @@ function buildTrackDisplayNameForIntent(baseRaw: string, trackType: TrackType): 
   if (trackType === "strength") return base;
   if (base.toLowerCase().includes(trackType)) return base;
   return `${base} - ${trackType}`;
+}
+
+function formatNextWorkingRecommendationText(rec: ReturnType<typeof getNextWorkingRecommendation>): string {
+  if (rec.action === "hold" && rec.confidence === "low") return rec.rationale;
+
+  const targetWeight =
+    typeof rec.targetWeight === "number" && Number.isFinite(rec.targetWeight)
+      ? `${Math.round(rec.targetWeight)} lb`
+      : null;
+  const targetReps =
+    typeof rec.targetReps === "number" && Number.isFinite(rec.targetReps)
+      ? `${Math.round(rec.targetReps)} reps`
+      : null;
+
+  const targetBits = [targetWeight, targetReps].filter(Boolean).join(" x ");
+  if (!targetBits) return rec.rationale;
+
+  return `${rec.rationale}. Next working target: ${targetBits}.`;
+}
+
+function formatBestSessionSummary(best: Awaited<ReturnType<typeof getBestSessionLastNDays>>): string {
+  if (!best || typeof best.bestWeight !== "number" || typeof best.bestReps !== "number") {
+    return "No recent baseline found.";
+  }
+
+  const endedTxt = best.endedAt ? ` on ${new Date(best.endedAt).toLocaleDateString()}` : "";
+  return `Best in recent sessions: ${best.bestWeight} x ${best.bestReps}${endedTxt}.`;
 }
 
 /* ============================================================================
@@ -1419,12 +1447,31 @@ function ExerciseCard({
       }
 
       const best = await getBestSessionLastNDays(track.id, 5);
-      const res = suggestionFromBest(track, repMin, repMax, workingTarget, best);
+      const recommendation = getNextWorkingRecommendation({
+        trackId: track.id,
+        trackType: track.trackType,
+        trackingMode: track.trackingMode,
+        recentSets:
+          best && typeof best.bestWeight === "number" && typeof best.bestReps === "number"
+            ? [
+                {
+                  weight: best.bestWeight,
+                  reps: best.bestReps,
+                  completed: true,
+                  timestamp: best.endedAt ?? Date.now(),
+                },
+              ]
+            : [],
+        repMin,
+        repMax,
+        weightJump: (track as any).weightJumpDefault,
+        rirTargetMin: track.rirTargetMin,
+      });
 
       if (!alive) return;
-      setBestSummary(res.summary);
-      setSuggestion(res.suggestion);
-      setPrefillWeight(res.prefillWeight);
+      setBestSummary(formatBestSessionSummary(best));
+      setSuggestion(formatNextWorkingRecommendationText(recommendation));
+      setPrefillWeight(recommendation.targetWeight ?? undefined);
     })();
 
     return () => {
