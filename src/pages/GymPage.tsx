@@ -289,6 +289,173 @@ function formatBestSessionSummary(best: Awaited<ReturnType<typeof getBestSession
   return `Best in recent sessions: ${best.bestWeight} x ${best.bestReps}${endedTxt}.`;
 }
 
+function formatCompletedSetForCoachSnapshot(
+  se: SetEntryX,
+  track: Track,
+  metricMode: MetricModeX
+): string | null {
+  if (!se.completedAt) return null;
+
+  if (track.trackingMode === "weightedReps") {
+    const parts: string[] = [];
+    if (typeof se.weight === "number" && Number.isFinite(se.weight)) parts.push(String(se.weight));
+    if (typeof se.reps === "number" && Number.isFinite(se.reps)) {
+      if (parts.length) parts.push(`x ${se.reps}`);
+      else parts.push(`${se.reps} reps`);
+    }
+    if (typeof se.rir === "number" && Number.isFinite(se.rir)) parts.push(`@${se.rir}`);
+    return parts.length ? parts.join(" ") : "completed set";
+  }
+
+  if (track.trackingMode === "timeSeconds") {
+    const timeText = formatSecondsToMMSS(se.seconds);
+    return timeText ? `${timeText}` : "completed interval";
+  }
+
+  if (track.trackingMode === "breaths") {
+    return typeof se.reps === "number" && Number.isFinite(se.reps) ? `${se.reps} breaths` : "completed breathing set";
+  }
+
+  if (track.trackingMode === "checkbox") {
+    return (se.reps ?? 0) === 1 ? "completed" : null;
+  }
+
+  if (metricMode === "time") {
+    const timeText = formatSecondsToMMSS(se.seconds);
+    return timeText ? `${timeText}` : "completed interval";
+  }
+
+  if (metricMode === "distance") {
+    const distance = typeof se.distance === "number" && Number.isFinite(se.distance) ? se.distance : undefined;
+    if (distance === undefined) return "completed distance set";
+    const unit = ((se as any).distanceUnit as string | undefined) ?? "mi";
+    if (typeof se.weight === "number" && Number.isFinite(se.weight)) return `${se.weight} lbs • ${distance} ${unit}`;
+    return `${distance} ${unit}`;
+  }
+
+  const reps = typeof se.reps === "number" && Number.isFinite(se.reps) ? se.reps : undefined;
+  if (reps === undefined) return "completed set";
+  return `${reps} reps`;
+}
+
+function buildCoachSnapshotText(params: {
+  sessionLabel: string;
+  track: Track;
+  metricMode: MetricModeX;
+  currentSets: SetEntryX[];
+  recentBest: Awaited<ReturnType<typeof getBestSessionLastNDays>> | null;
+  recommendation: ReturnType<typeof getNextWorkingRecommendation> | null;
+  exercisePosition?: number;
+}) {
+  const {
+    sessionLabel,
+    track,
+    metricMode,
+    currentSets,
+    recentBest,
+    recommendation,
+    exercisePosition,
+  } = params;
+
+  const lines: string[] = [];
+  lines.push("Exercise Snapshot");
+  lines.push(`Session: ${sessionLabel}`);
+  lines.push(`Exercise: ${track.displayName}`);
+  lines.push(`Intent: ${track.trackType}`);
+  lines.push(`Mode: ${track.trackingMode}`);
+  if (typeof exercisePosition === "number" && Number.isFinite(exercisePosition)) {
+    lines.push(`Position: ${exercisePosition}`);
+  }
+
+  lines.push("");
+  lines.push("This Session");
+  const completedSetLines = currentSets
+    .map((se) => formatCompletedSetForCoachSnapshot(se, track, metricMode))
+    .filter((line): line is string => !!line);
+  if (completedSetLines.length) {
+    for (const line of completedSetLines) lines.push(`- ${line}`);
+  } else {
+    lines.push("- No completed sets yet");
+  }
+
+  if (recentBest && typeof recentBest.bestWeight === "number" && typeof recentBest.bestReps === "number") {
+    lines.push("");
+    lines.push("Recent Best");
+    lines.push(`- ${recentBest.bestWeight} x ${recentBest.bestReps}`);
+  }
+
+  if (recommendation) {
+    lines.push("");
+    lines.push("Recommendation");
+    lines.push(`- Action: ${recommendation.action}`);
+    if (
+      typeof recommendation.targetWeight === "number" &&
+      Number.isFinite(recommendation.targetWeight) &&
+      typeof recommendation.targetReps === "number" &&
+      Number.isFinite(recommendation.targetReps)
+    ) {
+      lines.push(`- Target: ${recommendation.targetWeight} x ${recommendation.targetReps}`);
+    } else if (
+      typeof recommendation.targetWeight === "number" &&
+      Number.isFinite(recommendation.targetWeight)
+    ) {
+      lines.push(`- Target weight: ${recommendation.targetWeight}`);
+    } else if (
+      typeof recommendation.targetReps === "number" &&
+      Number.isFinite(recommendation.targetReps)
+    ) {
+      lines.push(`- Target reps: ${recommendation.targetReps}`);
+    }
+    lines.push(`- Confidence: ${recommendation.confidence}`);
+    lines.push(`- Why: ${recommendation.rationale}`);
+  }
+
+  return lines.join("\n").trim() + "\n";
+}
+
+function applyActivePadDraftToSnapshotSets(params: {
+  currentSets: SetEntryX[];
+  activePad: ActiveGymPad | null;
+  track: Track;
+  metricMode: MetricModeX;
+  weightEntryContextName: string;
+}) {
+  const { currentSets, activePad, track, metricMode, weightEntryContextName } = params;
+  if (!activePad) return currentSets;
+
+  const allowsNegativeWeight = isBodyweightEffectiveLoadExerciseName(weightEntryContextName);
+
+  return currentSets.map((se) => {
+    if (se.id !== activePad.setId) return se;
+
+    if (activePad.field === "weight") {
+      return {
+        ...se,
+        weight: parseCommittedWeight(activePad.buffer, allowsNegativeWeight),
+      };
+    }
+
+    if (activePad.field === "rir") {
+      return {
+        ...se,
+        rir: parseNum(normalizeDecimalInput(activePad.buffer)),
+      };
+    }
+
+    if (metricMode === "time" || track.trackingMode === "timeSeconds") {
+      return {
+        ...se,
+        seconds: parseTimeToSeconds(activePad.buffer),
+      };
+    }
+
+    return {
+      ...se,
+      reps: parseNum(activePad.buffer),
+    };
+  });
+}
+
 /* ============================================================================
    Breadcrumb 03 — Active-session add exercise helpers
    ============================================================================ */
@@ -1065,6 +1232,7 @@ export default function GymPage() {
             <div key={String(item.id ?? tid)} id={`track-${track.id}`}>
               <ExerciseCard
                 sessionId={sessionId}
+                sessionLabel={session.templateName ?? "Ad-hoc"}
                 item={item as any}
                 track={track}
                 sets={(sets ?? []) as SetEntryX[]}
@@ -1188,6 +1356,7 @@ export default function GymPage() {
    ============================================================================ */
 function ExerciseCard({
   sessionId,
+  sessionLabel,
   item,
   track,
   sets,
@@ -1196,6 +1365,7 @@ function ExerciseCard({
   onFlushActivePad,
 }: {
   sessionId: string;
+  sessionLabel: string;
   item: any;
   track: Track;
   sets: SetEntryX[];
@@ -1224,6 +1394,7 @@ function ExerciseCard({
      Breadcrumb 06.3 — Cues modal state
      ------------------------------------------------------------------------ */
   const [showCues, setShowCues] = useState<boolean>(false);
+  const [coachSnapshotCopied, setCoachSnapshotCopied] = useState<boolean>(false);
 
   /* ------------------------------------------------------------------------
      Breadcrumb 06.4 — Compact mode
@@ -1381,6 +1552,33 @@ function ExerciseCard({
     if (!ok) window.alert("Could not copy to clipboard in this browser.");
   }
 
+  async function onCopyCoachSnapshot() {
+    const snapshotSets = applyActivePadDraftToSnapshotSets({
+      currentSets,
+      activePad,
+      track,
+      metricMode,
+      weightEntryContextName,
+    });
+    const txt = buildCoachSnapshotText({
+      sessionLabel,
+      track,
+      metricMode,
+      currentSets: snapshotSets,
+      recentBest,
+      recommendation: workingRecommendation,
+      exercisePosition:
+        typeof item?.orderIndex === "number" && Number.isFinite(item.orderIndex) ? item.orderIndex + 1 : undefined,
+    });
+    const ok = await copyTextToClipboard(txt);
+    if (!ok) {
+      window.alert("Could not copy to clipboard in this browser.");
+      return;
+    }
+    setCoachSnapshotCopied(true);
+    window.setTimeout(() => setCoachSnapshotCopied(false), 1500);
+  }
+
   function onEditInCatalog() {
     nav(`/exercises?edit=${encodeURIComponent(track.exerciseId)}&from=gym`);
   }
@@ -1430,6 +1628,10 @@ function ExerciseCard({
   /* ------------------------------------------------------------------------
      Breadcrumb 06.14 — Progression / suggestion state
      ------------------------------------------------------------------------ */
+  const [recentBest, setRecentBest] = useState<Awaited<ReturnType<typeof getBestSessionLastNDays>> | null>(null);
+  const [workingRecommendation, setWorkingRecommendation] = useState<ReturnType<
+    typeof getNextWorkingRecommendation
+  > | null>(null);
   const [bestSummary, setBestSummary] = useState<string>("");
   const [suggestion, setSuggestion] = useState<string>("");
   const [prefillWeight, setPrefillWeight] = useState<number | undefined>(undefined);
@@ -1439,7 +1641,19 @@ function ExerciseCard({
 
     (async () => {
       if (!isStrengthTrackType(track.trackType)) {
+        const conservativeRecommendation = getNextWorkingRecommendation({
+          trackId: track.id,
+          trackType: track.trackType,
+          trackingMode: track.trackingMode,
+          recentSets: [],
+          repMin,
+          repMax,
+          weightJump: (track as any).weightJumpDefault,
+          rirTargetMin: track.rirTargetMin,
+        });
         if (!alive) return;
+        setRecentBest(null);
+        setWorkingRecommendation(conservativeRecommendation);
         setBestSummary("");
         setSuggestion("");
         setPrefillWeight(undefined);
@@ -1469,6 +1683,8 @@ function ExerciseCard({
       });
 
       if (!alive) return;
+      setRecentBest(best ?? null);
+      setWorkingRecommendation(recommendation);
       setBestSummary(formatBestSessionSummary(best));
       setSuggestion(formatNextWorkingRecommendationText(recommendation));
       setPrefillWeight(recommendation.targetWeight ?? undefined);
@@ -1477,7 +1693,16 @@ function ExerciseCard({
     return () => {
       alive = false;
     };
-  }, [track.id, track.trackType, repMin, repMax, workingTarget, (track as any).weightJumpDefault, track.rirTargetMin]);
+  }, [
+    track.id,
+    track.trackType,
+    track.trackingMode,
+    repMin,
+    repMax,
+    workingTarget,
+    (track as any).weightJumpDefault,
+    track.rirTargetMin,
+  ]);
 
   /* ------------------------------------------------------------------------
      Breadcrumb 06.15 — DB write helper
@@ -1884,6 +2109,15 @@ function ExerciseCard({
 
               <button className="btn small" type="button" onClick={onCopyCues} title="Copy cues to clipboard">
                 Copy
+              </button>
+
+              <button
+                className="btn small"
+                type="button"
+                onClick={onCopyCoachSnapshot}
+                title="Copy current exercise snapshot for coaching"
+              >
+                {coachSnapshotCopied ? "Copied" : "Copy Coach Snapshot"}
               </button>
 
               <button className="btn small" type="button" onClick={onEditInCatalog} title="Edit cues in Exercise Catalog">
