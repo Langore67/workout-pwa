@@ -90,6 +90,15 @@ type CatalogGroup = {
   exercises: Exercise[];
 };
 
+const TRACKING_MODE_OPTIONS_BY_INTENT: Record<TrackType, TrackingMode[]> = {
+  strength: ["weightedReps", "repsOnly", "timeSeconds", "checkbox"],
+  hypertrophy: ["weightedReps", "repsOnly", "timeSeconds", "checkbox"],
+  technique: ["weightedReps", "repsOnly", "timeSeconds", "checkbox"],
+  mobility: ["repsOnly", "timeSeconds", "breaths", "checkbox"],
+  corrective: ["repsOnly", "breaths", "timeSeconds", "checkbox"],
+  conditioning: ["timeSeconds", "repsOnly", "checkbox"],
+};
+
 /* ========================================================================== */
 /*  Breadcrumb 02 — page component                                            */
 /* ========================================================================== */
@@ -144,6 +153,17 @@ export default function TemplatesPage() {
   const [, setTrackSearch] = useState<string>("");
   const [, setSelectedTrackId] = useState<string>("");
 
+  const allowedTrackingModes = useMemo(
+    () =>
+      TRACKING_MODE_OPTIONS_BY_INTENT[trackIntent] ?? [
+        "weightedReps",
+        "repsOnly",
+        "timeSeconds",
+        "checkbox",
+      ],
+    [trackIntent]
+  );
+
   /* ------------------------------------------------------------------------ */
   /*  Breadcrumb 02.3 — corrective default safety                             */
   /* ------------------------------------------------------------------------ */
@@ -160,6 +180,11 @@ export default function TemplatesPage() {
 
     setTrackingMode("repsOnly");
   }, [trackIntent, trackingMode, quickAddName]);
+
+  useEffect(() => {
+    if (allowedTrackingModes.includes(trackingMode)) return;
+    setTrackingMode(defaultTrackingModeForTrackIntent(trackIntent));
+  }, [allowedTrackingModes, trackingMode, trackIntent]);
 
   /* ------------------------------------------------------------------------ */
   /*  Breadcrumb 03 — derived maps / counts                                   */
@@ -1059,11 +1084,17 @@ export default function TemplatesPage() {
                     aria-label="Tracking mode"
                     title="Tracking mode"
                   >
-                    <option value="weightedReps">weighted reps</option>
-                    <option value="repsOnly">reps only</option>
-                    <option value="timeSeconds">time</option>
-                    <option value="checkbox">checkbox</option>
-                    <option value="breaths">breaths</option>
+                    {allowedTrackingModes.map((mode) => (
+                      <option key={mode} value={mode}>
+                        {mode === "weightedReps"
+                          ? "weighted reps"
+                          : mode === "repsOnly"
+                            ? "reps only"
+                            : mode === "timeSeconds"
+                              ? "time"
+                              : mode}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
