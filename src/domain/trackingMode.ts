@@ -2,6 +2,18 @@ import type { TrackType, TrackingMode } from "../db";
 
 export type CanonTrackingMode = TrackingMode | "unknown";
 
+export const TRACK_INTENT_OPTIONS: Array<{
+  value: TrackType;
+  label: string;
+  defaultMode: TrackingMode;
+}> = [
+  { value: "strength", label: "Strength", defaultMode: "weightedReps" },
+  { value: "technique", label: "Technique", defaultMode: "weightedReps" },
+  { value: "mobility", label: "Mobility", defaultMode: "repsOnly" },
+  { value: "corrective", label: "Corrective", defaultMode: "repsOnly" },
+  { value: "conditioning", label: "Conditioning", defaultMode: "timeSeconds" },
+];
+
 export function normalizeTrackingMode(raw: unknown): CanonTrackingMode {
   const s = String(raw ?? "")
     .trim()
@@ -40,6 +52,18 @@ export function normalizeTrackingMode(raw: unknown): CanonTrackingMode {
 export function isWeightedOrRepsTrackingMode(raw: unknown): boolean {
   const mode = normalizeTrackingMode(raw);
   return mode === "weightedReps" || mode === "repsOnly";
+}
+
+export function defaultTrackingModeForTrackIntent(trackType: TrackType): TrackingMode {
+  return TRACK_INTENT_OPTIONS.find((option) => option.value === trackType)?.defaultMode ?? "weightedReps";
+}
+
+export function buildTrackDisplayNameForIntent(baseRaw: string, trackType: TrackType): string {
+  const base = String(baseRaw ?? "").trim();
+  if (!base) return "";
+  if (trackType === "strength") return base;
+  if (base.toLowerCase().includes(trackType)) return base;
+  return `${base} - ${trackType}`;
 }
 
 type InferTrackingModeOptions = {

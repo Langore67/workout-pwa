@@ -45,9 +45,9 @@ async function quickAddTemplateExercise(page: Page, templateName: string, exerci
   await expect(quickAddInput).toBeVisible({ timeout: 15000 });
   await quickAddInput.fill(exerciseName);
 
-  const variantType = dialog.getByLabel("Variant type");
-  if (await variantType.count()) {
-    await variantType.selectOption("hypertrophy");
+  const trackIntent = dialog.getByLabel("Track intent");
+  if (await trackIntent.count()) {
+    await expect(trackIntent).toHaveValue("strength");
   }
 
   const trackingMode = dialog.getByLabel("Tracking mode");
@@ -280,8 +280,8 @@ async function seedTemplateTrackReuseState(page: Page): Promise<TemplateTrackSee
       {
         id: canonicalTrackId,
         exerciseId,
-        trackType: "hypertrophy",
-        displayName: "Bench Press Canonical Hypertrophy",
+        trackType: "strength",
+        displayName: "Bench Press",
         trackingMode: "weightedReps",
         warmupSetsDefault: 2,
         workingSetsDefault: 3,
@@ -296,8 +296,8 @@ async function seedTemplateTrackReuseState(page: Page): Promise<TemplateTrackSee
       {
         id: customTrackId,
         exerciseId,
-        trackType: "hypertrophy",
-        displayName: "Bench Press Custom Hypertrophy",
+        trackType: "strength",
+        displayName: "Bench Press Custom Strength",
         trackingMode: "weightedReps",
         variantId,
         warmupSetsDefault: 2,
@@ -313,8 +313,8 @@ async function seedTemplateTrackReuseState(page: Page): Promise<TemplateTrackSee
       {
         id: strengthTrackId,
         exerciseId,
-        trackType: "strength",
-        displayName: "Bench Press Strength",
+        trackType: "technique",
+        displayName: "Bench Press - technique",
         trackingMode: "weightedReps",
         warmupSetsDefault: 2,
         workingSetsDefault: 3,
@@ -578,7 +578,6 @@ test.describe("Finish Session pipeline", () => {
     expect(prsJson).not.toBe("[]");
   });
 });
-
 test.describe("Template session flow reuse guards", () => {
   test.beforeEach(async ({ page }) => {
     await goto(page, "/");
@@ -631,8 +630,8 @@ test.describe("Template session flow reuse guards", () => {
         {
           id: customTrackId,
           exerciseId,
-          trackType: "hypertrophy",
-          displayName: "bench Press â€” hypertrophy",
+          trackType: "strength",
+          displayName: " bench press ",
           trackingMode: "weightedReps",
           warmupSetsDefault: 2,
           workingSetsDefault: 3,
@@ -647,8 +646,8 @@ test.describe("Template session flow reuse guards", () => {
         {
           id: variantTrackId,
           exerciseId,
-          trackType: "hypertrophy",
-          displayName: "Bench Press Variant Hypertrophy",
+          trackType: "strength",
+          displayName: "Bench Press Variant Strength",
           trackingMode: "weightedReps",
           variantId: uuid(),
           warmupSetsDefault: 2,
@@ -684,7 +683,7 @@ test.describe("Template session flow reuse guards", () => {
       }, { timeout: 15000 })
       .toEqual({
         templateTrackIds: [seeded.customTrackId],
-        displayName: "Bench Press — hypertrophy",
+        displayName: "Bench Press",
         trackCount: 2,
       });
   });
@@ -710,8 +709,8 @@ test.describe("Template session flow reuse guards", () => {
       await db.tracks.add({
         id: strengthTrackId,
         exerciseId,
-        trackType: "strength",
-        displayName: "Bench Press Strength",
+        trackType: "technique",
+        displayName: "Bench Press - technique",
         trackingMode: "weightedReps",
         warmupSetsDefault: 2,
         workingSetsDefault: 3,
@@ -737,7 +736,7 @@ test.describe("Template session flow reuse guards", () => {
       const fallback = tracks.find(
         (track: any) =>
           track.id !== strengthTrackId &&
-          track.trackType === "hypertrophy" &&
+          track.trackType === "strength" &&
           track.trackingMode === "weightedReps"
       );
 
@@ -753,7 +752,7 @@ test.describe("Template session flow reuse guards", () => {
     expect(state.exerciseTrackCount).toBe(2);
     expect(state.fallbackTrackId).not.toBeNull();
     expect(state.templateTrackIds).toEqual([state.fallbackTrackId]);
-    expect(state.fallbackTrackType).toBe("hypertrophy");
+    expect(state.fallbackTrackType).toBe("strength");
     expect(state.fallbackTrackingMode).toBe("weightedReps");
   });
 
@@ -779,3 +778,4 @@ test.describe("Template session flow reuse guards", () => {
     expect(state.trackCount).toBe(3);
   });
 });
+
