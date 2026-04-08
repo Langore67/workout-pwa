@@ -414,3 +414,46 @@ conditioning BWx30s`);
     { displayName: "Locked Clams", trackType: "corrective", trackingMode: "repsOnly" },
   ]);
 });
+
+test("Paste Workout imports optional session notes onto the session record", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Lower B
+Date: 2026-04-08
+Start: 07:30
+End: 08:45
+
+Session Notes:
+Quality-first session. Low back fatigue early.
+Glutes engaged better on RDL after stance change.
+Cut volume short intentionally.
+
+Barbell RDL
+work 135x8 @2
+work 155x6 @2`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+  await expect(page.getByText(/Exercise has no parsed sets/i)).toHaveCount(0);
+
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const sessionNotes = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const session = (await db.sessions.toArray())
+      .filter((row: any) => row.templateName === "Lower B")
+      .sort((a: any, b: any) => (b.startedAt ?? 0) - (a.startedAt ?? 0))[0];
+    return session?.notes ?? null;
+  });
+
+  expect(sessionNotes).toBe(
+    [
+      "Quality-first session. Low back fatigue early.",
+      "Glutes engaged better on RDL after stance change.",
+      "Cut volume short intentionally.",
+    ].join("\n")
+  );
+});

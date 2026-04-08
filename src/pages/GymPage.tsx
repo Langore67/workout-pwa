@@ -416,6 +416,7 @@ function buildCoachSnapshotText(params: {
 function buildSessionSnapshotText(params: {
   sessionLabel: string;
   startedAt?: number;
+  sessionNotes?: string;
   totalExercises: number;
   completedExercises: number;
   currentTrack: Track | null;
@@ -431,6 +432,7 @@ function buildSessionSnapshotText(params: {
   const {
     sessionLabel,
     startedAt,
+    sessionNotes,
     totalExercises,
     completedExercises,
     currentTrack,
@@ -446,6 +448,12 @@ function buildSessionSnapshotText(params: {
     lines.push(`Date: ${new Date(startedAt).toLocaleDateString()}`);
   }
   lines.push(`Exercises: ${completedExercises}/${totalExercises} with completed work`);
+
+  if (sessionNotes?.trim()) {
+    lines.push("");
+    lines.push("Session Notes");
+    lines.push(sessionNotes.trim());
+  }
 
   if (currentTrack) {
     lines.push(`Current Exercise: ${currentTrack.displayName}`);
@@ -1336,6 +1344,7 @@ export default function GymPage() {
     const txt = buildSessionSnapshotText({
       sessionLabel: session.templateName ?? "Ad-hoc",
       startedAt: session.startedAt,
+      sessionNotes: sessionNotes,
       totalExercises,
       completedExercises,
       currentTrack,

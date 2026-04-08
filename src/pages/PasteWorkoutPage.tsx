@@ -125,6 +125,7 @@ type ParsedWorkout = {
   date: string; // YYYY-MM-DD
   start?: string; // HH:mm
   end?: string; // HH:mm
+  sessionNotes?: string;
   exercises: ParsedExerciseBlock[];
   warnings: string[];
   failedLines: string[];
@@ -178,6 +179,10 @@ const SAMPLE_TEXT = `Session: Lower A
 Date: 2026-03-17
 Start: 07:45
 End: 09:18
+
+Session Notes:
+Quality-first session. Low back fatigue early.
+Cut volume short intentionally.
 
 Clamshell
 warmup BWx15/side
@@ -651,16 +656,53 @@ function parseWorkoutText(text: string): ParsedWorkout {
   let date = "";
   let start = "";
   let end = "";
+  let sessionNotes = "";
 
   const warnings: string[] = [];
   const failedLines: string[] = [];
   const exercises: ParsedExerciseBlock[] = [];
 
   let currentExercise: ParsedExerciseBlock | null = null;
+  let inSessionNotes = false;
 
   for (let i = 0; i < lines.length; i += 1) {
     const raw = lines[i];
     const line = raw.trim();
+
+    if (inSessionNotes) {
+      const isSessionNotesHeader = /^session notes\s*:/i.test(line);
+      const isMetadataLine =
+        /^session\s*:/i.test(line) ||
+        /^date\s*:/i.test(line) ||
+        /^start\s*:/i.test(line) ||
+        /^end\s*:/i.test(line);
+      const isExerciseMarker = /^exercises?\s*:?\s*$/i.test(line);
+      const nextNonBlankLine = (() => {
+        for (let j = i + 1; j < lines.length; j += 1) {
+          const candidate = lines[j].trim();
+          if (candidate) return candidate;
+        }
+        return "";
+      })();
+      const looksLikeExerciseHeader =
+        !!line &&
+        !isMetadataLine &&
+        !isSectionHeader(line) &&
+        !line.startsWith("#") &&
+        !parseSetLine(line) &&
+        !!nextNonBlankLine &&
+        !!parseSetLine(nextNonBlankLine);
+
+      if (isSessionNotesHeader || isMetadataLine || isExerciseMarker || isSectionHeader(line) || line.startsWith("#") || looksLikeExerciseHeader) {
+        inSessionNotes = false;
+        currentExercise = null;
+        i -= 1;
+        continue;
+      }
+
+      sessionNotes = sessionNotes ? `${sessionNotes}\n${raw}` : raw;
+      continue;
+    }
 
     if (isBlank(line)) continue;
 
@@ -688,6 +730,14 @@ function parseWorkoutText(text: string): ParsedWorkout {
     const endMatch = line.match(/^end\s*:\s*(.+)$/i);
     if (endMatch) {
       end = endMatch[1].trim();
+      currentExercise = null;
+      continue;
+    }
+
+    const sessionNotesMatch = line.match(/^session notes\s*:\s*(.*)$/i);
+    if (sessionNotesMatch) {
+      sessionNotes = sessionNotesMatch[1] || "";
+      inSessionNotes = true;
       currentExercise = null;
       continue;
     }
@@ -741,6 +791,7 @@ function parseWorkoutText(text: string): ParsedWorkout {
     date,
     start: normalizeTimeString(start),
     end: normalizeTimeString(end),
+    sessionNotes: sessionNotes.trim() || undefined,
     exercises,
     warnings,
     failedLines,
@@ -1216,12 +1267,6 @@ export default function PasteWorkoutPage() {
     const sessionId = uuid();
     const createdSessionIds = [sessionId];
 
-    const sessionNotesParts = [importId, "source=paste-workout"];
-    if (parsed.warnings.length) sessionNotesParts.push(`warnings=${parsed.warnings.length}`);
-    if (parsed.failedLines.length) {
-      sessionNotesParts.push(`failedLines=${parsed.failedLines.length}`);
-    }
-
     const safeEndedAt =
       endedAt >= startedAt ? endedAt : startedAt + 60 * 60 * 1000;
 
@@ -1232,7 +1277,7 @@ export default function PasteWorkoutPage() {
         endedAt: safeEndedAt,
         templateId: undefined,
         templateName: parsed.programDay,
-        notes: sessionNotesParts.join("\n"),
+        notes: parsed.sessionNotes?.trim() || undefined,
         updatedAt: safeEndedAt,
       },
     ];
