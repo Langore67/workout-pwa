@@ -512,12 +512,15 @@ export async function computeStrengthIndexAt(endAtMs: number, windowDays = 28): 
   const exerciseById = new Map<string, any>();
   for (const ex of exercisesArr) if (ex?.id) exerciseById.set(ex.id, ex);
 
-  function patternFast(exerciseId: string): StrengthPattern | undefined {
+  function patternFast(track: any): StrengthPattern | undefined {
+    const exerciseId = String(track?.exerciseId ?? "");
+    if (!exerciseId) return undefined;
     const ex = exerciseById.get(exerciseId);
     return classifyStrengthPattern({
       exerciseId,
       exercise: ex ?? null,
       exerciseName: ex?.name ?? ex?.displayName ?? ex?.title ?? "",
+      trackDisplayName: String(track?.displayName ?? ""),
     });
   }
 
@@ -537,7 +540,7 @@ export async function computeStrengthIndexAt(endAtMs: number, windowDays = 28): 
     const ex = exerciseById.get(exId);
     const exerciseName = String(ex?.name ?? ex?.displayName ?? ex?.title ?? "").trim();
   
-    const pattern = patternFast(exId);
+    const pattern = patternFast(track);
     if (!pattern) continue;
   
     const effectiveWeight = calcEffectiveStrengthWeightLb(s.weight, exerciseName, bodyweight);
