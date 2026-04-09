@@ -22,7 +22,7 @@
    - 2026-02-28  SESS-DETAIL-04  SET-DRIVEN rendering + trackingMode normalize (import-safe)
    ============================================================================ */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, TemplateItem, SessionItem, Track, SetEntry } from "../db";
@@ -88,6 +88,14 @@ function fmtTotal(n: number) {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 10000) return `${Math.round(n / 1000)}k`;
   return `${Math.round(n)}`;
+}
+
+function shouldShowSessionNotesToggle(notes?: string | null): boolean {
+  if (!notes) return false;
+  const trimmed = notes.trim();
+  if (!trimmed) return false;
+  const lineCount = trimmed.split(/\r?\n/).length;
+  return lineCount > 4 || trimmed.length > 220;
 }
 
 
@@ -160,6 +168,7 @@ export default function SessionDetailPage() {
 
   // Calm warmup toggle (default OFF)
   const [showWarmups, setShowWarmups] = useState<boolean>(false);
+  const [notesExpanded, setNotesExpanded] = useState<boolean>(false);
 
   /* ---------------------------------------------------------------------------
      Breadcrumb 2b — Data loading (Dexie)
@@ -168,6 +177,10 @@ export default function SessionDetailPage() {
     () => (sessionId ? db.sessions.get(sessionId) : Promise.resolve(undefined)),
     [sessionId]
   );
+
+  useEffect(() => {
+    setNotesExpanded(false);
+  }, [sessionId]);
 
   // sessionItems (preferred “plan” when present)
   const sessionItems = useLiveQuery(async () => {
@@ -257,6 +270,11 @@ export default function SessionDetailPage() {
     // 3) if nothing planned and nothing set-driven
     return merged;
   }, [plannedItems, setDrivenTrackIds]);
+
+  const showSessionNotesToggle = useMemo(
+    () => shouldShowSessionNotesToggle(session?.notes),
+    [session?.notes]
+  );
 
   /* ---------------------------------------------------------------------------
      Breadcrumb 2f — Load tracks for render list
@@ -442,11 +460,25 @@ export default function SessionDetailPage() {
             wordBreak: "break-word",
             minWidth: 0,
             overflowX: "hidden",
+            maxHeight: showSessionNotesToggle && !notesExpanded ? "6.2em" : undefined,
+            overflowY: showSessionNotesToggle && !notesExpanded ? "hidden" : undefined,
           }}
           data-testid="session-notes"
         >
           {session.notes ?? <span className="muted">No notes.</span>}
         </div>
+        {showSessionNotesToggle && (
+          <div style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => setNotesExpanded((v) => !v)}
+              style={{ padding: "6px 10px", fontSize: 13 }}
+            >
+              {notesExpanded ? "Show less" : "Show more"}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* --------------------------------------------------------------------
