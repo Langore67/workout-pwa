@@ -258,6 +258,8 @@ Assisted Pull Up
 work -25 x 2 @ 1
 work 25 x 10 @ 2
 work BW x 12 @ 10
+work BW+25x8 @ 2
+work BW-40x8 @ 3
 
 Standing DB Lateral Raise
 work 10x15/side @2`);
@@ -340,6 +342,20 @@ work 10x15/side @2`);
       weight: 0,
       reps: 12,
       rir: 10,
+      notes: null,
+    },
+    {
+      trackName: "Assisted Pull Up",
+      weight: 25,
+      reps: 8,
+      rir: 2,
+      notes: null,
+    },
+    {
+      trackName: "Assisted Pull Up",
+      weight: -40,
+      reps: 8,
+      rir: 3,
       notes: null,
     },
     {

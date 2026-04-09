@@ -173,3 +173,43 @@ test("Import CSV preview shows REVIEW and blocks create until duplicate review i
   expect(dbState.count).toBe(2);
   expect(dbState.importedExercise?.name).toBe("Dumbbell Bench Press");
 });
+
+test("Import CSV normalizes assisted loads to signed negative values", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  await page.goto(new URL("/import", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "assisted.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      `date,session_type,program_day,exercise,set,load,reps,rir,notes,set_type
+2026-04-01,lift,Pull,Assisted Pull Up,1,65 assist,8,2,,working
+2026-04-01,lift,Pull,Assisted Pull Up,2,assist 40,10,3,,working`,
+      "utf8"
+    ),
+  });
+
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const dbState = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const sessions = await db.sessions.toArray();
+    const session = sessions.sort((a: any, b: any) => (b.startedAt ?? 0) - (a.startedAt ?? 0))[0];
+    if (!session) throw new Error("Imported session not found");
+    const sets = await db.sets.where("sessionId").equals(session.id).sortBy("createdAt");
+    return sets.map((set: any) => ({
+      weight: set.weight ?? null,
+      reps: set.reps ?? null,
+      rir: set.rir ?? null,
+    }));
+  });
+
+  expect(dbState).toEqual([
+    { weight: -65, reps: 8, rir: 2 },
+    { weight: -40, reps: 10, rir: 3 },
+  ]);
+});

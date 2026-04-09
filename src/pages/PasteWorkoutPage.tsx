@@ -412,6 +412,13 @@ function parseWeightToken(
     return { weight: 0, isBodyweight: true };
   }
 
+  const bodyweightLoadMatch = t.match(/^bw\s*([+-]\s*\d+(?:\.\d+)?)$/i);
+  if (bodyweightLoadMatch) {
+    const signedLoad = Number(bodyweightLoadMatch[1].replace(/\s+/g, ""));
+    if (!Number.isFinite(signedLoad)) return null;
+    return { weight: signedLoad, isBodyweight: true };
+  }
+
   if (t === "bar") {
     return { weight: 45, isBodyweight: false };
   }
@@ -466,7 +473,7 @@ function parseSetLine(line: string): ParsedSet | null {
      Breadcrumb — Standard weighted / BW / bar sets
      --------------------------------------------------------------------- */
   const standardMatch = trimmed.match(
-    /^(warmup|work|technique|mobility|corrective|conditioning|test)\s+(BW|Bar|-?\d+(?:\.\d+)?)x(\d+)(s)?(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+    /^(warmup|work|technique|mobility|corrective|conditioning|test)\s+(BW(?:\s*[+-]\s*\d+(?:\.\d+)?)?|Bar|-?\d+(?:\.\d+)?)x(\d+)(s)?(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
   );
 
   if (standardMatch) {
@@ -501,7 +508,7 @@ function parseSetLine(line: string): ParsedSet | null {
      Breadcrumb — Distance sets
      --------------------------------------------------------------------- */
   const distanceMatch = trimmed.match(
-    /^(warmup|work|technique|mobility|corrective|conditioning|test)\s+(BW|Bar|-?\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(m|meter|meters|ft|yd)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+    /^(warmup|work|technique|mobility|corrective|conditioning|test)\s+(BW(?:\s*[+-]\s*\d+(?:\.\d+)?)?|Bar|-?\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(m|meter|meters|ft|yd)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
   );
 
   if (distanceMatch) {
