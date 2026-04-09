@@ -1477,10 +1477,6 @@ export default function GymPage() {
             + Add Exercise
           </button>
 
-          <button className="btn" onClick={onCopySessionSnapshot}>
-            {sessionSnapshotCopied ? "Copied" : "Copy Session Snapshot"}
-          </button>
-
           <button className="btn" onClick={leaveSession}>
             Back to history
           </button>

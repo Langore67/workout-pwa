@@ -8,6 +8,105 @@ async function goto(page: Page, path: string) {
 }
 
 test.describe("history and ad hoc session workflows", () => {
+  test("session detail copies the completed session snapshot", async ({ page }) => {
+    await page.addInitScript(() => {
+      const clipboardState = { text: "" };
+      Object.defineProperty(window, "__copiedText", {
+        value: clipboardState,
+        configurable: true,
+      });
+      Object.defineProperty(navigator, "clipboard", {
+        value: {
+          writeText: async (text: string) => {
+            clipboardState.text = text;
+          },
+        },
+        configurable: true,
+      });
+    });
+
+    await goto(page, "/");
+    await resetDexieDb(page);
+
+    const seeded = await page.evaluate(async () => {
+      const db = (window as any).__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const now = Date.now();
+      const uuid = () => crypto.randomUUID();
+
+      const exerciseId = uuid();
+      const trackId = uuid();
+      const sessionId = uuid();
+      const sessionItemId = uuid();
+
+      await db.exercises.add({
+        id: exerciseId,
+        name: "Barbell RDL",
+        normalizedName: "barbell rdl",
+        equipmentTags: ["barbell"],
+        createdAt: now - 10_000,
+      });
+
+      await db.tracks.add({
+        id: trackId,
+        exerciseId,
+        trackType: "strength",
+        displayName: "Barbell RDL",
+        trackingMode: "weightedReps",
+        warmupSetsDefault: 0,
+        workingSetsDefault: 1,
+        repMin: 6,
+        repMax: 8,
+        restSecondsDefault: 180,
+        weightJumpDefault: 5,
+        createdAt: now - 9_000,
+      });
+
+      await db.sessions.add({
+        id: sessionId,
+        templateName: "Lower B",
+        startedAt: now - 30 * 60 * 1000,
+        endedAt: now - 5 * 60 * 1000,
+        notes: "Coach summary line 1\nCoach summary line 2",
+      });
+
+      await db.sessionItems.add({
+        id: sessionItemId,
+        sessionId,
+        trackId,
+        orderIndex: 0,
+        createdAt: now - 29 * 60 * 1000,
+      });
+
+      await db.sets.add({
+        id: uuid(),
+        sessionId,
+        trackId,
+        createdAt: now - 28 * 60 * 1000,
+        setType: "working",
+        weight: 155,
+        reps: 6,
+        rir: 2,
+        completedAt: now - 28 * 60 * 1000 + 5_000,
+      });
+
+      return { sessionId };
+    });
+
+    await goto(page, `/session/${seeded.sessionId}`);
+    await expect(page.getByTestId("session-detail")).toBeVisible({ timeout: 15000 });
+    await page.getByTestId("copy-session-snapshot").click();
+    await expect(page.getByTestId("copy-session-snapshot")).toHaveText("Copied");
+
+    const copiedText = await page.evaluate(() => (window as any).__copiedText.text);
+    expect(copiedText).toContain("Session Snapshot");
+    expect(copiedText).toContain("Session: Lower B");
+    expect(copiedText).toContain("Session Notes");
+    expect(copiedText).toContain("Barbell RDL");
+    expect(copiedText).toContain("Current Recommendation");
+  });
+
   test("deleting a completed workout from History removes it and cleans up related rows", async ({ page }) => {
     await goto(page, "/");
     await resetDexieDb(page);

@@ -29,10 +29,17 @@ import { db, TemplateItem, SessionItem, Track, SetEntry } from "../db";
 import {
   isBodyweightEffectiveLoadExerciseName,
 } from "../strength/Strength";
+import { getBestSessionLastNDays } from "../progression";
 import {
   normalizeTrackingMode,
+  isStrengthTrackType,
   type CanonTrackingMode,
 } from "../domain/trackingMode";
+import { getNextWorkingRecommendation } from "../domain/coaching/nextWorkingRecommendation";
+import {
+  buildSessionSnapshotText,
+  formatCompletedSetForSessionSnapshot,
+} from "../domain/coaching/sessionSnapshot";
 import { safeParsePrsCount } from "../lib/safeParsePrsCount";
 import { computeSessionTotalLifted } from "../lib/sessionTotalLifted";
 
@@ -96,6 +103,33 @@ function shouldShowSessionNotesToggle(notes?: string | null): boolean {
   if (!trimmed) return false;
   const lineCount = trimmed.split(/\r?\n/).length;
   return lineCount > 4 || trimmed.length > 220;
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // fall through
+  }
+
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "true");
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    ta.style.top = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
 }
 
 
@@ -169,6 +203,12 @@ export default function SessionDetailPage() {
   // Calm warmup toggle (default OFF)
   const [showWarmups, setShowWarmups] = useState<boolean>(false);
   const [notesExpanded, setNotesExpanded] = useState<boolean>(false);
+  const [sessionSnapshotCopied, setSessionSnapshotCopied] = useState<boolean>(false);
+  const [currentTrackRecentBest, setCurrentTrackRecentBest] =
+    useState<Awaited<ReturnType<typeof getBestSessionLastNDays>> | null>(null);
+  const [currentTrackRecommendation, setCurrentTrackRecommendation] = useState<ReturnType<
+    typeof getNextWorkingRecommendation
+  > | null>(null);
 
   /* ---------------------------------------------------------------------------
      Breadcrumb 2b — Data loading (Dexie)
@@ -276,6 +316,17 @@ export default function SessionDetailPage() {
     [session?.notes]
   );
 
+  const rawSetsByTrackId = useMemo(() => {
+    const map = new Map<string, SetEntry[]>();
+    for (const se of sets ?? []) {
+      const arr = map.get(se.trackId) ?? [];
+      arr.push(se);
+      map.set(se.trackId, arr);
+    }
+    for (const arr of map.values()) arr.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+    return map;
+  }, [sets]);
+
   /* ---------------------------------------------------------------------------
      Breadcrumb 2f — Load tracks for render list
      --------------------------------------------------------------------------- */
@@ -337,6 +388,149 @@ export default function SessionDetailPage() {
     const prs = safeParsePrsCount(session?.prsJson);
     return { dur, total, prs };
   }, [session?.startedAt, session?.endedAt, session?.prsJson, sets, trackById, exerciseById, bodyMetrics]);
+
+  const currentTrackId = useMemo(() => {
+    if (!renderTrackIds.length) return null;
+
+    for (const trackId of renderTrackIds) {
+      const workingSets = (rawSetsByTrackId.get(String(trackId)) ?? []).filter(
+        (s) => (((s.setType as any) ?? "working") as string) === "working"
+      );
+      if (!workingSets.length) return String(trackId);
+      if (workingSets.some((s) => !s.completedAt)) return String(trackId);
+    }
+
+    return String(renderTrackIds[renderTrackIds.length - 1] ?? "");
+  }, [renderTrackIds, rawSetsByTrackId]);
+
+  const currentTrack = useMemo(() => {
+    if (!currentTrackId) return null;
+    return trackById.get(currentTrackId) ?? null;
+  }, [currentTrackId, trackById]);
+
+  const currentTrackItem = useMemo(() => {
+    if (!currentTrackId) return null;
+    return (
+      plannedItems.find((item) => item.trackId === currentTrackId) ??
+      ({
+        id: `adhoc-${currentTrackId}`,
+        trackId: currentTrackId,
+        orderIndex: 9999,
+      } as any)
+    );
+  }, [currentTrackId, plannedItems]);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      if (!currentTrack) {
+        if (!alive) return;
+        setCurrentTrackRecentBest(null);
+        setCurrentTrackRecommendation(null);
+        return;
+      }
+
+      if (!isStrengthTrackType(currentTrack.trackType)) {
+        const conservativeRecommendation = getNextWorkingRecommendation({
+          trackId: currentTrack.id,
+          trackType: currentTrack.trackType,
+          trackingMode: currentTrack.trackingMode,
+          recentSets: [],
+          repMin: (currentTrackItem as any)?.repMinOverride ?? currentTrack.repMin,
+          repMax: (currentTrackItem as any)?.repMaxOverride ?? currentTrack.repMax,
+          weightJump: (currentTrack as any).weightJumpDefault,
+          rirTargetMin: currentTrack.rirTargetMin,
+        });
+
+        if (!alive) return;
+        setCurrentTrackRecentBest(null);
+        setCurrentTrackRecommendation(conservativeRecommendation);
+        return;
+      }
+
+      const best = await getBestSessionLastNDays(currentTrack.id, 5);
+      const recommendation = getNextWorkingRecommendation({
+        trackId: currentTrack.id,
+        trackType: currentTrack.trackType,
+        trackingMode: currentTrack.trackingMode,
+        recentSets:
+          best && typeof best.bestWeight === "number" && typeof best.bestReps === "number"
+            ? [
+                {
+                  weight: best.bestWeight,
+                  reps: best.bestReps,
+                  completed: true,
+                  timestamp: best.endedAt ?? Date.now(),
+                },
+              ]
+            : [],
+        repMin: (currentTrackItem as any)?.repMinOverride ?? currentTrack.repMin,
+        repMax: (currentTrackItem as any)?.repMaxOverride ?? currentTrack.repMax,
+        weightJump: (currentTrack as any).weightJumpDefault,
+        rirTargetMin: currentTrack.rirTargetMin,
+      });
+
+      if (!alive) return;
+      setCurrentTrackRecentBest(best ?? null);
+      setCurrentTrackRecommendation(recommendation);
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [currentTrack, currentTrackItem]);
+
+  async function onCopySessionSnapshot() {
+    const totalExercises = renderTrackIds.length;
+    const completedExercises = renderTrackIds.filter((trackId) =>
+      (rawSetsByTrackId.get(String(trackId)) ?? []).some((se) => !!se.completedAt)
+    ).length;
+
+    const trackSummaries = renderTrackIds.flatMap((trackId) => {
+      const track = trackById.get(String(trackId));
+      if (!track) return [];
+
+      const completedSets = (rawSetsByTrackId.get(String(trackId)) ?? [])
+        .map((se) =>
+          formatCompletedSetForSessionSnapshot(
+            se,
+            track,
+            track.trackingMode === "timeSeconds" ? "time" : "reps"
+          )
+        )
+        .filter((line): line is string => !!line);
+
+      return [
+        {
+          displayName: track.displayName,
+          trackType: track.trackType,
+          trackingMode: track.trackingMode,
+          completedSets,
+        },
+      ];
+    });
+
+    const txt = buildSessionSnapshotText({
+      sessionLabel: session.templateName ?? "Ad-hoc",
+      startedAt: session.startedAt,
+      sessionNotes: session.notes,
+      totalExercises,
+      completedExercises,
+      currentTrack,
+      currentRecentBest: currentTrackRecentBest,
+      currentRecommendation: currentTrackRecommendation,
+      trackSummaries,
+    });
+
+    const ok = await copyTextToClipboard(txt);
+    if (!ok) {
+      window.alert("Could not copy to clipboard in this browser.");
+      return;
+    }
+    setSessionSnapshotCopied(true);
+    window.setTimeout(() => setSessionSnapshotCopied(false), 1500);
+  }
 
   /* ---------------------------------------------------------------------------
      Breadcrumb 2i — Guards
@@ -428,6 +622,9 @@ export default function SessionDetailPage() {
             </button>
             <button className="btn" onClick={() => nav(`/gym/${sessionId}`)} data-testid="open-gym-mode">
               Open in Gym Mode
+            </button>
+            <button className="btn" onClick={onCopySessionSnapshot} data-testid="copy-session-snapshot">
+              {sessionSnapshotCopied ? "Copied" : "Copy Session Snapshot"}
             </button>
 
             <button
