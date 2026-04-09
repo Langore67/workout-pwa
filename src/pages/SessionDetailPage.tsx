@@ -433,7 +433,18 @@ export default function SessionDetailPage() {
 
         <hr />
         <label>Session notes</label>
-        <div className="input" style={{ minHeight: 54, whiteSpace: "pre-wrap" }} data-testid="session-notes">
+        <div
+          className="input"
+          style={{
+            minHeight: 54,
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
+            minWidth: 0,
+            overflowX: "hidden",
+          }}
+          data-testid="session-notes"
+        >
           {session.notes ?? <span className="muted">No notes.</span>}
         </div>
       </div>
