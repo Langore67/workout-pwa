@@ -21,7 +21,7 @@ test.describe("shared effective-load helpers", () => {
     expect(result).toEqual({ effective: 138, e1rm: 184 });
   });
 
-  test("explicit assisted names treat positive logged weight as assistance", async ({ page }) => {
+  test("explicit assisted names use bodyweight plus signed load consistently", async ({ page }) => {
     await goto(page, "/");
 
     const result = await page.evaluate(async () => {
@@ -34,7 +34,7 @@ test.describe("shared effective-load helpers", () => {
     });
 
     expect(result).toEqual({
-      assistedPullUpPositive: 138,
+      assistedPullUpPositive: 268,
       assistedPullUpNegative: 138,
       weightedPullUp: 228,
     });
