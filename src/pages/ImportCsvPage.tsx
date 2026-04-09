@@ -193,8 +193,11 @@ function parseWeight(loadRaw: unknown): number | undefined {
   const dumbbellMatch = s.match(/^(\d+(\.\d+)?)s$/i);
   if (dumbbellMatch) return Number(dumbbellMatch[1]);
 
-  const assistMatch = s.match(/^(-?\d+(\.\d+)?)\s*assist$/i);
-  if (assistMatch) return Number(assistMatch[1]);
+  const trailingAssistMatch = s.match(/^(-?\d+(\.\d+)?)\s*assist(?:ance)?$/i);
+  if (trailingAssistMatch) return -Math.abs(Number(trailingAssistMatch[1]));
+
+  const leadingAssistMatch = s.match(/^assist(?:ance)?\s*(-?\d+(\.\d+)?)$/i);
+  if (leadingAssistMatch) return -Math.abs(Number(leadingAssistMatch[1]));
 
   const totalMatch = s.match(/\((\d+(\.\d+)?)\s*total\)/i);
   if (totalMatch) return Number(totalMatch[1]);
