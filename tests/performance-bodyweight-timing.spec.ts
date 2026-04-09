@@ -262,6 +262,71 @@ async function seedPerformanceExplicitClassificationMetadata(page: Page) {
   });
 }
 
+async function seedPerformanceTrackDisplayNamePullClassification(page: Page) {
+  return await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const uuid = () => crypto.randomUUID();
+
+    const exerciseId = uuid();
+    const trackId = uuid();
+    const sessionId = uuid();
+
+    await db.exercises.add({
+      id: exerciseId,
+      name: "Cable Back Work",
+      equipment: "Cable",
+      category: "Machine",
+      equipmentTags: ["cable"],
+      createdAt: now - 14 * dayMs,
+    });
+
+    await db.bodyMetrics.add({
+      id: uuid(),
+      weightLb: 190,
+      measuredAt: now - 1 * dayMs,
+      takenAt: now - 1 * dayMs,
+      createdAt: now - 1 * dayMs,
+    });
+
+    await db.tracks.add({
+      id: trackId,
+      exerciseId,
+      trackType: "hypertrophy",
+      displayName: "Lat Pulldown",
+      trackingMode: "weightedReps",
+      warmupSetsDefault: 0,
+      workingSetsDefault: 3,
+      repMin: 8,
+      repMax: 12,
+      restSecondsDefault: 120,
+      weightJumpDefault: 10,
+      createdAt: now - 14 * dayMs,
+    });
+
+    await db.sessions.add({
+      id: sessionId,
+      startedAt: now - 6 * dayMs,
+      endedAt: now - 6 * dayMs + 45 * 60 * 1000,
+    });
+
+    await db.sets.add({
+      id: uuid(),
+      sessionId,
+      trackId,
+      setType: "working",
+      weight: 140,
+      reps: 10,
+      completedAt: now - 6 * dayMs + 5 * 60 * 1000,
+      createdAt: now - 6 * dayMs + 5 * 60 * 1000,
+    });
+  });
+}
+
 async function seedPerformanceCanonicalAliasContributor(page: Page) {
   return await page.evaluate(async () => {
     // @ts-ignore
@@ -411,5 +476,19 @@ test.describe("Performance bodyweight timing", () => {
     const movementBreakdown = page.locator(".card").filter({ hasText: "Movement Breakdown" }).first();
     await expect(movementBreakdown).toContainText("Dumbbell Bench Press", { timeout: 15000 });
     await expect(movementBreakdown).not.toContainText("DB Bench Press");
+  });
+
+  test("uses track display name when shared Strength pattern classification needs it", async ({ page }) => {
+    await seedPerformanceTrackDisplayNamePullClassification(page);
+
+    await goto(page, "/performance");
+    await expect(page.getByText("Movement Breakdown")).toBeVisible({ timeout: 15000 });
+
+    await page.getByRole("button", { name: "Pull" }).click();
+
+    const movementBreakdown = page.locator(".card").filter({ hasText: "Movement Breakdown" }).first();
+    await expect(movementBreakdown).toContainText("Pull", { timeout: 15000 });
+    await expect(movementBreakdown).toContainText("1 exercise", { timeout: 15000 });
+    await expect(page.getByText("Strongest PatternPull")).toBeVisible({ timeout: 15000 });
   });
 });
