@@ -277,6 +277,10 @@ function buildConfidence(inputs: PhaseQualityInputs): "High" | "Moderate" | "Low
   if (isFiniteNum(inputs.correctedLeanDelta) && isFiniteNum(inputs.correctedBodyFatDelta)) score += 1;
   if (isFiniteNum(inputs.strengthDelta)) score += 1;
 
+  if (inputs.hydrationDistortionLikely) {
+    score = Math.max(0, score - 1);
+  }
+
   if (score >= 3) return "High";
   if (score === 2) return "Moderate";
   return "Low";
