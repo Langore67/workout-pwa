@@ -10,7 +10,13 @@ export type SessionSnapshotTrackSummary = {
   completedSets: string[];
 };
 
-function buildSessionReadinessLine(params: {
+type SessionSnapshotDerivation = {
+  readiness: string;
+  focusFlags: string[];
+  carryForward: string[];
+};
+
+function deriveSessionReadiness(params: {
   sessionNotes?: string;
   totalExercises: number;
   completedExercises: number;
@@ -57,7 +63,7 @@ function buildSessionReadinessLine(params: {
   return "Readiness: steady — no strong caution flags detected in current session context";
 }
 
-function buildSessionFocusFlags(params: {
+function deriveSessionFocusFlags(params: {
   sessionNotes?: string;
   totalExercises: number;
   completedExercises: number;
@@ -153,7 +159,7 @@ function buildSessionFocusFlags(params: {
   return Array.from(new Set(flags)).slice(0, 4);
 }
 
-function buildSessionCarryForwardLines(params: {
+function deriveSessionCarryForward(params: {
   sessionNotes?: string;
 }): string[] {
   const notesRaw = String(params.sessionNotes ?? "");
@@ -218,6 +224,32 @@ function buildSessionCarryForwardLines(params: {
   }
 
   return Array.from(new Set(reminders)).slice(0, 3);
+}
+
+function deriveSessionSnapshot(params: {
+  sessionNotes?: string;
+  totalExercises: number;
+  completedExercises: number;
+  currentTrack: Pick<Track, "displayName" | "trackType" | "trackingMode"> | null;
+  currentRecommendation: WorkingRecommendation | null;
+}): SessionSnapshotDerivation {
+  return {
+    readiness: deriveSessionReadiness({
+      sessionNotes: params.sessionNotes,
+      totalExercises: params.totalExercises,
+      completedExercises: params.completedExercises,
+    }),
+    focusFlags: deriveSessionFocusFlags({
+      sessionNotes: params.sessionNotes,
+      totalExercises: params.totalExercises,
+      completedExercises: params.completedExercises,
+      currentTrack: params.currentTrack,
+      currentRecommendation: params.currentRecommendation,
+    }),
+    carryForward: deriveSessionCarryForward({
+      sessionNotes: params.sessionNotes,
+    }),
+  };
 }
 
 function formatSecondsToMMSS(totalSeconds?: number): string {
@@ -305,6 +337,13 @@ export function buildSessionSnapshotText(params: {
     currentRecommendation,
     trackSummaries,
   } = params;
+  const derived = deriveSessionSnapshot({
+    sessionNotes,
+    totalExercises,
+    completedExercises,
+    currentTrack,
+    currentRecommendation,
+  });
 
   const lines: string[] = [];
   lines.push("Session Snapshot");
@@ -313,30 +352,17 @@ export function buildSessionSnapshotText(params: {
     lines.push(`Date: ${new Date(startedAt).toLocaleDateString()}`);
   }
   lines.push(`Exercises: ${completedExercises}/${totalExercises} with completed work`);
-  lines.push(
-    buildSessionReadinessLine({
-      sessionNotes,
-      totalExercises,
-      completedExercises,
-    })
-  );
+  lines.push(derived.readiness);
   lines.push("");
   lines.push("Focus Flags");
-  for (const flag of buildSessionFocusFlags({
-    sessionNotes,
-    totalExercises,
-    completedExercises,
-    currentTrack,
-    currentRecommendation,
-  })) {
+  for (const flag of derived.focusFlags) {
     lines.push(`- ${flag}`);
   }
 
-  const carryForward = buildSessionCarryForwardLines({ sessionNotes });
-  if (carryForward.length) {
+  if (derived.carryForward.length) {
     lines.push("");
     lines.push("Carry Forward");
-    for (const reminder of carryForward) {
+    for (const reminder of derived.carryForward) {
       lines.push(`- ${reminder}`);
     }
   }
