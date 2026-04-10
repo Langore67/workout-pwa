@@ -651,14 +651,17 @@ export default function SessionDetailPage() {
         <div
           className="input"
           style={{
-            minHeight: 54,
             whiteSpace: "pre-wrap",
             overflowWrap: "anywhere",
             wordBreak: "break-word",
             minWidth: 0,
             overflowX: "hidden",
-            maxHeight: showSessionNotesToggle && !notesExpanded ? "6.2em" : undefined,
-            overflowY: showSessionNotesToggle && !notesExpanded ? "hidden" : undefined,
+            overflowY: "visible",
+            height: "auto",
+            maxHeight: "none",
+            display: showSessionNotesToggle && !notesExpanded ? "-webkit-box" : "block",
+            WebkitBoxOrient: showSessionNotesToggle && !notesExpanded ? "vertical" : undefined,
+            WebkitLineClamp: showSessionNotesToggle && !notesExpanded ? 4 : undefined,
           }}
           data-testid="session-notes"
         >

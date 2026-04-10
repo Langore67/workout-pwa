@@ -102,6 +102,8 @@ test.describe("history and ad hoc session workflows", () => {
     const copiedText = await page.evaluate(() => (window as any).__copiedText.text);
     expect(copiedText).toContain("Session Snapshot");
     expect(copiedText).toContain("Session: Lower B");
+    expect(copiedText).toContain("Readiness:");
+    expect(copiedText).toContain("Focus Flags");
     expect(copiedText).toContain("Session Notes");
     expect(copiedText).toContain("Barbell RDL");
     expect(copiedText).toContain("Current Recommendation");
@@ -292,10 +294,10 @@ test.describe("history and ad hoc session workflows", () => {
 
     await goto(page, "/history");
     await expect(page.getByTestId(`history-completed-card:${seeded.sessionId}`)).toBeVisible({ timeout: 15000 });
-    await expect(page.getByTestId(`history-total:${seeded.sessionId}`)).toContainText("1500 lb");
+    await expect(page.getByTestId(`history-total:${seeded.sessionId}`)).toContainText("2100 lb");
 
     await goto(page, `/session/${seeded.sessionId}`);
     await expect(page.getByTestId("session-detail")).toBeVisible({ timeout: 15000 });
-    await expect(page.getByTestId("session-total-lifted")).toContainText("1500 lb");
+    await expect(page.getByTestId("session-total-lifted")).toContainText("2100 lb");
   });
 });
