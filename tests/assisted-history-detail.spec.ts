@@ -174,14 +174,15 @@ test.describe("assisted history and session detail", () => {
       return await navigator.clipboard.readText();
     }, useClipboardStub);
 
-    expect(copiedText).toContain("IronForge Exercise Export");
+    expect(copiedText).toContain("Exercise History Snapshot");
     expect(copiedText).toContain("Exercise: Pull Up");
     expect(copiedText).toContain("Best set (effective load): 138 x 10");
+    expect(copiedText).toContain("Sets: BW-65 x 10 @2");
     expect(copiedText).toContain(
       "Assisted sets subtract assistance from bodyweight"
     );
     expect(copiedText).toContain(
-      "Coach prompt: suggest next working weight/reps based on these sessions."
+      "Coach prompt: suggest next working weight/reps based on this recent exercise history."
     );
   });
 });
