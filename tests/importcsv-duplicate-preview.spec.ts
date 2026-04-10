@@ -213,3 +213,74 @@ test("Import CSV normalizes assisted loads to signed negative values", async ({ 
     { weight: -40, reps: 10, rir: 3 },
   ]);
 });
+
+test("Import CSV preserves diagnostic and rehab rows through the corrective path", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  await page.goto(new URL("/import", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "diagnostic-rehab.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      `date,session_type,program_day,exercise,set,load,reps,rir,notes,set_type
+2026-04-01,lift,Lower B,Hip Shift Check,1,BW,8,,,diagnostic
+2026-04-01,lift,Lower B,Shoulder ER ISO,1,BW,12,,,rehab`,
+      "utf8"
+    ),
+  });
+
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const dbState = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const tracks = await db.tracks.toArray();
+    const sessions = await db.sessions.toArray();
+    const session = sessions.sort((a: any, b: any) => (b.startedAt ?? 0) - (a.startedAt ?? 0))[0];
+    if (!session) throw new Error("Imported session not found");
+    const sessionSets = await db.sets.where("sessionId").equals(session.id).sortBy("createdAt");
+    const trackById = new Map(tracks.map((track: any) => [track.id, track]));
+
+    return {
+      tracks: tracks
+        .filter((track: any) => ["Hip Shift Check", "Shoulder ER ISO"].includes(track.displayName))
+        .map((track: any) => ({
+          displayName: track.displayName,
+          trackType: track.trackType,
+          trackingMode: track.trackingMode,
+        }))
+        .sort((a: any, b: any) => a.displayName.localeCompare(b.displayName)),
+      sets: sessionSets.map((set: any) => ({
+        trackName: trackById.get(set.trackId)?.displayName ?? null,
+        setType: set.setType ?? null,
+        notes: set.notes ?? null,
+        reps: set.reps ?? null,
+        weight: set.weight ?? null,
+      })),
+    };
+  });
+
+  expect(dbState.tracks).toEqual([
+    { displayName: "Hip Shift Check", trackType: "corrective", trackingMode: "repsOnly" },
+    { displayName: "Shoulder ER ISO", trackType: "corrective", trackingMode: "repsOnly" },
+  ]);
+  expect(dbState.sets).toEqual([
+    {
+      trackName: "Hip Shift Check",
+      setType: "working",
+      notes: "diagnostic",
+      reps: 8,
+      weight: null,
+    },
+    {
+      trackName: "Shoulder ER ISO",
+      setType: "working",
+      notes: "rehab",
+      reps: 12,
+      weight: null,
+    },
+  ]);
+});
