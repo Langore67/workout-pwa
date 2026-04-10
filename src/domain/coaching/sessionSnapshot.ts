@@ -68,17 +68,70 @@ function buildSessionFocusFlags(params: {
   const notes = String(sessionNotes ?? "").toLowerCase();
   const flags: string[] = [];
 
-  if (notes.includes("low back")) flags.push("Low back management");
-  if (notes.includes("knee")) flags.push("Knee tolerance");
-  if (notes.includes("fatigue") || notes.includes("tired") || notes.includes("cut volume") || notes.includes("cut short")) {
+  if (
+    notes.includes("low back") ||
+    notes.includes("back pain") ||
+    notes.includes("back fatigue") ||
+    notes.includes("back tight")
+  ) {
+    flags.push("Low back limitation");
+  }
+  if (
+    notes.includes("knee pain") ||
+    notes.includes("knee felt") ||
+    notes.includes("knee unstable") ||
+    notes.includes("knee instability")
+  ) {
+    flags.push("Knee stability / tolerance");
+  }
+  if (
+    notes.includes("elbow pain") ||
+    notes.includes("shoulder pain") ||
+    notes.includes("hip pain") ||
+    notes.includes("wrist pain")
+  ) {
+    flags.push("Joint pain management");
+  }
+  if (
+    notes.includes("fatigue") ||
+    notes.includes("tired") ||
+    notes.includes("cut volume") ||
+    notes.includes("cut short") ||
+    notes.includes("reduced capacity")
+  ) {
     flags.push("Fatigue / volume management");
   }
-  if (notes.includes("stance")) flags.push("Technique adjustment");
-  if (notes.includes("glute")) flags.push("Glute emphasis");
-  if (notes.includes("lat")) flags.push("Lat emphasis");
-  if (notes.includes("tricep")) flags.push("Triceps emphasis");
-  if (notes.includes("quality")) flags.push("Quality-first execution");
-  if (notes.includes("rehab")) flags.push("Rehab focus");
+  if (
+    notes.includes("compensation") ||
+    notes.includes("shifted") ||
+    notes.includes("rotation") ||
+    notes.includes("stance change") ||
+    notes.includes("form breakdown")
+  ) {
+    flags.push("Compensation / technique watch");
+  }
+  if (
+    notes.includes("swap") ||
+    notes.includes("substitute") ||
+    notes.includes("instead of") ||
+    notes.includes("replaced")
+  ) {
+    flags.push("Exercise substitution");
+  }
+  if (
+    notes.includes("diagnostic") ||
+    notes.includes("assessment") ||
+    notes.includes("check-in")
+  ) {
+    flags.push("Diagnostic check");
+  }
+  if (
+    notes.includes("corrective") ||
+    notes.includes("rehab") ||
+    notes.includes("physio")
+  ) {
+    flags.push("Corrective / rehab focus");
+  }
 
   if (currentTrack && currentRecommendation?.action && flags.length < 4) {
     if (currentRecommendation.action === "reduce") flags.push(`Reduce load on ${currentTrack.displayName}`);
