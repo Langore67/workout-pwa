@@ -386,6 +386,12 @@ corrective BWx15
 Knee to Wall
 mobility BWx10 /side
 
+Shoulder ER ISO
+rehab BWx12
+
+Hip Shift Check
+diagnostic BWx8
+
 Barbell RDL
 technique 95x10
 technique 20x10 @4 4 sec eccentric
@@ -395,12 +401,16 @@ conditioning BWx30s`);
   await page.getByRole("button", { name: "Parse Preview" }).click();
 
   await expect(page.getByText(/Exercise has no parsed sets/i)).toHaveCount(0);
-  await expect(page.getByText(/Logged as corrective work\. Excluded from strength metrics\./i)).toBeVisible();
+  await expect(
+    page.getByText(/Logged as corrective work\. Excluded from strength metrics\./i)
+  ).toHaveCount(3);
   await expect(page.getByText(/Logged as mobility work\. Excluded from strength metrics\./i)).toBeVisible();
   await expect(page.getByText(/Logged as technique work\. Excluded from strength metrics\./i)).toBeVisible();
   await expect(page.getByText(/Logged as conditioning work\. Excluded from strength metrics\./i)).toBeVisible();
   await expect(page.getByText(/corrective .* BW x 15/i)).toBeVisible();
   await expect(page.getByText(/mobility .* BW x 10 \/side/i)).toBeVisible();
+  await expect(page.getByText(/rehab .* BW x 12/i)).toBeVisible();
+  await expect(page.getByText(/diagnostic .* BW x 8/i)).toBeVisible();
   await expect(page.getByText(/technique .* 95 x 10/i)).toBeVisible();
 
   await page.getByLabel(/Dry run/i).uncheck();
@@ -413,7 +423,14 @@ conditioning BWx30s`);
     const tracks = await db.tracks.toArray();
     return tracks
       .filter((track: any) =>
-        ["Locked Clams", "Knee to Wall", "Barbell RDL", "Air Bike"].includes(track.displayName)
+        [
+          "Locked Clams",
+          "Knee to Wall",
+          "Shoulder ER ISO",
+          "Hip Shift Check",
+          "Barbell RDL",
+          "Air Bike",
+        ].includes(track.displayName)
       )
       .map((track: any) => ({
         displayName: track.displayName,
@@ -426,8 +443,10 @@ conditioning BWx30s`);
   expect(dbState).toEqual([
     { displayName: "Air Bike", trackType: "conditioning", trackingMode: "timeSeconds" },
     { displayName: "Barbell RDL", trackType: "technique", trackingMode: "weightedReps" },
+    { displayName: "Hip Shift Check", trackType: "corrective", trackingMode: "repsOnly" },
     { displayName: "Knee to Wall", trackType: "mobility", trackingMode: "repsOnly" },
     { displayName: "Locked Clams", trackType: "corrective", trackingMode: "repsOnly" },
+    { displayName: "Shoulder ER ISO", trackType: "corrective", trackingMode: "repsOnly" },
   ]);
 });
 

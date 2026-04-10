@@ -99,6 +99,8 @@ type ParsedSetKind =
   | "technique"
   | "mobility"
   | "corrective"
+  | "diagnostic"
+  | "rehab"
   | "conditioning"
   | "test"
   | "cardio";
@@ -365,7 +367,9 @@ function inferBetterTrackingModeFromParsedSets(
 function inferTrackTypeFromParsedSets(exerciseName: string, sets: ParsedSet[]): TrackType {
   return inferTrackTypeFromParsedSetKinds(
     exerciseName,
-    sets.map((set) => set.setKind),
+    sets.map((set) =>
+      set.setKind === "diagnostic" || set.setKind === "rehab" ? "corrective" : set.setKind
+    ),
     {
       extraCorrectiveTerms: [
         "stretch",
@@ -391,6 +395,8 @@ function buildSetNotes(set: ParsedSet): string | undefined {
   if (set.setKind === "technique") parts.push("technique");
   if (set.setKind === "mobility") parts.push("mobility");
   if (set.setKind === "corrective") parts.push("corrective");
+  if (set.setKind === "diagnostic") parts.push("diagnostic");
+  if (set.setKind === "rehab") parts.push("rehab");
   if (set.setKind === "conditioning" || set.setKind === "cardio") parts.push("conditioning");
   if (set.setKind === "test") parts.push("test");
 
@@ -473,7 +479,7 @@ function parseSetLine(line: string): ParsedSet | null {
      Breadcrumb — Standard weighted / BW / bar sets
      --------------------------------------------------------------------- */
   const standardMatch = trimmed.match(
-    /^(warmup|work|technique|mobility|corrective|conditioning|test)\s+(BW(?:\s*[+-]\s*\d+(?:\.\d+)?)?|Bar|-?\d+(?:\.\d+)?)x(\d+)(s)?(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+    /^(warmup|work|technique|mobility|corrective|diagnostic|rehab|conditioning|test)\s+(BW(?:\s*[+-]\s*\d+(?:\.\d+)?)?|Bar|-?\d+(?:\.\d+)?)x(\d+)(s)?(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
   );
 
   if (standardMatch) {
@@ -508,7 +514,7 @@ function parseSetLine(line: string): ParsedSet | null {
      Breadcrumb — Distance sets
      --------------------------------------------------------------------- */
   const distanceMatch = trimmed.match(
-    /^(warmup|work|technique|mobility|corrective|conditioning|test)\s+(BW(?:\s*[+-]\s*\d+(?:\.\d+)?)?|Bar|-?\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(m|meter|meters|ft|yd)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+    /^(warmup|work|technique|mobility|corrective|diagnostic|rehab|conditioning|test)\s+(BW(?:\s*[+-]\s*\d+(?:\.\d+)?)?|Bar|-?\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(m|meter|meters|ft|yd)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
   );
 
   if (distanceMatch) {
@@ -545,7 +551,7 @@ function parseSetLine(line: string): ParsedSet | null {
      Breadcrumb — Time-only sets
      --------------------------------------------------------------------- */
     const timeOnlyMatch = trimmed.match(
-      /^(warmup|work|technique|mobility|corrective|conditioning|test)\s+(\d+(?:\.\d+)?)(s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+      /^(warmup|work|technique|mobility|corrective|diagnostic|rehab|conditioning|test)\s+(\d+(?:\.\d+)?)(s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
     );
   
     if (timeOnlyMatch) {
@@ -577,7 +583,7 @@ function parseSetLine(line: string): ParsedSet | null {
      - work x12 @3
      --------------------------------------------------------------------- */
   const repsOnlyNoLoadMatch = trimmed.match(
-    /^(warmup|work|technique|mobility|corrective|conditioning|test)\s+x(\d+)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+    /^(warmup|work|technique|mobility|corrective|diagnostic|rehab|conditioning|test)\s+x(\d+)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
   );
 
   if (repsOnlyNoLoadMatch) {
@@ -764,7 +770,7 @@ function parseWorkoutText(text: string): ParsedWorkout {
       continue;
     }
 
-    if (/^(warmup|work|technique|mobility|corrective|conditioning|test|cardio)\b/i.test(line)) {
+    if (/^(warmup|work|technique|mobility|corrective|diagnostic|rehab|conditioning|test|cardio)\b/i.test(line)) {
       warnings.push(
         `Unsupported set format under ${currentExercise?.exercise ?? "unknown exercise"}: ${line}`
       );
