@@ -238,6 +238,10 @@ export function buildStrengthHeroMeta(
 ): StrengthHeroMeta {
   const valueRaw = Number(result?.normalizedIndex);
   const value = Number.isFinite(valueRaw) ? valueRaw : null;
+  const totalCompletedWorkingSets = (result?.patterns ?? []).reduce(
+    (sum, pattern) => sum + Number(pattern?.completedWorkingSets ?? 0),
+    0
+  );
 
   const sorted = (trendRows ?? [])
     .filter((row) => Number.isFinite(Number(row?.weekEndMs)))
@@ -246,25 +250,24 @@ export function buildStrengthHeroMeta(
 
   const latestValue = Number(sorted[0]?.normalizedIndex);
   const priorValue = Number(sorted[1]?.normalizedIndex);
+  const meaningfulWeeks = sorted.filter((row) => Number(row?.normalizedIndex) > 0).length;
+  const hasMeaningfulSignal = meaningfulWeeks >= 2 && totalCompletedWorkingSets > 0;
 
   let trendLabel: StrengthHeroMeta["trendLabel"] = "Building";
-  let trendDetail = "Need at least 2 weekly points";
+  let trendDetail = "Need more completed strength work";
 
-  if (Number.isFinite(latestValue) && Number.isFinite(priorValue)) {
+  if (hasMeaningfulSignal && Number.isFinite(latestValue) && Number.isFinite(priorValue)) {
     const delta = latestValue - priorValue;
     trendLabel = delta >= 0.05 ? "Rising" : delta <= -0.03 ? "Falling" : "Stable";
     trendDetail = `${delta > 0 ? "+" : ""}${delta.toFixed(2)} vs prior week`;
   }
 
-  const weeksLoaded = sorted.filter((row) =>
-    Number.isFinite(Number(row?.normalizedIndex)),
-  ).length;
   const bwDaysUsed = Number(result?.bodyweightDaysUsed ?? 0);
 
   const confidence: StrengthHeroMeta["confidence"] =
-    weeksLoaded >= 8 && bwDaysUsed >= 3
+    meaningfulWeeks >= 8 && bwDaysUsed >= 3 && totalCompletedWorkingSets >= 12
       ? "High"
-      : weeksLoaded >= 4
+      : meaningfulWeeks >= 4 && totalCompletedWorkingSets >= 6
         ? "Moderate"
         : "Low";
 

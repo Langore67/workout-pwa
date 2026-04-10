@@ -181,4 +181,40 @@ test.describe("shared effective-load helpers", () => {
     expect(result.squatWorkingSets).toBeGreaterThan(0);
     expect(result.hingeWorkingSets).toBe(0);
   });
+
+  test("hero meta stays low-confidence when weekly rows exist but no meaningful strength work exists", async ({ page }) => {
+    await goto(page, "/");
+
+    const result = await page.evaluate(async () => {
+      const strength = await import("/src/strength/Strength.ts");
+      return strength.buildStrengthHeroMeta(
+        {
+          absoluteIndex: 0,
+          relativeIndex: 0,
+          normalizedIndex: 0,
+          bodyweight: 200,
+          bodyweightDaysUsed: 5,
+          patterns: [
+            { pattern: "squat", topSet: 0, working: 0, exposure: 0, absolute: 0, relative: 0, normalized: 0, hardSets: 0, completedWorkingSets: 0 },
+            { pattern: "hinge", topSet: 0, working: 0, exposure: 0, absolute: 0, relative: 0, normalized: 0, hardSets: 0, completedWorkingSets: 0 },
+            { pattern: "push", topSet: 0, working: 0, exposure: 0, absolute: 0, relative: 0, normalized: 0, hardSets: 0, completedWorkingSets: 0 },
+            { pattern: "pull", topSet: 0, working: 0, exposure: 0, absolute: 0, relative: 0, normalized: 0, hardSets: 0, completedWorkingSets: 0 },
+          ],
+        },
+        Array.from({ length: 12 }, (_, i) => ({
+          weekEndMs: Date.now() - i * 7 * 24 * 60 * 60 * 1000,
+          label: `W${i + 1}`,
+          bodyweight: 200,
+          bodyweightDaysUsed: 5,
+          absoluteIndex: 0,
+          relativeIndex: 0,
+          normalizedIndex: 0,
+        }))
+      );
+    });
+
+    expect(result.trendLabel).toBe("Building");
+    expect(result.trendDetail).toContain("Need more completed strength work");
+    expect(result.confidence).toBe("Low");
+  });
 });
