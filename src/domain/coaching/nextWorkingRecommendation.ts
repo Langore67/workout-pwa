@@ -74,7 +74,7 @@ export function getNextWorkingRecommendation(params: {
     }))
     .filter(
       (set): set is { weight: number; reps: number; timestamp: number } =>
-        set.weight != null && set.weight >= 0 && set.reps != null && set.reps > 0
+        set.weight != null && set.reps != null && set.reps > 0
     );
 
   const best: BestSetLike | null =

@@ -116,7 +116,10 @@ export function buildWeightedRepsProgressionPlan(params: {
   }
 
   if (lastR < repLo) {
-    const nextW = roundToStep(Math.max(0, lastW - jump), step);
+    const nextW =
+      lastW < 0
+        ? roundToStep(lastW - jump, step)
+        : roundToStep(Math.max(0, lastW - jump), step);
     return {
       targetWeight: nextW,
       targetReps: repLo,
