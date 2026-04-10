@@ -162,9 +162,7 @@ export function calcEffectiveStrengthWeightLb(rawWeight: number, exerciseName: s
   }
 
   const bwSafe = Number.isFinite(bodyweight) && bodyweight > 0 ? bodyweight : 0;
-  const effective = isExplicitlyAssistedBodyweightExerciseName(exerciseName)
-    ? bwSafe - Math.abs(w)
-    : bwSafe + w;
+  const effective = bwSafe + w;
   return Number.isFinite(effective) && effective > 0 ? effective : 0;
 }
 
