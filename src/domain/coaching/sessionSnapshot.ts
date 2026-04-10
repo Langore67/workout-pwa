@@ -10,6 +10,53 @@ export type SessionSnapshotTrackSummary = {
   completedSets: string[];
 };
 
+function buildSessionReadinessLine(params: {
+  sessionNotes?: string;
+  totalExercises: number;
+  completedExercises: number;
+}): string {
+  const { sessionNotes, totalExercises, completedExercises } = params;
+  const notes = String(sessionNotes ?? "").toLowerCase();
+
+  const cautionTerms = [
+    "fatigue",
+    "tired",
+    "low back",
+    "pain",
+    "unstable",
+    "tight",
+    "cut volume",
+    "cut short",
+    "rehab",
+  ];
+  const positiveTerms = [
+    "strong",
+    "smooth",
+    "snappy",
+    "good",
+    "better",
+    "ready",
+  ];
+
+  if (cautionTerms.some((term) => notes.includes(term))) {
+    return "Readiness: caution — session notes mention fatigue, pain, or reduced capacity";
+  }
+
+  if (positiveTerms.some((term) => notes.includes(term))) {
+    return "Readiness: good — session notes indicate solid movement quality or output";
+  }
+
+  if (totalExercises > 0 && completedExercises === 0) {
+    return "Readiness: unknown — no completed work logged yet";
+  }
+
+  if (totalExercises > 0 && completedExercises < totalExercises) {
+    return "Readiness: mixed — session is in progress or only partially completed";
+  }
+
+  return "Readiness: steady — no strong caution flags detected in current session context";
+}
+
 function formatSecondsToMMSS(totalSeconds?: number): string {
   if (typeof totalSeconds !== "number" || !Number.isFinite(totalSeconds) || totalSeconds < 0) return "";
   const mins = Math.floor(totalSeconds / 60);
@@ -103,6 +150,13 @@ export function buildSessionSnapshotText(params: {
     lines.push(`Date: ${new Date(startedAt).toLocaleDateString()}`);
   }
   lines.push(`Exercises: ${completedExercises}/${totalExercises} with completed work`);
+  lines.push(
+    buildSessionReadinessLine({
+      sessionNotes,
+      totalExercises,
+      completedExercises,
+    })
+  );
 
   if (sessionNotes?.trim()) {
     lines.push("");
