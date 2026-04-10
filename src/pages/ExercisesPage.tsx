@@ -553,6 +553,7 @@ function useExercisePerformance(exerciseId?: string) {
         let bestSetLabel: string | undefined;
         let usedBodyweightEffective = false;
         let usedAssisted = false;
+        const completedSetLabels: string[] = [];
         const sessionAt =
           (typeof s.endedAt === "number" && Number.isFinite(s.endedAt) ? s.endedAt : undefined) ??
           (typeof s.startedAt === "number" && Number.isFinite(s.startedAt) ? s.startedAt : undefined);
@@ -561,12 +562,19 @@ function useExercisePerformance(exerciseId?: string) {
         for (const se of nonWarmup) {
           const track = trackById.get(se.trackId);
           const weightEntryContextName = [exercise?.name, track?.displayName].filter(Boolean).join(" ").trim();
-          if (isBodyweightEffectiveLoadExerciseName(weightEntryContextName)) {
+          const isBodyweightEffective = isBodyweightEffectiveLoadExerciseName(weightEntryContextName);
+          if (isBodyweightEffective) {
             usedBodyweightEffective = true;
           }
           if (isExplicitlyAssistedBodyweightExerciseName(weightEntryContextName)) {
             usedAssisted = true;
           }
+          const setLabel = formatExerciseHistorySetLabel({
+            set: se,
+            metricMode: normalizeMetricMode((exercise as any)?.metricMode),
+            isBodyweightEffective,
+          });
+          if (setLabel) completedSetLabels.push(setLabel);
           const w = calcEffectiveStrengthWeightLb(
             Number(se.weight),
             weightEntryContextName,
@@ -602,6 +610,7 @@ function useExercisePerformance(exerciseId?: string) {
           bestSetLabel,
           usedBodyweightEffective,
           usedAssisted,
+          completedSetLabels: completedSetLabels.slice(0, 4),
         };
       });
 
@@ -980,6 +989,57 @@ function buildClipboardText(e: Exercise, patchPreview?: any) {
   return lines.join("\n").trim() + "\n";
 }
 
+function formatSignedBodyweightToken(weightRaw: unknown): string {
+  const weight = Number(weightRaw);
+  if (!Number.isFinite(weight) || weight === 0) return "BW";
+  return weight > 0 ? `BW+${weight}` : `BW${weight}`;
+}
+
+function formatExerciseHistorySetLabel(params: {
+  set: any;
+  metricMode: MetricMode;
+  isBodyweightEffective: boolean;
+}): string | null {
+  const { set, metricMode, isBodyweightEffective } = params;
+  const weight = Number(set?.weight);
+  const reps = Number(set?.reps);
+  const rir = Number(set?.rir);
+  const seconds = Number((set as any)?.seconds);
+  const distance = Number((set as any)?.distance);
+  const distanceUnit = (((set as any)?.distanceUnit as string | undefined) ?? "m").trim();
+
+  const loadLabel =
+    isBodyweightEffective && (Number.isFinite(weight) || weight === 0)
+      ? formatSignedBodyweightToken(weight)
+      : Number.isFinite(weight)
+        ? `${weight}`
+        : null;
+
+  if (metricMode === "time") {
+    const mmss =
+      Number.isFinite(seconds) && seconds > 0
+        ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
+        : null;
+    if (!mmss) return loadLabel ? `${loadLabel}` : null;
+    return loadLabel ? `${loadLabel} • ${mmss}` : mmss;
+  }
+
+  if (metricMode === "distance") {
+    const distanceLabel = Number.isFinite(distance) && distance > 0 ? `${distance} ${distanceUnit}` : null;
+    if (!distanceLabel) return loadLabel ? `${loadLabel}` : null;
+    return loadLabel ? `${loadLabel} • ${distanceLabel}` : distanceLabel;
+  }
+
+  const parts: string[] = [];
+  if (loadLabel) parts.push(loadLabel);
+  if (Number.isFinite(reps) && reps > 0) {
+    if (parts.length) parts.push(`x ${reps}`);
+    else parts.push(`${reps} reps`);
+  }
+  if (Number.isFinite(rir)) parts.push(`@${rir}`);
+  return parts.length ? parts.join(" ") : null;
+}
+
 function buildExerciseHistoryExportText(
   exercise: Exercise,
   perf: ReturnType<typeof useExercisePerformance>,
@@ -1000,7 +1060,7 @@ function buildExerciseHistoryExportText(
   const usesAssisted = rows.some((row: any) => row.usedAssisted);
 
   const lines: string[] = [];
-  lines.push("IronForge Exercise Export");
+  lines.push("Exercise History Snapshot");
   lines.push(`Exercise: ${exportExerciseName}`);
   lines.push(`Metric: ${prettyMetricLabel(metricMode)}`);
   lines.push(`Generated: ${generatedAt}`);
@@ -1043,10 +1103,13 @@ function buildExerciseHistoryExportText(
     if (fields.length) {
       lines.push(`  ${fields.join(" • ")}`);
     }
+    if (Array.isArray((row as any).completedSetLabels) && (row as any).completedSetLabels.length) {
+      lines.push(`  Sets: ${(row as any).completedSetLabels.join(", ")}`);
+    }
   }
 
   lines.push("");
-  lines.push("Coach prompt: suggest next working weight/reps based on these sessions.");
+  lines.push("Coach prompt: suggest next working weight/reps based on this recent exercise history.");
 
   return lines.join("\n").trim() + "\n";
 }
