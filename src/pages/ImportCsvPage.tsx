@@ -39,6 +39,7 @@ import {
 } from "../domain/exercises/exerciseDuplicateCandidates";
 import {
   defaultTrackTypeFromExerciseName,
+  inferTrackingModeFromSetSignals,
   inferTrackingModeFromExerciseName,
 } from "../domain/trackingMode";
 
@@ -158,10 +159,14 @@ function inferSetType(row: JournalRow): "warmup" | "working" {
   if (explicit === "warmup") return "warmup";
   if (explicit === "working") return "working";
   if (explicit === "technique") return "working"; // DB does not support "technique" yet
+  if (explicit === "diagnostic") return "working";
+  if (explicit === "rehab") return "working";
 
   const notes = String(row.notes || "").toLowerCase();
   if (notes.includes("set_type=warmup")) return "warmup";
   if (notes.includes("set_type=technique")) return "working";
+  if (notes.includes("set_type=diagnostic")) return "working";
+  if (notes.includes("set_type=rehab")) return "working";
 
   const ex = String(row.exercise || "").toLowerCase();
   if (ex.startsWith("warm-up ")) return "warmup";
@@ -212,8 +217,57 @@ function inferTrackingMode(exerciseName: string): TrackingMode {
   return inferTrackingModeFromExerciseName(exerciseName);
 }
 
+function inferTrackingModeFromCsvRows(exerciseName: string, rows: JournalRow[]): TrackingMode {
+  const hasWeightedLoad = rows.some((row) => {
+    const weight = parseWeight(row.load);
+    return weight !== undefined && Number.isFinite(weight) && weight !== 0;
+  });
+  const hasReps = rows.some((row) => {
+    const reps = num(row.reps);
+    return reps !== undefined && Number.isFinite(reps) && reps > 0;
+  });
+  const hasSeconds = rows.some((row) => {
+    const reps = num(row.reps);
+    const setType = String(row.set_type || "").trim().toLowerCase();
+    return (
+      reps !== undefined &&
+      Number.isFinite(reps) &&
+      reps > 0 &&
+      (setType === "conditioning" || setType === "cardio")
+    );
+  });
+
+  return inferTrackingModeFromSetSignals(
+    exerciseName,
+    {
+      hasWeightedLoad,
+      hasReps,
+      hasSeconds,
+    },
+    { treatHangAsTime: true }
+  );
+}
+
 function defaultTrackType(exerciseName: string): TrackType {
   return defaultTrackTypeFromExerciseName(exerciseName);
+}
+
+function inferTrackTypeFromCsvRows(exerciseName: string, rows: JournalRow[]): TrackType {
+  const classes = rows
+    .map((row) => String(row.set_type || "").trim().toLowerCase())
+    .filter(Boolean);
+
+  if (!classes.length) return defaultTrackType(exerciseName);
+  if (classes.every((kind) => kind === "technique")) return "technique";
+  if (classes.every((kind) => kind === "mobility")) return "mobility";
+  if (classes.every((kind) => kind === "corrective" || kind === "diagnostic" || kind === "rehab")) {
+    return "corrective";
+  }
+  if (classes.every((kind) => kind === "conditioning" || kind === "cardio")) {
+    return "conditioning";
+  }
+
+  return defaultTrackType(exerciseName);
 }
 
 function parseRir(row: JournalRow): number | undefined {
@@ -234,6 +288,8 @@ function buildSetNotes(row: JournalRow): string | undefined {
   const st = String(row.set_type || "").trim().toLowerCase();
 
   if (st === "technique") parts.push("technique");
+  if (st === "diagnostic") parts.push("diagnostic");
+  if (st === "rehab") parts.push("rehab");
 
   const noteText = String(row.notes || "").trim();
   if (noteText) parts.push(noteText);
@@ -597,6 +653,15 @@ export default function ImportCsvPage() {
       exerciseByImportedName.set(name, ex);
     }
 
+    const rowsByExerciseName = new Map<string, JournalRow[]>();
+    for (const row of liftRows) {
+      const name = normalizeExerciseName(String(row.exercise || ""));
+      if (!name) continue;
+      const arr = rowsByExerciseName.get(name) ?? [];
+      arr.push(row);
+      rowsByExerciseName.set(name, arr);
+    }
+
     const newTracks: Track[] = [];
     for (const name of exerciseNames) {
       const normalized = normalizeName(name);
@@ -609,8 +674,8 @@ export default function ImportCsvPage() {
         id: uuid(),
         exerciseId: ex.id,
         displayName: name,
-        trackType: defaultTrackType(name),
-        trackingMode: inferTrackingMode(name),
+        trackType: inferTrackTypeFromCsvRows(name, rowsByExerciseName.get(name) ?? []),
+        trackingMode: inferTrackingModeFromCsvRows(name, rowsByExerciseName.get(name) ?? []),
         warmupSetsDefault: 2,
         workingSetsDefault: 3,
         repMin: 6,
