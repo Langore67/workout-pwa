@@ -16,128 +16,140 @@ type SessionSnapshotDerivation = {
   carryForward: string[];
 };
 
+type SessionNoteSignals = {
+  notes: string;
+  explicitCarryForward: string[];
+  hasFatigueOrReducedCapacity: boolean;
+  hasLowBackIssue: boolean;
+  hasKneeIssue: boolean;
+  hasJointPain: boolean;
+  hasCompensationOrBreakdown: boolean;
+  hasExerciseSubstitution: boolean;
+  hasDiagnosticFraming: boolean;
+  hasCorrectiveOrRehabFraming: boolean;
+  hasPositiveQualitySignal: boolean;
+};
+
+function deriveSessionNoteSignals(sessionNotes?: string): SessionNoteSignals {
+  const notesRaw = String(sessionNotes ?? "");
+  const notes = notesRaw.toLowerCase();
+  const explicitLines = notesRaw.split("\n");
+  const explicitStart = explicitLines.findIndex((line) => line.trim().toLowerCase() === "carry forward:");
+  const explicitCarryForward: string[] = [];
+
+  if (explicitStart >= 0) {
+    for (let i = explicitStart + 1; i < explicitLines.length; i += 1) {
+      const raw = explicitLines[i].trim();
+      if (!raw) break;
+      if (/^(session notes|start state|end verdict|carry forward):$/i.test(raw)) break;
+      explicitCarryForward.push(raw.replace(/^[-*]\s*/, ""));
+      if (explicitCarryForward.length >= 3) break;
+    }
+  }
+
+  return {
+    notes,
+    explicitCarryForward,
+    hasFatigueOrReducedCapacity:
+      notes.includes("fatigue") ||
+      notes.includes("tired") ||
+      notes.includes("cut volume") ||
+      notes.includes("cut short") ||
+      notes.includes("reduced capacity"),
+    hasLowBackIssue:
+      notes.includes("low back") ||
+      notes.includes("back pain") ||
+      notes.includes("back fatigue") ||
+      notes.includes("back tight"),
+    hasKneeIssue:
+      notes.includes("knee pain") ||
+      notes.includes("knee felt") ||
+      notes.includes("knee unstable") ||
+      notes.includes("knee instability"),
+    hasJointPain:
+      notes.includes("elbow pain") ||
+      notes.includes("shoulder pain") ||
+      notes.includes("hip pain") ||
+      notes.includes("wrist pain"),
+    hasCompensationOrBreakdown:
+      notes.includes("compensation") ||
+      notes.includes("shifted") ||
+      notes.includes("rotation") ||
+      notes.includes("stance change") ||
+      notes.includes("form breakdown"),
+    hasExerciseSubstitution:
+      notes.includes("swap") ||
+      notes.includes("substitute") ||
+      notes.includes("instead of") ||
+      notes.includes("replaced"),
+    hasDiagnosticFraming:
+      notes.includes("diagnostic") ||
+      notes.includes("assessment") ||
+      notes.includes("check-in"),
+    hasCorrectiveOrRehabFraming:
+      notes.includes("corrective") ||
+      notes.includes("rehab") ||
+      notes.includes("physio"),
+    hasPositiveQualitySignal:
+      notes.includes("strong") ||
+      notes.includes("smooth") ||
+      notes.includes("snappy") ||
+      notes.includes("good") ||
+      notes.includes("better") ||
+      notes.includes("ready"),
+  };
+}
+
 function deriveSessionReadiness(params: {
-  sessionNotes?: string;
+  noteSignals: SessionNoteSignals;
   totalExercises: number;
   completedExercises: number;
 }): string {
-  const { sessionNotes, totalExercises, completedExercises } = params;
-  const notes = String(sessionNotes ?? "").toLowerCase();
+  const { noteSignals, totalExercises, completedExercises } = params;
 
-  const cautionTerms = [
-    "fatigue",
-    "tired",
-    "low back",
-    "pain",
-    "unstable",
-    "tight",
-    "cut volume",
-    "cut short",
-    "rehab",
-  ];
-  const positiveTerms = [
-    "strong",
-    "smooth",
-    "snappy",
-    "good",
-    "better",
-    "ready",
-  ];
-
-  if (cautionTerms.some((term) => notes.includes(term))) {
-    return "Readiness: caution — session notes mention fatigue, pain, or reduced capacity";
+  if (
+    noteSignals.hasFatigueOrReducedCapacity ||
+    noteSignals.hasLowBackIssue ||
+    noteSignals.hasKneeIssue ||
+    noteSignals.hasJointPain ||
+    noteSignals.hasCorrectiveOrRehabFraming
+  ) {
+    return "Readiness: caution â€” session notes mention fatigue, pain, or reduced capacity";
   }
 
-  if (positiveTerms.some((term) => notes.includes(term))) {
-    return "Readiness: good — session notes indicate solid movement quality or output";
+  if (noteSignals.hasPositiveQualitySignal) {
+    return "Readiness: good â€” session notes indicate solid movement quality or output";
   }
 
   if (totalExercises > 0 && completedExercises === 0) {
-    return "Readiness: unknown — no completed work logged yet";
+    return "Readiness: unknown â€” no completed work logged yet";
   }
 
   if (totalExercises > 0 && completedExercises < totalExercises) {
-    return "Readiness: mixed — session is in progress or only partially completed";
+    return "Readiness: mixed â€” session is in progress or only partially completed";
   }
 
-  return "Readiness: steady — no strong caution flags detected in current session context";
+  return "Readiness: steady â€” no strong caution flags detected in current session context";
 }
 
 function deriveSessionFocusFlags(params: {
-  sessionNotes?: string;
+  noteSignals: SessionNoteSignals;
   totalExercises: number;
   completedExercises: number;
   currentTrack: Pick<Track, "displayName" | "trackType" | "trackingMode"> | null;
   currentRecommendation: WorkingRecommendation | null;
 }): string[] {
-  const { sessionNotes, totalExercises, completedExercises, currentTrack, currentRecommendation } = params;
-  const notes = String(sessionNotes ?? "").toLowerCase();
+  const { noteSignals, totalExercises, completedExercises, currentTrack, currentRecommendation } = params;
   const flags: string[] = [];
 
-  if (
-    notes.includes("low back") ||
-    notes.includes("back pain") ||
-    notes.includes("back fatigue") ||
-    notes.includes("back tight")
-  ) {
-    flags.push("Low back limitation");
-  }
-  if (
-    notes.includes("knee pain") ||
-    notes.includes("knee felt") ||
-    notes.includes("knee unstable") ||
-    notes.includes("knee instability")
-  ) {
-    flags.push("Knee stability / tolerance");
-  }
-  if (
-    notes.includes("elbow pain") ||
-    notes.includes("shoulder pain") ||
-    notes.includes("hip pain") ||
-    notes.includes("wrist pain")
-  ) {
-    flags.push("Joint pain management");
-  }
-  if (
-    notes.includes("fatigue") ||
-    notes.includes("tired") ||
-    notes.includes("cut volume") ||
-    notes.includes("cut short") ||
-    notes.includes("reduced capacity")
-  ) {
-    flags.push("Fatigue / volume management");
-  }
-  if (
-    notes.includes("compensation") ||
-    notes.includes("shifted") ||
-    notes.includes("rotation") ||
-    notes.includes("stance change") ||
-    notes.includes("form breakdown")
-  ) {
-    flags.push("Compensation / technique watch");
-  }
-  if (
-    notes.includes("swap") ||
-    notes.includes("substitute") ||
-    notes.includes("instead of") ||
-    notes.includes("replaced")
-  ) {
-    flags.push("Exercise substitution");
-  }
-  if (
-    notes.includes("diagnostic") ||
-    notes.includes("assessment") ||
-    notes.includes("check-in")
-  ) {
-    flags.push("Diagnostic check");
-  }
-  if (
-    notes.includes("corrective") ||
-    notes.includes("rehab") ||
-    notes.includes("physio")
-  ) {
-    flags.push("Corrective / rehab focus");
-  }
+  if (noteSignals.hasLowBackIssue) flags.push("Low back limitation");
+  if (noteSignals.hasKneeIssue) flags.push("Knee stability / tolerance");
+  if (noteSignals.hasJointPain) flags.push("Joint pain management");
+  if (noteSignals.hasFatigueOrReducedCapacity) flags.push("Fatigue / volume management");
+  if (noteSignals.hasCompensationOrBreakdown) flags.push("Compensation / technique watch");
+  if (noteSignals.hasExerciseSubstitution) flags.push("Exercise substitution");
+  if (noteSignals.hasDiagnosticFraming) flags.push("Diagnostic check");
+  if (noteSignals.hasCorrectiveOrRehabFraming) flags.push("Corrective / rehab focus");
 
   if (currentTrack && currentRecommendation?.action && flags.length < 4) {
     if (currentRecommendation.action === "reduce") flags.push(`Reduce load on ${currentTrack.displayName}`);
@@ -152,74 +164,34 @@ function deriveSessionFocusFlags(params: {
     flags.push("Session still in progress");
   }
 
-  if (!flags.length) {
-    flags.push("Steady session context");
-  }
+  if (!flags.length) flags.push("Steady session context");
 
   return Array.from(new Set(flags)).slice(0, 4);
 }
 
 function deriveSessionCarryForward(params: {
-  sessionNotes?: string;
+  noteSignals: SessionNoteSignals;
 }): string[] {
-  const notesRaw = String(params.sessionNotes ?? "");
-  const notes = notesRaw.toLowerCase();
-
-  const explicitLines = notesRaw.split("\n");
-  const explicitStart = explicitLines.findIndex((line) => line.trim().toLowerCase() === "carry forward:");
-  if (explicitStart >= 0) {
-    const reminders: string[] = [];
-    for (let i = explicitStart + 1; i < explicitLines.length; i += 1) {
-      const raw = explicitLines[i].trim();
-      if (!raw) break;
-      if (/^(session notes|start state|end verdict|carry forward):$/i.test(raw)) break;
-      reminders.push(raw.replace(/^[-*]\s*/, ""));
-      if (reminders.length >= 3) break;
-    }
-    if (reminders.length) return reminders;
-  }
+  const { noteSignals } = params;
+  if (noteSignals.explicitCarryForward.length) return noteSignals.explicitCarryForward;
 
   const reminders: string[] = [];
-  if (notes.includes("stance change")) {
+  if (noteSignals.notes.includes("stance change")) {
     reminders.push("Keep the stance adjustment that improved movement quality");
   }
-  if (
-    notes.includes("swap") ||
-    notes.includes("substitute") ||
-    notes.includes("instead of") ||
-    notes.includes("replaced")
-  ) {
+  if (noteSignals.hasExerciseSubstitution) {
     reminders.push("Repeat the exercise substitution if the same issue shows up");
   }
-  if (
-    notes.includes("knee pain") ||
-    notes.includes("knee felt") ||
-    notes.includes("knee unstable") ||
-    notes.includes("knee instability")
-  ) {
+  if (noteSignals.hasKneeIssue) {
     reminders.push("Monitor knee stability next session");
   }
-  if (
-    notes.includes("low back") ||
-    notes.includes("back pain") ||
-    notes.includes("back fatigue") ||
-    notes.includes("back tight")
-  ) {
+  if (noteSignals.hasLowBackIssue) {
     reminders.push("Monitor low back tolerance next session");
   }
-  if (
-    notes.includes("rehab") ||
-    notes.includes("corrective") ||
-    notes.includes("physio")
-  ) {
+  if (noteSignals.hasCorrectiveOrRehabFraming) {
     reminders.push("Keep the corrective / rehab work in the plan");
   }
-  if (
-    notes.includes("cut volume") ||
-    notes.includes("cut short") ||
-    notes.includes("fatigue") ||
-    notes.includes("reduced capacity")
-  ) {
+  if (noteSignals.hasFatigueOrReducedCapacity) {
     reminders.push("Adjust volume early if the same fatigue pattern returns");
   }
 
@@ -233,21 +205,22 @@ function deriveSessionSnapshot(params: {
   currentTrack: Pick<Track, "displayName" | "trackType" | "trackingMode"> | null;
   currentRecommendation: WorkingRecommendation | null;
 }): SessionSnapshotDerivation {
+  const noteSignals = deriveSessionNoteSignals(params.sessionNotes);
   return {
     readiness: deriveSessionReadiness({
-      sessionNotes: params.sessionNotes,
+      noteSignals,
       totalExercises: params.totalExercises,
       completedExercises: params.completedExercises,
     }),
     focusFlags: deriveSessionFocusFlags({
-      sessionNotes: params.sessionNotes,
+      noteSignals,
       totalExercises: params.totalExercises,
       completedExercises: params.completedExercises,
       currentTrack: params.currentTrack,
       currentRecommendation: params.currentRecommendation,
     }),
     carryForward: deriveSessionCarryForward({
-      sessionNotes: params.sessionNotes,
+      noteSignals,
     }),
   };
 }
@@ -301,7 +274,7 @@ export function formatCompletedSetForSessionSnapshot(
     const distance = typeof se.distance === "number" && Number.isFinite(se.distance) ? se.distance : undefined;
     if (distance === undefined) return "completed distance set";
     const unit = ((se as any).distanceUnit as string | undefined) ?? "mi";
-    if (typeof se.weight === "number" && Number.isFinite(se.weight)) return `${se.weight} lbs • ${distance} ${unit}`;
+    if (typeof se.weight === "number" && Number.isFinite(se.weight)) return `${se.weight} lbs â€¢ ${distance} ${unit}`;
     return `${distance} ${unit}`;
   }
 
@@ -420,7 +393,7 @@ export function buildSessionSnapshotText(params: {
     lines.push("- No exercises in session");
   } else {
     trackSummaries.forEach((summary, index) => {
-      lines.push(`${index + 1}. ${summary.displayName} [${summary.trackType} • ${summary.trackingMode}]`);
+      lines.push(`${index + 1}. ${summary.displayName} [${summary.trackType} â€¢ ${summary.trackingMode}]`);
       lines.push(
         `   This session: ${summary.completedSets.length ? summary.completedSets.join(", ") : "No completed sets yet"}`
       );
