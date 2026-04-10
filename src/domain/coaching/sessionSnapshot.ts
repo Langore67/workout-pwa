@@ -153,6 +153,73 @@ function buildSessionFocusFlags(params: {
   return Array.from(new Set(flags)).slice(0, 4);
 }
 
+function buildSessionCarryForwardLines(params: {
+  sessionNotes?: string;
+}): string[] {
+  const notesRaw = String(params.sessionNotes ?? "");
+  const notes = notesRaw.toLowerCase();
+
+  const explicitLines = notesRaw.split("\n");
+  const explicitStart = explicitLines.findIndex((line) => line.trim().toLowerCase() === "carry forward:");
+  if (explicitStart >= 0) {
+    const reminders: string[] = [];
+    for (let i = explicitStart + 1; i < explicitLines.length; i += 1) {
+      const raw = explicitLines[i].trim();
+      if (!raw) break;
+      if (/^(session notes|start state|end verdict|carry forward):$/i.test(raw)) break;
+      reminders.push(raw.replace(/^[-*]\s*/, ""));
+      if (reminders.length >= 3) break;
+    }
+    if (reminders.length) return reminders;
+  }
+
+  const reminders: string[] = [];
+  if (notes.includes("stance change")) {
+    reminders.push("Keep the stance adjustment that improved movement quality");
+  }
+  if (
+    notes.includes("swap") ||
+    notes.includes("substitute") ||
+    notes.includes("instead of") ||
+    notes.includes("replaced")
+  ) {
+    reminders.push("Repeat the exercise substitution if the same issue shows up");
+  }
+  if (
+    notes.includes("knee pain") ||
+    notes.includes("knee felt") ||
+    notes.includes("knee unstable") ||
+    notes.includes("knee instability")
+  ) {
+    reminders.push("Monitor knee stability next session");
+  }
+  if (
+    notes.includes("low back") ||
+    notes.includes("back pain") ||
+    notes.includes("back fatigue") ||
+    notes.includes("back tight")
+  ) {
+    reminders.push("Monitor low back tolerance next session");
+  }
+  if (
+    notes.includes("rehab") ||
+    notes.includes("corrective") ||
+    notes.includes("physio")
+  ) {
+    reminders.push("Keep the corrective / rehab work in the plan");
+  }
+  if (
+    notes.includes("cut volume") ||
+    notes.includes("cut short") ||
+    notes.includes("fatigue") ||
+    notes.includes("reduced capacity")
+  ) {
+    reminders.push("Adjust volume early if the same fatigue pattern returns");
+  }
+
+  return Array.from(new Set(reminders)).slice(0, 3);
+}
+
 function formatSecondsToMMSS(totalSeconds?: number): string {
   if (typeof totalSeconds !== "number" || !Number.isFinite(totalSeconds) || totalSeconds < 0) return "";
   const mins = Math.floor(totalSeconds / 60);
@@ -263,6 +330,15 @@ export function buildSessionSnapshotText(params: {
     currentRecommendation,
   })) {
     lines.push(`- ${flag}`);
+  }
+
+  const carryForward = buildSessionCarryForwardLines({ sessionNotes });
+  if (carryForward.length) {
+    lines.push("");
+    lines.push("Carry Forward");
+    for (const reminder of carryForward) {
+      lines.push(`- ${reminder}`);
+    }
   }
 
   if (sessionNotes?.trim()) {
