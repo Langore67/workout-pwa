@@ -57,6 +57,49 @@ function buildSessionReadinessLine(params: {
   return "Readiness: steady — no strong caution flags detected in current session context";
 }
 
+function buildSessionFocusFlags(params: {
+  sessionNotes?: string;
+  totalExercises: number;
+  completedExercises: number;
+  currentTrack: Pick<Track, "displayName" | "trackType" | "trackingMode"> | null;
+  currentRecommendation: WorkingRecommendation | null;
+}): string[] {
+  const { sessionNotes, totalExercises, completedExercises, currentTrack, currentRecommendation } = params;
+  const notes = String(sessionNotes ?? "").toLowerCase();
+  const flags: string[] = [];
+
+  if (notes.includes("low back")) flags.push("Low back management");
+  if (notes.includes("knee")) flags.push("Knee tolerance");
+  if (notes.includes("fatigue") || notes.includes("tired") || notes.includes("cut volume") || notes.includes("cut short")) {
+    flags.push("Fatigue / volume management");
+  }
+  if (notes.includes("stance")) flags.push("Technique adjustment");
+  if (notes.includes("glute")) flags.push("Glute emphasis");
+  if (notes.includes("lat")) flags.push("Lat emphasis");
+  if (notes.includes("tricep")) flags.push("Triceps emphasis");
+  if (notes.includes("quality")) flags.push("Quality-first execution");
+  if (notes.includes("rehab")) flags.push("Rehab focus");
+
+  if (currentTrack && currentRecommendation?.action && flags.length < 4) {
+    if (currentRecommendation.action === "reduce") flags.push(`Reduce load on ${currentTrack.displayName}`);
+    else if (currentRecommendation.action === "hold") flags.push(`Hold target on ${currentTrack.displayName}`);
+    else if (currentRecommendation.action === "increase") flags.push(`Push ${currentTrack.displayName}`);
+    else if (currentRecommendation.action === "rebuild") flags.push(`Rebuild baseline on ${currentTrack.displayName}`);
+  }
+
+  if (flags.length < 4 && totalExercises > 0 && completedExercises === 0) {
+    flags.push("No completed work yet");
+  } else if (flags.length < 4 && totalExercises > 0 && completedExercises < totalExercises) {
+    flags.push("Session still in progress");
+  }
+
+  if (!flags.length) {
+    flags.push("Steady session context");
+  }
+
+  return Array.from(new Set(flags)).slice(0, 4);
+}
+
 function formatSecondsToMMSS(totalSeconds?: number): string {
   if (typeof totalSeconds !== "number" || !Number.isFinite(totalSeconds) || totalSeconds < 0) return "";
   const mins = Math.floor(totalSeconds / 60);
@@ -157,6 +200,17 @@ export function buildSessionSnapshotText(params: {
       completedExercises,
     })
   );
+  lines.push("");
+  lines.push("Focus Flags");
+  for (const flag of buildSessionFocusFlags({
+    sessionNotes,
+    totalExercises,
+    completedExercises,
+    currentTrack,
+    currentRecommendation,
+  })) {
+    lines.push(`- ${flag}`);
+  }
 
   if (sessionNotes?.trim()) {
     lines.push("");

@@ -103,6 +103,7 @@ test.describe("history and ad hoc session workflows", () => {
     expect(copiedText).toContain("Session Snapshot");
     expect(copiedText).toContain("Session: Lower B");
     expect(copiedText).toContain("Readiness:");
+    expect(copiedText).toContain("Focus Flags");
     expect(copiedText).toContain("Session Notes");
     expect(copiedText).toContain("Barbell RDL");
     expect(copiedText).toContain("Current Recommendation");
