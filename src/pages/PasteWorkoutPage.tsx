@@ -471,6 +471,47 @@ function normalizeSetLineForParsing(line: string): string {
     .replace(/\s*@\s*/g, "@");
 }
 
+function parseSessionNoteBlockHeader(
+  line: string
+): { label: string; body: string; isSessionNotes: boolean } | null {
+  const match = line.match(/^(session notes|start state|end verdict|carry forward)\s*:\s*(.*)$/i);
+  if (!match) return null;
+
+  const rawLabel = match[1].trim().toLowerCase();
+  const label =
+    rawLabel === "session notes"
+      ? "Session Notes"
+      : rawLabel === "start state"
+      ? "Start State"
+      : rawLabel === "end verdict"
+      ? "End Verdict"
+      : "Carry Forward";
+
+  return {
+    label,
+    body: match[2] || "",
+    isSessionNotes: rawLabel === "session notes",
+  };
+}
+
+function appendSessionNotesBlock(
+  current: string,
+  header: { label: string; body: string; isSessionNotes: boolean }
+): string {
+  const nextLines: string[] = [];
+
+  if (!header.isSessionNotes) {
+    nextLines.push(`${header.label}:`);
+  }
+  if (header.body) {
+    nextLines.push(header.body);
+  }
+
+  const next = nextLines.join("\n");
+  if (!next) return current;
+  return current ? `${current}\n${next}` : next;
+}
+
 function parseSetLine(line: string): ParsedSet | null {
   const trimmed = normalizeSetLineForParsing(line);
   if (!trimmed) return null;
@@ -683,7 +724,7 @@ function parseWorkoutText(text: string): ParsedWorkout {
     const line = raw.trim();
 
     if (inSessionNotes) {
-      const isSessionNotesHeader = /^session notes\s*:/i.test(line);
+      const noteBlockHeader = parseSessionNoteBlockHeader(line);
       const isMetadataLine =
         /^session\s*:/i.test(line) ||
         /^date\s*:/i.test(line) ||
@@ -702,11 +743,18 @@ function parseWorkoutText(text: string): ParsedWorkout {
         !isMetadataLine &&
         !isSectionHeader(line) &&
         !line.startsWith("#") &&
+        !noteBlockHeader &&
         !parseSetLine(line) &&
         !!nextNonBlankLine &&
         !!parseSetLine(nextNonBlankLine);
 
-      if (isSessionNotesHeader || isMetadataLine || isExerciseMarker || isSectionHeader(line) || line.startsWith("#") || looksLikeExerciseHeader) {
+      if (noteBlockHeader) {
+        sessionNotes = appendSessionNotesBlock(sessionNotes, noteBlockHeader);
+        currentExercise = null;
+        continue;
+      }
+
+      if (isMetadataLine || isExerciseMarker || isSectionHeader(line) || line.startsWith("#") || looksLikeExerciseHeader) {
         inSessionNotes = false;
         currentExercise = null;
         i -= 1;
@@ -747,9 +795,9 @@ function parseWorkoutText(text: string): ParsedWorkout {
       continue;
     }
 
-    const sessionNotesMatch = line.match(/^session notes\s*:\s*(.*)$/i);
-    if (sessionNotesMatch) {
-      sessionNotes = sessionNotesMatch[1] || "";
+    const sessionNotesHeader = parseSessionNoteBlockHeader(line);
+    if (sessionNotesHeader) {
+      sessionNotes = appendSessionNotesBlock(sessionNotes, sessionNotesHeader);
       inSessionNotes = true;
       currentExercise = null;
       continue;

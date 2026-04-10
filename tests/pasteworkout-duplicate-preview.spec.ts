@@ -450,7 +450,7 @@ conditioning BWx30s`);
   ]);
 });
 
-test("Paste Workout imports optional session notes onto the session record", async ({ page }) => {
+test("Paste Workout imports structured session note blocks onto the session record without breaking exercise parsing", async ({ page }) => {
   await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
   await resetDexieDb(page);
 
@@ -463,7 +463,15 @@ End: 08:45
 Session Notes:
 Quality-first session. Low back fatigue early.
 Glutes engaged better on RDL after stance change.
+
+Start State:
+Sleep decent. Low back slightly tight.
+
+End Verdict:
 Cut volume short intentionally.
+
+Carry Forward:
+Keep the narrower RDL stance next time.
 
 Barbell RDL
 work 135x8 @2
@@ -475,20 +483,40 @@ work 155x6 @2`);
   await page.getByRole("button", { name: "Import Now" }).click();
   await expect(page.getByText(/Imported/i)).toBeVisible();
 
-  const sessionNotes = await page.evaluate(async () => {
+  const dbState = await page.evaluate(async () => {
     // @ts-ignore
     const db = window.__db;
     const session = (await db.sessions.toArray())
       .filter((row: any) => row.templateName === "Lower B")
       .sort((a: any, b: any) => (b.startedAt ?? 0) - (a.startedAt ?? 0))[0];
-    return session?.notes ?? null;
+    const sets = session ? await db.sets.where("sessionId").equals(session.id).sortBy("createdAt") : [];
+    return {
+      notes: session?.notes ?? null,
+      sets: sets.map((set: any) => ({
+        weight: set.weight ?? null,
+        reps: set.reps ?? null,
+        rir: set.rir ?? null,
+      })),
+    };
   });
 
-  expect(sessionNotes).toBe(
+  expect(dbState.notes).toBe(
     [
       "Quality-first session. Low back fatigue early.",
       "Glutes engaged better on RDL after stance change.",
+      "",
+      "Start State:",
+      "Sleep decent. Low back slightly tight.",
+      "",
+      "End Verdict:",
       "Cut volume short intentionally.",
+      "",
+      "Carry Forward:",
+      "Keep the narrower RDL stance next time.",
     ].join("\n")
   );
+  expect(dbState.sets).toEqual([
+    { weight: 135, reps: 8, rir: 2 },
+    { weight: 155, reps: 6, rir: 2 },
+  ]);
 });
