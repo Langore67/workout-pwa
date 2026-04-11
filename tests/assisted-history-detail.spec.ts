@@ -176,6 +176,7 @@ test.describe("assisted history and session detail", () => {
 
     expect(copiedText).toContain("Exercise History Snapshot");
     expect(copiedText).toContain("Exercise: Pull Up");
+    expect(copiedText).toContain("Recent range: 1 completed session");
     expect(copiedText).toContain("Best set (effective load): 138 x 10");
     expect(copiedText).toContain("Sets: BW-65 x 10 @2");
     expect(copiedText).toContain(
