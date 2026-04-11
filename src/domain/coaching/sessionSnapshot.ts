@@ -1,5 +1,6 @@
 import type { SetEntry, Track, TrackType, TrackingMode } from "../../db";
 import type { WorkingRecommendation } from "./nextWorkingRecommendation";
+import { formatWeightedRepsSetDisplay } from "./setDisplay";
 
 export type SnapshotMetricMode = "reps" | "distance" | "time";
 
@@ -237,14 +238,12 @@ export function formatCompletedSetForSessionSnapshot(
   if (!se.completedAt) return null;
 
   if (track.trackingMode === "weightedReps") {
-    const parts: string[] = [];
-    if (typeof se.weight === "number" && Number.isFinite(se.weight)) parts.push(String(se.weight));
-    if (typeof se.reps === "number" && Number.isFinite(se.reps)) {
-      if (parts.length) parts.push(`x ${se.reps}`);
-      else parts.push(`${se.reps} reps`);
-    }
-    if (typeof se.rir === "number" && Number.isFinite(se.rir)) parts.push(`@${se.rir}`);
-    return parts.length ? parts.join(" ") : "completed set";
+    return formatWeightedRepsSetDisplay({
+      weight: se.weight,
+      reps: se.reps,
+      rir: se.rir,
+      emptyLabel: "completed set",
+    });
   }
 
   if (track.trackingMode === "timeSeconds") {
