@@ -190,6 +190,20 @@ export async function appendExerciseAlias(exerciseId: string, aliasRaw: string):
     return { added: false, aliases: existingAliases };
   }
 
+  const allExercises = await db.exercises.toArray();
+  const conflictsWithActiveExercise = allExercises.some((row) => {
+    if (!row?.id || row.id === exercise.id) return false;
+    if (row.archivedAt || row.mergedIntoExerciseId) return false;
+    if (normalizeExerciseQuery(row.name || "") === aliasNorm) return true;
+    return (Array.isArray(row.aliases) ? row.aliases : []).some(
+      (value) => normalizeExerciseQuery(String(value || "")) === aliasNorm
+    );
+  });
+
+  if (conflictsWithActiveExercise) {
+    return { added: false, aliases: existingAliases };
+  }
+
   const nextAliases = [...existingAliases, alias];
   await db.exercises.update(exercise.id, {
     aliases: nextAliases,
