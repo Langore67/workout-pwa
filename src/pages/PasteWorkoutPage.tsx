@@ -88,22 +88,18 @@ import {
   inferTrackingModeFromSetSignals,
   isNonStrengthTrackType,
 } from "../domain/trackingMode";
+import { parseImportLoadToken } from "../domain/import/loadParsing";
+import {
+  importSetClassToTrackIntentKind,
+  normalizeImportSetClass,
+  type ImportSetClass,
+} from "../domain/import/setClassParsing";
 
 /* ============================================================================
    Breadcrumb 1 — Types
    ============================================================================ */
 
-type ParsedSetKind =
-  | "warmup"
-  | "work"
-  | "technique"
-  | "mobility"
-  | "corrective"
-  | "diagnostic"
-  | "rehab"
-  | "conditioning"
-  | "test"
-  | "cardio";
+type ParsedSetKind = ImportSetClass;
 
 type ParsedSet = {
   rawLine: string;
@@ -367,9 +363,7 @@ function inferBetterTrackingModeFromParsedSets(
 function inferTrackTypeFromParsedSets(exerciseName: string, sets: ParsedSet[]): TrackType {
   return inferTrackTypeFromParsedSetKinds(
     exerciseName,
-    sets.map((set) =>
-      set.setKind === "diagnostic" || set.setKind === "rehab" ? "corrective" : set.setKind
-    ),
+    sets.map((set) => importSetClassToTrackIntentKind(set.setKind)),
     {
       extraCorrectiveTerms: [
         "stretch",
@@ -412,27 +406,7 @@ function parseWeightToken(
   weight?: number;
   isBodyweight?: boolean;
 } | null {
-  const t = token.trim().toLowerCase();
-
-  if (t === "bw") {
-    return { weight: 0, isBodyweight: true };
-  }
-
-  const bodyweightLoadMatch = t.match(/^bw\s*([+-]\s*\d+(?:\.\d+)?)$/i);
-  if (bodyweightLoadMatch) {
-    const signedLoad = Number(bodyweightLoadMatch[1].replace(/\s+/g, ""));
-    if (!Number.isFinite(signedLoad)) return null;
-    return { weight: signedLoad, isBodyweight: true };
-  }
-
-  if (t === "bar") {
-    return { weight: 45, isBodyweight: false };
-  }
-
-  const n = Number(t);
-  if (!Number.isFinite(n)) return null;
-
-  return { weight: n, isBodyweight: false };
+  return parseImportLoadToken(token);
 }
 
 function durationToSeconds(valueRaw: string, unitRaw: string): number | undefined {
@@ -524,7 +498,8 @@ function parseSetLine(line: string): ParsedSet | null {
   );
 
   if (standardMatch) {
-    const kindRaw = standardMatch[1].toLowerCase() as ParsedSetKind;
+    const kindRaw = normalizeImportSetClass(standardMatch[1]);
+    if (!kindRaw) return null;
     const weightRaw = standardMatch[2];
     const countRaw = standardMatch[3];
     const isSeconds = !!standardMatch[4];
@@ -559,7 +534,8 @@ function parseSetLine(line: string): ParsedSet | null {
   );
 
   if (distanceMatch) {
-    const kindRaw = distanceMatch[1].toLowerCase() as ParsedSetKind;
+    const kindRaw = normalizeImportSetClass(distanceMatch[1]);
+    if (!kindRaw) return null;
     const weightRaw = distanceMatch[2];
     const distanceRaw = distanceMatch[3];
     const unitRaw = distanceMatch[4];
@@ -596,7 +572,8 @@ function parseSetLine(line: string): ParsedSet | null {
     );
   
     if (timeOnlyMatch) {
-      const kindRaw = timeOnlyMatch[1].toLowerCase() as ParsedSetKind;
+      const kindRaw = normalizeImportSetClass(timeOnlyMatch[1]);
+      if (!kindRaw) return null;
       const durationRaw = timeOnlyMatch[2];
       const unitRaw = timeOnlyMatch[3];
       const isPerSide = !!timeOnlyMatch[4];
@@ -628,7 +605,8 @@ function parseSetLine(line: string): ParsedSet | null {
   );
 
   if (repsOnlyNoLoadMatch) {
-    const kindRaw = repsOnlyNoLoadMatch[1].toLowerCase() as ParsedSetKind;
+    const kindRaw = normalizeImportSetClass(repsOnlyNoLoadMatch[1]);
+    if (!kindRaw) return null;
     const repsRaw = repsOnlyNoLoadMatch[2];
     const isPerSide = !!repsOnlyNoLoadMatch[3];
     const rirRaw = repsOnlyNoLoadMatch[4];

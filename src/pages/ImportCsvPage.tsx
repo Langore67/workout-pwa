@@ -42,6 +42,13 @@ import {
   inferTrackingModeFromSetSignals,
   inferTrackingModeFromExerciseName,
 } from "../domain/trackingMode";
+import { parseImportLoadToken } from "../domain/import/loadParsing";
+import {
+  importSetClassToDbSetType,
+  importSetClassToTrackIntentKind,
+  normalizeImportSetClass,
+  type ImportSetClass,
+} from "../domain/import/setClassParsing";
 
 /* ============================================================================
    Breadcrumb 1 — Types
@@ -155,12 +162,8 @@ function buildExerciseLookup(exercises: Exercise[]): Map<string, Exercise> {
 }
 
 function inferSetType(row: JournalRow): "warmup" | "working" {
-  const explicit = String(row.set_type || "").trim().toLowerCase();
-  if (explicit === "warmup") return "warmup";
-  if (explicit === "working") return "working";
-  if (explicit === "technique") return "working"; // DB does not support "technique" yet
-  if (explicit === "diagnostic") return "working";
-  if (explicit === "rehab") return "working";
+  const explicit = normalizeImportSetClass(row.set_type);
+  if (explicit) return importSetClassToDbSetType(explicit);
 
   const notes = String(row.notes || "").toLowerCase();
   if (notes.includes("set_type=warmup")) return "warmup";
@@ -186,31 +189,7 @@ function num(v: unknown): number | undefined {
 }
 
 function parseWeight(loadRaw: unknown): number | undefined {
-  if (loadRaw === null || loadRaw === undefined) return undefined;
-
-  const s = String(loadRaw).trim();
-  if (!s || s.toLowerCase() === "nan") return undefined;
-
-  if (s.toLowerCase() === "bar") return 45;
-  if (s.toLowerCase() === "bw") return 0;
-  if (s.toLowerCase() === "bodyweight") return 0;
-
-  const dumbbellMatch = s.match(/^(\d+(\.\d+)?)s$/i);
-  if (dumbbellMatch) return Number(dumbbellMatch[1]);
-
-  const trailingAssistMatch = s.match(/^(-?\d+(\.\d+)?)\s*assist(?:ance)?$/i);
-  if (trailingAssistMatch) return -Math.abs(Number(trailingAssistMatch[1]));
-
-  const leadingAssistMatch = s.match(/^assist(?:ance)?\s*(-?\d+(\.\d+)?)$/i);
-  if (leadingAssistMatch) return -Math.abs(Number(leadingAssistMatch[1]));
-
-  const totalMatch = s.match(/\((\d+(\.\d+)?)\s*total\)/i);
-  if (totalMatch) return Number(totalMatch[1]);
-
-  const n = Number(s);
-  if (Number.isFinite(n)) return n;
-
-  return undefined;
+  return parseImportLoadToken(loadRaw)?.weight;
 }
 
 function inferTrackingMode(exerciseName: string): TrackingMode {
@@ -228,7 +207,7 @@ function inferTrackingModeFromCsvRows(exerciseName: string, rows: JournalRow[]):
   });
   const hasSeconds = rows.some((row) => {
     const reps = num(row.reps);
-    const setType = String(row.set_type || "").trim().toLowerCase();
+    const setType = normalizeImportSetClass(row.set_type);
     return (
       reps !== undefined &&
       Number.isFinite(reps) &&
@@ -254,13 +233,14 @@ function defaultTrackType(exerciseName: string): TrackType {
 
 function inferTrackTypeFromCsvRows(exerciseName: string, rows: JournalRow[]): TrackType {
   const classes = rows
-    .map((row) => String(row.set_type || "").trim().toLowerCase())
-    .filter(Boolean);
+    .map((row) => normalizeImportSetClass(row.set_type))
+    .filter((kind): kind is ImportSetClass => kind !== null)
+    .map(importSetClassToTrackIntentKind);
 
   if (!classes.length) return defaultTrackType(exerciseName);
   if (classes.every((kind) => kind === "technique")) return "technique";
   if (classes.every((kind) => kind === "mobility")) return "mobility";
-  if (classes.every((kind) => kind === "corrective" || kind === "diagnostic" || kind === "rehab")) {
+  if (classes.every((kind) => kind === "corrective")) {
     return "corrective";
   }
   if (classes.every((kind) => kind === "conditioning" || kind === "cardio")) {
@@ -285,7 +265,7 @@ function parseRir(row: JournalRow): number | undefined {
 
 function buildSetNotes(row: JournalRow): string | undefined {
   const parts: string[] = [];
-  const st = String(row.set_type || "").trim().toLowerCase();
+  const st = normalizeImportSetClass(row.set_type);
 
   if (st === "technique") parts.push("technique");
   if (st === "diagnostic") parts.push("diagnostic");
