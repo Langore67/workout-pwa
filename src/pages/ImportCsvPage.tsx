@@ -49,6 +49,7 @@ import {
   normalizeImportSetClass,
   type ImportSetClass,
 } from "../domain/import/setClassParsing";
+import { joinImportNoteFragments } from "../domain/import/noteParsing";
 
 /* ============================================================================
    Breadcrumb 1 — Types
@@ -271,10 +272,7 @@ function buildSetNotes(row: JournalRow): string | undefined {
   if (st === "diagnostic") parts.push("diagnostic");
   if (st === "rehab") parts.push("rehab");
 
-  const noteText = String(row.notes || "").trim();
-  if (noteText) parts.push(noteText);
-
-  return parts.length ? parts.join(" | ") : undefined;
+  return joinImportNoteFragments([...parts, row.notes]);
 }
 
 async function analyzeImportedExerciseNames(

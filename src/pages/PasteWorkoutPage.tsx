@@ -94,6 +94,7 @@ import {
   normalizeImportSetClass,
   type ImportSetClass,
 } from "../domain/import/setClassParsing";
+import { joinImportNoteFragments, normalizeImportNoteText } from "../domain/import/noteParsing";
 
 /* ============================================================================
    Breadcrumb 1 — Types
@@ -394,10 +395,7 @@ function buildSetNotes(set: ParsedSet): string | undefined {
   if (set.setKind === "conditioning" || set.setKind === "cardio") parts.push("conditioning");
   if (set.setKind === "test") parts.push("test");
 
-  const noteText = String(set.notes || "").trim();
-  if (noteText) parts.push(noteText);
-
-  return parts.length ? parts.join(" | ") : undefined;
+  return joinImportNoteFragments([...parts, set.notes]);
 }
 
 function parseWeightToken(
@@ -505,7 +503,7 @@ function parseSetLine(line: string): ParsedSet | null {
     const isSeconds = !!standardMatch[4];
     const isPerSide = !!standardMatch[5];
     const rirRaw = standardMatch[6];
-    const notes = standardMatch[7]?.trim() || undefined;
+    const notes = normalizeImportNoteText(standardMatch[7]) || undefined;
 
     const parsedWeight = parseWeightToken(weightRaw);
     if (!parsedWeight) return null;
@@ -541,7 +539,7 @@ function parseSetLine(line: string): ParsedSet | null {
     const unitRaw = distanceMatch[4];
     const isPerSide = !!distanceMatch[5];
     const rirRaw = distanceMatch[6];
-    const notesRaw = distanceMatch[7]?.trim() || "";
+    const notesRaw = normalizeImportNoteText(distanceMatch[7]);
 
     const parsedWeight = parseWeightToken(weightRaw);
     if (!parsedWeight) return null;
@@ -549,8 +547,7 @@ function parseSetLine(line: string): ParsedSet | null {
     const distanceNum = Number(distanceRaw);
     const rir = rirRaw !== undefined ? Number(rirRaw) : undefined;
 
-    const noteParts = [`${distanceRaw}${unitRaw}`];
-    if (notesRaw) noteParts.push(notesRaw);
+    const noteText = joinImportNoteFragments([`${distanceRaw}${unitRaw}`, notesRaw]);
 
     return {
       rawLine: line,
@@ -560,7 +557,7 @@ function parseSetLine(line: string): ParsedSet | null {
       rir: rir !== undefined && Number.isFinite(rir) ? rir : undefined,
       isBodyweight: !!parsedWeight.isBodyweight,
       isPerSide,
-      notes: noteParts.join(" | "),
+      notes: noteText,
     };
   }
 
@@ -578,7 +575,7 @@ function parseSetLine(line: string): ParsedSet | null {
       const unitRaw = timeOnlyMatch[3];
       const isPerSide = !!timeOnlyMatch[4];
       const rirRaw = timeOnlyMatch[5];
-      const notesRaw = timeOnlyMatch[6]?.trim() || undefined;
+      const notesRaw = normalizeImportNoteText(timeOnlyMatch[6]) || undefined;
   
       const seconds = durationToSeconds(durationRaw, unitRaw);
       const rir = rirRaw !== undefined ? Number(rirRaw) : undefined;
@@ -610,7 +607,7 @@ function parseSetLine(line: string): ParsedSet | null {
     const repsRaw = repsOnlyNoLoadMatch[2];
     const isPerSide = !!repsOnlyNoLoadMatch[3];
     const rirRaw = repsOnlyNoLoadMatch[4];
-    const notesRaw = repsOnlyNoLoadMatch[5]?.trim() || undefined;
+    const notesRaw = normalizeImportNoteText(repsOnlyNoLoadMatch[5]) || undefined;
 
     const reps = Number(repsRaw);
     const rir = rirRaw !== undefined ? Number(rirRaw) : undefined;
