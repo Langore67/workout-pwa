@@ -413,105 +413,6 @@ function buildCoachSnapshotText(params: {
   return lines.join("\n").trim() + "\n";
 }
 
-function buildSessionSnapshotText(params: {
-  sessionLabel: string;
-  startedAt?: number;
-  sessionNotes?: string;
-  totalExercises: number;
-  completedExercises: number;
-  currentTrack: Track | null;
-  currentRecentBest: Awaited<ReturnType<typeof getBestSessionLastNDays>> | null;
-  currentRecommendation: ReturnType<typeof getNextWorkingRecommendation> | null;
-  trackSummaries: Array<{
-    displayName: string;
-    trackType: TrackType;
-    trackingMode: TrackingMode;
-    completedSets: string[];
-  }>;
-}) {
-  const {
-    sessionLabel,
-    startedAt,
-    sessionNotes,
-    totalExercises,
-    completedExercises,
-    currentTrack,
-    currentRecentBest,
-    currentRecommendation,
-    trackSummaries,
-  } = params;
-
-  const lines: string[] = [];
-  lines.push("Session Snapshot");
-  lines.push(`Session: ${sessionLabel}`);
-  if (typeof startedAt === "number" && Number.isFinite(startedAt)) {
-    lines.push(`Date: ${new Date(startedAt).toLocaleDateString()}`);
-  }
-  lines.push(`Exercises: ${completedExercises}/${totalExercises} with completed work`);
-
-  if (sessionNotes?.trim()) {
-    lines.push("");
-    lines.push("Session Notes");
-    lines.push(sessionNotes.trim());
-  }
-
-  if (currentTrack) {
-    lines.push(`Current Exercise: ${currentTrack.displayName}`);
-  }
-
-  if (currentTrack && currentRecommendation) {
-    lines.push("");
-    lines.push("Current Recommendation");
-    lines.push(`- Exercise: ${currentTrack.displayName}`);
-    lines.push(`- Intent: ${currentTrack.trackType}`);
-    lines.push(`- Mode: ${currentTrack.trackingMode}`);
-    lines.push(`- Action: ${currentRecommendation.action}`);
-    if (
-      typeof currentRecommendation.targetWeight === "number" &&
-      Number.isFinite(currentRecommendation.targetWeight) &&
-      typeof currentRecommendation.targetReps === "number" &&
-      Number.isFinite(currentRecommendation.targetReps)
-    ) {
-      lines.push(`- Target: ${currentRecommendation.targetWeight} x ${currentRecommendation.targetReps}`);
-    } else if (
-      typeof currentRecommendation.targetWeight === "number" &&
-      Number.isFinite(currentRecommendation.targetWeight)
-    ) {
-      lines.push(`- Target weight: ${currentRecommendation.targetWeight}`);
-    } else if (
-      typeof currentRecommendation.targetReps === "number" &&
-      Number.isFinite(currentRecommendation.targetReps)
-    ) {
-      lines.push(`- Target reps: ${currentRecommendation.targetReps}`);
-    }
-    lines.push(`- Confidence: ${currentRecommendation.confidence}`);
-    lines.push(`- Why: ${currentRecommendation.rationale}`);
-    if (
-      currentRecentBest &&
-      typeof currentRecentBest.bestWeight === "number" &&
-      typeof currentRecentBest.bestReps === "number"
-    ) {
-      lines.push(`- Recent best: ${currentRecentBest.bestWeight} x ${currentRecentBest.bestReps}`);
-    }
-  }
-
-  lines.push("");
-  lines.push("Exercises");
-
-  if (!trackSummaries.length) {
-    lines.push("- No exercises in session");
-  } else {
-    trackSummaries.forEach((summary, index) => {
-      lines.push(`${index + 1}. ${summary.displayName} [${summary.trackType} • ${summary.trackingMode}]`);
-      lines.push(
-        `   This session: ${summary.completedSets.length ? summary.completedSets.join(", ") : "No completed sets yet"}`
-      );
-    });
-  }
-
-  return lines.join("\n").trim() + "\n";
-}
-
 function applyActivePadDraftToSnapshotSets(params: {
   currentSets: SetEntryX[];
   activePad: ActiveGymPad | null;
@@ -1035,7 +936,6 @@ export default function GymPage() {
      Breadcrumb 05.4 — Add Exercise modal state
      ------------------------------------------------------------------------ */
   const [showAddExercise, setShowAddExercise] = useState(false);
-  const [sessionSnapshotCopied, setSessionSnapshotCopied] = useState(false);
 
   /* ------------------------------------------------------------------------
      Breadcrumb 05.5 — Planned items memo
@@ -1296,71 +1196,6 @@ export default function GymPage() {
       alive = false;
     };
   }, [currentTrack, currentTrackItem?.repMinOverride, currentTrackItem?.repMaxOverride]);
-
-  async function onCopySessionSnapshot() {
-    if (!session) return;
-
-    const totalExercises = renderTrackIds.length;
-    const completedExercises = renderTrackIds.filter((trackId) =>
-      (setsByTrackId.get(String(trackId)) ?? []).some((se) => !!se.completedAt)
-    ).length;
-
-    const trackSummaries = renderTrackIds.flatMap((trackId) => {
-      const track = trackById.get(String(trackId));
-      if (!track) return [];
-
-      const rawSets = setsByTrackId.get(String(trackId)) ?? [];
-      const patchedSets =
-        activePad && rawSets.some((se) => se.id === activePad.setId)
-          ? applyActivePadDraftToSnapshotSets({
-              currentSets: rawSets,
-              activePad,
-              track,
-              metricMode: track.trackingMode === "timeSeconds" ? "time" : "reps",
-              weightEntryContextName: track.displayName,
-            })
-          : rawSets;
-
-      const completedSets = patchedSets
-        .map((se) =>
-          formatCompletedSetForCoachSnapshot(
-            se,
-            track,
-            track.trackingMode === "timeSeconds" ? "time" : "reps"
-          )
-        )
-        .filter((line): line is string => !!line);
-
-      return [
-        {
-          displayName: track.displayName,
-          trackType: track.trackType,
-          trackingMode: track.trackingMode,
-          completedSets,
-        },
-      ];
-    });
-
-    const txt = buildSessionSnapshotText({
-      sessionLabel: session.templateName ?? "Ad-hoc",
-      startedAt: session.startedAt,
-      sessionNotes: sessionNotes,
-      totalExercises,
-      completedExercises,
-      currentTrack,
-      currentRecentBest: currentTrackRecentBest,
-      currentRecommendation: currentTrackRecommendation,
-      trackSummaries,
-    });
-
-    const ok = await copyTextToClipboard(txt);
-    if (!ok) {
-      window.alert("Could not copy to clipboard in this browser.");
-      return;
-    }
-    setSessionSnapshotCopied(true);
-    window.setTimeout(() => setSessionSnapshotCopied(false), 1500);
-  }
 
   /* ------------------------------------------------------------------------
      Breadcrumb 05.11 — Guards
