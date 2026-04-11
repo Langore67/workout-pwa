@@ -89,22 +89,17 @@ import {
   isNonStrengthTrackType,
 } from "../domain/trackingMode";
 import { parseImportLoadToken } from "../domain/import/loadParsing";
+import {
+  importSetClassToTrackIntentKind,
+  normalizeImportSetClass,
+  type ImportSetClass,
+} from "../domain/import/setClassParsing";
 
 /* ============================================================================
    Breadcrumb 1 — Types
    ============================================================================ */
 
-type ParsedSetKind =
-  | "warmup"
-  | "work"
-  | "technique"
-  | "mobility"
-  | "corrective"
-  | "diagnostic"
-  | "rehab"
-  | "conditioning"
-  | "test"
-  | "cardio";
+type ParsedSetKind = ImportSetClass;
 
 type ParsedSet = {
   rawLine: string;
@@ -368,9 +363,7 @@ function inferBetterTrackingModeFromParsedSets(
 function inferTrackTypeFromParsedSets(exerciseName: string, sets: ParsedSet[]): TrackType {
   return inferTrackTypeFromParsedSetKinds(
     exerciseName,
-    sets.map((set) =>
-      set.setKind === "diagnostic" || set.setKind === "rehab" ? "corrective" : set.setKind
-    ),
+    sets.map((set) => importSetClassToTrackIntentKind(set.setKind)),
     {
       extraCorrectiveTerms: [
         "stretch",
@@ -505,7 +498,8 @@ function parseSetLine(line: string): ParsedSet | null {
   );
 
   if (standardMatch) {
-    const kindRaw = standardMatch[1].toLowerCase() as ParsedSetKind;
+    const kindRaw = normalizeImportSetClass(standardMatch[1]);
+    if (!kindRaw) return null;
     const weightRaw = standardMatch[2];
     const countRaw = standardMatch[3];
     const isSeconds = !!standardMatch[4];
@@ -540,7 +534,8 @@ function parseSetLine(line: string): ParsedSet | null {
   );
 
   if (distanceMatch) {
-    const kindRaw = distanceMatch[1].toLowerCase() as ParsedSetKind;
+    const kindRaw = normalizeImportSetClass(distanceMatch[1]);
+    if (!kindRaw) return null;
     const weightRaw = distanceMatch[2];
     const distanceRaw = distanceMatch[3];
     const unitRaw = distanceMatch[4];
@@ -577,7 +572,8 @@ function parseSetLine(line: string): ParsedSet | null {
     );
   
     if (timeOnlyMatch) {
-      const kindRaw = timeOnlyMatch[1].toLowerCase() as ParsedSetKind;
+      const kindRaw = normalizeImportSetClass(timeOnlyMatch[1]);
+      if (!kindRaw) return null;
       const durationRaw = timeOnlyMatch[2];
       const unitRaw = timeOnlyMatch[3];
       const isPerSide = !!timeOnlyMatch[4];
@@ -609,7 +605,8 @@ function parseSetLine(line: string): ParsedSet | null {
   );
 
   if (repsOnlyNoLoadMatch) {
-    const kindRaw = repsOnlyNoLoadMatch[1].toLowerCase() as ParsedSetKind;
+    const kindRaw = normalizeImportSetClass(repsOnlyNoLoadMatch[1]);
+    if (!kindRaw) return null;
     const repsRaw = repsOnlyNoLoadMatch[2];
     const isPerSide = !!repsOnlyNoLoadMatch[3];
     const rirRaw = repsOnlyNoLoadMatch[4];

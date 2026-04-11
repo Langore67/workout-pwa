@@ -43,6 +43,12 @@ import {
   inferTrackingModeFromExerciseName,
 } from "../domain/trackingMode";
 import { parseImportLoadToken } from "../domain/import/loadParsing";
+import {
+  importSetClassToDbSetType,
+  importSetClassToTrackIntentKind,
+  normalizeImportSetClass,
+  type ImportSetClass,
+} from "../domain/import/setClassParsing";
 
 /* ============================================================================
    Breadcrumb 1 — Types
@@ -156,12 +162,8 @@ function buildExerciseLookup(exercises: Exercise[]): Map<string, Exercise> {
 }
 
 function inferSetType(row: JournalRow): "warmup" | "working" {
-  const explicit = String(row.set_type || "").trim().toLowerCase();
-  if (explicit === "warmup") return "warmup";
-  if (explicit === "working") return "working";
-  if (explicit === "technique") return "working"; // DB does not support "technique" yet
-  if (explicit === "diagnostic") return "working";
-  if (explicit === "rehab") return "working";
+  const explicit = normalizeImportSetClass(row.set_type);
+  if (explicit) return importSetClassToDbSetType(explicit);
 
   const notes = String(row.notes || "").toLowerCase();
   if (notes.includes("set_type=warmup")) return "warmup";
@@ -205,7 +207,7 @@ function inferTrackingModeFromCsvRows(exerciseName: string, rows: JournalRow[]):
   });
   const hasSeconds = rows.some((row) => {
     const reps = num(row.reps);
-    const setType = String(row.set_type || "").trim().toLowerCase();
+    const setType = normalizeImportSetClass(row.set_type);
     return (
       reps !== undefined &&
       Number.isFinite(reps) &&
@@ -231,13 +233,14 @@ function defaultTrackType(exerciseName: string): TrackType {
 
 function inferTrackTypeFromCsvRows(exerciseName: string, rows: JournalRow[]): TrackType {
   const classes = rows
-    .map((row) => String(row.set_type || "").trim().toLowerCase())
-    .filter(Boolean);
+    .map((row) => normalizeImportSetClass(row.set_type))
+    .filter((kind): kind is ImportSetClass => kind !== null)
+    .map(importSetClassToTrackIntentKind);
 
   if (!classes.length) return defaultTrackType(exerciseName);
   if (classes.every((kind) => kind === "technique")) return "technique";
   if (classes.every((kind) => kind === "mobility")) return "mobility";
-  if (classes.every((kind) => kind === "corrective" || kind === "diagnostic" || kind === "rehab")) {
+  if (classes.every((kind) => kind === "corrective")) {
     return "corrective";
   }
   if (classes.every((kind) => kind === "conditioning" || kind === "cardio")) {
@@ -262,7 +265,7 @@ function parseRir(row: JournalRow): number | undefined {
 
 function buildSetNotes(row: JournalRow): string | undefined {
   const parts: string[] = [];
-  const st = String(row.set_type || "").trim().toLowerCase();
+  const st = normalizeImportSetClass(row.set_type);
 
   if (st === "technique") parts.push("technique");
   if (st === "diagnostic") parts.push("diagnostic");
