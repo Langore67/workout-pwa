@@ -38,6 +38,7 @@ import { finalizeGymSessionWrites } from "../finalizeSession";
 import { resolveExercise } from "../domain/exercises/exerciseResolver";
 import { isBodyweightEffectiveLoadExerciseName } from "../strength/Strength";
 import { getNextWorkingRecommendation } from "../domain/coaching/nextWorkingRecommendation";
+import { formatWeightedRepsSetDisplay } from "../domain/coaching/setDisplay";
 import NumericPad from "../components/NumericPad";
 import {
   createTrackVariant as createTrackVariantShared,
@@ -297,14 +298,12 @@ function formatCompletedSetForCoachSnapshot(
   if (!se.completedAt) return null;
 
   if (track.trackingMode === "weightedReps") {
-    const parts: string[] = [];
-    if (typeof se.weight === "number" && Number.isFinite(se.weight)) parts.push(String(se.weight));
-    if (typeof se.reps === "number" && Number.isFinite(se.reps)) {
-      if (parts.length) parts.push(`x ${se.reps}`);
-      else parts.push(`${se.reps} reps`);
-    }
-    if (typeof se.rir === "number" && Number.isFinite(se.rir)) parts.push(`@${se.rir}`);
-    return parts.length ? parts.join(" ") : "completed set";
+    return formatWeightedRepsSetDisplay({
+      weight: se.weight,
+      reps: se.reps,
+      rir: se.rir,
+      emptyLabel: "completed set",
+    });
   }
 
   if (track.trackingMode === "timeSeconds") {

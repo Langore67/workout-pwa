@@ -4,6 +4,10 @@ import {
   resolveExerciseFromIndex,
 } from "../exercises/exerciseResolver";
 import { isBodyweightEffectiveLoadExerciseName } from "../../strength/Strength";
+import {
+  formatCoachSetLoadToken,
+  formatWeightedRepsSetDisplay,
+} from "./setDisplay";
 
 export type ExerciseHistoryExportRow = {
   dateLabel?: string;
@@ -16,12 +20,6 @@ export type ExerciseHistoryExportRow = {
   usedAssisted?: boolean;
   completedSetLabels?: string[];
 };
-
-export function formatSignedBodyweightToken(weightRaw: unknown): string {
-  const weight = Number(weightRaw);
-  if (!Number.isFinite(weight) || weight === 0) return "BW";
-  return weight > 0 ? `BW+${weight}` : `BW${weight}`;
-}
 
 export function formatExerciseHistorySetLabel(params: {
   set: any;
@@ -36,12 +34,10 @@ export function formatExerciseHistorySetLabel(params: {
   const distance = Number((set as any)?.distance);
   const distanceUnit = (((set as any)?.distanceUnit as string | undefined) ?? "m").trim();
 
-  const loadLabel =
-    isBodyweightEffective && (Number.isFinite(weight) || weight === 0)
-      ? formatSignedBodyweightToken(weight)
-      : Number.isFinite(weight)
-        ? `${weight}`
-        : null;
+  const loadLabel = formatCoachSetLoadToken({
+    weight,
+    useSignedBodyweightLoad: isBodyweightEffective,
+  });
 
   if (metricMode === "time") {
     const mmss =
@@ -49,23 +45,22 @@ export function formatExerciseHistorySetLabel(params: {
         ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
         : null;
     if (!mmss) return loadLabel ? `${loadLabel}` : null;
-    return loadLabel ? `${loadLabel} • ${mmss}` : mmss;
+    return loadLabel ? `${loadLabel} â€¢ ${mmss}` : mmss;
   }
 
   if (metricMode === "distance") {
     const distanceLabel = Number.isFinite(distance) && distance > 0 ? `${distance} ${distanceUnit}` : null;
     if (!distanceLabel) return loadLabel ? `${loadLabel}` : null;
-    return loadLabel ? `${loadLabel} • ${distanceLabel}` : distanceLabel;
+    return loadLabel ? `${loadLabel} â€¢ ${distanceLabel}` : distanceLabel;
   }
 
-  const parts: string[] = [];
-  if (loadLabel) parts.push(loadLabel);
-  if (Number.isFinite(reps) && reps > 0) {
-    if (parts.length) parts.push(`x ${reps}`);
-    else parts.push(`${reps} reps`);
-  }
-  if (Number.isFinite(rir)) parts.push(`@${rir}`);
-  return parts.length ? parts.join(" ") : null;
+  return formatWeightedRepsSetDisplay({
+    weight,
+    reps,
+    rir,
+    useSignedBodyweightLoad: isBodyweightEffective,
+    requirePositiveReps: true,
+  });
 }
 
 function normalizeMetricMode(v: any): MetricMode {
@@ -143,9 +138,9 @@ export function buildExerciseHistoryExportText(params: {
     }
 
     const headerBits = [row.dateLabel, row.templateName].filter(Boolean);
-    lines.push(`- ${headerBits.join(" • ") || "Session"}`);
+    lines.push(`- ${headerBits.join(" â€¢ ") || "Session"}`);
     if (fields.length) {
-      lines.push(`  ${fields.join(" • ")}`);
+      lines.push(`  ${fields.join(" â€¢ ")}`);
     }
     if (Array.isArray(row.completedSetLabels) && row.completedSetLabels.length) {
       lines.push(`  Sets: ${row.completedSetLabels.join(", ")}`);
