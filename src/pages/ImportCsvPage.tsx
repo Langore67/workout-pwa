@@ -42,6 +42,7 @@ import {
   inferTrackingModeFromSetSignals,
   inferTrackingModeFromExerciseName,
 } from "../domain/trackingMode";
+import { parseImportLoadToken } from "../domain/import/loadParsing";
 
 /* ============================================================================
    Breadcrumb 1 — Types
@@ -186,31 +187,7 @@ function num(v: unknown): number | undefined {
 }
 
 function parseWeight(loadRaw: unknown): number | undefined {
-  if (loadRaw === null || loadRaw === undefined) return undefined;
-
-  const s = String(loadRaw).trim();
-  if (!s || s.toLowerCase() === "nan") return undefined;
-
-  if (s.toLowerCase() === "bar") return 45;
-  if (s.toLowerCase() === "bw") return 0;
-  if (s.toLowerCase() === "bodyweight") return 0;
-
-  const dumbbellMatch = s.match(/^(\d+(\.\d+)?)s$/i);
-  if (dumbbellMatch) return Number(dumbbellMatch[1]);
-
-  const trailingAssistMatch = s.match(/^(-?\d+(\.\d+)?)\s*assist(?:ance)?$/i);
-  if (trailingAssistMatch) return -Math.abs(Number(trailingAssistMatch[1]));
-
-  const leadingAssistMatch = s.match(/^assist(?:ance)?\s*(-?\d+(\.\d+)?)$/i);
-  if (leadingAssistMatch) return -Math.abs(Number(leadingAssistMatch[1]));
-
-  const totalMatch = s.match(/\((\d+(\.\d+)?)\s*total\)/i);
-  if (totalMatch) return Number(totalMatch[1]);
-
-  const n = Number(s);
-  if (Number.isFinite(n)) return n;
-
-  return undefined;
+  return parseImportLoadToken(loadRaw)?.weight;
 }
 
 function inferTrackingMode(exerciseName: string): TrackingMode {

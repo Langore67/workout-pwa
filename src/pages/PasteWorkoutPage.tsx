@@ -88,6 +88,7 @@ import {
   inferTrackingModeFromSetSignals,
   isNonStrengthTrackType,
 } from "../domain/trackingMode";
+import { parseImportLoadToken } from "../domain/import/loadParsing";
 
 /* ============================================================================
    Breadcrumb 1 — Types
@@ -412,27 +413,7 @@ function parseWeightToken(
   weight?: number;
   isBodyweight?: boolean;
 } | null {
-  const t = token.trim().toLowerCase();
-
-  if (t === "bw") {
-    return { weight: 0, isBodyweight: true };
-  }
-
-  const bodyweightLoadMatch = t.match(/^bw\s*([+-]\s*\d+(?:\.\d+)?)$/i);
-  if (bodyweightLoadMatch) {
-    const signedLoad = Number(bodyweightLoadMatch[1].replace(/\s+/g, ""));
-    if (!Number.isFinite(signedLoad)) return null;
-    return { weight: signedLoad, isBodyweight: true };
-  }
-
-  if (t === "bar") {
-    return { weight: 45, isBodyweight: false };
-  }
-
-  const n = Number(t);
-  if (!Number.isFinite(n)) return null;
-
-  return { weight: n, isBodyweight: false };
+  return parseImportLoadToken(token);
 }
 
 function durationToSeconds(valueRaw: string, unitRaw: string): number | undefined {
