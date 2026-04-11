@@ -1063,13 +1063,19 @@ function buildExerciseHistoryExportText(
   lines.push("Exercise History Snapshot");
   lines.push(`Exercise: ${exportExerciseName}`);
   lines.push(`Metric: ${prettyMetricLabel(metricMode)}`);
+  if (rows.length) {
+    const oldest = rows[rows.length - 1]?.dateLabel;
+    const newest = rows[0]?.dateLabel;
+    const range = oldest && newest && oldest !== newest ? `${oldest} to ${newest}` : newest;
+    lines.push(`Recent range: ${rows.length} completed session${rows.length === 1 ? "" : "s"}${range ? ` (${range})` : ""}`);
+  }
   lines.push(`Generated: ${generatedAt}`);
 
   if (usesBodyweightEffective) {
     lines.push(
       usesAssisted
-        ? "Note: Bodyweight-aware effective load is used here. Assisted sets subtract assistance from bodyweight; weighted sets add external load."
-        : "Note: Bodyweight-aware effective load is used here. Weighted/bodyweight sets are shown as effective load for coach interpretation."
+        ? "Load note: BW-aware effective load. Assisted sets subtract assistance from bodyweight; weighted sets add external load."
+        : "Load note: BW-aware effective load. Weighted/bodyweight sets are shown as effective load for coach interpretation."
     );
   }
 
