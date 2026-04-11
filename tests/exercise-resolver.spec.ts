@@ -412,6 +412,58 @@ test("appendExerciseAlias persists a remembered alias that shared resolver respe
   });
 });
 
+test("appendExerciseAlias refuses aliases already owned by another active exercise", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  const result = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const now = Date.now();
+    const canonicalId = crypto.randomUUID();
+    const activeDuplicateId = crypto.randomUUID();
+
+    await db.exercises.bulkAdd([
+      {
+        id: canonicalId,
+        name: "Dumbbell Bench Press",
+        normalizedName: "dumbbell bench press",
+        aliases: [],
+        equipmentTags: ["dumbbell"],
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: activeDuplicateId,
+        name: "DB Bench Press",
+        normalizedName: "db bench press",
+        aliases: ["DB Press"],
+        equipmentTags: ["dumbbell"],
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+
+    const { appendExerciseAlias } = await import("/src/domain/exercises/exerciseResolver.ts");
+
+    const nameConflict = await appendExerciseAlias(canonicalId, "DB Bench Press");
+    const aliasConflict = await appendExerciseAlias(canonicalId, "DB Press");
+    const canonical = await db.exercises.get(canonicalId);
+
+    return {
+      nameConflict,
+      aliasConflict,
+      aliases: canonical?.aliases ?? [],
+    };
+  });
+
+  expect(result.nameConflict).toEqual({ added: false, aliases: [] });
+  expect(result.aliasConflict).toEqual({ added: false, aliases: [] });
+  expect(result.aliases).toEqual([]);
+});
+
 test("shared alias map resolves high-confidence aliases to canonical exercises", async ({ page }) => {
   await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
   await resetDexieDb(page);
