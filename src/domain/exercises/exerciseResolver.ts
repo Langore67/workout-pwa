@@ -239,6 +239,9 @@ export async function resolveExerciseToCanonicalAlias(params: {
 
     if (!canonical) throw new Error("Canonical exercise not found.");
     if (!source) throw new Error("Source exercise not found.");
+    if (canonical.archivedAt) throw new Error("Canonical exercise must be active, not archived.");
+    if (canonical.mergedIntoExerciseId) throw new Error("Canonical exercise must not already redirect to another exercise.");
+    if (source.mergedIntoExerciseId) throw new Error("Source exercise is already merged.");
 
     const existingAliases = Array.isArray(canonical.aliases) ? canonical.aliases : [];
     const existingNorms = new Set(

@@ -604,3 +604,100 @@ test("guided canonical resolution marks a duplicate as redirect and adds its nam
     canonical: "Dumbbell Bench Press",
   });
 });
+
+test("guided canonical resolution rejects inactive or redirected canonical targets", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  const result = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const now = Date.now();
+    const activeCanonicalId = crypto.randomUUID();
+    const archivedCanonicalId = crypto.randomUUID();
+    const redirectedCanonicalId = crypto.randomUUID();
+    const sourceId = crypto.randomUUID();
+    const secondSourceId = crypto.randomUUID();
+
+    await db.exercises.bulkAdd([
+      {
+        id: activeCanonicalId,
+        name: "Dumbbell Bench Press",
+        normalizedName: "dumbbell bench press",
+        aliases: [],
+        equipmentTags: ["dumbbell"],
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: archivedCanonicalId,
+        name: "Archived DB Bench",
+        normalizedName: "archived db bench",
+        aliases: [],
+        equipmentTags: ["dumbbell"],
+        archivedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: redirectedCanonicalId,
+        name: "Redirected DB Bench",
+        normalizedName: "redirected db bench",
+        aliases: [],
+        equipmentTags: ["dumbbell"],
+        mergedIntoExerciseId: activeCanonicalId,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: sourceId,
+        name: "Flat DB Bench",
+        normalizedName: "flat db bench",
+        aliases: [],
+        equipmentTags: ["dumbbell"],
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: secondSourceId,
+        name: "DB Flat Press",
+        normalizedName: "db flat press",
+        aliases: [],
+        equipmentTags: ["dumbbell"],
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+
+    const { resolveExerciseToCanonicalAlias } = await import("/src/domain/exercises/exerciseResolver.ts");
+
+    const errors: string[] = [];
+    for (const [canonicalExerciseId, sourceExerciseId] of [
+      [archivedCanonicalId, sourceId],
+      [redirectedCanonicalId, secondSourceId],
+    ]) {
+      try {
+        await resolveExerciseToCanonicalAlias({ canonicalExerciseId, sourceExerciseId });
+      } catch (err) {
+        errors.push(err instanceof Error ? err.message : String(err));
+      }
+    }
+
+    const source = await db.exercises.get(sourceId);
+    const secondSource = await db.exercises.get(secondSourceId);
+    return {
+      errors,
+      sourceMergedInto: source?.mergedIntoExerciseId ?? null,
+      secondSourceMergedInto: secondSource?.mergedIntoExerciseId ?? null,
+    };
+  });
+
+  expect(result.errors).toEqual([
+    "Canonical exercise must be active, not archived.",
+    "Canonical exercise must not already redirect to another exercise.",
+  ]);
+  expect(result.sourceMergedInto).toBeNull();
+  expect(result.secondSourceMergedInto).toBeNull();
+});
