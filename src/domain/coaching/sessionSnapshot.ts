@@ -142,20 +142,19 @@ function deriveSessionFocusFlags(params: {
   const { noteSignals, totalExercises, completedExercises, currentTrack, currentRecommendation } = params;
   const flags: string[] = [];
 
-  if (noteSignals.hasLowBackIssue) flags.push("Low back limitation");
-  if (noteSignals.hasKneeIssue) flags.push("Knee stability / tolerance");
-  if (noteSignals.hasJointPain) flags.push("Joint pain management");
-  if (noteSignals.hasFatigueOrReducedCapacity) flags.push("Fatigue / volume management");
-  if (noteSignals.hasCompensationOrBreakdown) flags.push("Compensation / technique watch");
-  if (noteSignals.hasExerciseSubstitution) flags.push("Exercise substitution");
-  if (noteSignals.hasDiagnosticFraming) flags.push("Diagnostic check");
-  if (noteSignals.hasCorrectiveOrRehabFraming) flags.push("Corrective / rehab focus");
+  if (noteSignals.hasLowBackIssue) flags.push("Low back tolerance");
+  if (noteSignals.hasKneeIssue) flags.push("Knee stability/tolerance");
+  if (noteSignals.hasJointPain) flags.push("Joint pain noted");
+  if (noteSignals.hasFatigueOrReducedCapacity) flags.push("Fatigue or cut-volume constraint");
+  if (noteSignals.hasCompensationOrBreakdown) flags.push("Technique compensation noted");
+  if (noteSignals.hasExerciseSubstitution) flags.push("Exercise substitution used");
+  if (noteSignals.hasDiagnosticFraming) flags.push("Diagnostic check-in");
+  if (noteSignals.hasCorrectiveOrRehabFraming) flags.push("Corrective/rehab work");
 
-  if (currentTrack && currentRecommendation?.action && flags.length < 4) {
-    if (currentRecommendation.action === "reduce") flags.push(`Reduce load on ${currentTrack.displayName}`);
-    else if (currentRecommendation.action === "hold") flags.push(`Hold target on ${currentTrack.displayName}`);
-    else if (currentRecommendation.action === "increase") flags.push(`Push ${currentTrack.displayName}`);
-    else if (currentRecommendation.action === "rebuild") flags.push(`Rebuild baseline on ${currentTrack.displayName}`);
+  if (currentTrack && currentRecommendation?.action && flags.length < 4 && flags.length === 0) {
+    if (currentRecommendation.action === "reduce") flags.push(`Load reduction suggested: ${currentTrack.displayName}`);
+    else if (currentRecommendation.action === "increase") flags.push(`Progression opportunity: ${currentTrack.displayName}`);
+    else if (currentRecommendation.action === "rebuild") flags.push(`Rebuild baseline: ${currentTrack.displayName}`);
   }
 
   if (flags.length < 4 && totalExercises > 0 && completedExercises === 0) {
@@ -163,8 +162,6 @@ function deriveSessionFocusFlags(params: {
   } else if (flags.length < 4 && totalExercises > 0 && completedExercises < totalExercises) {
     flags.push("Session still in progress");
   }
-
-  if (!flags.length) flags.push("Steady session context");
 
   return Array.from(new Set(flags)).slice(0, 4);
 }

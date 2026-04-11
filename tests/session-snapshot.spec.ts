@@ -116,9 +116,9 @@ test.describe("session snapshot export quality", () => {
     expect(carryForward.length).toBeLessThanOrEqual(3);
     expect(flags).toEqual(
       expect.arrayContaining([
-        "Low back limitation",
-        "Fatigue / volume management",
-        "Compensation / technique watch",
+        "Low back tolerance",
+        "Fatigue or cut-volume constraint",
+        "Technique compensation noted",
       ])
     );
     expect(snapshot).not.toContain("Glute emphasis");
@@ -176,10 +176,10 @@ test.describe("session snapshot export quality", () => {
     expect(snapshot).toContain("Readiness: caution");
     expect(flags).toEqual(
       expect.arrayContaining([
-        "Knee stability / tolerance",
-        "Exercise substitution",
-        "Diagnostic check",
-        "Corrective / rehab focus",
+        "Knee stability/tolerance",
+        "Exercise substitution used",
+        "Diagnostic check-in",
+        "Corrective/rehab work",
       ])
     );
     expect(flags.length).toBeLessThanOrEqual(4);
@@ -220,13 +220,13 @@ test.describe("session snapshot export quality", () => {
     const flags = extractFocusFlags(snapshot);
     const carryForward = extractBlock(snapshot, "Carry Forward");
     expect(snapshot).toContain("Readiness: steady");
-    expect(flags).toEqual(["Push Bench Press"]);
+    expect(flags).toEqual(["Progression opportunity: Bench Press"]);
     expect(carryForward).toEqual([]);
     expect(snapshot).not.toContain("Carry Forward\n-");
     expect(flags.length).toBeLessThanOrEqual(4);
     expect(snapshot).not.toContain("Quality-first execution");
-    expect(snapshot).not.toContain("Fatigue / volume management");
-    expect(snapshot).not.toContain("Corrective / rehab focus");
+    expect(snapshot).not.toContain("Fatigue or cut-volume constraint");
+    expect(snapshot).not.toContain("Corrective/rehab work");
     expect(snapshot).not.toContain("Monitor low back tolerance next session");
     expect(snapshot).not.toContain("Adjust volume early if the same fatigue pattern returns");
   });
