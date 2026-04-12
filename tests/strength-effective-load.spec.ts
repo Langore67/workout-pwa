@@ -218,3 +218,78 @@ test.describe("shared effective-load helpers", () => {
     expect(result.confidence).toBe("Low");
   });
 });
+test("Lat Pulldown is classified as Pull pattern", async ({ page }) => {
+  await goto(page, "/");
+  await resetDexieDb(page);
+
+  const result = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const now = Date.now();
+    const sessionId = crypto.randomUUID();
+    const exerciseId = crypto.randomUUID();
+    const trackId = crypto.randomUUID();
+
+    await db.sessions.add({
+      id: sessionId,
+      startedAt: now - 60_000,
+      endedAt: now,
+      templateName: "Pull Day",
+    });
+
+    await db.exercises.add({
+      id: exerciseId,
+      name: "Lat Pulldown",
+      normalizedName: "lat pulldown",
+      equipmentTags: ["cable"],
+      bodyPart: "Back",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await db.tracks.add({
+      id: trackId,
+      exerciseId,
+      displayName: "Lat Pulldown",
+      trackType: "hypertrophy",
+      trackingMode: "weightedReps",
+      warmupSetsDefault: 1,
+      workingSetsDefault: 3,
+      repMin: 8,
+      repMax: 12,
+      restSecondsDefault: 90,
+      weightJumpDefault: 5,
+      createdAt: now,
+    });
+
+    await db.sets.add({
+      id: crypto.randomUUID(),
+      sessionId,
+      trackId,
+      setType: "working",
+      weight: 120,
+      reps: 10,
+      createdAt: now - 1000,
+      completedAt: now - 1000,
+    });
+
+    const strength = await import("/src/strength/Strength.ts");
+    const snapshot = await strength.computeStrengthIndexAt(now, 28);
+    const pullPattern = snapshot.patterns.find((pattern: any) => pattern.pattern === "pull");
+    const pushPattern = snapshot.patterns.find((pattern: any) => pattern.pattern === "push");
+
+    return {
+      normalizedIndex: snapshot.normalizedIndex,
+      pullWorkingSets: pullPattern?.completedWorkingSets ?? 0,
+      pullExposure: pullPattern?.exposure ?? 0,
+      pushWorkingSets: pushPattern?.completedWorkingSets ?? 0,
+    };
+  });
+
+  expect(result.normalizedIndex).toBeGreaterThan(0);
+  expect(result.pullWorkingSets).toBeGreaterThan(0);
+  expect(result.pullExposure).toBeGreaterThan(0);
+  expect(result.pushWorkingSets).toBe(0);
+});
