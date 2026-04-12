@@ -293,3 +293,87 @@ test("Lat Pulldown is classified as Pull pattern", async ({ page }) => {
   expect(result.pullExposure).toBeGreaterThan(0);
   expect(result.pushWorkingSets).toBe(0);
 });
+test("Pull pattern includes Pull Up, Lat Pulldown, and Seated Row consistently", async ({ page }) => {
+  await goto(page, "/");
+  await resetDexieDb(page);
+
+  const result = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const now = Date.now();
+    const sessionId = crypto.randomUUID();
+
+    const exercises = [
+      { name: "Pull Up", normalizedName: "pull up" },
+      { name: "Lat Pulldown", normalizedName: "lat pulldown" },
+      { name: "Seated Cable Row", normalizedName: "seated cable row" },
+    ];
+
+    for (const ex of exercises) {
+      const exerciseId = crypto.randomUUID();
+      const trackId = crypto.randomUUID();
+
+      await db.exercises.add({
+        id: exerciseId,
+        name: ex.name,
+        normalizedName: ex.normalizedName,
+        equipmentTags: ["cable"],
+        bodyPart: "Back",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await db.tracks.add({
+        id: trackId,
+        exerciseId,
+        displayName: ex.name,
+        trackType: "hypertrophy",
+        trackingMode: "weightedReps",
+        createdAt: now,
+      });
+
+      await db.sessionItems.add({
+        id: crypto.randomUUID(),
+        sessionId,
+        trackId,
+        orderIndex: 0,
+        createdAt: now,
+      });
+
+      await db.sets.add({
+        id: crypto.randomUUID(),
+        sessionId,
+        trackId,
+        setType: "working",
+        weight: 100,
+        reps: 10,
+        createdAt: now,
+        completedAt: now,
+      });
+    }
+
+    await db.sessions.add({
+      id: sessionId,
+      startedAt: now - 60_000,
+      endedAt: now,
+      templateName: "Pull Day",
+    });
+
+    const strength = await import("/src/strength/Strength.ts");
+    const snapshot = await strength.computeStrengthIndexAt(now, 28);
+    const pullPattern = snapshot.patterns.find((p: any) => p.pattern === "pull");
+    const pushPattern = snapshot.patterns.find((p: any) => p.pattern === "push");
+
+    return {
+      pullWorkingSets: pullPattern?.completedWorkingSets ?? 0,
+      pullExposure: pullPattern?.exposure ?? 0,
+      pushWorkingSets: pushPattern?.completedWorkingSets ?? 0,
+    };
+  });
+
+  expect(result.pullWorkingSets).toBeGreaterThanOrEqual(3);
+  expect(result.pullExposure).toBeGreaterThan(0);
+  expect(result.pushWorkingSets).toBe(0);
+});
