@@ -45,7 +45,6 @@ import {
   classifyExerciseDuplicateRows,
   exerciseDuplicateAuditKey,
 } from "../domain/exercises/exerciseDuplicateCandidates";
-import { resolveExerciseToCanonicalAlias } from "../domain/exercises/exerciseResolver";
 import {
   buildExerciseHistoryExportText,
   formatExerciseHistorySetLabel,
@@ -1565,10 +1564,10 @@ async function applyExerciseMerge(params: {
 	    <button
 	      className="btn small"
 	      onClick={() => setShowAudit((v) => !v)}
-	      title="Show read-only exercise hygiene audit"
+	      title="Show read-only exercise hygiene audit and duplicate discovery"
 	    >
-	      {showAudit ? "Hide Audit" : "Audit"}
-	    </button>
+	      {showAudit ? "Hide Audit" : "Audit Review"}
+            </button>
 	    <button
 	      className="btn small"
 	      onClick={() => setShowArchivedMerged((v) => !v)}
@@ -1603,8 +1602,13 @@ async function applyExerciseMerge(params: {
 	         flexWrap: "wrap",
 	       }}
 	     >
-	       <div style={{ fontWeight: 800 }}>Exercise Audit</div>
-	       
+	       <div>
+	         <div style={{ fontWeight: 800 }}>Exercise Audit</div>
+	         <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+	           Review-only duplicate discovery. Use Manual Merge Mode for actual merges and track relinking.
+	         </div>
+	       </div>
+	     
 	       {lastMergeSnapshot ? (
 	         <button
 	           type="button"
@@ -1612,7 +1616,7 @@ async function applyExerciseMerge(params: {
 	           onClick={async () => {
 	             const ok = window.confirm("Undo the last exercise merge?");
 	             if (!ok) return;
-	       
+	     
 	             try {
 	               await undoExerciseMerge(lastMergeSnapshot);
 	               setLastMergeSnapshot(null);
@@ -1629,8 +1633,7 @@ async function applyExerciseMerge(params: {
 	           Undo Last Merge
 	         </button>
 	       ) : null}
-	       
-	  </div>
+             </div>
 	 
 	           {!auditSummary ? (
 	           <div className="muted">Loading audit...</div>
@@ -1821,15 +1824,15 @@ async function applyExerciseMerge(params: {
             marginBottom: 12,
           }}
         >
-          <div style={{ fontWeight: 800, marginBottom: 6 }}>Canonical resolution preview</div>
+          <div style={{ fontWeight: 800, marginBottom: 6 }}>Audit preview</div>
       
           <div style={{ fontSize: 13, marginBottom: 6 }}>
-            <strong>Canonical:</strong>{" "}
+            <strong>Suggested canonical:</strong>{" "}
             {selectedCluster.rows.find((row) => row.exerciseId === selectedKeepExerciseId)?.name ?? "Unknown"}
           </div>
       
           <div style={{ fontSize: 13, marginBottom: 8 }}>
-            <strong>Resolve:</strong>{" "}
+            <strong>Possible duplicates:</strong>{" "}
             {selectedCluster.rows
               .filter((row) => selectedMergeSourceIds.includes(row.exerciseId))
               .map((row) => row.name)
@@ -1855,70 +1858,39 @@ async function applyExerciseMerge(params: {
             return (
               <>
                 <div className="muted" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 10 }}>
-                  <div>Resolver aliases added to canonical exercise.</div>
-                  <div>Tracks remain untouched in this v1 workflow.</div>
-                  <div>Existing usage rows still point to the source exercise ids.</div>
+                  <div>This audit preview does not perform a full merge.</div>
+                  <div>Tracks, session history, and template usage are not changed here.</div>
+                  <div>Use Manual Merge Mode below for actual merges and track relinking.</div>
                   <div>Usage represented by selected duplicates: {totals.sets} sets across {totals.tracks} tracks.</div>
                 </div>
       
                 <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-		  <button
-		    type="button"
-		    className="btn small primary"
-		    onClick={async () => {
-		      if (!selectedKeepExerciseId || !selectedMergeSourceIds.length) return;
-		
-		      const keepName =
-		        selectedCluster.rows.find((row) => row.exerciseId === selectedKeepExerciseId)?.name ?? "Unknown";
-		
-		      const mergeNames = selectedCluster.rows
-		        .filter((row) => selectedMergeSourceIds.includes(row.exerciseId))
-		        .map((row) => row.name);
-		
-		      const ok = window.confirm(
-		        `Resolve ${mergeNames.join(", ")} to ${keepName} as the canonical exercise?\n\n` +
-		          `This v1 workflow will add alias coverage to the canonical exercise and mark the duplicates as redirects. Tracks will not be relinked in this slice.`
-		      );
-		      if (!ok) return;
-		
-		      try {
-		        for (const sourceExerciseId of selectedMergeSourceIds) {
-		          await resolveExerciseToCanonicalAlias({
-		            canonicalExerciseId: selectedKeepExerciseId,
-		            sourceExerciseId,
-		          });
-		        }
-		
-		        setSelectedAuditClusterKey(null);
-		        setSelectedKeepExerciseId(null);
-		        setSelectedMergeSourceIds([]);
-		
-		        alert(`Resolved to ${keepName}.`);
-		      } catch (err) {
-		        console.error("Exercise resolution failed", err);
-		        alert(err instanceof Error ? err.message : "Exercise resolution failed.");
-		      }
-		    }}
-		  >
-		    Resolve to Canonical
-		  </button>
-		
-		  <button
-		    type="button"
-		    className="btn small"
-		    onClick={() => {
-		      setSelectedKeepExerciseId(null);
-		      setSelectedMergeSourceIds([]);
-		    }}
-		  >
-		    Clear Selection
-		  </button>
-		</div>
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() => {
+                      setShowMergeMode(true);
+                    }}
+                  >
+                    Open Manual Merge Mode
+                  </button>
+      
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() => {
+                      setSelectedKeepExerciseId(null);
+                      setSelectedMergeSourceIds([]);
+                    }}
+                  >
+                    Clear Selection
+                  </button>
+                </div>
               </>
             );
           })()}
         </div>
-       ) : null}
+) : null}
 
       <div style={{ marginTop: 12 }}>
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
