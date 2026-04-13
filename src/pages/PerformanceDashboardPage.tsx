@@ -868,13 +868,31 @@ function buildPatternExerciseContributors(
         track.displayName ??
         "Unknown Exercise"
     ).trim();
-    const movement = classifyStrengthPattern({
-      exerciseId: canonicalExercise?.id ?? track.exerciseId,
-      exercise: canonicalExercise ?? null,
-      exerciseName: canonicalLabel,
-      trackDisplayName: track.displayName,
-    });
-    if (!movement) continue;
+    
+    const strengthSignalRole = String((canonicalExercise as any)?.strengthSignalRole ?? "")
+      .trim()
+      .toLowerCase();
+    
+    if (strengthSignalRole === "excluded") continue;
+    
+    const explicitMovement = String((canonicalExercise as any)?.movementPattern ?? "")
+      .trim()
+  .toLowerCase();
+    
+    const movement =
+      explicitMovement === "push" ||
+      explicitMovement === "pull" ||
+      explicitMovement === "squat" ||
+      explicitMovement === "hinge"
+        ? (explicitMovement as ExerciseSignal["movement"])
+        : classifyStrengthPattern({
+            exerciseId: canonicalExercise?.id ?? track.exerciseId,
+            exercise: canonicalExercise ?? null,
+            exerciseName: canonicalLabel,
+            trackDisplayName: track.displayName,
+          });
+    
+if (!movement) continue;
 
     const effectiveWeight = calcEffectiveStrengthWeightLb(set.weight, exerciseName, bodyweight);
     const scored = computeScoredE1RM(effectiveWeight, set.reps);
