@@ -1,4 +1,4 @@
-// src/strength/strength.ts
+// src/strength/Strength.ts
 /* ========================================================================== */
 /*  strength.ts                                                               */
 /*  BUILD_ID: 2026-03-08-STRENGTH-09                                          */
@@ -516,14 +516,24 @@ export async function computeStrengthIndexAt(endAtMs: number, windowDays = 28): 
   function patternFast(track: any): StrengthPattern | undefined {
     const exerciseId = String(track?.exerciseId ?? "");
     if (!exerciseId) return undefined;
+  
     const ex = exerciseById.get(exerciseId);
+  
+    // ✅ NEW: explicit movementPattern override
+    const explicit = String(ex?.movementPattern ?? "").toLowerCase();
+  
+    if (explicit === "push" || explicit === "pull" || explicit === "squat" || explicit === "hinge") {
+      return explicit as StrengthPattern;
+    }
+  
+    // 🔁 Fallback to existing classifier
     return classifyStrengthPattern({
       exerciseId,
       exercise: ex ?? null,
       exerciseName: ex?.name ?? ex?.displayName ?? ex?.title ?? "",
       trackDisplayName: String(track?.displayName ?? ""),
     });
-  }
+}
 
   /* ------------------------------------------------------------------------ */
   /* Breadcrumb 7B — Accumulate per-pattern strength signal                    */
@@ -540,7 +550,13 @@ export async function computeStrengthIndexAt(endAtMs: number, windowDays = 28): 
   
     const ex = exerciseById.get(exId);
     const exerciseName = String(ex?.name ?? ex?.displayName ?? ex?.title ?? "").trim();
-  
+    
+    const strengthSignalRole = String((ex as any)?.strengthSignalRole ?? "")
+      .trim()
+      .toLowerCase();
+    
+    if (strengthSignalRole === "excluded") continue;
+    
     const pattern = patternFast(track);
     if (!pattern) continue;
   
@@ -643,5 +659,5 @@ export async function computeStrengthSnapshot(
 }
 
 /* ========================================================================== */
-/*  End of file: src/strength/strength.ts                                     */
+/*  End of file: src/strength/Strength.ts                                     */
 /* ========================================================================== */
