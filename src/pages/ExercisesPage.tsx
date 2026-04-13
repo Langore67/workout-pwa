@@ -2565,29 +2565,49 @@ export default function ExercisesPage() {
                           </div>
                         ) : null}
 
-                        <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
-			  {meta || "—"}
-			  <span className="muted" style={{ marginLeft: 10 }}>
-			    • Metric {metric}
-			  </span>
+                        <div
+			  className="muted"
+			  style={{
+			    marginTop: 6,
+			    fontSize: 13,
+			    display: "flex",
+			    flexWrap: "wrap",
+			    gap: 8,
+			    alignItems: "center",
+			  }}
+			>
+			  <span>{meta || "—"}</span>
+			
+			  <span>• Metric {metric}</span>
 			
 			  {(e as any).movementPattern ? (
-			    <span className="muted" style={{ marginLeft: 10 }}>
-			      • Pattern {String((e as any).movementPattern).replace(/^./, (c) => c.toUpperCase())}
+			    <span
+			      className="badge"
+			      style={{
+			        fontSize: 11,
+			        fontWeight: 700,
+			        padding: "2px 8px",
+			      }}
+			    >
+			      Pattern: {String((e as any).movementPattern).replace(/^./, (c) => c.toUpperCase())}
 			    </span>
 			  ) : null}
 			
 			  {(e as any).strengthSignalRole ? (
-			    <span className="muted" style={{ marginLeft: 10 }}>
-			      • Signal {String((e as any).strengthSignalRole).replace(/^./, (c) => c.toUpperCase())}
+			    <span
+			      className="badge"
+			      style={{
+			        fontSize: 11,
+			        fontWeight: 700,
+			        padding: "2px 8px",
+			      }}
+			    >
+			      Signal: {String((e as any).strengthSignalRole).replace(/^./, (c) => c.toUpperCase())}
 			    </span>
 			  ) : null}
 			
-			  <span className="muted" style={{ marginLeft: 10 }}>
-			    • Cues {hasCues ? `S${cs} • E${ce}` : "—"}
-			  </span>
+			  <span>• Cues {hasCues ? `S${cs} • E${ce}` : "—"}</span>
                        </div>
-
                         {textOrUndef(String((e as any).summary ?? "")) ? (
                           <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
                             {String((e as any).summary ?? "")}
@@ -2849,9 +2869,15 @@ export default function ExercisesPage() {
 	         </div>
 	       </div>
 	       
-	       <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
-	         Movement Pattern defines the primary bucket for this exercise. Strength Signal Role controls whether it should count toward strength scoring.
-               </div>
+	       <div className="muted" style={{ marginTop: 6, fontSize: 12, lineHeight: 1.4 }}>
+	         <div>
+	           <strong>Movement Pattern</strong>: Used for movement breakdown and balance (push, pull, squat, hinge, etc).
+	         </div>
+	         <div style={{ marginTop: 4 }}>
+	           <strong>Strength Signal Role</strong>: Controls whether this exercise contributes to Strength Signal.
+	           Use <b>Included</b> for primary compound lifts. Use <b>Excluded</b> for accessories and isolation work.
+	         </div>
+                </div>
 
                 <div style={{ marginTop: 10 }}>
                   <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Aliases (optional)</div>
