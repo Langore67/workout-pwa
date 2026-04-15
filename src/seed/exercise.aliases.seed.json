@@ -16,6 +16,10 @@
     "exerciseName": "Barbell Back Squat"
   },
   {
+    "alias": "Barbell Box Squat",
+    "exerciseName": "Barbell Back Squat"
+  },
+  {
     "alias": "Deadlift Drill",
     "exerciseName": "Deadlift Pattern"
   },

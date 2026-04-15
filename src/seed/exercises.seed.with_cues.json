@@ -4,6 +4,8 @@
     "bodyPart": "Back",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "pull",
     "aliases": [
       "Three Point Dumbbell Row"
     ],
@@ -23,6 +25,7 @@
     "bodyPart": "Core",
     "category": "Strength",
     "equipment": "Other",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -39,6 +42,7 @@
     "bodyPart": "Legs",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Feet about shoulder-width, toes slightly out",
       "Brace hard before the first rep",
@@ -55,6 +59,7 @@
     "bodyPart": "Shoulders",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -71,6 +76,7 @@
     "bodyPart": "Cardio",
     "category": "Cardio",
     "equipment": "Machine",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -87,6 +93,11 @@
     "bodyPart": "Back",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "included",
+    "movementPattern": "pull",
+    "aliases": [
+      "Assisted Pull Up"
+    ],
     "cuesSetup": [
       "Hang tall; shoulders set down",
       "Brace abs; legs slightly in front",
@@ -96,9 +107,6 @@
       "Drive elbows down; chest toward bar",
       "Avoid kicking/swinging",
       "Lower under control to full hang"
-    ],
-    "aliases": [
-      "Assisted Pull Up"
     ]
   },
   {
@@ -106,6 +114,7 @@
     "bodyPart": "Back",
     "category": "Strength",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Elbows fixed; shoulders down",
       "Brace core; avoid flaring ribs",
@@ -122,6 +131,7 @@
     "bodyPart": "Shoulders",
     "category": "Warmup",
     "equipment": "Band",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -138,6 +148,13 @@
     "bodyPart": "Legs",
     "category": "Strength",
     "equipment": "Barbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "squat",
+    "aliases": [
+      "Back Squat",
+      "Barbell Squat",
+      "Barbell Box Squat"
+    ],
     "cuesSetup": [
       "Feet about shoulder-width, toes slightly out",
       "Brace hard before the first rep",
@@ -147,10 +164,6 @@
       "Sit between the hips; keep chest tall",
       "Knees track in line with toes",
       "Control the descent; drive through mid-foot"
-    ],
-    "aliases": [
-      "Back Squat",
-      "Barbell Squat"
     ]
   },
   {
@@ -158,6 +171,8 @@
     "bodyPart": "Chest",
     "category": "Strength",
     "equipment": "Barbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "push",
     "cuesSetup": [
       "Shoulder blades down and back",
       "Wrists stacked; grip the handle/bar tight",
@@ -174,6 +189,7 @@
     "bodyPart": "Arms",
     "category": "Strength",
     "equipment": "Barbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Stand tall; ribs down",
       "Elbows pinned near sides",
@@ -190,6 +206,8 @@
     "bodyPart": "Shoulders",
     "category": "Strength",
     "equipment": "Barbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "push",
     "cuesSetup": [
       "Hands just outside shoulders",
       "Squeeze glutes; ribs down",
@@ -206,6 +224,8 @@
     "bodyPart": "Back",
     "category": "Strength",
     "equipment": "Barbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "pull",
     "cuesSetup": [
       "Set shoulders down and back before pulling",
       "Brace; keep torso stable",
@@ -222,6 +242,7 @@
     "bodyPart": "Core",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Brace abs as if being punched",
       "Ribs down; pelvis neutral",
@@ -238,6 +259,7 @@
     "bodyPart": "Legs",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -254,6 +276,8 @@
     "bodyPart": "Legs",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "squat",
     "cuesSetup": [
       "Feet about shoulder-width, toes slightly out",
       "Brace hard before the first rep",
@@ -270,6 +294,7 @@
     "bodyPart": "Full Body",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -286,6 +311,8 @@
     "bodyPart": "Chest",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "included",
+    "movementPattern": "push",
     "cuesSetup": [
       "Shoulder blades down and back",
       "Wrists stacked; grip the handle/bar tight",
@@ -302,6 +329,7 @@
     "bodyPart": "Core",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -318,6 +346,7 @@
     "bodyPart": "Arms",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Stand tall; ribs down",
       "Elbows pinned near sides",
@@ -334,6 +363,7 @@
     "bodyPart": "Chest",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -350,6 +380,7 @@
     "bodyPart": "Shoulders",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Light weight; strict form",
       "Shoulders down; neck long",
@@ -366,6 +397,7 @@
     "bodyPart": "Arms",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Elbows fixed; shoulders down",
       "Brace core; avoid flaring ribs",
@@ -382,6 +414,7 @@
     "bodyPart": "Legs",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -398,6 +431,7 @@
     "bodyPart": "Back",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set shoulders down and back before pulling",
       "Brace; keep torso stable",
@@ -414,6 +448,7 @@
     "bodyPart": "Core",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -430,6 +465,7 @@
     "bodyPart": "Other",
     "category": "Mobility",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Full range: stretch at bottom",
       "Use support for balance",
@@ -446,6 +482,7 @@
     "bodyPart": "Other",
     "category": "Mobility",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -462,6 +499,7 @@
     "bodyPart": "Chest",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Shoulder blades down and back",
       "Wrists stacked; grip the handle/bar tight",
@@ -479,6 +517,8 @@
     "bodyPart": "Back",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "pull",
     "cuesSetup": [
       "Set shoulders down and back before pulling",
       "Brace; keep torso stable",
@@ -495,6 +535,8 @@
     "bodyPart": "Back",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "included",
+    "movementPattern": "pull",
     "cuesSetup": [
       "Set shoulders down and back before pulling",
       "Brace; keep torso stable",
@@ -511,6 +553,8 @@
     "bodyPart": "Back",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "included",
+    "movementPattern": "pull",
     "cuesSetup": [
       "Hang tall; shoulders set down",
       "Brace abs; legs slightly in front",
@@ -527,6 +571,8 @@
     "bodyPart": "Arms",
     "category": "Strength",
     "equipment": "Barbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "push",
     "cuesSetup": [
       "Shoulder blades down and back",
       "Wrists stacked; grip the handle/bar tight",
@@ -543,6 +589,7 @@
     "bodyPart": "Arms",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Stand tall; ribs down",
       "Elbows pinned near sides",
@@ -559,6 +606,7 @@
     "bodyPart": "Core",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Brace abs as if being punched",
       "Ribs down; pelvis neutral",
@@ -575,6 +623,8 @@
     "bodyPart": "Legs",
     "category": "Strength",
     "equipment": "Barbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "hinge",
     "cuesSetup": [
       "Feet hip-width; bar/weight close to shins",
       "Hinge back to find hamstring tension",
@@ -591,6 +641,7 @@
     "bodyPart": "Other",
     "category": "Technique",
     "equipment": "Barbell",
+    "strengthSignalRole": "excluded",
     "aliases": [
       "Deadlift Drill"
     ],
@@ -610,6 +661,7 @@
     "bodyPart": "Chest",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Hands under shoulders; body in a straight line",
       "Brace glutes and abs",
@@ -626,6 +678,8 @@
     "bodyPart": "Chest",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "push",
     "cuesSetup": [
       "Shoulder blades down and back",
       "Wrists stacked; grip the handle/bar tight",
@@ -642,6 +696,7 @@
     "bodyPart": "Arms",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Stand tall; ribs down",
       "Elbows pinned near sides",
@@ -658,6 +713,10 @@
     "bodyPart": "Shoulders",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "excluded",
+    "aliases": [
+      "Lateral Raise"
+    ],
     "cuesSetup": [
       "Light weight; strict form",
       "Shoulders down; neck long",
@@ -667,9 +726,6 @@
       "Move from the shoulder; don’t shrug",
       "Stop around shoulder height",
       "Control down; feel the target muscle"
-    ],
-    "aliases": [
-      "Lateral Raise"
     ]
   },
   {
@@ -677,6 +733,7 @@
     "bodyPart": "Chest",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -693,6 +750,8 @@
     "bodyPart": "Shoulders",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "push",
     "cuesSetup": [
       "Hands just outside shoulders",
       "Squeeze glutes; ribs down",
@@ -709,6 +768,7 @@
     "bodyPart": "Cardio",
     "category": "Cardio",
     "equipment": "Machine",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -725,6 +785,7 @@
     "bodyPart": "Shoulders",
     "category": "Mobility",
     "equipment": "Band",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -741,6 +802,7 @@
     "bodyPart": "Arms",
     "category": "Strength",
     "equipment": "Barbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Stand tall; ribs down",
       "Elbows pinned near sides",
@@ -757,6 +819,7 @@
     "bodyPart": "Shoulders",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set cable at upper-chest/face height",
       "Thumbs back; elbows high",
@@ -773,6 +836,8 @@
     "bodyPart": "Full Body",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "carry",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -789,6 +854,7 @@
     "bodyPart": "Shoulders",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -805,6 +871,8 @@
     "bodyPart": "Legs",
     "category": "Strength",
     "equipment": "Barbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "squat",
     "cuesSetup": [
       "Feet about shoulder-width, toes slightly out",
       "Brace hard before the first rep",
@@ -822,6 +890,7 @@
     "bodyPart": "Legs",
     "category": "Strength",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -838,6 +907,8 @@
     "bodyPart": "Legs",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "included",
+    "movementPattern": "hinge",
     "aliases": [
       "Glute Drive",
       "Machine Glute Drive",
@@ -861,6 +932,7 @@
     "bodyPart": "Legs",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -877,6 +949,7 @@
     "bodyPart": "Legs",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Feet about shoulder-width, toes slightly out",
       "Brace hard before the first rep",
@@ -893,6 +966,7 @@
     "bodyPart": "Back",
     "category": "Strength",
     "equipment": "Barbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -909,6 +983,8 @@
     "bodyPart": "Legs",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "included",
+    "movementPattern": "squat",
     "cuesSetup": [
       "Feet about shoulder-width, toes slightly out",
       "Brace hard before the first rep",
@@ -925,6 +1001,7 @@
     "bodyPart": "Arms",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Stand tall; ribs down",
       "Elbows pinned near sides",
@@ -941,6 +1018,7 @@
     "bodyPart": "Other",
     "category": "Mobility",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -957,6 +1035,7 @@
     "bodyPart": "Core",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -973,6 +1052,7 @@
     "bodyPart": "Core",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -989,6 +1069,7 @@
     "bodyPart": "Legs",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1005,6 +1086,7 @@
     "bodyPart": "Legs",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1021,6 +1103,7 @@
     "bodyPart": "Other",
     "category": "Mobility",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1037,6 +1120,7 @@
     "bodyPart": "Other",
     "category": "Warmup",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1053,6 +1137,8 @@
     "bodyPart": "Legs",
     "category": "Strength",
     "equipment": "Barbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "hinge",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1069,6 +1155,11 @@
     "bodyPart": "Chest",
     "category": "Strength",
     "equipment": "Barbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "push",
+    "aliases": [
+      "Incline Barbell Press"
+    ],
     "cuesSetup": [
       "Shoulder blades down and back",
       "Wrists stacked; grip the handle/bar tight",
@@ -1078,9 +1169,6 @@
       "Lower with control; elbows ~45° from torso",
       "Press up and back; keep shoulders packed",
       "Stop 1 rep before form breaks"
-    ],
-    "aliases": [
-      "Incline Barbell Press"
     ]
   },
   {
@@ -1088,6 +1176,8 @@
     "bodyPart": "Chest",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "push",
     "cuesSetup": [
       "Shoulder blades down and back",
       "Wrists stacked; grip the handle/bar tight",
@@ -1104,6 +1194,7 @@
     "bodyPart": "Arms",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Stand tall; ribs down",
       "Elbows pinned near sides",
@@ -1120,6 +1211,7 @@
     "bodyPart": "Chest",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Hands under shoulders; body in a straight line",
       "Brace glutes and abs",
@@ -1136,6 +1228,7 @@
     "bodyPart": "Cardio",
     "category": "Cardio",
     "equipment": "Machine",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1152,6 +1245,8 @@
     "bodyPart": "Back",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "included",
+    "movementPattern": "pull",
     "cuesSetup": [
       "Set shoulders down and back before pulling",
       "Brace; keep torso stable",
@@ -1168,6 +1263,7 @@
     "bodyPart": "Cardio",
     "category": "Cardio",
     "equipment": "Other",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1184,6 +1280,7 @@
     "bodyPart": "Full Body",
     "category": "Strength",
     "equipment": "Kettlebell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1200,6 +1297,8 @@
     "bodyPart": "Shoulders",
     "category": "Strength",
     "equipment": "Other",
+    "strengthSignalRole": "included",
+    "movementPattern": "push",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1216,6 +1315,8 @@
     "bodyPart": "Back",
     "category": "Strength",
     "equipment": "Other",
+    "strengthSignalRole": "included",
+    "movementPattern": "pull",
     "cuesSetup": [
       "Set shoulders down and back before pulling",
       "Brace; keep torso stable",
@@ -1232,6 +1333,8 @@
     "bodyPart": "Back",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "included",
+    "movementPattern": "pull",
     "cuesSetup": [
       "Set shoulders down and back before pulling",
       "Brace; keep torso stable",
@@ -1249,6 +1352,8 @@
     "bodyPart": "Back",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "included",
+    "movementPattern": "pull",
     "cuesSetup": [
       "Set shoulders down and back before pulling",
       "Brace; keep torso stable",
@@ -1266,6 +1371,7 @@
     "bodyPart": "Arms",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "excluded",
     "aliases": [
       "Eccentric Hammer Curl Left",
       "Left Hammer Curl Eccentric"
@@ -1286,6 +1392,7 @@
     "bodyPart": "Legs",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Elbows fixed; shoulders down",
       "Brace core; avoid flaring ribs",
@@ -1302,6 +1409,8 @@
     "bodyPart": "Legs",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "included",
+    "movementPattern": "squat",
     "cuesSetup": [
       "Feet about shoulder-width, toes slightly out",
       "Brace hard before the first rep",
@@ -1318,6 +1427,7 @@
     "bodyPart": "Legs",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Stand tall; ribs down",
       "Elbows pinned near sides",
@@ -1334,6 +1444,8 @@
     "bodyPart": "Chest",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "included",
+    "movementPattern": "push",
     "cuesSetup": [
       "Shoulder blades down and back",
       "Wrists stacked; grip the handle/bar tight",
@@ -1350,6 +1462,8 @@
     "bodyPart": "Shoulders",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "included",
+    "movementPattern": "push",
     "cuesSetup": [
       "Hands just outside shoulders",
       "Squeeze glutes; ribs down",
@@ -1366,6 +1480,7 @@
     "bodyPart": "Core",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1382,6 +1497,8 @@
     "bodyPart": "Back",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "pull",
     "cuesSetup": [
       "Set shoulders down and back before pulling",
       "Brace; keep torso stable",
@@ -1398,6 +1515,7 @@
     "bodyPart": "Arms",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Elbows fixed; shoulders down",
       "Brace core; avoid flaring ribs",
@@ -1414,6 +1532,7 @@
     "bodyPart": "Arms",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Elbows fixed; shoulders down",
       "Brace core; avoid flaring ribs",
@@ -1430,6 +1549,7 @@
     "bodyPart": "Core",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1446,6 +1566,7 @@
     "bodyPart": "Chest",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1462,6 +1583,8 @@
     "bodyPart": "Back",
     "category": "Strength",
     "equipment": "Barbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "pull",
     "cuesSetup": [
       "Set shoulders down and back before pulling",
       "Brace; keep torso stable",
@@ -1478,6 +1601,7 @@
     "bodyPart": "Core",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Brace abs as if being punched",
       "Ribs down; pelvis neutral",
@@ -1494,6 +1618,7 @@
     "bodyPart": "Arms",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Stand tall; ribs down",
       "Elbows pinned near sides",
@@ -1510,6 +1635,8 @@
     "bodyPart": "Back",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "included",
+    "movementPattern": "pull",
     "cuesSetup": [
       "Hang tall; shoulders set down",
       "Brace abs; legs slightly in front",
@@ -1526,6 +1653,7 @@
     "bodyPart": "Chest",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Hands under shoulders; body in a straight line",
       "Brace glutes and abs",
@@ -1542,6 +1670,7 @@
     "bodyPart": "Shoulders",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Light weight; strict form",
       "Shoulders down; neck long",
@@ -1558,6 +1687,7 @@
     "bodyPart": "Arms",
     "category": "Strength",
     "equipment": "Barbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Stand tall; ribs down",
       "Elbows pinned near sides",
@@ -1574,6 +1704,7 @@
     "bodyPart": "Back",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1590,6 +1721,7 @@
     "bodyPart": "Legs",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Tall torso; brace",
       "Front foot flat; knee tracks over toes",
@@ -1606,6 +1738,10 @@
     "bodyPart": "Shoulders",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "excluded",
+    "aliases": [
+      "Rear Pec Deck"
+    ],
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1615,9 +1751,6 @@
       "Move smoothly; control the lowering phase",
       "Keep tension on the target muscles",
       "Stop before form breaks"
-    ],
-    "aliases": [
-      "Rear Pec Deck"
     ]
   },
   {
@@ -1625,6 +1758,8 @@
     "bodyPart": "Legs",
     "category": "Strength",
     "equipment": "Barbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "hinge",
     "cuesSetup": [
       "Feet hip-width; bar/weight close to shins",
       "Hinge back to find hamstring tension",
@@ -1642,6 +1777,7 @@
     "bodyPart": "Arms",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "excluded",
     "aliases": [
       "Rope Tricep Pushdown",
       "Rope Pushdown"
@@ -1662,6 +1798,7 @@
     "bodyPart": "Cardio",
     "category": "Cardio",
     "equipment": "Machine",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Hang tall; shoulders set down",
       "Brace abs; legs slightly in front",
@@ -1678,6 +1815,7 @@
     "bodyPart": "Core",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1694,6 +1832,7 @@
     "bodyPart": "Shoulders",
     "category": "Warmup",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Hands under shoulders; body in a straight line",
       "Brace glutes and abs",
@@ -1710,6 +1849,8 @@
     "bodyPart": "Back",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "included",
+    "movementPattern": "pull",
     "cuesSetup": [
       "Set shoulders down and back before pulling",
       "Brace; keep torso stable",
@@ -1726,6 +1867,7 @@
     "bodyPart": "Legs",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Full range: stretch at bottom",
       "Use support for balance",
@@ -1742,6 +1884,7 @@
     "bodyPart": "Legs",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Stand tall; ribs down",
       "Elbows pinned near sides",
@@ -1758,6 +1901,8 @@
     "bodyPart": "Back",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "included",
+    "movementPattern": "pull",
     "cuesSetup": [
       "Hang tall; shoulders set down",
       "Brace abs; legs slightly in front",
@@ -1774,6 +1919,7 @@
     "bodyPart": "Shoulders",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1790,6 +1936,7 @@
     "bodyPart": "Core",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Brace abs as if being punched",
       "Ribs down; pelvis neutral",
@@ -1806,6 +1953,8 @@
     "bodyPart": "Legs",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "hinge",
     "cuesSetup": [
       "Feet hip-width; bar/weight close to shins",
       "Hinge back to find hamstring tension",
@@ -1823,6 +1972,7 @@
     "bodyPart": "Arms",
     "category": "Strength",
     "equipment": "Barbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Elbows fixed; shoulders down",
       "Brace core; avoid flaring ribs",
@@ -1839,6 +1989,8 @@
     "bodyPart": "Full Body",
     "category": "Strength",
     "equipment": "Other",
+    "strengthSignalRole": "included",
+    "movementPattern": "carry",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1855,6 +2007,8 @@
     "bodyPart": "Full Body",
     "category": "Strength",
     "equipment": "Other",
+    "strengthSignalRole": "included",
+    "movementPattern": "carry",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1871,7 +2025,9 @@
     "bodyPart": "Chest",
     "category": "Machine",
     "equipment": "Machine",
-    "cuesSetup": [
+    "strengthSignalRole": "included",
+    "movementPattern": "push",
+        "cuesSetup": [
       "Shoulder blades down and back",
       "Wrists stacked; grip the handle/bar tight",
       "Feet planted; light arch allowed"
@@ -1887,6 +2043,8 @@
     "bodyPart": "Legs",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "included",
+    "movementPattern": "squat",
     "cuesSetup": [
       "Feet about shoulder-width, toes slightly out",
       "Brace hard before the first rep",
@@ -1903,6 +2061,7 @@
     "bodyPart": "Cardio",
     "category": "Cardio",
     "equipment": "Machine",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1919,6 +2078,7 @@
     "bodyPart": "Legs",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Full range: stretch at bottom",
       "Use support for balance",
@@ -1935,6 +2095,7 @@
     "bodyPart": "Cardio",
     "category": "Cardio",
     "equipment": "Machine",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -1951,6 +2112,7 @@
     "bodyPart": "Legs",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Tall torso; brace",
       "Front foot flat; knee tracks over toes",
@@ -1967,6 +2129,7 @@
     "bodyPart": "Back",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set shoulders down and back before pulling",
       "Brace; keep torso stable",
@@ -1984,6 +2147,8 @@
     "bodyPart": "Core",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "carry",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -2000,6 +2165,8 @@
     "bodyPart": "Legs",
     "category": "Strength",
     "equipment": "Barbell",
+    "strengthSignalRole": "included",
+    "movementPattern": "hinge",
     "cuesSetup": [
       "Feet hip-width; bar/weight close to shins",
       "Hinge back to find hamstring tension",
@@ -2016,6 +2183,8 @@
     "bodyPart": "Back",
     "category": "Machine",
     "equipment": "Machine",
+    "strengthSignalRole": "included",
+    "movementPattern": "pull",
     "cuesSetup": [
       "Set shoulders down and back before pulling",
       "Brace; keep torso stable",
@@ -2032,6 +2201,7 @@
     "bodyPart": "Other",
     "category": "Mobility",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -2048,6 +2218,7 @@
     "bodyPart": "Legs",
     "category": "Strength",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -2064,6 +2235,8 @@
     "bodyPart": "Legs",
     "category": "Strength",
     "equipment": "Other",
+    "strengthSignalRole": "included",
+    "movementPattern": "hinge",
     "cuesSetup": [
       "Feet hip-width; bar/weight close to shins",
       "Hinge back to find hamstring tension",
@@ -2080,6 +2253,10 @@
     "bodyPart": "Cardio",
     "category": "Cardio",
     "equipment": "Machine",
+    "strengthSignalRole": "excluded",
+    "aliases": [
+      "Treadmill Walk (Z1)"
+    ],
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -2096,6 +2273,7 @@
     "bodyPart": "Arms",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Shoulder blades down and back",
       "Wrists stacked; grip the handle/bar tight",
@@ -2113,6 +2291,10 @@
     "bodyPart": "Arms",
     "category": "Machine",
     "equipment": "Cable",
+    "strengthSignalRole": "excluded",
+    "aliases": [
+      "Pushdown"
+    ],
     "cuesSetup": [
       "Elbows fixed; shoulders down",
       "Brace core; avoid flaring ribs",
@@ -2122,9 +2304,6 @@
       "Extend fully without locking painfully",
       "Slow eccentric; keep elbows in",
       "Avoid using momentum"
-    ],
-    "aliases": [
-      "Pushdown"
     ]
   },
   {
@@ -2132,6 +2311,7 @@
     "bodyPart": "Full Body",
     "category": "Strength",
     "equipment": "Kettlebell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -2148,6 +2328,7 @@
     "bodyPart": "Shoulders",
     "category": "Strength",
     "equipment": "Barbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set shoulders down and back before pulling",
       "Brace; keep torso stable",
@@ -2164,6 +2345,7 @@
     "bodyPart": "Legs",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Tall torso; brace",
       "Front foot flat; knee tracks over toes",
@@ -2180,6 +2362,7 @@
     "bodyPart": "Shoulders",
     "category": "Mobility",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Set a stable stance and brace your core",
       "Start each rep in a strong, stacked position",
@@ -2196,6 +2379,8 @@
     "bodyPart": "Chest",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
+    "strengthSignalRole": "included",
+    "movementPattern": "push",
     "cuesSetup": [
       "Hands under shoulders; body in a straight line",
       "Brace glutes and abs",
@@ -2212,6 +2397,7 @@
     "bodyPart": "Arms",
     "category": "Strength",
     "equipment": "Dumbbell",
+    "strengthSignalRole": "excluded",
     "cuesSetup": [
       "Stand tall; ribs down",
       "Elbows pinned near sides",

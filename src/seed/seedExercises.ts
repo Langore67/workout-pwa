@@ -13,7 +13,7 @@
    This file contains the *database seeding logic* only.
    It does NOT contain any UI / JSX / button handlers.
 
-   It seeds db.exercises from exercises.seed.json.
+   It seeds db.exercises from exercises.seed.with_cues.json.
 
    IMPORTANT BEHAVIOR
    ------------------
@@ -28,7 +28,7 @@
 import { db, normalizeName } from "../db";
 import type { Exercise, BodyPart, ExerciseCategory, Equipment } from "../db";
 import { uuid } from "../utils";
-import exercisesSeed from "./exercises.seed.json";
+import exercisesSeed from "./exercises.seed.with_cues.json";
 
 type SeedExercise = {
   name: string;
@@ -36,6 +36,10 @@ type SeedExercise = {
   category?: ExerciseCategory | string;
   equipment?: Equipment | string;
   aliases?: string[];
+
+  // Classification / scoring metadata (optional)
+  movementPattern?: string;
+  strengthSignalRole?: string;
 
   // Coaching / media (optional)
   summary?: string;
@@ -111,7 +115,7 @@ export async function seedExercises(): Promise<SeedExercisesResult> {
 
   const seedArray = exercisesSeed as unknown;
   if (!Array.isArray(seedArray)) {
-    throw new Error("exercises.seed.json did not import as an array. Check your JSON + Vite/TS config.");
+    throw new Error("exercises.seed.with_cues.json did not import as an array. Check your JSON + Vite/TS config.");
   }
 
   // basic normalize: ensure name is present + trimmed
@@ -151,11 +155,14 @@ export async function seedExercises(): Promise<SeedExercisesResult> {
     }
     seenInSeed.add(norm);
 
-    // Normalize seed coaching/media
-    const summary = cleanText(x.summary);
-    const directions = cleanText(x.directions);
-
-    const cuesSetup = cleanStringArray(x.cuesSetup);
+        // Normalize seed classification / coaching / media
+        const movementPattern = cleanText(x.movementPattern);
+        const strengthSignalRole = cleanText(x.strengthSignalRole);
+    
+        const summary = cleanText(x.summary);
+        const directions = cleanText(x.directions);
+    
+        const cuesSetup = cleanStringArray(x.cuesSetup);
     const cuesExecution = cleanStringArray(x.cuesExecution);
 
     // Optional legacy (if you still have old data)
@@ -174,8 +181,15 @@ export async function seedExercises(): Promise<SeedExercisesResult> {
 
       const patch: any = {};
 
-      // Only fill if missing/empty
-      if (!cleanText((existing as any).summary) && summary) patch.summary = summary;
+            // Only fill if missing/empty
+            if (!cleanText((existing as any).movementPattern) && movementPattern) {
+              patch.movementPattern = movementPattern;
+            }
+            if (!cleanText((existing as any).strengthSignalRole) && strengthSignalRole) {
+              patch.strengthSignalRole = strengthSignalRole;
+            }
+      
+            if (!cleanText((existing as any).summary) && summary) patch.summary = summary;
       if (!cleanText((existing as any).directions) && directions) patch.directions = directions;
 
       // Prefer split cues if present in seed
@@ -226,13 +240,16 @@ export async function seedExercises(): Promise<SeedExercisesResult> {
       name: x.name,
       normalizedName: norm,
 
-      equipmentTags: Array.isArray(x.equipmentTags) ? x.equipmentTags : [],
-      bodyPart: asBodyPart(x.bodyPart),
-      category: asCategory(x.category),
-      equipment: asEquipment(x.equipment),
-      aliases: Array.isArray(x.aliases) ? x.aliases : [],
-
-      summary,
+            equipmentTags: Array.isArray(x.equipmentTags) ? x.equipmentTags : [],
+            bodyPart: asBodyPart(x.bodyPart),
+            category: asCategory(x.category),
+            equipment: asEquipment(x.equipment),
+            aliases: Array.isArray(x.aliases) ? x.aliases : [],
+      
+            movementPattern,
+            strengthSignalRole,
+      
+            summary,
       directions,
 
       // ✅ Option B (split cues)

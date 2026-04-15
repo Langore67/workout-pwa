@@ -32,6 +32,7 @@ import type { Exercise, BodyPart, MetricMode, Track } from "../db";
 import { uuid } from "../utils";
 import { Page, Section } from "../components/Page.tsx";
 import { seedExercises } from "../seed/seedExercises";
+import seedCatalog from "../seed/exercises.seed.with_cues.json";
 import { CoachingPanel } from "../components/CoachingPanel";
 import {
   bodyweightFromRowsAt,
@@ -191,6 +192,84 @@ function normalizeMetricMode(v: any): MetricMode {
 function prettyMetricLabel(m: MetricMode): string {
   return m === "distance" ? "Distance" : m === "time" ? "Time" : "Reps";
 }
+
+function findSeedExerciseByName(name: string) {
+  const target = normalizeName(name);
+  if (!target) return null;
+
+  for (const item of seedCatalog as any[]) {
+    const itemName = normalizeName(String(item?.name ?? ""));
+    if (itemName && itemName === target) return item;
+
+    const aliases = Array.isArray(item?.aliases) ? item.aliases : [];
+    for (const alias of aliases) {
+      const aliasName = normalizeName(String(alias ?? ""));
+      if (aliasName && aliasName === target) return item;
+    }
+  }
+
+  return null;
+}
+
+function getSeedExerciseSuggestions(name: string, limit = 3) {
+  const target = normalizeName(name);
+  if (!target) return [];
+
+  const scored = (seedCatalog as any[])
+    .map((item) => {
+      const canonicalName = String(item?.name ?? "").trim();
+      const canonicalNorm = normalizeName(canonicalName);
+      const aliases = Array.isArray(item?.aliases) ? item.aliases.map((a: any) => String(a ?? "").trim()) : [];
+
+      let score = 0;
+
+      if (canonicalNorm === target) score = 100;
+      else if (canonicalNorm.includes(target) || target.includes(canonicalNorm)) score = 80;
+      else {
+        for (const alias of aliases) {
+          const aliasNorm = normalizeName(alias);
+          if (!aliasNorm) continue;
+          if (aliasNorm === target) {
+            score = Math.max(score, 95);
+          } else if (aliasNorm.includes(target) || target.includes(aliasNorm)) {
+            score = Math.max(score, 75);
+          }
+        }
+      }
+
+      const targetTokens = new Set(target.split(" ").filter(Boolean));
+      const canonicalTokens = new Set(canonicalNorm.split(" ").filter(Boolean));
+      let overlap = 0;
+      for (const token of targetTokens) {
+        if (canonicalTokens.has(token)) overlap += 1;
+      }
+      score += overlap * 5;
+
+      return {
+        item,
+        canonicalName,
+        score,
+      };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.canonicalName.localeCompare(b.canonicalName);
+    });
+
+  const unique = new Map<string, any>();
+  for (const row of scored) {
+    if (!unique.has(row.canonicalName)) {
+      unique.set(row.canonicalName, row.item);
+    }
+    if (unique.size >= limit) break;
+  }
+
+  return Array.from(unique.values());
+}
+
+
+
 
 async function copyTextToClipboard(text: string) {
   try {
@@ -1194,23 +1273,60 @@ export default function ExercisesPage() {
     if (!sortAsc) arr.reverse();
     return arr;
   }, [exercises, q, bodyPart, sortAsc]);
-
-  const grouped = useMemo(() => {
-    const m = new Map<string, Exercise[]>();
-    for (const e of filtered) {
-      const ch = (e.name?.trim()?.[0] ?? "#").toUpperCase();
-      const key = /[A-Z]/.test(ch) ? ch : "#";
-      const arr = m.get(key) ?? [];
-      arr.push(e);
-      m.set(key, arr);
-    }
-    const keys = Array.from(m.keys()).sort((a, b) => {
-      if (a === "#") return 1;
-      if (b === "#") return -1;
-      return a.localeCompare(b);
-    });
-    return keys.map((k) => ({ key: k, items: m.get(k)! }));
+  
+  
+    const grouped = useMemo(() => {
+      const m = new Map<string, Exercise[]>();
+      for (const e of filtered) {
+        const ch = (e.name?.trim()?.[0] ?? "#").toUpperCase();
+        const key = /[A-Z]/.test(ch) ? ch : "#";
+        const arr = m.get(key) ?? [];
+        arr.push(e);
+        m.set(key, arr);
+      }
+      const keys = Array.from(m.keys()).sort((a, b) => {
+        if (a === "#") return 1;
+        if (b === "#") return -1;
+        return a.localeCompare(b);
+      });
+      return keys.map((k) => ({ key: k, items: m.get(k)! }));
   }, [filtered]);
+
+    const cueCoverageSummary = useMemo(() => {
+      const source = (exercises ?? []).filter(
+        (e) => !e.archivedAt && !(e as any).mergedIntoExerciseId
+      );
+  
+      const rows = source.map((e) => {
+        const setupCount = cleanStringArray((e as any).cuesSetup).length;
+        const executionCount = cleanStringArray((e as any).cuesExecution).length;
+  
+        return {
+          id: e.id,
+          name: e.name,
+          setupCount,
+          executionCount,
+          hasSetup: setupCount > 0,
+          hasExecution: executionCount > 0,
+        };
+      });
+  
+      const missingAny = rows.filter((r) => !r.hasSetup || !r.hasExecution);
+      const missingSetup = rows.filter((r) => !r.hasSetup);
+      const missingExecution = rows.filter((r) => !r.hasExecution);
+      const complete = rows.filter((r) => r.hasSetup && r.hasExecution);
+  
+      return {
+        total: rows.length,
+        complete: complete.length,
+        missingSetup: missingSetup.length,
+        missingExecution: missingExecution.length,
+        missingAnyCount: missingAny.length,
+        missingAnyRows: missingAny
+          .slice()
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      };
+  }, [exercises]);
 
   function openCreate(prefill?: string) {
     setDraftName((prefill ?? q).trim());
@@ -1262,6 +1378,123 @@ export default function ExercisesPage() {
         `Skipped (invalid): ${res.skippedInvalid}`
     );
   }
+
+  async function applySeedCuesToExercise(exerciseId: string) {
+    const exercise = await db.exercises.get(exerciseId);
+    if (!exercise) {
+      window.alert("Exercise not found.");
+      return;
+    }
+
+    const existingSetup = cleanStringArray((exercise as any).cuesSetup);
+    const existingExecution = cleanStringArray((exercise as any).cuesExecution);
+
+    if (existingSetup.length > 0 || existingExecution.length > 0) {
+      window.alert("This exercise already has cues. Nothing was changed.");
+      return;
+    }
+
+            const seedMatch = findSeedExerciseByName(exercise.name);
+	    if (!seedMatch) {
+	      const suggestions = getSeedExerciseSuggestions(exercise.name, 3);
+	
+	      if (!suggestions.length) {
+	        window.alert(`No seed match found for "${exercise.name}".`);
+	        return;
+	      }
+	
+	      const options = suggestions
+	        .map((item: any, index: number) => `${index + 1}. ${String(item?.name ?? "").trim()}`)
+	        .join("\n");
+	
+	      const choice = window.prompt(
+	        `No seed match found for "${exercise.name}".\n\n` +
+	          `Closest seed matches:\n${options}\n\n` +
+	          `Enter 1-${suggestions.length} to apply cues from one of these, or press Cancel to do nothing.`
+	      );
+	
+	      if (choice == null) return;
+	
+	      const selectedIndex = Number(choice.trim()) - 1;
+	      if (!Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex >= suggestions.length) {
+	        window.alert("No changes made. Invalid selection.");
+	        return;
+	      }
+	
+	      const selectedSeedName = String((suggestions[selectedIndex] as any)?.name ?? "").trim();
+	      if (!selectedSeedName) {
+	        window.alert("No changes made. Suggested seed exercise was invalid.");
+	        return;
+	      }
+	
+	      await applySeedCuesFromSelectedSeedExercise(exercise.id, selectedSeedName);
+	      return;
+    }
+
+    const seedSetup = cleanStringArray((seedMatch as any).cuesSetup);
+    const seedExecution = cleanStringArray((seedMatch as any).cuesExecution);
+
+    if (!seedSetup.length && !seedExecution.length) {
+      window.alert(`Seed match found for "${exercise.name}", but no cues were available to apply.`);
+      return;
+    }
+
+    await db.exercises.update(exercise.id, {
+      cuesSetup: seedSetup.length ? seedSetup : undefined,
+      cuesExecution: seedExecution.length ? seedExecution : undefined,
+      updatedAt: Date.now(),
+    });
+
+    window.alert(`Applied seed cues to "${exercise.name}".`);
+  }
+
+  async function applySeedCuesFromSelectedSeedExercise(
+    exerciseId: string,
+    seedExerciseName: string
+  ) {
+    const exercise = await db.exercises.get(exerciseId);
+    if (!exercise) {
+      window.alert("Exercise not found.");
+      return;
+    }
+
+    const existingSetup = cleanStringArray((exercise as any).cuesSetup);
+    const existingExecution = cleanStringArray((exercise as any).cuesExecution);
+
+    if (existingSetup.length > 0 || existingExecution.length > 0) {
+      window.alert("This exercise already has cues. Nothing was changed.");
+      return;
+    }
+
+    const seedMatch = findSeedExerciseByName(seedExerciseName);
+    if (!seedMatch) {
+      window.alert(`Seed exercise "${seedExerciseName}" was not found.`);
+      return;
+    }
+
+    const seedSetup = cleanStringArray((seedMatch as any).cuesSetup);
+    const seedExecution = cleanStringArray((seedMatch as any).cuesExecution);
+
+    if (!seedSetup.length && !seedExecution.length) {
+      window.alert(`Seed exercise "${seedExerciseName}" does not have cues to apply.`);
+      return;
+    }
+
+    const ok = window.confirm(
+      `Apply cues from "${seedExerciseName}" to "${exercise.name}"?\n\n` +
+        `This only fills missing cues and will not overwrite existing cues.`
+    );
+    if (!ok) return;
+
+    await db.exercises.update(exercise.id, {
+      cuesSetup: seedSetup.length ? seedSetup : undefined,
+      cuesExecution: seedExecution.length ? seedExecution : undefined,
+      updatedAt: Date.now(),
+    });
+
+    window.alert(`Applied seed cues from "${seedExerciseName}" to "${exercise.name}".`);
+  }
+
 
   function clearAll() {
     setQ("");
@@ -1723,34 +1956,118 @@ export default function ExercisesPage() {
                     </div>
                   </div>
 
-                  <div
-                    style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: 10,
-                      padding: 10,
-                      background: "var(--card)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        textTransform: "uppercase",
-                        letterSpacing: 0.3,
-                        color: "#6b7280",
-                        marginBottom: 4,
-                      }}
-                    >
-                      Keep Separate
-                    </div>
-                    <div style={{ fontSize: 22, fontWeight: 800 }}>
-                      {auditSummary.duplicateClusters.filter((c) => c.recommendation === "keep separate").length}
-                    </div>
-                  </div>
-                </div>
-
+                                    <div
+		                      style={{
+		                        border: "1px solid var(--border)",
+		                        borderRadius: 10,
+		                        padding: 10,
+		                        background: "var(--card)",
+		                      }}
+		                    >
+		                      <div
+		                        style={{
+		                          fontSize: 12,
+		                          fontWeight: 700,
+		                          textTransform: "uppercase",
+		                          letterSpacing: 0.3,
+		                          color: "#6b7280",
+		                          marginBottom: 4,
+		                        }}
+		                      >
+		                        Keep Separate
+		                      </div>
+		                      <div style={{ fontSize: 22, fontWeight: 800 }}>
+		                        {auditSummary.duplicateClusters.filter((c) => c.recommendation === "keep separate").length}
+		                      </div>
+		                    </div>
+		                  </div>
+		  
+		                  <div
+		                    style={{
+		                      border: "1px solid var(--border)",
+		                      borderRadius: 10,
+		                      padding: 10,
+		                      background: "var(--card)",
+		                      marginTop: 4,
+		                      marginBottom: 12,
+		                    }}
+		                  >
+		                    <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 8 }}>
+		                      Cue Coverage Audit
+		                    </div>
+		  
+		                    <div className="muted" style={{ fontSize: 12, lineHeight: 1.5 }}>
+		                      <div>Total active exercises: {cueCoverageSummary.total}</div>
+		                      <div>Complete cues (setup + execution): {cueCoverageSummary.complete}</div>
+		                      <div>Missing setup cues: {cueCoverageSummary.missingSetup}</div>
+		                      <div>Missing execution cues: {cueCoverageSummary.missingExecution}</div>
+		                      <div>Missing any cues: {cueCoverageSummary.missingAnyCount}</div>
+		                    </div>
+		  
+		                    <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+		                                          {cueCoverageSummary.missingAnyRows.slice(0, 20).map((row) => (
+				                            <div
+				                              key={`cue-gap-${row.id}`}
+				                              style={{
+				                                border: "1px solid var(--border)",
+				                                borderRadius: 8,
+				                                padding: 8,
+				                                background: "var(--card)",
+				                              }}
+				                            >
+				                              <div
+				                                className="row"
+				                                style={{
+				                                  justifyContent: "space-between",
+				                                  alignItems: "center",
+				                                  gap: 8,
+				                                  flexWrap: "wrap",
+				                                }}
+				                              >
+				                                <div style={{ fontWeight: 700 }}>{row.name}</div>
+				      
+				                                <button
+				                                  type="button"
+				                                  className="btn small"
+				                                  onClick={async () => {
+				                                    try {
+				                                      await applySeedCuesToExercise(row.id);
+				                                    } catch (err) {
+				                                      console.error("Apply seed cues failed", err);
+				                                      window.alert(
+				                                        err instanceof Error ? err.message : "Apply seed cues failed."
+				                                      );
+				                                    }
+				                                  }}
+				                                >
+				                                  Apply Seed Cues
+				                                </button>
+				                              </div>
+				      
+				                              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+				                                Setup cues: {row.hasSetup ? row.setupCount : 0} • Execution cues:{" "}
+				                                {row.hasExecution ? row.executionCount : 0}
+				                              </div>
+				                              <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+				                                {!row.hasSetup && !row.hasExecution
+				                                  ? "Missing both"
+				                                  : !row.hasSetup
+				                                  ? "Missing setup cues"
+				                                  : "Missing execution cues"}
+				                              </div>
+				                            </div>
+                    ))}
+		  
+		                      {cueCoverageSummary.missingAnyCount > 20 ? (
+		                        <div className="muted" style={{ fontSize: 12 }}>
+		                          Showing first 20 exercises missing cues.
+		                        </div>
+		                      ) : null}
+		                    </div>
+		                  </div>
+		  
                 {(() => {
-                  const filteredClusters =
+  const filteredClusters =
                     auditFilter === "all"
                       ? auditSummary.duplicateClusters
                       : auditSummary.duplicateClusters.filter((c) => c.recommendation === auditFilter);
