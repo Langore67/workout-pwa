@@ -21,7 +21,14 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../db";
 import type { Track, SetEntry } from "../db";
 import { BUILD_INFO } from "../buildInfo";
-import aliasRows from "../seed/exercise.aliases.seed.json";
+import seedCatalog from "../seed/exercises.seed.with_cues.json";
+
+const aliasRows = seedCatalog.flatMap((ex: any) =>
+  (ex.aliases ?? []).map((alias: string) => ({
+    alias,
+    exerciseName: ex.name,
+  }))
+);
 import { syncExerciseAliasesFromRows } from "../syncExerciseAliases";
 
 type SetKind = "warmup" | "working" | "drop" | "failure";
