@@ -26,11 +26,15 @@
 /* ========================================================================== */
 
 import { db } from "../db";
+import { isSetEligibleForStrengthSignal } from "../domain/strength/strengthSignalFilter";
+import {
+  buildExerciseResolverIndex,
+  resolveExerciseFromIndex,
+} from "../domain/exercises/exerciseResolver";
 import {
   classifyStrengthPattern,
   classifyStrengthPatternFromExerciseName as classifyStrengthPatternFromSharedSource,
 } from "../domain/exercises/strengthPatternClassifier";
-import { isStrengthTrackType } from "../domain/trackingMode";
 
 /* -------------------------------------------------------------------------- */
 /* Breadcrumb 1 — Types                                                       */
@@ -441,141 +445,242 @@ function buildPatternScore(pattern: StrengthPattern, acc: PatternAccumulator, bo
 }
 
 /* -------------------------------------------------------------------------- */
-/* Breadcrumb 7 — Core computation (as-of endAtMs)                            */
+/* Breadcrumb 7 — Core computation at timestamp                               */
 /* -------------------------------------------------------------------------- */
 
-export async function computeStrengthIndexAt(endAtMs: number, windowDays = 28): Promise<StrengthIndexResult> {
-  const endAt = Number(endAtMs);
-  const cutoff = endAt - windowDays * 24 * 60 * 60 * 1000;
+export async function computeStrengthIndexAt(
+  endAtMs: number,
+  windowDays = 28,
+): Promise<StrengthIndexResult> {
+  const safeEndAtMs = Number.isFinite(Number(endAtMs)) ? Number(endAtMs) : Date.now();
+  const safeWindowDays = Math.max(1, Math.floor(Number(windowDays) || 28));
+  const windowStartMs = safeEndAtMs - safeWindowDays * 24 * 60 * 60 * 1000;
 
-  const bw = await getBodyweightRollingAvgAt(endAt, 5);
-  const bodyweight = bw.avg;
+  const bw = await getBodyweightRollingAvgAt(safeEndAtMs, 5);
+  const bodyweight = Number.isFinite(bw.avg) && bw.avg > 0 ? bw.avg : 200;
 
-  // Sessions ended within window (cutoff..endAt)
-  const sessions = await db.sessions.where("endedAt").between(cutoff, endAt, true, true).toArray();
-  const sessionIds = sessions.map((s: any) => s.id).filter(Boolean);
-
-  if (!sessionIds.length) {
-    const emptyAcc = makeAccumulator();
-    const patterns: PatternScore[] = (Object.keys(emptyAcc) as StrengthPattern[]).map((p) =>
-      buildPatternScore(p, emptyAcc[p], bodyweight)
-    );
-
-    return {
-      absoluteIndex: 0,
-      relativeIndex: 0,
-      normalizedIndex: 0,
-      patterns,
-      bodyweight,
-      bodyweightDaysUsed: bw.daysUsed,
-    };
-  }
-
-  const sets = await db.sets.where("sessionId").anyOf(sessionIds).toArray();
-
-  const working = (sets as any[]).filter(
-    (s) =>
-      !!s?.completedAt &&
-      Number(s?.completedAt) <= endAt &&
-      s?.setType === "working" &&
-      typeof s?.weight === "number" &&
-      typeof s?.reps === "number"
-  );
-
-  if (!working.length) {
-    const emptyAcc = makeAccumulator();
-    const patterns: PatternScore[] = (Object.keys(emptyAcc) as StrengthPattern[]).map((p) =>
-      buildPatternScore(p, emptyAcc[p], bodyweight)
-    );
-
-    return {
-      absoluteIndex: 0,
-      relativeIndex: 0,
-      normalizedIndex: 0,
-      patterns,
-      bodyweight,
-      bodyweightDaysUsed: bw.daysUsed,
-    };
-  }
+    function pickSetTable(): any | null {
+      const anyDb: any = db as any;
+    
+      const candidates = [
+        anyDb.setEntries,
+        anyDb.sets,
+        anyDb.workSets,
+        anyDb.sessionSets,
+      ].filter(Boolean);
+    
+      for (const t of candidates) {
+        if (t && typeof t.toArray === "function") return t;
+      }
+    
+      return null;
+    }
+    
+    const setTable = pickSetTable();
+    if (!setTable) {
+      return {
+        absoluteIndex: 0,
+        relativeIndex: 0,
+        normalizedIndex: 0,
+        patterns: [],
+        bodyweight,
+        bodyweightDaysUsed: bw.daysUsed,
+      };
+    }
+    
+    const allSets: any[] = await setTable.toArray();
+  
+    const working = (allSets ?? []).filter((s: any) => {
+      const reps = Number(s?.reps);
+      const weight = Number(s?.weight);
+  
+      const completed =
+        s?.completed === true ||
+        s?.isCompleted === true ||
+        s?.done === true ||
+        s?.status === "completed" ||
+        s?.status === "done" ||
+        s?.status === "finished";
+  
+      const at = Number(
+        s?.completedAt ??
+        s?.performedAt ??
+        s?.loggedAt ??
+        s?.createdAt ??
+        s?.updatedAt ??
+        s?.date ??
+        s?.timestamp
+      );
+  
+      const setType = String(s?.setType ?? s?.type ?? "")
+        .trim()
+        .toLowerCase();
+  
+      if (!Number.isFinite(reps) || reps <= 0) return false;
+      if (!Number.isFinite(weight)) return false;
+  
+      if (
+        setType === "warmup" ||
+        setType === "warm-up" ||
+        setType === "warm up" ||
+        setType === "wu" ||
+        setType === "drop" ||
+        setType === "dropset" ||
+        setType === "drop set"
+      ) {
+        return false;
+      }
+  
+      // If we have a usable timestamp, enforce the window.
+      if (Number.isFinite(at)) {
+        if (at < windowStartMs || at > safeEndAtMs) return false;
+      }
+  
+      // Prefer completed sets, but don't hard-reject older rows that lack the flag.
+      if (completed) return true;
+  
+      // Fallback for legacy rows: reps + numeric weight + non-warmup is enough.
+      return true;
+    });
+  
 
   /* ------------------------------------------------------------------------ */
   /* Breadcrumb 7A — Batch load tracks / exercises                            */
   /* ------------------------------------------------------------------------ */
   const trackIds = Array.from(new Set(working.map((s) => s.trackId).filter(Boolean)));
   const tracksArr: any[] = await db.tracks.bulkGet(trackIds);
+ 
+   const trackById = new Map<string, any>();
+   for (const t of tracksArr) if (t?.id) trackById.set(t.id, t);
+ 
+   const exerciseIds = Array.from(new Set(tracksArr.map((t) => t?.exerciseId).filter(Boolean))) as string[];
+   const exercisesArr: any[] = await db.exercises.bulkGet(exerciseIds);
+ 
+   const exerciseById = new Map<string, any>();
+   for (const ex of exercisesArr) if (ex?.id) exerciseById.set(ex.id, ex);
+ 
+   const resolverIndex = buildExerciseResolverIndex(exercisesArr.filter(Boolean));
+ 
+   function getCanonicalExerciseForTrack(track: any): any | null {
+     const directExerciseId = String(track?.exerciseId ?? "").trim();
+     const directExercise = directExerciseId ? exerciseById.get(directExerciseId) ?? null : null;
+ 
+     const resolverInput = String(
+       directExercise?.name ??
+       track?.displayName ??
+       ""
+     ).trim();
+ 
+     if (!resolverInput) {
+       return directExercise;
+     }
+ 
+     const resolved = resolveExerciseFromIndex(resolverInput, resolverIndex);
+     const canonicalId = String(
+       resolved?.exercise?.id ??
+       resolved?.id ??
+       ""
+     ).trim();
+ 
+     if (canonicalId) {
+       return exerciseById.get(canonicalId) ?? resolved?.exercise ?? directExercise;
+     }
+ 
+     return resolved?.exercise ?? directExercise;
+   }
+ 
+      function patternFast(track: any, canonicalExercise: any): StrengthPattern | undefined {
+        const exerciseId = String(canonicalExercise?.id ?? track?.exerciseId ?? "").trim();
+        if (!exerciseId) return undefined;
+   
+        const explicitRaw = String(canonicalExercise?.movementPattern ?? "")
+          .trim()
+          .toLowerCase();
+   
+        if (
+          explicitRaw === "push" ||
+          explicitRaw === "pull" ||
+          explicitRaw === "squat" ||
+          explicitRaw === "hinge"
+        ) {
+          return explicitRaw as StrengthPattern;
+        }
+   
+        return classifyStrengthPattern({
+          exerciseId,
+          exercise: canonicalExercise ?? null,
+          exerciseName:
+            canonicalExercise?.name ??
+            canonicalExercise?.displayName ??
+            canonicalExercise?.title ??
+            "",
+          trackDisplayName: String(track?.displayName ?? ""),
+        });
+   }
+ 
+   /* ------------------------------------------------------------------------ */
+   /* Breadcrumb 7B — Accumulate per-pattern strength signal                    */
+   /* ------------------------------------------------------------------------ */
 
-  const trackById = new Map<string, any>();
-  for (const t of tracksArr) if (t?.id) trackById.set(t.id, t);
-
-  const exerciseIds = Array.from(new Set(tracksArr.map((t) => t?.exerciseId).filter(Boolean))) as string[];
-  const exercisesArr: any[] = await db.exercises.bulkGet(exerciseIds);
-
-  const exerciseById = new Map<string, any>();
-  for (const ex of exercisesArr) if (ex?.id) exerciseById.set(ex.id, ex);
-
-  function patternFast(track: any): StrengthPattern | undefined {
-    const exerciseId = String(track?.exerciseId ?? "");
-    if (!exerciseId) return undefined;
-  
-    const ex = exerciseById.get(exerciseId);
-  
-    // ✅ NEW: explicit movementPattern override
-    const explicit = String(ex?.movementPattern ?? "").toLowerCase();
-  
-    if (explicit === "push" || explicit === "pull" || explicit === "squat" || explicit === "hinge") {
-      return explicit as StrengthPattern;
-    }
-  
-    // 🔁 Fallback to existing classifier
-    return classifyStrengthPattern({
-      exerciseId,
-      exercise: ex ?? null,
-      exerciseName: ex?.name ?? ex?.displayName ?? ex?.title ?? "",
-      trackDisplayName: String(track?.displayName ?? ""),
-    });
+   const acc = makeAccumulator();
+   
+   for (const s of working) {
+     const track = trackById.get(s.trackId);
+     if (!track) continue;
+    const canonicalExercise = getCanonicalExerciseForTrack(track);
+    if (!canonicalExercise) continue;
+    
+        if (
+          !isSetEligibleForStrengthSignal({
+            set: s,
+            track,
+            exercise: canonicalExercise,
+          })
+        ) {
+          continue;
+        }
+    
+    
+    const exerciseName = String(
+      canonicalExercise?.name ??
+      canonicalExercise?.displayName ??
+      canonicalExercise?.title ??
+      ""
+).trim();
+ 
+          const explicitMovementPattern = String(canonicalExercise?.movementPattern ?? "")
+            .trim()
+            .toLowerCase();
+     
+          const pattern = patternFast(track, canonicalExercise);
+          if (!pattern) continue;
+     
+     const effectiveWeight = calcEffectiveStrengthWeightLb(s.weight, exerciseName, bodyweight);
+     const scored = computeScoredE1RM(effectiveWeight, s.reps);
+     if (scored <= 0) continue;
+ 
+     const bucket = acc[pattern];
+     bucket.completedWorkingSets += 1;
+ 
+     if (scored > bucket.top) bucket.top = scored;
+     const role = String(canonicalExercise?.strengthSignalRole ?? "")
+       .trim()
+       .toLowerCase();
+     
+     if (role === "secondary") {
+       bucket.working.push(scored * 0.6);
+     } else {
+       bucket.working.push(scored);
 }
-
+ 
+     if (isHardSet(s)) bucket.hardSets += 1;
+  }
+  
+ 
+   /* ------------------------------------------------------------------------ */
+   /* Breadcrumb 7C — Build pattern outputs                                     */
   /* ------------------------------------------------------------------------ */
-  /* Breadcrumb 7B — Accumulate per-pattern strength signal                    */
-  /* ------------------------------------------------------------------------ */
-  const acc = makeAccumulator();
-
-  for (const s of working) {
-    const track = trackById.get(s.trackId);
-    if (!track) continue;
-    if (!isStrengthTrackType(track.trackType)) continue;
   
-    const exId = String(track.exerciseId ?? "");
-    if (!exId) continue;
-  
-    const ex = exerciseById.get(exId);
-    const exerciseName = String(ex?.name ?? ex?.displayName ?? ex?.title ?? "").trim();
-    
-    const strengthSignalRole = String((ex as any)?.strengthSignalRole ?? "")
-      .trim()
-      .toLowerCase();
-    
-    if (strengthSignalRole === "excluded") continue;
-    
-    const pattern = patternFast(track);
-    if (!pattern) continue;
-  
-    const effectiveWeight = calcEffectiveStrengthWeightLb(s.weight, exerciseName, bodyweight);
-    const scored = computeScoredE1RM(effectiveWeight, s.reps);
-    if (scored <= 0) continue;
-  
-    const bucket = acc[pattern];
-    bucket.completedWorkingSets += 1;
-  
-    if (scored > bucket.top) bucket.top = scored;
-    bucket.working.push(scored);
-  
-    if (isHardSet(s)) bucket.hardSets += 1;
-}
-
-  /* ------------------------------------------------------------------------ */
-  /* Breadcrumb 7C — Build pattern outputs                                     */
-  /* ------------------------------------------------------------------------ */
   const patterns: PatternScore[] = (Object.keys(acc) as StrengthPattern[]).map((p) =>
     buildPatternScore(p, acc[p], bodyweight)
   );

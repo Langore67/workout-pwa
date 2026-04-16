@@ -1689,7 +1689,15 @@ export default function ExercisesPage() {
 
     setEditMetricMode(normalizeMetricMode((e as any).metricMode));
     setEditMovementPattern(String((e as any).movementPattern ?? ""));
-    setEditStrengthSignalRole(String((e as any).strengthSignalRole ?? ""));
+    {
+      const rawStrengthSignalRole = String((e as any).strengthSignalRole ?? "")
+        .trim()
+        .toLowerCase();
+
+      setEditStrengthSignalRole(
+        rawStrengthSignalRole === "included" ? "" : rawStrengthSignalRole
+      );
+    }
 
     setEditSummary(String((e as any).summary ?? ""));
     setEditDirections(String((e as any).directions ?? ""));
@@ -2910,18 +2918,27 @@ export default function ExercisesPage() {
 			    </span>
 			  ) : null}
 			
-			  {(e as any).strengthSignalRole ? (
-			    <span
-			      className="badge"
-			      style={{
-			        fontSize: 11,
-			        fontWeight: 700,
-			        padding: "2px 8px",
-			      }}
-			    >
-			      Signal: {String((e as any).strengthSignalRole).replace(/^./, (c) => c.toUpperCase())}
-			    </span>
-			  ) : null}
+			  			  {(() => {
+			  			    const raw = String((e as any).strengthSignalRole ?? "").trim().toLowerCase();
+			  
+			  			    let label = "Primary";
+			  			    if (raw === "secondary") label = "Secondary";
+			  			    else if (raw === "excluded") label = "Excluded";
+			  			    else if (raw === "included") label = "Primary";
+			  
+			  			    return (
+			  			      <span
+			  			        className="badge"
+			  			        style={{
+			  			          fontSize: 11,
+			  			          fontWeight: 700,
+			  			          padding: "2px 8px",
+			  			        }}
+			  			      >
+			  			        Signal: {label}
+			  			      </span>
+			  			    );
+                          })()}
 			
 			  <span>• Cues {hasCues ? `S${cs} • E${ce}` : "—"}</span>
                        </div>
@@ -3171,28 +3188,29 @@ export default function ExercisesPage() {
 	           </select>
 	         </div>
 	       
-	         <div style={{ minWidth: 180, flex: 1 }}>
-	           <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Strength Signal Role</div>
-	           <select
-	             className="input"
-	             value={editStrengthSignalRole}
-	             onChange={(e) => setEditStrengthSignalRole(e.target.value)}
-	             title="Controls whether this exercise should be included in Strength Signal"
-	           >
-	             <option value="">—</option>
-	             <option value="included">Included</option>
-	             <option value="excluded">Excluded</option>
-	           </select>
-	         </div>
+		   <div style={{ minWidth: 180, flex: 1 }}>
+		     <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Strength Signal Role</div>
+		     <select
+		       className="input"
+		       value={editStrengthSignalRole}
+		       onChange={(e) => setEditStrengthSignalRole(e.target.value)}
+		       title="Controls how strongly this exercise contributes to Strength Signal"
+		     >
+		       <option value="">Primary / Default</option>
+		       <option value="secondary">Secondary (downweighted)</option>
+		       <option value="excluded">Excluded</option>
+		     </select>
+         </div>
 	       </div>
 	       
 	       <div className="muted" style={{ marginTop: 6, fontSize: 12, lineHeight: 1.4 }}>
 	         <div>
 	           <strong>Movement Pattern</strong>: Used for movement breakdown and balance (push, pull, squat, hinge, etc).
 	         </div>
-	         <div style={{ marginTop: 4 }}>
-	           <strong>Strength Signal Role</strong>: Controls whether this exercise contributes to Strength Signal.
-	           Use <b>Included</b> for primary compound lifts. Use <b>Excluded</b> for accessories and isolation work.
+	         	         <div style={{ marginTop: 4 }}>
+		 	           <strong>Strength Signal Role</strong>: Controls how strongly this exercise contributes to Strength Signal.
+		 	           Leave blank for <b>primary/default</b> lifts, use <b>Secondary</b> for accessories you still want counted
+		 	           at reduced weight, and use <b>Excluded</b> for movements that should not affect the signal.
 	         </div>
                 </div>
 

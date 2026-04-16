@@ -4,7 +4,7 @@
     "bodyPart": "Back",
     "category": "Strength",
     "equipment": "Dumbbell",
-    "strengthSignalRole": "included",
+    "strengthSignalRole": "secondary",
     "movementPattern": "pull",
     "aliases": [
       "Three Point Dumbbell Row"
@@ -148,7 +148,6 @@
     "bodyPart": "Legs",
     "category": "Strength",
     "equipment": "Barbell",
-    "strengthSignalRole": "included",
     "movementPattern": "squat",
     "aliases": [
       "Back Squat",
@@ -171,7 +170,6 @@
     "bodyPart": "Chest",
     "category": "Strength",
     "equipment": "Barbell",
-    "strengthSignalRole": "included",
     "movementPattern": "push",
     "cuesSetup": [
       "Shoulder blades down and back",
@@ -678,7 +676,7 @@
     "bodyPart": "Chest",
     "category": "Strength",
     "equipment": "Dumbbell",
-    "strengthSignalRole": "included",
+    "strengthSignalRole": "secondary",
     "movementPattern": "push",
     "cuesSetup": [
       "Shoulder blades down and back",
@@ -1444,7 +1442,7 @@
     "bodyPart": "Chest",
     "category": "Machine",
     "equipment": "Machine",
-    "strengthSignalRole": "included",
+    "strengthSignalRole": "secondary",
     "movementPattern": "push",
     "cuesSetup": [
       "Shoulder blades down and back",
@@ -1635,7 +1633,6 @@
     "bodyPart": "Back",
     "category": "Bodyweight",
     "equipment": "Bodyweight",
-    "strengthSignalRole": "included",
     "movementPattern": "pull",
     "cuesSetup": [
       "Hang tall; shoulders set down",
@@ -1758,7 +1755,6 @@
     "bodyPart": "Legs",
     "category": "Strength",
     "equipment": "Barbell",
-    "strengthSignalRole": "included",
     "movementPattern": "hinge",
     "cuesSetup": [
       "Feet hip-width; bar/weight close to shins",
@@ -1849,7 +1845,7 @@
     "bodyPart": "Back",
     "category": "Machine",
     "equipment": "Cable",
-    "strengthSignalRole": "included",
+    "strengthSignalRole": "secondary",
     "movementPattern": "pull",
     "cuesSetup": [
       "Set shoulders down and back before pulling",
