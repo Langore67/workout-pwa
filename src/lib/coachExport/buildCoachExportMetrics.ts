@@ -27,6 +27,7 @@ import type {
   CoachExportMetric,
   CoachExportMetrics,
 } from "./types";
+import { getCurrentPhase } from "../../config/appConfig";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -257,6 +258,7 @@ function buildDataNotes(metrics: CoachExportMetrics) {
 
 export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
   const generatedAt = Date.now();
+  const currentPhase = await getCurrentPhase();
   const bodyRows = sortedBodyRows(((await db.bodyMetrics.toArray()) ?? []) as BodyMetricEntry[]);
 
   const bodyComp = {
@@ -279,7 +281,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
   const hydration = buildHydration(bodyRows);
   const strengthSignal = await buildStrengthSignal(generatedAt);
   const sharedStrengthTrend = await computeStrengthTrend(12, 28);
-  const computedStrength = computeStrengthDeltaFromStrengthTrend(sharedStrengthTrend, "cut");
+  const computedStrength = computeStrengthDeltaFromStrengthTrend(sharedStrengthTrend, currentPhase);
   const phaseQualityInputs = buildPhaseQualityInputsFromBodyRows(
     bodyRows,
     computedStrength.strengthDelta,
@@ -287,7 +289,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     hydration.distortionLikely
   );
   const phaseQuality =
-    (phaseQualityInputs.sampleCount ?? 0) > 0 ? evaluatePhaseQuality("cut", phaseQualityInputs) : null;
+    (phaseQualityInputs.sampleCount ?? 0) > 0 ? evaluatePhaseQuality(currentPhase, phaseQualityInputs) : null;
   const anchorLifts = await buildAnchorLifts(bodyRows);
 
   const readinessNotes = buildReadinessNotes({
@@ -298,6 +300,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
 
   const metrics: CoachExportMetrics = {
     generatedAt,
+    currentPhase,
     bodyComp,
     hydration,
     strengthSignal,

@@ -30,13 +30,20 @@ import {
   computeStrengthSnapshot,
   StrengthSnapshot,
 } from "../strength/Strength";
+import { getStrengthSignalV2Debug } from "../strength/v2/computeStrengthSignalV2";
 import TrendChartCard from "../components/charts/TrendChartCard";
 import { formatTwoDecimals } from "../components/charts/chartFormatters";
 import InfoStubButton from "../components/information/InfoStubButton";
 import { buildStrengthPageViewModel } from "./strength/strengthPageViewModel";
+import {
+  getCurrentPhase,
+  getStrengthSignalConfig,
+  setCurrentPhase,
+  type CurrentPhase,
+} from "../config/appConfig";
 
 type StrengthPattern = "squat" | "hinge" | "push" | "pull";
-type Mode = "cut" | "maintain" | "bulk";
+type Mode = CurrentPhase;
 
 const MODE_KEY = "workout_pwa_strength_mode_v1";
 
@@ -159,7 +166,7 @@ function CollapseChevron({ open }: { open: boolean }) {
 /*  Breadcrumb 3 — Mode (persisted)                                           */
 /* ========================================================================== */
 
-function loadMode(): Mode {
+function loadLegacyMode(): Mode {
   try {
     const raw = String(localStorage.getItem(MODE_KEY) ?? "");
     if (raw === "cut" || raw === "maintain" || raw === "bulk") return raw;
@@ -191,7 +198,8 @@ export default function StrengthPage() {
   const navigate = useNavigate();
   const windowDays = 28;
 
-  const [mode, setMode] = useState<Mode>(() => loadMode());
+  const [mode, setMode] = useState<Mode>(() => loadLegacyMode());
+  const [phaseLoaded, setPhaseLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
   const [snapshot, setSnapshot] = useState<StrengthSnapshot | null>(null);
@@ -199,8 +207,47 @@ export default function StrengthPage() {
   const [trendTableOpen, setTrendTableOpen] = useState(false);
 
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        const debugText = await getStrengthSignalV2Debug();
+        if (alive) console.info("[StrengthSignalV2Debug]\n" + debugText);
+      } catch (e) {
+        if (alive) console.warn("[StrengthSignalV2Debug] Failed to compute debug output.", e);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      const [sharedPhase] = await Promise.all([
+        getCurrentPhase({ fallbackPhase: loadLegacyMode() }),
+        getStrengthSignalConfig(),
+      ]);
+      if (!alive) return;
+      setMode(sharedPhase);
+      setPhaseLoaded(true);
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!phaseLoaded) return;
     saveMode(mode);
-  }, [mode]);
+    void setCurrentPhase(mode);
+  }, [mode, phaseLoaded]);
 
   useEffect(() => {
     let alive = true;

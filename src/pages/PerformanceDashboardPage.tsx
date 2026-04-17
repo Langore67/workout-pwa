@@ -74,6 +74,13 @@ import {
   type SetEntry,
   type Track,
 } from "../db";
+import {
+  dashboardPhaseToPhase,
+  getCurrentPhase,
+  getStrengthSignalConfig,
+  phaseToDashboardPhase,
+  setCurrentPhase,
+} from "../config/appConfig";
 
 /* ============================================================================
    Breadcrumb 1 — Types
@@ -1286,6 +1293,7 @@ export default function PerformanceDashboardPage() {
   const navigate = useNavigate();
 
   const [activePhase, setActivePhase] = useState<DashboardPhase>("CUT");
+  const [phaseLoaded, setPhaseLoaded] = useState(false);
   const [activeRange, setActiveRange] = useState<DashboardRange>("8W");
   const [dbSource, setDbSource] = useState<DbStrengthSource | null>(null);
   const [sharedStrengthResult, setSharedStrengthResult] = useState<
@@ -1293,6 +1301,34 @@ export default function PerformanceDashboardPage() {
   >(null);
   const [sharedStrengthTrend, setSharedStrengthTrend] = useState<StrengthTrendRow[]>([]);
   const [showDebug, setShowDebug] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPhase() {
+      try {
+        const [phase] = await Promise.all([
+          getCurrentPhase(),
+          getStrengthSignalConfig(),
+        ]);
+        if (cancelled) return;
+        setActivePhase(phaseToDashboardPhase(phase));
+      } finally {
+        if (!cancelled) setPhaseLoaded(true);
+      }
+    }
+
+    void loadPhase();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!phaseLoaded) return;
+    void setCurrentPhase(dashboardPhaseToPhase(activePhase));
+  }, [activePhase, phaseLoaded]);
 
   useEffect(() => {
     let cancelled = false;
