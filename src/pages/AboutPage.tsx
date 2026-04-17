@@ -16,10 +16,16 @@
    - Keeps wording product-facing, not dev-panel heavy
    ============================================================================ */
 
-import React from "react";
+import React, { useState } from "react";
 import { Page, Section } from "../components/Page.tsx";
 import HubPageHeader from "../components/layout/HubPageHeader";
 import { buildInfo } from "../build/buildInfo";
+import {
+  ACTIVE_RDL_EXERCISE_ID,
+  ORPHAN_RDL_EXERCISE_ID,
+  repairRomanianDeadliftHistory,
+  type RdlRepairResult,
+} from "../maintenance/repairRdlHistory";
 
 /* ============================================================================
    Breadcrumb 1 — Small helpers
@@ -81,6 +87,43 @@ function formatBuildTimestamp(value: string) {
 
 export default function AboutPage() {
   const builtAtDisplay = formatBuildTimestamp(buildInfo.builtAt);
+  const [rdlRepairResult, setRdlRepairResult] = useState<RdlRepairResult | null>(null);
+
+  async function onRepairRdlHistory() {
+    const ok = window.confirm(
+      [
+        "Repair Romanian Deadlift history?",
+        "",
+        `This will repoint references from ${ORPHAN_RDL_EXERCISE_ID}`,
+        `to ${ACTIVE_RDL_EXERCISE_ID}.`,
+        "",
+        "This does not create exercises and only touches exact old-ID references.",
+      ].join("\n")
+    );
+
+    if (!ok) return;
+
+    setRdlRepairResult({
+      ok: true,
+      message: "Repairing RDL history...",
+      tracksMoved: 0,
+      sessionItemsMoved: 0,
+      setsMoved: 0,
+    });
+
+    try {
+      const result = await repairRomanianDeadliftHistory();
+      setRdlRepairResult(result);
+    } catch (e: any) {
+      setRdlRepairResult({
+        ok: false,
+        message: `RDL history repair failed: ${e?.message ?? e}`,
+        tracksMoved: 0,
+        sessionItemsMoved: 0,
+        setsMoved: 0,
+      });
+    }
+  }
 
   return (
     <Page>
@@ -136,6 +179,48 @@ export default function AboutPage() {
               value={<span style={{ fontFamily: "monospace" }}>{builtAtDisplay}</span>}
             />
           </div>
+        </div>
+      </Section>
+
+      {/* ======================================================================
+          Breadcrumb 2B.1 — Temporary maintenance
+         ==================================================================== */}
+      <Section>
+        <div className="card">
+          <CardTitle
+            title="Temporary Maintenance"
+            subtitle="Manual one-time history repair."
+          />
+
+          <div className="muted" style={{ fontSize: 14, lineHeight: 1.5, marginBottom: 12 }}>
+            Repairs orphaned Romanian Deadlift history by moving exact old-ID references to
+            the active Romanian Deadlift exercise.
+          </div>
+
+          <button
+            className="btn small"
+            onClick={onRepairRdlHistory}
+            title="Repoint orphan Romanian Deadlift history to the active Romanian Deadlift exercise"
+          >
+            Repair RDL History
+          </button>
+
+          {rdlRepairResult && (
+            <div
+              className="muted"
+              style={{
+                marginTop: 10,
+                color: rdlRepairResult.ok ? "var(--text)" : "var(--danger)",
+                lineHeight: 1.45,
+              }}
+            >
+              <div>{rdlRepairResult.message}</div>
+              <div>
+                Tracks moved: {rdlRepairResult.tracksMoved} · Session items moved:{" "}
+                {rdlRepairResult.sessionItemsMoved} · Sets moved: {rdlRepairResult.setsMoved}
+              </div>
+            </div>
+          )}
         </div>
       </Section>
 
