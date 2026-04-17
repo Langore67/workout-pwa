@@ -152,6 +152,13 @@ function TopNav() {
         <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>
           Start
         </NavLink>
+        
+        <NavLink
+	  to="/templates"
+	  className={({ isActive }) => (isActive ? "active" : "")}
+	>
+	  Templates
+        </NavLink>
 
         <NavLink to="/exercises" className={({ isActive }) => (isActive ? "active" : "")}>
           Exercises

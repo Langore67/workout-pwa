@@ -1,5 +1,6 @@
 import type { StrengthPattern } from "../../strength/Strength";
 import type { PhaseQualityResult } from "../../body/phaseQualityModel";
+import type { CurrentPhase } from "../../config/appConfig";
 
 export type CoachExportMetric = {
   latest: number | null;
@@ -35,6 +36,7 @@ export type CoachExportStrengthSignal = {
 
 export type CoachExportMetrics = {
   generatedAt: number;
+  currentPhase: CurrentPhase;
   bodyComp: {
     weight: CoachExportMetric;
     waist: CoachExportMetric;

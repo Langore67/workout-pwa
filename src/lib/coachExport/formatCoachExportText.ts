@@ -1,4 +1,5 @@
 import type { CoachExportAnchorLift, CoachExportMetrics } from "./types";
+import type { CurrentPhase } from "../../config/appConfig";
 
 function formatDate(ms: number | null | undefined) {
   if (ms == null || !Number.isFinite(ms)) return "Unknown";
@@ -39,15 +40,43 @@ function formatAnchorLift(lift: CoachExportAnchorLift) {
   return `- ${lift.pattern}: ${name} | effective ${formatValue(lift.effectiveWeightLb, 0, " lb")} x ${formatValue(lift.reps, 0)} | e1RM ${formatValue(lift.e1rm, 0)} | ${formatDate(lift.performedAt)}`;
 }
 
+function formatPhaseQualityHeading(phase: CurrentPhase) {
+  if (phase === "bulk") return "Bulk / Phase Quality";
+  if (phase === "maintain") return "Maintenance / Phase Quality";
+  return "Cut / Phase Quality";
+}
+
+function formatPhaseQuestions(phase: CurrentPhase) {
+  if (phase === "bulk") {
+    return [
+      "1. Is weight gain trending appropriately?",
+      "2. Are lean mass gain signals showing up?",
+      "3. How is strength progression?",
+    ];
+  }
+
+  if (phase === "maintain") {
+    return [
+      "1. Is body weight staying stable?",
+      "2. Are recomposition signals showing up?",
+      "3. How stable is strength?",
+    ];
+  }
+
+  return [
+    "1. Is retatrutide working / is fat loss showing up?",
+    "2. Am I preserving muscle?",
+    "3. How is strength retention?",
+  ];
+}
+
 export function formatCoachExportText(metrics: CoachExportMetrics) {
   const lines = [
     "IronForge Coach Export",
     `Generated: ${formatDate(metrics.generatedAt)}`,
     "",
     "Questions to answer:",
-    "1. Is retatrutide working / is fat loss showing up?",
-    "2. Am I preserving muscle?",
-    "3. How is strength progressing?",
+    ...formatPhaseQuestions(metrics.currentPhase),
     "",
     "Body Composition (14d trends)",
     formatMetricLine("Weight", metrics.bodyComp.weight.latest, metrics.bodyComp.weight.delta14d, " lb"),
@@ -57,7 +86,7 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     `- Bodyweight delta 7d: ${formatSigned(metrics.bodyComp.bodyweightDelta7d, 1, " lb")}`,
     `- Bodyweight delta 14d: ${formatSigned(metrics.bodyComp.bodyweightDelta14d, 1, " lb")}`,
     "",
-    "Cut / Phase Quality",
+    formatPhaseQualityHeading(metrics.currentPhase),
     `- Status: ${metrics.phaseQuality?.finalStatus ?? "Insufficient Data"}`,
     `- Confidence: ${metrics.phaseQuality?.confidence ?? "Unknown"}`,
     ...(metrics.phaseQuality?.drivers?.length

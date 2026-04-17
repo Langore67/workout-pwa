@@ -109,8 +109,13 @@ import {
   computeStrengthTrend,
   type StrengthTrendRow,
 } from "../strength/Strength";
+import {
+  getCurrentPhase,
+  setCurrentPhase,
+  type CurrentPhase,
+} from "../config/appConfig";
 
-type Mode = "cut" | "maintain" | "bulk";
+type Mode = CurrentPhase;
 
 type BodyMetricRow = {
   id: string;
@@ -285,7 +290,7 @@ function getChangeColor(
 
 
 
-function loadMode(): Mode {
+function loadLegacyMode(): Mode {
   try {
     const raw = String(localStorage.getItem(MODE_KEY) ?? "");
     if (raw === "cut" || raw === "maintain" || raw === "bulk") return raw;
@@ -464,7 +469,8 @@ function TargetRow({
 
 export default function BodyCompositionPage() {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<Mode>(() => loadMode());
+  const [mode, setMode] = useState<Mode>(() => loadLegacyMode());
+  const [phaseLoaded, setPhaseLoaded] = useState(false);
   const [strengthTrend, setStrengthTrend] = useState<StrengthTrendRow[]>([]);
 
   const rows = useLiveQuery(async () => {
@@ -480,8 +486,25 @@ export default function BodyCompositionPage() {
   }, []);
 
   React.useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      const sharedPhase = await getCurrentPhase({ fallbackPhase: loadLegacyMode() });
+      if (!alive) return;
+      setMode(sharedPhase);
+      setPhaseLoaded(true);
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!phaseLoaded) return;
     saveMode(mode);
-  }, [mode]);
+    void setCurrentPhase(mode);
+  }, [mode, phaseLoaded]);
 
   React.useEffect(() => {
     let alive = true;
