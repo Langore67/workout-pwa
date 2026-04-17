@@ -34,6 +34,17 @@ import { syncExerciseAliasesFromRows } from "../syncExerciseAliases";
 type SetKind = "warmup" | "working" | "drop" | "failure";
 type SetEntryX = SetEntry & { setType?: SetKind | string; completedAt?: number };
 
+const ORPHAN_RDL_EXERCISE_ID = "881d520a-155a-4213-9a48-f000ec5cdefc";
+const ACTIVE_RDL_EXERCISE_ID = "a4decf70-c8ec-4a57-8001-1f15408cb6c3";
+
+type RdlRepairResult = {
+  ok: boolean;
+  message: string;
+  tracksMoved: number;
+  sessionItemsMoved: number;
+  setsMoved: number;
+};
+
 function fmtDate(ts?: number) {
   if (!ts || !Number.isFinite(ts)) return "";
   try {
@@ -75,6 +86,51 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
   }
 }
 
+async function repairRomanianDeadliftHistory(): Promise<RdlRepairResult> {
+  const target = await db.exercises.get(ACTIVE_RDL_EXERCISE_ID);
+  if (!target) {
+    throw new Error(`Target Romanian Deadlift exercise not found: ${ACTIVE_RDL_EXERCISE_ID}`);
+  }
+
+  let tracksMoved = 0;
+  let sessionItemsMoved = 0;
+  let setsMoved = 0;
+
+  await db.transaction("rw", db.tracks, db.sessionItems, db.sets, async () => {
+    const orphanTracks = await db.tracks.where("exerciseId").equals(ORPHAN_RDL_EXERCISE_ID).toArray();
+    for (const track of orphanTracks) {
+      await db.tracks.update(track.id, { exerciseId: ACTIVE_RDL_EXERCISE_ID });
+      tracksMoved += 1;
+    }
+
+    const sessionItems = await db.sessionItems.toArray();
+    for (const item of sessionItems as any[]) {
+      if (item?.exerciseId !== ORPHAN_RDL_EXERCISE_ID || !item?.id) continue;
+      await (db.sessionItems as any).update(item.id, { exerciseId: ACTIVE_RDL_EXERCISE_ID });
+      sessionItemsMoved += 1;
+    }
+
+    const sets = await db.sets.toArray();
+    for (const set of sets as any[]) {
+      if (set?.exerciseId !== ORPHAN_RDL_EXERCISE_ID || !set?.id) continue;
+      await (db.sets as any).update(set.id, { exerciseId: ACTIVE_RDL_EXERCISE_ID });
+      setsMoved += 1;
+    }
+  });
+
+  const totalMoved = tracksMoved + sessionItemsMoved + setsMoved;
+  return {
+    ok: true,
+    message:
+      totalMoved > 0
+        ? "RDL history repair complete."
+        : "No RDL history rows needed repair.",
+    tracksMoved,
+    sessionItemsMoved,
+    setsMoved,
+  };
+}
+
 export default function DevDiagnosticsPage() {
   // Hard guard: never show in production builds.
   if (!import.meta.env.DEV) return <Navigate to="/" replace />;
@@ -83,6 +139,7 @@ export default function DevDiagnosticsPage() {
   const loc = useLocation();
 
   const [aliasSyncStatus, setAliasSyncStatus] = useState<string>("");
+  const [rdlRepairResult, setRdlRepairResult] = useState<RdlRepairResult | null>(null);
 
   /* --------------------------------------------------------------------------
      Build / version info
@@ -352,6 +409,42 @@ export default function DevDiagnosticsPage() {
     }
   }
 
+  async function onRepairRdlHistory() {
+    const ok = window.confirm(
+      [
+        "Repair Romanian Deadlift history?",
+        "",
+        `This will repoint references from ${ORPHAN_RDL_EXERCISE_ID}`,
+        `to ${ACTIVE_RDL_EXERCISE_ID}.`,
+        "",
+        "This does not create exercises and only touches exact old-ID references.",
+      ].join("\n")
+    );
+
+    if (!ok) return;
+
+    setRdlRepairResult({
+      ok: true,
+      message: "Repairing RDL history...",
+      tracksMoved: 0,
+      sessionItemsMoved: 0,
+      setsMoved: 0,
+    });
+
+    try {
+      const result = await repairRomanianDeadliftHistory();
+      setRdlRepairResult(result);
+    } catch (e: any) {
+      setRdlRepairResult({
+        ok: false,
+        message: `RDL history repair failed: ${e?.message ?? e}`,
+        tracksMoved: 0,
+        sessionItemsMoved: 0,
+        setsMoved: 0,
+      });
+    }
+  }
+
   /* --------------------------------------------------------------------------
      Render
      ----------------------------------------------------------------------- */
@@ -408,11 +501,36 @@ export default function DevDiagnosticsPage() {
           >
             Sync aliases
           </button>
+
+          <button
+            className="btn small"
+            onClick={onRepairRdlHistory}
+            title="Repoint orphan Romanian Deadlift history to the active Romanian Deadlift exercise"
+          >
+            Repair RDL History
+          </button>
         </div>
 
         {aliasSyncStatus && (
           <div className="muted" style={{ marginTop: 8 }}>
             {aliasSyncStatus}
+          </div>
+        )}
+
+        {rdlRepairResult && (
+          <div
+            className="muted"
+            style={{
+              marginTop: 8,
+              color: rdlRepairResult.ok ? "var(--text)" : "var(--danger)",
+              lineHeight: 1.45,
+            }}
+          >
+            <div>{rdlRepairResult.message}</div>
+            <div>
+              Tracks moved: {rdlRepairResult.tracksMoved} · Session items moved:{" "}
+              {rdlRepairResult.sessionItemsMoved} · Sets moved: {rdlRepairResult.setsMoved}
+            </div>
           </div>
         )}
 
