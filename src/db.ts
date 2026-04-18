@@ -43,6 +43,8 @@ export type TrackingMode =
   | "breaths";
 
 export type MetricMode = "reps" | "distance" | "time";
+export type ExerciseMovementPattern = "push" | "pull" | "hinge" | "squat" | "carry" | "lunge";
+export type AnchorEligibility = "none" | "conditional" | "primary";
 
 export type BodyPart =
   | "Chest"
@@ -114,6 +116,9 @@ export interface Exercise {
   category?: ExerciseCategory;
   equipment?: Equipment;
   metricMode?: MetricMode;
+  movementPattern?: ExerciseMovementPattern;
+  anchorEligibility?: AnchorEligibility;
+  anchorSubtypes?: string[];
 
   equipmentTags: string[];
 
