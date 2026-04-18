@@ -18,6 +18,10 @@
       "Drive elbow toward your hip pocket",
       "Pause briefly at the top; squeeze back",
       "Control the return; don’t let the shoulder dump forward"
+    ],
+    "anchorEligibility": "conditional",
+    "anchorSubtypes": [
+      "horizontalPull"
     ]
   },
   {
@@ -107,6 +111,10 @@
       "Drive elbows down; chest toward bar",
       "Avoid kicking/swinging",
       "Lower under control to full hang"
+    ],
+    "anchorEligibility": "conditional",
+    "anchorSubtypes": [
+      "verticalPull"
     ]
   },
   {
@@ -141,7 +149,10 @@
       "Move smoothly; control the lowering phase",
       "Keep tension on the target muscles",
       "Stop before form breaks"
-    ]
+    ],
+    "movementPattern": "pull",
+    "anchorEligibility": "none",
+    "anchorSubtypes": []
   },
   {
     "name": "Barbell Back Squat",
@@ -163,6 +174,10 @@
       "Sit between the hips; keep chest tall",
       "Knees track in line with toes",
       "Control the descent; drive through mid-foot"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "squat"
     ]
   },
   {
@@ -180,6 +195,10 @@
       "Lower with control; elbows ~45° from torso",
       "Press up and back; keep shoulders packed",
       "Stop 1 rep before form breaks"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "horizontalPush"
     ]
   },
   {
@@ -215,6 +234,10 @@
       "Press up in a straight line; move head slightly back then through",
       "Lock out overhead with biceps near ears",
       "Avoid leaning back; keep core tight"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "verticalPush"
     ]
   },
   {
@@ -233,6 +256,10 @@
       "Pull elbows toward your pockets",
       "Pause briefly at the top; squeeze back",
       "Control the return; don’t let shoulders dump forward"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "horizontalPull"
     ]
   },
   {
@@ -275,7 +302,7 @@
     "category": "Strength",
     "equipment": "Dumbbell",
     "strengthSignalRole": "included",
-    "movementPattern": "squat",
+    "movementPattern": "lunge",
     "cuesSetup": [
       "Feet about shoulder-width, toes slightly out",
       "Brace hard before the first rep",
@@ -285,6 +312,10 @@
       "Sit between the hips; keep chest tall",
       "Knees track in line with toes",
       "Control the descent; drive through mid-foot"
+    ],
+    "anchorEligibility": "conditional",
+    "anchorSubtypes": [
+      "lunge"
     ]
   },
   {
@@ -320,6 +351,10 @@
       "Lower with control; elbows ~45° from torso",
       "Press up and back; keep shoulders packed",
       "Stop 1 rep before form breaks"
+    ],
+    "anchorEligibility": "conditional",
+    "anchorSubtypes": [
+      "horizontalPush"
     ]
   },
   {
@@ -371,7 +406,10 @@
       "Move smoothly; control the lowering phase",
       "Keep tension on the target muscles",
       "Stop before form breaks"
-    ]
+    ],
+    "movementPattern": "push",
+    "anchorEligibility": "none",
+    "anchorSubtypes": []
   },
   {
     "name": "Cable Lateral Raise",
@@ -388,7 +426,10 @@
       "Move from the shoulder; don’t shrug",
       "Stop around shoulder height",
       "Control down; feel the target muscle"
-    ]
+    ],
+    "movementPattern": "push",
+    "anchorEligibility": "none",
+    "anchorSubtypes": []
   },
   {
     "name": "Cable Overhead Triceps Extension",
@@ -508,7 +549,10 @@
       "Press up and back; keep shoulders packed",
       "Stop 1 rep before form breaks",
       "Go as deep as shoulders tolerate"
-    ]
+    ],
+    "movementPattern": "push",
+    "anchorEligibility": "none",
+    "anchorSubtypes": []
   },
   {
     "name": "Chest Supported Dumbbell Row",
@@ -526,6 +570,10 @@
       "Pull elbows toward your pockets",
       "Pause briefly at the top; squeeze back",
       "Control the return; don’t let shoulders dump forward"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "horizontalPull"
     ]
   },
   {
@@ -544,6 +592,10 @@
       "Pull elbows toward your pockets",
       "Pause briefly at the top; squeeze back",
       "Control the return; don’t let shoulders dump forward"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "horizontalPull"
     ]
   },
   {
@@ -562,6 +614,10 @@
       "Drive elbows down; chest toward bar",
       "Avoid kicking/swinging",
       "Lower under control to full hang"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "verticalPull"
     ]
   },
   {
@@ -632,6 +688,10 @@
       "Push the floor away; keep the weight close",
       "Hips and shoulders rise together",
       "Stand tall without overextending the low back"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "hinge"
     ]
   },
   {
@@ -687,6 +747,10 @@
       "Lower with control; elbows ~45° from torso",
       "Press up and back; keep shoulders packed",
       "Stop 1 rep before form breaks"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "horizontalPush"
     ]
   },
   {
@@ -724,7 +788,10 @@
       "Move from the shoulder; don’t shrug",
       "Stop around shoulder height",
       "Control down; feel the target muscle"
-    ]
+    ],
+    "movementPattern": "push",
+    "anchorEligibility": "none",
+    "anchorSubtypes": []
   },
   {
     "name": "Dumbbell Pullover",
@@ -759,6 +826,10 @@
       "Press up in a straight line; move head slightly back then through",
       "Lock out overhead with biceps near ears",
       "Avoid leaning back; keep core tight"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "verticalPush"
     ]
   },
   {
@@ -827,7 +898,10 @@
       "Pull to nose/forehead",
       "Externally rotate at the end",
       "Return slowly; keep tension"
-    ]
+    ],
+    "movementPattern": "pull",
+    "anchorEligibility": "none",
+    "anchorSubtypes": []
   },
   {
     "name": "Farmer Carry",
@@ -845,6 +919,10 @@
       "Move smoothly; control the lowering phase",
       "Keep tension on the target muscles",
       "Stop before form breaks"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "carry"
     ]
   },
   {
@@ -881,6 +959,10 @@
       "Knees track in line with toes",
       "Control the descent; drive through mid-foot",
       "Keep torso upright; avoid dumping forward"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "squat"
     ]
   },
   {
@@ -923,6 +1005,10 @@
       "Drive through heels and squeeze glutes",
       "Pause briefly at the top without overextending",
       "Lower under control and keep tension"
+    ],
+    "anchorEligibility": "conditional",
+    "anchorSubtypes": [
+      "hinge"
     ]
   },
   {
@@ -974,6 +1060,11 @@
       "Move smoothly; control the lowering phase",
       "Keep tension on the target muscles",
       "Stop before form breaks"
+    ],
+    "movementPattern": "hinge",
+    "anchorEligibility": "none",
+    "anchorSubtypes": [
+      "hinge"
     ]
   },
   {
@@ -992,6 +1083,10 @@
       "Sit between the hips; keep chest tall",
       "Knees track in line with toes",
       "Control the descent; drive through mid-foot"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "squat"
     ]
   },
   {
@@ -1146,6 +1241,10 @@
       "Move smoothly; control the lowering phase",
       "Keep tension on the target muscles",
       "Stop before form breaks"
+    ],
+    "anchorEligibility": "conditional",
+    "anchorSubtypes": [
+      "hinge"
     ]
   },
   {
@@ -1167,6 +1266,10 @@
       "Lower with control; elbows ~45° from torso",
       "Press up and back; keep shoulders packed",
       "Stop 1 rep before form breaks"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "horizontalPush"
     ]
   },
   {
@@ -1185,6 +1288,10 @@
       "Lower with control; elbows ~45° from torso",
       "Press up and back; keep shoulders packed",
       "Stop 1 rep before form breaks"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "horizontalPush"
     ]
   },
   {
@@ -1306,6 +1413,10 @@
       "Move smoothly; control the lowering phase",
       "Keep tension on the target muscles",
       "Stop before form breaks"
+    ],
+    "anchorEligibility": "conditional",
+    "anchorSubtypes": [
+      "verticalPush"
     ]
   },
   {
@@ -1343,6 +1454,10 @@
       "Pause briefly at the top; squeeze back",
       "Control the return; don’t let shoulders dump forward",
       "Pull bar to upper chest; don’t swing"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "verticalPull"
     ]
   },
   {
@@ -1362,6 +1477,10 @@
       "Pause briefly at the top; squeeze back",
       "Control the return; don’t let shoulders dump forward",
       "Pull bar to upper chest; don’t swing"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "verticalPull"
     ]
   },
   {
@@ -1418,6 +1537,10 @@
       "Sit between the hips; keep chest tall",
       "Knees track in line with toes",
       "Control the descent; drive through mid-foot"
+    ],
+    "anchorEligibility": "conditional",
+    "anchorSubtypes": [
+      "squat"
     ]
   },
   {
@@ -1453,6 +1576,10 @@
       "Lower with control; elbows ~45° from torso",
       "Press up and back; keep shoulders packed",
       "Stop 1 rep before form breaks"
+    ],
+    "anchorEligibility": "conditional",
+    "anchorSubtypes": [
+      "horizontalPush"
     ]
   },
   {
@@ -1471,6 +1598,10 @@
       "Press up in a straight line; move head slightly back then through",
       "Lock out overhead with biceps near ears",
       "Avoid leaning back; keep core tight"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "verticalPush"
     ]
   },
   {
@@ -1506,6 +1637,10 @@
       "Pull elbows toward your pockets",
       "Pause briefly at the top; squeeze back",
       "Control the return; don’t let shoulders dump forward"
+    ],
+    "anchorEligibility": "conditional",
+    "anchorSubtypes": [
+      "horizontalPull"
     ]
   },
   {
@@ -1574,7 +1709,10 @@
       "Move smoothly; control the lowering phase",
       "Keep tension on the target muscles",
       "Stop before form breaks"
-    ]
+    ],
+    "movementPattern": "push",
+    "anchorEligibility": "none",
+    "anchorSubtypes": []
   },
   {
     "name": "Pendlay Row",
@@ -1643,6 +1781,10 @@
       "Drive elbows down; chest toward bar",
       "Avoid kicking/swinging",
       "Lower under control to full hang"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "verticalPull"
     ]
   },
   {
@@ -1677,7 +1819,10 @@
       "Move from the shoulder; don’t shrug",
       "Stop around shoulder height",
       "Control down; feel the target muscle"
-    ]
+    ],
+    "movementPattern": "push",
+    "anchorEligibility": "none",
+    "anchorSubtypes": []
   },
   {
     "name": "Reverse Curl",
@@ -1728,6 +1873,11 @@
       "Lower under control; back knee toward floor",
       "Drive through front heel/mid-foot",
       "Keep hips square; don’t collapse inward"
+    ],
+    "movementPattern": "lunge",
+    "anchorEligibility": "none",
+    "anchorSubtypes": [
+      "lunge"
     ]
   },
   {
@@ -1748,7 +1898,10 @@
       "Move smoothly; control the lowering phase",
       "Keep tension on the target muscles",
       "Stop before form breaks"
-    ]
+    ],
+    "movementPattern": "pull",
+    "anchorEligibility": "none",
+    "anchorSubtypes": []
   },
   {
     "name": "Romanian Deadlift",
@@ -1766,6 +1919,10 @@
       "Hips and shoulders rise together",
       "Stand tall without overextending the low back",
       "Soft knees; hinge until hamstrings limit you"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "hinge"
     ]
   },
   {
@@ -1856,6 +2013,10 @@
       "Pull elbows toward your pockets",
       "Pause briefly at the top; squeeze back",
       "Control the return; don’t let shoulders dump forward"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "horizontalPull"
     ]
   },
   {
@@ -1961,6 +2122,10 @@
       "Hips and shoulders rise together",
       "Stand tall without overextending the low back",
       "Soft knees; hinge until hamstrings limit you"
+    ],
+    "anchorEligibility": "conditional",
+    "anchorSubtypes": [
+      "hinge"
     ]
   },
   {
@@ -1996,6 +2161,10 @@
       "Move smoothly; control the lowering phase",
       "Keep tension on the target muscles",
       "Stop before form breaks"
+    ],
+    "anchorEligibility": "conditional",
+    "anchorSubtypes": [
+      "carry"
     ]
   },
   {
@@ -2014,6 +2183,10 @@
       "Move smoothly; control the lowering phase",
       "Keep tension on the target muscles",
       "Stop before form breaks"
+    ],
+    "anchorEligibility": "conditional",
+    "anchorSubtypes": [
+      "carry"
     ]
   },
   {
@@ -2023,7 +2196,7 @@
     "equipment": "Machine",
     "strengthSignalRole": "included",
     "movementPattern": "push",
-        "cuesSetup": [
+    "cuesSetup": [
       "Shoulder blades down and back",
       "Wrists stacked; grip the handle/bar tight",
       "Feet planted; light arch allowed"
@@ -2032,6 +2205,10 @@
       "Lower with control; elbows ~45° from torso",
       "Press up and back; keep shoulders packed",
       "Stop 1 rep before form breaks"
+    ],
+    "anchorEligibility": "conditional",
+    "anchorSubtypes": [
+      "horizontalPush"
     ]
   },
   {
@@ -2050,6 +2227,10 @@
       "Sit between the hips; keep chest tall",
       "Knees track in line with toes",
       "Control the descent; drive through mid-foot"
+    ],
+    "anchorEligibility": "conditional",
+    "anchorSubtypes": [
+      "squat"
     ]
   },
   {
@@ -2118,6 +2299,11 @@
       "Lower under control; back knee toward floor",
       "Drive through front heel/mid-foot",
       "Keep hips square; don’t collapse inward"
+    ],
+    "movementPattern": "lunge",
+    "anchorEligibility": "none",
+    "anchorSubtypes": [
+      "lunge"
     ]
   },
   {
@@ -2136,7 +2322,10 @@
       "Pause briefly at the top; squeeze back",
       "Control the return; don’t let shoulders dump forward",
       "Pull bar to upper chest; don’t swing"
-    ]
+    ],
+    "movementPattern": "pull",
+    "anchorEligibility": "none",
+    "anchorSubtypes": []
   },
   {
     "name": "Suitcase Carry",
@@ -2154,6 +2343,10 @@
       "Move smoothly; control the lowering phase",
       "Keep tension on the target muscles",
       "Stop before form breaks"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "carry"
     ]
   },
   {
@@ -2190,6 +2383,10 @@
       "Pull elbows toward your pockets",
       "Pause briefly at the top; squeeze back",
       "Control the return; don’t let shoulders dump forward"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "horizontalPull"
     ]
   },
   {
@@ -2242,6 +2439,10 @@
       "Push the floor away; keep the weight close",
       "Hips and shoulders rise together",
       "Stand tall without overextending the low back"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "hinge"
     ]
   },
   {
@@ -2280,7 +2481,10 @@
       "Press up and back; keep shoulders packed",
       "Stop 1 rep before form breaks",
       "Go as deep as shoulders tolerate"
-    ]
+    ],
+    "movementPattern": "push",
+    "anchorEligibility": "none",
+    "anchorSubtypes": []
   },
   {
     "name": "Triceps Pushdown",
@@ -2351,6 +2555,11 @@
       "Lower under control; back knee toward floor",
       "Drive through front heel/mid-foot",
       "Keep hips square; don’t collapse inward"
+    ],
+    "movementPattern": "lunge",
+    "anchorEligibility": "none",
+    "anchorSubtypes": [
+      "lunge"
     ]
   },
   {
@@ -2386,6 +2595,10 @@
       "Lower as one unit; chest to near-floor",
       "Keep elbows ~30–45°",
       "Press the floor away; finish with locked-out arms"
+    ],
+    "anchorEligibility": "primary",
+    "anchorSubtypes": [
+      "horizontalPush"
     ]
   },
   {

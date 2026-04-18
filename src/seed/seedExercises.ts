@@ -26,7 +26,7 @@
 */
 
 import { db, normalizeName } from "../db";
-import type { Exercise, BodyPart, ExerciseCategory, Equipment } from "../db";
+import type { AnchorEligibility, Exercise, BodyPart, ExerciseCategory, Equipment, ExerciseMovementPattern } from "../db";
 import { uuid } from "../utils";
 import exercisesSeed from "./exercises.seed.with_cues.json";
 
@@ -38,7 +38,9 @@ type SeedExercise = {
   aliases?: string[];
 
   // Classification / scoring metadata (optional)
-  movementPattern?: string;
+  movementPattern?: ExerciseMovementPattern | string;
+  anchorEligibility?: AnchorEligibility | string;
+  anchorSubtypes?: string[];
   strengthSignalRole?: string;
 
   // Coaching / media (optional)
@@ -91,6 +93,11 @@ function cleanStringArray(v: any): string[] | undefined {
 
   // return [] only if caller explicitly wants "empty but defined"
   return out.length ? out : [];
+}
+
+function cleanOptionalStringArray(v: any): string[] | undefined {
+  const cleaned = cleanStringArray(v);
+  return cleaned && cleaned.length ? cleaned : undefined;
 }
 
 function isNonEmptyStringArray(v: any): v is string[] {
@@ -157,6 +164,8 @@ export async function seedExercises(): Promise<SeedExercisesResult> {
 
         // Normalize seed classification / coaching / media
         const movementPattern = cleanText(x.movementPattern);
+        const anchorEligibility = cleanText(x.anchorEligibility);
+        const anchorSubtypes = cleanOptionalStringArray(x.anchorSubtypes);
         const strengthSignalRole = cleanText(x.strengthSignalRole);
     
         const summary = cleanText(x.summary);
@@ -184,6 +193,12 @@ export async function seedExercises(): Promise<SeedExercisesResult> {
             // Only fill if missing/empty
             if (!cleanText((existing as any).movementPattern) && movementPattern) {
               patch.movementPattern = movementPattern;
+            }
+            if (!cleanText((existing as any).anchorEligibility) && anchorEligibility) {
+              patch.anchorEligibility = anchorEligibility;
+            }
+            if (!isNonEmptyStringArray((existing as any).anchorSubtypes) && anchorSubtypes) {
+              patch.anchorSubtypes = anchorSubtypes;
             }
             if (!cleanText((existing as any).strengthSignalRole) && strengthSignalRole) {
               patch.strengthSignalRole = strengthSignalRole;
@@ -247,6 +262,8 @@ export async function seedExercises(): Promise<SeedExercisesResult> {
             aliases: Array.isArray(x.aliases) ? x.aliases : [],
       
             movementPattern,
+            anchorEligibility,
+            anchorSubtypes,
             strengthSignalRole,
       
             summary,
