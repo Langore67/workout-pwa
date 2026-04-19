@@ -1,4 +1,4 @@
-import { db, normalizeName, type Exercise, type SetEntry, type Track } from "../../db";
+import { db, type Exercise, type SetEntry, type Track } from "../../db";
 import { getCurrentPhase, getStrengthSignalConfig, type CurrentPhase } from "../../config/appConfig";
 import { isSetEligibleForStrengthSignal } from "../../domain/strength/strengthSignalFilter";
 import { isStrengthTrackType } from "../../domain/trackingMode";
@@ -9,6 +9,8 @@ import {
 } from "../Strength";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const CAPACITY_WINDOW_DAYS = 90;
+const STATE_WINDOW_DAYS = 28;
 
 export type StrengthSignalV2Confidence = "HIGH" | "MEDIUM" | "LOW";
 export type StrengthSignalV2CutMaintainPattern = "push" | "pull" | "hinge" | "squat";
@@ -36,14 +38,27 @@ export type StrengthSignalV2LatestSet = {
   distanceUnit: string | null;
 };
 
+export type StrengthSignalV2AnchorMeasurement = {
+  e1RM: number | null;
+  bestSetText: string | null;
+  lastPerformedAt: string | null;
+  completedSetsConsidered: number;
+  confidence: StrengthSignalV2Confidence;
+};
+
 export type StrengthSignalV2AnchorResult = {
   exerciseId: string | null;
   exerciseName: string | null;
   latestSet: StrengthSignalV2LatestSet | null;
+  capacity: StrengthSignalV2AnchorMeasurement;
+  state: StrengthSignalV2AnchorMeasurement;
+  // Legacy top-line fields currently mirror capacity for compatibility with existing consumers.
   e1RM: number | null;
   lastPerformedAt: number | null;
   dataPoints: number;
   confidence: StrengthSignalV2Confidence;
+  selectionSource: "CONFIGURED" | "AUTO_SELECTED";
+  configuredExerciseName: string | null;
 };
 
 export type StrengthSignalV2Result = {
@@ -62,9 +77,8 @@ type ComputeStrengthSignalV2Options = {
 
 type AnchorDefinition = {
   pattern: StrengthSignalV2Pattern;
+  allowedSubtypes: string[];
   configuredExerciseIds: string[];
-  configuredNames: string[];
-  fallbackNames: string[];
 };
 
 type CandidateSet = {
@@ -88,21 +102,16 @@ const BULK_PATTERNS: StrengthSignalV2BulkPattern[] = [
   "carry",
 ];
 
-const FALLBACK_CUT_MAINTAIN_ANCHORS: Record<StrengthSignalV2CutMaintainPattern, string[]> = {
-  push: ["barbell bench press", "bench press"],
-  pull: ["lat pulldown", "lat pull down"],
-  hinge: ["barbell rdl", "romanian deadlift"],
-  squat: ["leg press"],
-};
-
-const FALLBACK_BULK_ANCHORS: Record<StrengthSignalV2BulkPattern, string[]> = {
-  squat: ["barbell back squat", "high bar squat", "high-bar squat", "back squat"],
-  hinge: ["trap bar deadlift", "trap-bar deadlift", "high handle trap bar deadlift", "trap bar deadlift high handles"],
-  horizontalPush: ["barbell bench press", "bench press"],
-  verticalPush: ["standing overhead press", "overhead press", "barbell overhead press"],
-  verticalPull: ["pull-ups", "pull up", "pull-up", "pullup"],
-  horizontalPull: ["chest-supported row", "chest supported row"],
-  carry: ["farmer's carry", "farmers carry", "farmer carry"],
+const SLOT_SUBTYPES: Record<StrengthSignalV2Pattern, string[]> = {
+  push: ["horizontalPush", "verticalPush"],
+  pull: ["horizontalPull", "verticalPull"],
+  hinge: ["hinge"],
+  squat: ["squat"],
+  horizontalPush: ["horizontalPush"],
+  verticalPush: ["verticalPush"],
+  verticalPull: ["verticalPull"],
+  horizontalPull: ["horizontalPull"],
+  carry: ["carry"],
 };
 
 function finiteNumber(value: unknown): number | null {
@@ -134,6 +143,62 @@ function anchorConfidence(lastPerformedAt: number | null, dataPoints: number, no
   return "LOW";
 }
 
+function isoDate(value: number | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function bestSetText(candidate: CandidateSet | null): string | null {
+  if (!candidate) return null;
+  const weight = finiteNumber(candidate.set.weight);
+  const reps = finiteNumber(candidate.set.reps);
+  if (weight == null || reps == null) return null;
+  const weightText = Number.isInteger(weight) ? String(weight) : weight.toFixed(1);
+  const repsText = Number.isInteger(reps) ? String(reps) : reps.toFixed(1);
+  return `${weightText} x ${repsText}`;
+}
+
+function emptyAnchorMeasurement(): StrengthSignalV2AnchorMeasurement {
+  return {
+    e1RM: null,
+    bestSetText: null,
+    lastPerformedAt: null,
+    completedSetsConsidered: 0,
+    confidence: "LOW",
+  };
+}
+
+function buildAnchorMeasurement(
+  candidates: CandidateSet[],
+  now: number,
+  windowDays: number,
+  supportsE1RM: boolean
+): StrengthSignalV2AnchorMeasurement {
+  const cutoff = now - windowDays * DAY_MS;
+  const windowCandidates = candidates.filter((candidate) => candidate.at >= cutoff && candidate.at <= now);
+  if (!windowCandidates.length) return emptyAnchorMeasurement();
+
+  const latest = windowCandidates.slice().sort((a, b) => b.at - a.at)[0];
+  const best = supportsE1RM
+    ? windowCandidates.reduce(
+        (winner, candidate) => (candidate.e1RM > winner.e1RM ? candidate : winner),
+        windowCandidates[0]
+      )
+    : null;
+
+  return {
+    e1RM: supportsE1RM && best ? best.e1RM : null,
+    bestSetText: bestSetText(best ?? latest),
+    lastPerformedAt: isoDate(latest.at),
+    completedSetsConsidered: windowCandidates.length,
+    confidence: anchorConfidence(latest.at, windowCandidates.length, now),
+  };
+}
+
 function configValueToTerms(value: unknown): string[] {
   if (!value) return [];
 
@@ -153,45 +218,33 @@ function configValueToTerms(value: unknown): string[] {
   return [];
 }
 
-function looksLikeExerciseId(value: string): boolean {
-  const trimmed = String(value ?? "").trim();
-  if (!trimmed) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed);
+function getPhaseSlotOverride(config: any, phase: CurrentPhase, pattern: StrengthSignalV2Pattern): unknown {
+  const phaseConfig = config?.strengthSignalV2Config?.phases?.[phase];
+  if (phaseConfig && Object.prototype.hasOwnProperty.call(phaseConfig, pattern)) {
+    return phaseConfig[pattern];
+  }
+
+  const legacyPhaseConfig = config?.v2Anchors?.byPhase?.[phase];
+  if (legacyPhaseConfig && Object.prototype.hasOwnProperty.call(legacyPhaseConfig, pattern)) {
+    return legacyPhaseConfig[pattern];
+  }
+
+  if (phase === "bulk") return config?.v2Anchors?.bulk?.[pattern];
+  return config?.v2Anchors?.cutMaintain?.[pattern];
 }
 
 function buildAnchorDefinitions(phase: CurrentPhase, config: any): AnchorDefinition[] {
   const patterns = phase === "bulk" ? BULK_PATTERNS : CUT_MAINTAIN_PATTERNS;
-  const phaseConfig = config?.v2Anchors?.byPhase?.[phase];
-  const modelConfig = phase === "bulk" ? config?.v2Anchors?.bulk : config?.v2Anchors?.cutMaintain;
-  const fallbackAnchors = phase === "bulk" ? FALLBACK_BULK_ANCHORS : FALLBACK_CUT_MAINTAIN_ANCHORS;
 
   return patterns.map((pattern) => {
-    const configured = phaseConfig?.[pattern] ?? modelConfig?.[pattern];
+    const configured = getPhaseSlotOverride(config, phase, pattern);
     const configuredTerms = configValueToTerms(configured);
     return {
       pattern,
-      configuredExerciseIds: configuredTerms.filter(looksLikeExerciseId),
-      configuredNames: configuredTerms.filter((term) => !looksLikeExerciseId(term)),
-      fallbackNames: fallbackAnchors[pattern],
+      allowedSubtypes: SLOT_SUBTYPES[pattern],
+      configuredExerciseIds: configuredTerms,
     };
   });
-}
-
-function normalizedExerciseNames(exercise: Exercise, track: Track): string[] {
-  return [
-    exercise.name,
-    exercise.normalizedName,
-    track.displayName,
-    ...(Array.isArray(exercise.aliases) ? exercise.aliases : []),
-  ]
-    .map((value) => normalizeName(String(value ?? "")))
-    .filter(Boolean);
-}
-
-function normalizedPrimaryNames(exercise: Exercise, track: Track): string[] {
-  return [exercise.name, exercise.normalizedName, track.displayName]
-    .map((value) => normalizeName(String(value ?? "")))
-    .filter(Boolean);
 }
 
 function exerciseIdsForMatch(exercise: Exercise, track: Track): string[] {
@@ -200,59 +253,28 @@ function exerciseIdsForMatch(exercise: Exercise, track: Track): string[] {
     .filter(Boolean);
 }
 
-function canonicalExerciseIdsForMatch(exercise: Exercise): string[] {
-  return [exercise.mergedIntoExerciseId]
-    .map((value) => String(value ?? "").trim())
-    .filter(Boolean);
-}
-
-function hasExactNameMatch(terms: string[], names: string[]): boolean {
-  const normalizedTerms = terms.map((term) => normalizeName(term)).filter(Boolean);
-  return normalizedTerms.some((term) => names.includes(term));
-}
-
-function hasControlledFallbackMatch(definition: AnchorDefinition, exercise: Exercise, track: Track): boolean {
-  const names = normalizedPrimaryNames(exercise, track);
-  const aliases = (Array.isArray(exercise.aliases) ? exercise.aliases : [])
-    .map((alias) => normalizeName(String(alias ?? "")))
-    .filter(Boolean);
-
-  if (definition.pattern === "squat") {
-    // Controlled fallback: allow user variants like "Leg Press - Strength",
-    // but avoid broad squat-family drift.
-    return names.some((name) => name === "leg press" || name.startsWith("leg press "));
-  }
-
-  if (definition.pattern === "pull") {
-    // Controlled fallback: true Lat Pulldown only. Do not let
-    // "Horizontal Lat Pulldown (kneeling)" win via substring matching.
-    return [...names, ...aliases].some((name) => name === "lat pulldown machine");
-  }
-
-  return false;
-}
-
 function anchorMatchRank(definition: AnchorDefinition, exercise: Exercise, track: Track): number | null {
   const configuredIds = definition.configuredExerciseIds;
   const ids = exerciseIdsForMatch(exercise, track);
-  const canonicalIds = canonicalExerciseIdsForMatch(exercise);
-  const allNames = normalizedExerciseNames(exercise, track);
-  const primaryNames = normalizedPrimaryNames(exercise, track);
+
+  // Slice 4: phase-specific configured IDs rank first, but metadata
+  // eligibility/subtype filtering remains the primary gate before fallback.
+  const eligibility = String((exercise as any)?.anchorEligibility ?? "").trim().toLowerCase();
+  if (eligibility !== "primary" && eligibility !== "conditional") return null;
+
+  const subtypes = Array.isArray((exercise as any)?.anchorSubtypes)
+    ? (exercise as any).anchorSubtypes.map((value: unknown) => String(value ?? "").trim()).filter(Boolean)
+    : [];
+  if (!subtypes.some((subtype: string) => definition.allowedSubtypes.includes(subtype))) return null;
 
   // 1. Exact configured exerciseId match.
   if (configuredIds.length && configuredIds.some((id) => ids.includes(id))) return 1;
 
-  // 2. Canonical exerciseId match for redirected/merged exercise rows.
-  if (configuredIds.length && configuredIds.some((id) => canonicalIds.includes(id))) return 2;
+  // 2. Primary eligible live exercise with matching subtype.
+  if (eligibility === "primary") return 2;
 
-  // 3. Strict exact-name match against configured names or approved fallback names.
-  if (hasExactNameMatch(definition.configuredNames, allNames)) return 3;
-  if (hasExactNameMatch(definition.fallbackNames, primaryNames)) return 3;
-
-  // 4. Controlled alias/fallback match only where the anchor is unambiguous.
-  if (hasControlledFallbackMatch(definition, exercise, track)) return 4;
-
-  return null;
+  // 3. Conditional eligible live exercise with matching subtype.
+  return 3;
 }
 
 function latestSetPayload(candidate: CandidateSet): StrengthSignalV2LatestSet {
@@ -269,15 +291,24 @@ function latestSetPayload(candidate: CandidateSet): StrengthSignalV2LatestSet {
   };
 }
 
+function sameSelectedExercise(candidate: CandidateSet, selected: CandidateSet): boolean {
+  return candidate.exercise.id === selected.exercise.id || candidate.track.exerciseId === selected.track.exerciseId;
+}
+
 function emptyAnchorResult(): StrengthSignalV2AnchorResult {
+  const emptyMeasurement = emptyAnchorMeasurement();
   return {
     exerciseId: null,
     exerciseName: null,
     latestSet: null,
+    capacity: emptyMeasurement,
+    state: emptyMeasurement,
     e1RM: null,
     lastPerformedAt: null,
     dataPoints: 0,
     confidence: "LOW",
+    selectionSource: "AUTO_SELECTED",
+    configuredExerciseName: null,
   };
 }
 
@@ -319,16 +350,25 @@ function buildScoredAnchorResult(
   const bestRank = Math.min(...candidates.map((candidate) => candidate.matchRank));
   const rankedCandidates = candidates.filter((candidate) => candidate.matchRank === bestRank);
   const latest = rankedCandidates.slice().sort((a, b) => b.at - a.at)[0];
-  const best = rankedCandidates.reduce((winner, candidate) => (candidate.e1RM > winner.e1RM ? candidate : winner), rankedCandidates[0]);
+  const selectionSource = bestRank === 1 ? "CONFIGURED" : "AUTO_SELECTED";
+  const selectedExerciseCandidates = rankedCandidates.filter((candidate) => sameSelectedExercise(candidate, latest));
+  // Slice 5A separates long-memory capacity (90d) from short-memory current state (28d)
+  // while leaving the existing slot-level fields wired to capacity for compatibility.
+  const capacity = buildAnchorMeasurement(selectedExerciseCandidates, now, CAPACITY_WINDOW_DAYS, true);
+  const state = buildAnchorMeasurement(selectedExerciseCandidates, now, STATE_WINDOW_DAYS, true);
 
   return {
     exerciseId: latest.exercise.id,
     exerciseName: latest.exercise.name,
     latestSet: latestSetPayload(latest),
-    e1RM: best.e1RM,
-    lastPerformedAt: latest.at,
-    dataPoints: rankedCandidates.length,
-    confidence: anchorConfidence(latest.at, rankedCandidates.length, now),
+    capacity,
+    state,
+    e1RM: capacity.e1RM,
+    lastPerformedAt: capacity.lastPerformedAt ? Date.parse(capacity.lastPerformedAt) : null,
+    dataPoints: capacity.completedSetsConsidered,
+    confidence: capacity.confidence,
+    selectionSource,
+    configuredExerciseName: selectionSource === "CONFIGURED" ? latest.exercise.name : null,
   };
 }
 
@@ -336,7 +376,8 @@ function buildCarryAnchorResult(
   definition: AnchorDefinition,
   sets: SetEntry[],
   trackById: Map<string, Track>,
-  exerciseById: Map<string, Exercise>
+  exerciseById: Map<string, Exercise>,
+  now: number
 ): StrengthSignalV2AnchorResult {
   const candidates: CandidateSet[] = [];
 
@@ -367,18 +408,26 @@ function buildCarryAnchorResult(
   if (!candidates.length) return emptyAnchorResult();
 
   const bestRank = Math.min(...candidates.map((candidate) => candidate.matchRank));
-  const latest = candidates
-    .filter((candidate) => candidate.matchRank === bestRank)
+  const rankedCandidates = candidates.filter((candidate) => candidate.matchRank === bestRank);
+  const latest = rankedCandidates
     .slice()
     .sort((a, b) => b.at - a.at)[0];
+  const selectionSource = bestRank === 1 ? "CONFIGURED" : "AUTO_SELECTED";
+  const selectedExerciseCandidates = rankedCandidates.filter((candidate) => sameSelectedExercise(candidate, latest));
+  const capacity = buildAnchorMeasurement(selectedExerciseCandidates, now, CAPACITY_WINDOW_DAYS, false);
+  const state = buildAnchorMeasurement(selectedExerciseCandidates, now, STATE_WINDOW_DAYS, false);
   return {
     exerciseId: latest.exercise.id,
     exerciseName: latest.exercise.name,
     latestSet: latestSetPayload(latest),
-    e1RM: null,
-    lastPerformedAt: latest.at,
-    dataPoints: candidates.length,
-    confidence: "LOW",
+    capacity,
+    state,
+    e1RM: capacity.e1RM,
+    lastPerformedAt: capacity.lastPerformedAt ? Date.parse(capacity.lastPerformedAt) : null,
+    dataPoints: capacity.completedSetsConsidered,
+    confidence: capacity.confidence,
+    selectionSource,
+    configuredExerciseName: selectionSource === "CONFIGURED" ? latest.exercise.name : null,
   };
 }
 
@@ -397,6 +446,16 @@ function buildAggregate(anchors: Partial<Record<StrengthSignalV2Pattern, Strengt
     trendDelta14d: null,
     confidence: confidenceFromScore(averageConfidence),
   };
+}
+
+function formatDebugMeasurement(label: string, measurement: StrengthSignalV2AnchorMeasurement | undefined): string {
+  return [
+    `  ${label}: e1RM ${measurement?.e1RM?.toFixed(0) ?? "Unknown"}`,
+    `best ${measurement?.bestSetText ?? "Unknown"}`,
+    `last ${measurement?.lastPerformedAt ?? "Unknown"}`,
+    `confidence ${measurement?.confidence ?? "LOW"}`,
+    `sets ${measurement?.completedSetsConsidered ?? 0}`,
+  ].join(" | ");
 }
 
 export async function computeStrengthSignalV2(
@@ -420,7 +479,7 @@ export async function computeStrengthSignalV2(
   for (const definition of anchorDefinitions) {
     anchors[definition.pattern] =
       definition.pattern === "carry"
-        ? buildCarryAnchorResult(definition, sets, trackById, exerciseById)
+        ? buildCarryAnchorResult(definition, sets, trackById, exerciseById, now)
         : buildScoredAnchorResult(definition, sets, trackById, exerciseById, bodyRows, now);
   }
 
@@ -439,8 +498,12 @@ export async function getStrengthSignalV2Debug(): Promise<string> {
   ];
 
   for (const [pattern, anchor] of Object.entries(result.anchors)) {
+    const source = anchor?.selectionSource ?? "AUTO_SELECTED";
+    const configured = anchor?.configuredExerciseName ? ` | configured ${anchor.configuredExerciseName}` : "";
     lines.push(
-      `${pattern}: ${anchor?.exerciseName ?? "Unresolved"} | e1RM=${anchor?.e1RM?.toFixed(1) ?? "Unknown"} | dataPoints=${anchor?.dataPoints ?? 0} | confidence=${anchor?.confidence ?? "LOW"} | last=${anchor?.lastPerformedAt ? new Date(anchor.lastPerformedAt).toISOString() : "Unknown"}`
+      `${pattern}: ${anchor?.exerciseName ?? "Unresolved"} | ${source}${configured}`,
+      formatDebugMeasurement("Capacity", anchor?.capacity),
+      formatDebugMeasurement("State", anchor?.state)
     );
   }
 

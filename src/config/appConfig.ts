@@ -12,10 +12,37 @@ export type StrengthSignalV2AnchorConfig = {
   };
 };
 
+export type StrengthSignalV2PhaseConfig = {
+  phases?: {
+    cut?: {
+      push?: string;
+      pull?: string;
+      hinge?: string;
+      squat?: string;
+    };
+    maintain?: {
+      push?: string;
+      pull?: string;
+      hinge?: string;
+      squat?: string;
+    };
+    bulk?: {
+      horizontalPush?: string;
+      verticalPush?: string;
+      horizontalPull?: string;
+      verticalPull?: string;
+      hinge?: string;
+      squat?: string;
+      carry?: string;
+    };
+  };
+};
+
 export type StrengthSignalConfig = {
   schemaVersion: 2;
   activeVersion: "v1" | "v2";
   v2Anchors?: StrengthSignalV2AnchorConfig;
+  strengthSignalV2Config?: StrengthSignalV2PhaseConfig;
   updatedAt?: number;
 };
 
@@ -92,6 +119,9 @@ function normalizeStrengthSignalConfig(raw: unknown): StrengthSignalConfig {
     schemaVersion: 2,
     activeVersion,
     ...(value.v2Anchors && typeof value.v2Anchors === "object" ? { v2Anchors: value.v2Anchors } : {}),
+    ...(value.strengthSignalV2Config && typeof value.strengthSignalV2Config === "object"
+      ? { strengthSignalV2Config: value.strengthSignalV2Config }
+      : {}),
     ...(Number.isFinite(Number(value.updatedAt)) ? { updatedAt: Number(value.updatedAt) } : {}),
   };
 }
