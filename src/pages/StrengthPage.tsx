@@ -22,8 +22,10 @@
 /*  ✅ Preserve mode toggle persistence and trend calculations                */
 /* ========================================================================== */
 // TEMP: force sync of read-only anchors UI
+
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { db, type Exercise } from "../db";
 import ProgressPageHeader from "../components/layout/ProgressPageHeader";
 import { Page, Section } from "../components/Page.tsx";
 import {
@@ -44,7 +46,9 @@ import {
   getCurrentPhase,
   getStrengthSignalConfig,
   setCurrentPhase,
+  setStrengthSignalConfig,
   type CurrentPhase,
+  type StrengthSignalConfig,
 } from "../config/appConfig";
 
 type Mode = CurrentPhase;
@@ -223,6 +227,18 @@ const ANCHOR_SLOT_LABELS: Record<StrengthSignalV2Pattern, string> = {
   carry: "Carry",
 };
 
+const ANCHOR_SLOT_SUBTYPES: Record<StrengthSignalV2Pattern, string[]> = {
+  push: ["horizontalPush", "verticalPush"],
+  pull: ["horizontalPull", "verticalPull"],
+  hinge: ["hinge"],
+  squat: ["squat"],
+  horizontalPush: ["horizontalPush"],
+  verticalPush: ["verticalPush"],
+  horizontalPull: ["horizontalPull"],
+  verticalPull: ["verticalPull"],
+  carry: ["carry"],
+};
+
 function anchorSlotsForMode(mode: Mode): StrengthSignalV2Pattern[] {
   return mode === "bulk" ? BULK_ANCHOR_SLOTS : CUT_MAINTAIN_ANCHOR_SLOTS;
 }
@@ -269,6 +285,26 @@ function anchorDirectionLabel(capacityValue: unknown, stateValue: unknown): stri
   return (capacity - state) / capacity <= 0.03 ? "▬ Stable" : "▼ Down";
 }
 
+function exerciseEligibleForAnchorSlot(exercise: Exercise, slot: StrengthSignalV2Pattern): boolean {
+  if (exercise.archivedAt) return false;
+  const eligibility = String(exercise.anchorEligibility ?? "").trim().toLowerCase();
+  if (eligibility !== "primary" && eligibility !== "conditional") return false;
+
+  const subtypes = Array.isArray(exercise.anchorSubtypes)
+    ? exercise.anchorSubtypes.map((subtype) => String(subtype ?? "").trim()).filter(Boolean)
+    : [];
+  return subtypes.some((subtype) => ANCHOR_SLOT_SUBTYPES[slot].includes(subtype));
+}
+
+function configuredAnchorIdForSlot(
+  config: StrengthSignalConfig | null,
+  phase: Mode,
+  slot: StrengthSignalV2Pattern
+): string {
+  const value = (config?.strengthSignalV2Config?.phases as any)?.[phase]?.[slot];
+  return typeof value === "string" ? value : "";
+}
+
 /* ========================================================================== */
 /*  Breadcrumb 4 — Page component                                             */
 /* ========================================================================== */
@@ -284,6 +320,12 @@ export default function StrengthPage() {
   const [snapshot, setSnapshot] = useState<StrengthSnapshot | null>(null);
   const [strengthV2, setStrengthV2] = useState<StrengthSignalV2Result | null>(null);
   const [strengthV2Err, setStrengthV2Err] = useState<string>("");
+  const [strengthConfig, setStrengthConfig] = useState<StrengthSignalConfig | null>(null);
+  const [anchorExercises, setAnchorExercises] = useState<Exercise[]>([]);
+  const [anchorsEditOpen, setAnchorsEditOpen] = useState(false);
+  const [anchorConfigErr, setAnchorConfigErr] = useState<string>("");
+  const [anchorConfigRevision, setAnchorConfigRevision] = useState(0);
+  const [savingAnchorSlot, setSavingAnchorSlot] = useState<StrengthSignalV2Pattern | null>(null);
   const [patternScoresOpen, setPatternScoresOpen] = useState(false);
   const [trendTableOpen, setTrendTableOpen] = useState(false);
 
@@ -310,12 +352,20 @@ export default function StrengthPage() {
     let alive = true;
 
     (async () => {
-      const [sharedPhase] = await Promise.all([
+      const [sharedPhase, config, exercises] = await Promise.all([
         getCurrentPhase({ fallbackPhase: loadLegacyMode() }),
         getStrengthSignalConfig(),
+        db.exercises.toArray(),
       ]);
       if (!alive) return;
       setMode(sharedPhase);
+      setStrengthConfig(config);
+      setAnchorExercises(
+        (exercises ?? [])
+          .filter((exercise) => !exercise.archivedAt)
+          .slice()
+          .sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? "")))
+      );
       setPhaseLoaded(true);
     })();
 
@@ -348,7 +398,7 @@ export default function StrengthPage() {
     return () => {
       alive = false;
     };
-  }, [mode, phaseLoaded]);
+  }, [mode, phaseLoaded, anchorConfigRevision]);
 
   useEffect(() => {
     let alive = true;
@@ -390,6 +440,48 @@ export default function StrengthPage() {
     strengthSignalCompactMetaLine,
   } = useMemo(() => buildStrengthPageViewModel(snapshot), [snapshot]);
   const anchorSlots = useMemo(() => anchorSlotsForMode(mode), [mode]);
+  const eligibleAnchorExercisesBySlot = useMemo(() => {
+    const rows: Partial<Record<StrengthSignalV2Pattern, Exercise[]>> = {};
+    for (const slot of anchorSlots) {
+      rows[slot] = anchorExercises.filter((exercise) => exerciseEligibleForAnchorSlot(exercise, slot));
+    }
+    return rows;
+  }, [anchorExercises, anchorSlots]);
+
+  async function saveAnchorOverride(slot: StrengthSignalV2Pattern, exerciseId: string) {
+    try {
+      setAnchorConfigErr("");
+      setSavingAnchorSlot(slot);
+
+      const current = strengthConfig ?? await getStrengthSignalConfig();
+      const phases = { ...(current.strengthSignalV2Config?.phases ?? {}) } as any;
+      const phaseConfig = { ...(phases[mode] ?? {}) };
+
+      if (exerciseId) {
+        phaseConfig[slot] = exerciseId;
+      } else {
+        delete phaseConfig[slot];
+      }
+
+      phases[mode] = phaseConfig;
+
+      const nextConfig = await setStrengthSignalConfig({
+        ...current,
+        strengthSignalV2Config: {
+          ...(current.strengthSignalV2Config ?? {}),
+          phases,
+        },
+      });
+
+      setStrengthConfig(nextConfig);
+      setAnchorConfigRevision((revision) => revision + 1);
+    } catch (e: any) {
+      setAnchorConfigErr(String(e?.message ?? e ?? "Failed to update anchor override."));
+    } finally {
+      setSavingAnchorSlot(null);
+    }
+  }
+
     return (
     <Page>
 	  <Section>
@@ -650,40 +742,69 @@ export default function StrengthPage() {
               <hr style={{ marginTop: 12 }} />
 
               {/* ===================== Current strength anchors ===================== */}
-              <button
-                type="button"
+              <div
                 className="row"
-                onClick={() => setPatternScoresOpen((open) => !open)}
-                aria-expanded={patternScoresOpen}
                 style={{
-                  width: "100%",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  background: "transparent",
-                  border: 0,
-                  padding: 0,
-                  cursor: "pointer",
+                  gap: 8,
                   marginBottom: patternScoresOpen ? 8 : 0,
+                  flexWrap: "wrap",
                 }}
               >
-                <div
-                  className="muted"
+                <button
+                  type="button"
+                  className="row"
+                  onClick={() => {
+                    setPatternScoresOpen((open) => {
+                      if (open) setAnchorsEditOpen(false);
+                      return !open;
+                    });
+                  }}
+                  aria-expanded={patternScoresOpen}
                   style={{
-                    fontSize: 12,
-                    fontWeight: 800,
-                    textTransform: "uppercase",
-                    letterSpacing: 0.5,
+                    flex: "1 1 220px",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    background: "transparent",
+                    border: 0,
+                    padding: 0,
+                    cursor: "pointer",
                   }}
                 >
-                  Current Strength Anchors
-                </div>
-                <div className="muted" style={{ lineHeight: 1 }}>
-                  <CollapseChevron open={patternScoresOpen} />
-                </div>
-              </button>
+                  <div
+                    className="muted"
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Current Strength Anchors
+                  </div>
+                  <div className="muted" style={{ lineHeight: 1 }}>
+                    <CollapseChevron open={patternScoresOpen} />
+                  </div>
+                </button>
+                {patternScoresOpen ? (
+                  <button
+                    type="button"
+                    className={`btn small ${anchorsEditOpen ? "primary" : ""}`}
+                    onClick={() => setAnchorsEditOpen((open) => !open)}
+                  >
+                    {anchorsEditOpen ? "Done" : "Edit anchors"}
+                  </button>
+                ) : null}
+              </div>
 
               {patternScoresOpen ? (
                 <div style={{ display: "grid", gap: 8 }}>
+                  {anchorConfigErr ? (
+                    <div className="muted" style={{ color: "var(--danger)" }}>
+                      Could not update anchor override: {anchorConfigErr}
+                    </div>
+                  ) : null}
                   {strengthV2Err ? (
                     <div className="muted">
                       Could not load current anchors: {strengthV2Err}
@@ -694,6 +815,12 @@ export default function StrengthPage() {
                       const isResolved = Boolean(anchor?.exerciseName);
                       const capacity = anchor?.capacity;
                       const state = anchor?.state;
+                      const configuredAnchorId = configuredAnchorIdForSlot(strengthConfig, mode, slot);
+                      const eligibleExercises = eligibleAnchorExercisesBySlot[slot] ?? [];
+                      const configuredAnchorIsListed = eligibleExercises.some(
+                        (exercise) => exercise.id === configuredAnchorId
+                      );
+                      const savingThisAnchor = savingAnchorSlot === slot;
 
                       return (
                         <div key={slot} className="card" style={{ padding: 12 }}>
@@ -737,6 +864,72 @@ export default function StrengthPage() {
                               {anchorSourceLabel(anchor?.selectionSource)}
                             </div>
                           </div>
+
+                          {anchorsEditOpen ? (
+                            <div
+                              style={{
+                                display: "grid",
+                                gap: 6,
+                                marginTop: 10,
+                              }}
+                            >
+                              <div className="muted" style={{ fontSize: 12 }}>
+                                {configuredAnchorId ? "Override active" : "Using automatic selection"}
+                              </div>
+                              <div
+                                className="row"
+                                style={{
+                                  alignItems: "center",
+                                  gap: 8,
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                <label
+                                  className="muted"
+                                  htmlFor={`anchor-${slot}`}
+                                  style={{ fontSize: 12, fontWeight: 800 }}
+                                >
+                                  {configuredAnchorId ? "Change anchor" : "Set anchor"}
+                                </label>
+                                <select
+                                  id={`anchor-${slot}`}
+                                  value={configuredAnchorId}
+                                  disabled={savingThisAnchor}
+                                  onChange={(event) => void saveAnchorOverride(slot, event.target.value)}
+                                  style={{
+                                    flex: "1 1 220px",
+                                    minWidth: 0,
+                                    maxWidth: "100%",
+                                  }}
+                                >
+                                  <option value="">Automatic selection</option>
+                                  {configuredAnchorId && !configuredAnchorIsListed ? (
+                                    <option value={configuredAnchorId}>Current override unavailable</option>
+                                  ) : null}
+                                  {eligibleExercises.map((exercise) => (
+                                    <option key={exercise.id} value={exercise.id}>
+                                      {exercise.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                {configuredAnchorId ? (
+                                  <button
+                                    type="button"
+                                    className="btn small"
+                                    disabled={savingThisAnchor}
+                                    onClick={() => void saveAnchorOverride(slot, "")}
+                                  >
+                                    Clear override
+                                  </button>
+                                ) : null}
+                              </div>
+                              {!eligibleExercises.length ? (
+                                <div className="muted" style={{ fontSize: 12 }}>
+                                  No eligible exercises for this slot.
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
 
                           {isResolved ? (
                             <div
