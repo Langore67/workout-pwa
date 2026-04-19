@@ -30,7 +30,12 @@ import {
   computeStrengthSnapshot,
   StrengthSnapshot,
 } from "../strength/Strength";
-import { getStrengthSignalV2Debug } from "../strength/v2/computeStrengthSignalV2";
+import {
+  computeStrengthSignalV2,
+  getStrengthSignalV2Debug,
+  type StrengthSignalV2Pattern,
+  type StrengthSignalV2Result,
+} from "../strength/v2/computeStrengthSignalV2";
 import TrendChartCard from "../components/charts/TrendChartCard";
 import { formatTwoDecimals } from "../components/charts/chartFormatters";
 import InfoStubButton from "../components/information/InfoStubButton";
@@ -42,7 +47,6 @@ import {
   type CurrentPhase,
 } from "../config/appConfig";
 
-type StrengthPattern = "squat" | "hinge" | "push" | "pull";
 type Mode = CurrentPhase;
 
 const MODE_KEY = "workout_pwa_strength_mode_v1";
@@ -190,6 +194,61 @@ function modeHint(mode: Mode) {
   return "Maintain: Look for stable-to-rising Strength Signal and consistency across squat, hinge, push, and pull patterns.";
 }
 
+const CUT_MAINTAIN_ANCHOR_SLOTS: StrengthSignalV2Pattern[] = [
+  "push",
+  "pull",
+  "hinge",
+  "squat",
+];
+
+const BULK_ANCHOR_SLOTS: StrengthSignalV2Pattern[] = [
+  "horizontalPush",
+  "verticalPush",
+  "horizontalPull",
+  "verticalPull",
+  "hinge",
+  "squat",
+  "carry",
+];
+
+const ANCHOR_SLOT_LABELS: Record<StrengthSignalV2Pattern, string> = {
+  push: "Push",
+  pull: "Pull",
+  hinge: "Hinge",
+  squat: "Squat",
+  horizontalPush: "Horizontal Push",
+  verticalPush: "Vertical Push",
+  horizontalPull: "Horizontal Pull",
+  verticalPull: "Vertical Pull",
+  carry: "Carry",
+};
+
+function anchorSlotsForMode(mode: Mode): StrengthSignalV2Pattern[] {
+  return mode === "bulk" ? BULK_ANCHOR_SLOTS : CUT_MAINTAIN_ANCHOR_SLOTS;
+}
+
+function anchorSourceLabel(source: "CONFIGURED" | "AUTO_SELECTED" | undefined): string {
+  return source === "CONFIGURED" ? "Configured" : "Auto-selected";
+}
+
+function formatAnchorE1RM(value: unknown): string {
+  const n = Number(value);
+  return Number.isFinite(n) ? fmt0(n) : "Unknown";
+}
+
+function formatAnchorDate(value: unknown): string {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return "Unknown";
+  return new Date(n).toLocaleDateString();
+}
+
+function formatConfidence(value: unknown): string {
+  if (value === "HIGH") return "High";
+  if (value === "MEDIUM") return "Medium";
+  if (value === "LOW") return "Low";
+  return "Unknown";
+}
+
 /* ========================================================================== */
 /*  Breadcrumb 4 — Page component                                             */
 /* ========================================================================== */
@@ -203,6 +262,8 @@ export default function StrengthPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
   const [snapshot, setSnapshot] = useState<StrengthSnapshot | null>(null);
+  const [strengthV2, setStrengthV2] = useState<StrengthSignalV2Result | null>(null);
+  const [strengthV2Err, setStrengthV2Err] = useState<string>("");
   const [patternScoresOpen, setPatternScoresOpen] = useState(false);
   const [trendTableOpen, setTrendTableOpen] = useState(false);
 
@@ -246,7 +307,27 @@ export default function StrengthPage() {
   useEffect(() => {
     if (!phaseLoaded) return;
     saveMode(mode);
-    void setCurrentPhase(mode);
+
+    let alive = true;
+
+    (async () => {
+      try {
+        setStrengthV2Err("");
+        setStrengthV2(null);
+        await setCurrentPhase(mode);
+        const nextSignal = await computeStrengthSignalV2();
+        if (!alive) return;
+        setStrengthV2(nextSignal);
+      } catch (e: any) {
+        if (!alive) return;
+        setStrengthV2(null);
+        setStrengthV2Err(String(e?.message ?? e ?? "Failed to compute current anchors."));
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
   }, [mode, phaseLoaded]);
 
   useEffect(() => {
@@ -278,7 +359,6 @@ export default function StrengthPage() {
   const result = snapshot?.result ?? null;
   const heroMeta = snapshot?.heroMeta ?? null;
   const {
-    patterns,
     bwLabel,
     trendSorted,
     bwSeries,
@@ -289,6 +369,7 @@ export default function StrengthPage() {
     strengthSignalSeries,
     strengthSignalCompactMetaLine,
   } = useMemo(() => buildStrengthPageViewModel(snapshot), [snapshot]);
+  const anchorSlots = useMemo(() => anchorSlotsForMode(mode), [mode]);
     return (
     <Page>
 	  <Section>
@@ -548,7 +629,7 @@ export default function StrengthPage() {
 
               <hr style={{ marginTop: 12 }} />
 
-              {/* ===================== Pattern scores ===================== */}
+              {/* ===================== Current strength anchors ===================== */}
               <button
                 type="button"
                 className="row"
@@ -574,7 +655,7 @@ export default function StrengthPage() {
                     letterSpacing: 0.5,
                   }}
                 >
-                  Pattern Scores
+                  Current Strength Anchors
                 </div>
                 <div className="muted" style={{ lineHeight: 1 }}>
                   <CollapseChevron open={patternScoresOpen} />
@@ -583,41 +664,112 @@ export default function StrengthPage() {
 
               {patternScoresOpen ? (
                 <div style={{ display: "grid", gap: 8 }}>
-                  {patterns.length ? (
-                    patterns.map((p: any) => (
-                      <div
-                        key={p.pattern as StrengthPattern}
-                        className="card"
-                        style={{ padding: 12 }}
-                      >
-                        <div
-                          className="row"
-                          style={{
-                            justifyContent: "space-between",
-                            alignItems: "baseline",
-                            gap: 10,
-                          }}
-                        >
+                  {strengthV2Err ? (
+                    <div className="muted">
+                      Could not load current anchors: {strengthV2Err}
+                    </div>
+                  ) : strengthV2 ? (
+                    anchorSlots.map((slot) => {
+                      const anchor = strengthV2.anchors[slot] ?? null;
+                      const isResolved = Boolean(anchor?.exerciseName);
+
+                      return (
+                        <div key={slot} className="card" style={{ padding: 12 }}>
                           <div
+                            className="row"
                             style={{
-                              fontWeight: 900,
-                              textTransform: "capitalize",
+                              justifyContent: "space-between",
+                              alignItems: "flex-start",
+                              gap: 10,
+                              flexWrap: "wrap",
                             }}
                           >
-                            {p.pattern}
+                            <div style={{ minWidth: 0 }}>
+                              <div
+                                className="muted"
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  textTransform: "uppercase",
+                                  letterSpacing: 0.5,
+                                  marginBottom: 4,
+                                }}
+                              >
+                                {ANCHOR_SLOT_LABELS[slot]}
+                              </div>
+                              <div style={{ fontWeight: 900 }}>
+                                {anchor?.exerciseName ?? "Unresolved"}
+                              </div>
+                            </div>
+                            <div
+                              className="muted"
+                              style={{
+                                border: "1px solid var(--border)",
+                                borderRadius: 8,
+                                fontSize: 12,
+                                fontWeight: 800,
+                                padding: "3px 8px",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {anchorSourceLabel(anchor?.selectionSource)}
+                            </div>
                           </div>
-                          <div className="muted" style={{ fontSize: 12 }}>
-                            abs: <b>{Number.isFinite(Number(p.absolute)) ? fmt0(p.absolute) : "—"}</b>
-                            {"  "}•{"  "}
-                            rel: <b>{Number.isFinite(Number(p.relative)) ? fmt2(p.relative) : "—"}</b>
-                          </div>
+
+                          {isResolved ? (
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+                                gap: 8,
+                                marginTop: 10,
+                              }}
+                            >
+                              <div>
+                                <div className="muted" style={{ fontSize: 12 }}>
+                                  Best e1RM
+                                </div>
+                                <div style={{ fontWeight: 850 }}>
+                                  {formatAnchorE1RM(anchor?.e1RM)}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="muted" style={{ fontSize: 12 }}>
+                                  Last performed
+                                </div>
+                                <div style={{ fontWeight: 850 }}>
+                                  {formatAnchorDate(anchor?.lastPerformedAt)}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="muted" style={{ fontSize: 12 }}>
+                                  Confidence
+                                </div>
+                                <div style={{ fontWeight: 850 }}>
+                                  {formatConfidence(anchor?.confidence)}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="muted" style={{ fontSize: 12 }}>
+                                  Completed sets considered
+                                </div>
+                                <div style={{ fontWeight: 850 }}>
+                                  {Number.isFinite(Number(anchor?.dataPoints))
+                                    ? fmt0(anchor?.dataPoints)
+                                    : "Unknown"}
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="muted" style={{ marginTop: 8 }}>
+                              No eligible recent anchor data
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
-                    <div className="muted">
-                      No pattern scores yet. Log completed working sets across your main lift patterns to build this section.
-                    </div>
+                    <div className="muted">Loading current anchors...</div>
                   )}
                 </div>
               ) : null}
