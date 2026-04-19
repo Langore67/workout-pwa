@@ -1,7 +1,7 @@
 // src/pages/StrengthPage.tsx
 /* ========================================================================== */
 /*  StrengthPage.tsx                                                          */
-/*  BUILD_ID: 2026-03-17-STRENGTHPAGE-08                                      */
+/*  BUILD_ID: 2026-04-19-STRENGTHPAGE-09                                      */
 /*  FILE: src/pages/StrengthPage.tsx                                          */
 /* -------------------------------------------------------------------------- */
 /*  Purpose                                                                   */
