@@ -21,8 +21,8 @@
 }
 
 *{ box-sizing:border-box; }
-html,body{ height:100%; width:100%; max-width:100%; overflow-x:hidden; }
-#root{ width:100%; max-width:100%; overflow-x:hidden; }
+html,body{ height:100%; width:100%; }
+#root{ width:100%; }
 
 body{
   margin:0;
@@ -38,7 +38,7 @@ hr{ border:0; border-top:1px solid var(--line); margin:10px 0; }
 /* =========================================
    Breadcrumb S1 (Layout Helpers)
    ========================================= */
-.container{ width:100%; max-width:980px; margin:0 auto; padding:16px; min-width:0; }
+.container{ max-width:980px; margin:0 auto; padding:16px; }
 .row{ display:flex; gap:8px; flex-wrap:wrap; }
 
 .grid{
@@ -198,11 +198,9 @@ textarea:focus-visible{
   background: rgba(243,244,246,0.88);
   backdrop-filter: blur(10px);
   border-bottom:1px solid var(--line);
-  max-width: 100vw;
 }
 
 .nav-inner{
-  width: 100%;
   max-width:980px;
   margin:0 auto;
   display:flex;
@@ -211,7 +209,6 @@ textarea:focus-visible{
   flex-wrap:wrap;
   justify-content:center;
   align-items:center;
-  min-width:0;
 }
 
 .nav a{
