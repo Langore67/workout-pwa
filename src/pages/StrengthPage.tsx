@@ -21,7 +21,7 @@
 /*  ✅ Preserve dashboard, pattern scores, and weekly trend table             */
 /*  ✅ Preserve mode toggle persistence and trend calculations                */
 /* ========================================================================== */
-
+// TEMP: force sync of read-only anchors UI
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ProgressPageHeader from "../components/layout/ProgressPageHeader";
