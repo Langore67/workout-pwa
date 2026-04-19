@@ -144,10 +144,10 @@ function TopNav() {
   const closeMore = () => setMoreOpen(false);
 
   return (
-    <div className="nav" style={{ position: "relative", zIndex: 2000, overflow: "visible" }}>
+    <div className="nav" style={{ position: "relative", zIndex: 2000 }}>
       <div
         className="nav-inner"
-        style={{ position: "relative", overflow: "visible", zIndex: 2001 }}
+        style={{ position: "relative", zIndex: 2001 }}
       >
         <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>
           Start
@@ -205,9 +205,9 @@ function TopNav() {
               aria-label="More"
               className="card"
               style={{
-                position: "absolute",
-                top: "calc(100% + 8px)",
-                right: 0,
+                position: "fixed",
+                top: 48,
+                right: 12,
                 minWidth: 200,
                 zIndex: 9999,
                 display: "grid",
