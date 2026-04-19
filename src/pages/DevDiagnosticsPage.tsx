@@ -18,7 +18,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "../db";
+import { db, normalizeName } from "../db";
 import type { Track, SetEntry } from "../db";
 import { BUILD_INFO } from "../buildInfo";
 import seedCatalog from "../seed/exercises.seed.with_cues.json";
@@ -39,6 +39,62 @@ import {
 
 type SetKind = "warmup" | "working" | "drop" | "failure";
 type SetEntryX = SetEntry & { setType?: SetKind | string; completedAt?: number };
+
+type AnchorMetadataValidationResult = {
+  ok: boolean;
+  summary: string;
+  text: string;
+};
+
+const ANCHOR_METADATA_KEY_EXERCISES: Array<{ label: string; names: string[] }> = [
+  { label: "Barbell Bench Press", names: ["Barbell Bench Press"] },
+  { label: "Dumbbell Bench Press", names: ["Dumbbell Bench Press"] },
+  { label: "Incline Barbell Bench Press", names: ["Incline Barbell Bench Press"] },
+  { label: "Incline Dumbbell Bench Press", names: ["Incline Dumbbell Bench Press"] },
+  { label: "Barbell Overhead Press", names: ["Barbell Overhead Press"] },
+  { label: "Dumbbell Shoulder Press", names: ["Dumbbell Shoulder Press"] },
+  { label: "Machine Shoulder Press", names: ["Machine Shoulder Press"] },
+  { label: "Smith Machine Bench Press", names: ["Smith Machine Bench Press"] },
+  { label: "Machine Chest Press", names: ["Machine Chest Press"] },
+  { label: "Cable Chest Press", names: ["Cable Chest Press"] },
+  { label: "Landmine Press", names: ["Landmine Press"] },
+  { label: "Pull Up", names: ["Pull Up"] },
+  { label: "Chin Up", names: ["Chin Up"] },
+  { label: "Lat Pulldown", names: ["Lat Pulldown"] },
+  { label: "Lat Pulldown (Neutral Grip)", names: ["Lat Pulldown (Neutral Grip)"] },
+  { label: "Assisted Pull-Up / Assisted Pull Up", names: ["Assisted Pull-Up", "Assisted Pull Up"] },
+  { label: "Barbell Row", names: ["Barbell Row"] },
+  { label: "Chest Supported Row", names: ["Chest Supported Row"] },
+  { label: "Chest Supported Dumbbell Row", names: ["Chest Supported Dumbbell Row"] },
+  { label: "Seated Cable Row", names: ["Seated Cable Row"] },
+  { label: "T-Bar Row", names: ["T-Bar Row"] },
+  { label: "One Arm Dumbbell Row", names: ["One Arm Dumbbell Row"] },
+  { label: "3-Point Dumbbell Row", names: ["3-Point Dumbbell Row"] },
+  { label: "Romanian Deadlift", names: ["Romanian Deadlift"] },
+  { label: "Deadlift", names: ["Deadlift"] },
+  { label: "Trap Bar Deadlift", names: ["Trap Bar Deadlift"] },
+  { label: "DB RDL", names: ["DB RDL", "Dumbbell Romanian Deadlift", "Dumbbell RDL"] },
+  { label: "Smith Machine RDL", names: ["Smith Machine RDL", "Smith Machine Romanian Deadlift"] },
+  { label: "Glute Machine / Hip Thrust", names: ["Glute Machine", "Hip Thrust"] },
+  { label: "Good Morning", names: ["Good Morning"] },
+  { label: "Single Leg Romanian Deadlift", names: ["Single Leg Romanian Deadlift"] },
+  { label: "Barbell Back Squat", names: ["Barbell Back Squat"] },
+  { label: "Front Squat", names: ["Front Squat"] },
+  { label: "Hack Squat", names: ["Hack Squat"] },
+  { label: "Leg Press", names: ["Leg Press"] },
+  { label: "Smith Machine Squat", names: ["Smith Machine Squat"] },
+  { label: "Bulgarian Split Squat", names: ["Bulgarian Split Squat"] },
+  { label: "Reverse Lunge", names: ["Reverse Lunge"] },
+  { label: "Walking Lunge", names: ["Walking Lunge"] },
+  { label: "Step Up", names: ["Step Up"] },
+  { label: "Farmer Carry", names: ["Farmer Carry"] },
+  { label: "Suitcase Carry", names: ["Suitcase Carry"] },
+  { label: "Sled Push", names: ["Sled Push"] },
+  { label: "Sled Pull", names: ["Sled Pull"] },
+];
+
+const VALID_MOVEMENT_PATTERNS = new Set(["push", "pull", "hinge", "squat", "carry", "lunge"]);
+const VALID_ANCHOR_ELIGIBILITY = new Set(["none", "conditional", "primary"]);
 
 function fmtDate(ts?: number) {
   if (!ts || !Number.isFinite(ts)) return "";
@@ -81,6 +137,134 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
   }
 }
 
+function formatMetadata(row: any) {
+  const subtypes = Array.isArray(row?.anchorSubtypes) ? row.anchorSubtypes.join(",") : "";
+  return `${String(row?.movementPattern ?? "") || "-"} / ${String(row?.anchorEligibility ?? "") || "-"} / [${subtypes}]`;
+}
+
+function sameStringArray(a: unknown, b: unknown) {
+  const aa = Array.isArray(a) ? a.map((x) => String(x ?? "")).filter(Boolean) : [];
+  const bb = Array.isArray(b) ? b.map((x) => String(x ?? "")).filter(Boolean) : [];
+  if (aa.length !== bb.length) return false;
+  return aa.every((value, index) => value === bb[index]);
+}
+
+function metadataDiff(live: any, seed: any) {
+  const diffs: string[] = [];
+  if (!seed) return diffs;
+  if (String(live?.movementPattern ?? "") !== String(seed?.movementPattern ?? "")) diffs.push("movementPattern");
+  if (String(live?.anchorEligibility ?? "") !== String(seed?.anchorEligibility ?? "")) diffs.push("anchorEligibility");
+  if (!sameStringArray(live?.anchorSubtypes, seed?.anchorSubtypes)) diffs.push("anchorSubtypes");
+  return diffs;
+}
+
+async function validateAnchorMetadata(): Promise<AnchorMetadataValidationResult> {
+  const exercises = await db.exercises.toArray();
+  const liveByNorm = new Map<string, any>();
+  for (const exercise of exercises as any[]) {
+    const keys = [
+      exercise?.normalizedName,
+      exercise?.name,
+      ...(Array.isArray(exercise?.aliases) ? exercise.aliases : []),
+    ];
+    for (const key of keys) {
+      const norm = normalizeName(String(key ?? ""));
+      if (norm && !liveByNorm.has(norm)) liveByNorm.set(norm, exercise);
+    }
+  }
+
+  const seedByNorm = new Map<string, any>();
+  for (const seed of seedCatalog as any[]) {
+    const norm = normalizeName(String(seed?.name ?? ""));
+    if (norm) seedByNorm.set(norm, seed);
+  }
+
+  const rowsWithMetadata = (exercises as any[]).filter(
+    (exercise) =>
+      !!String(exercise?.movementPattern ?? "").trim() ||
+      !!String(exercise?.anchorEligibility ?? "").trim() ||
+      (Array.isArray(exercise?.anchorSubtypes) && exercise.anchorSubtypes.length > 0)
+  );
+
+  const suspiciousRows = rowsWithMetadata.filter((exercise) => {
+    const pattern = String(exercise?.movementPattern ?? "").trim();
+    const eligibility = String(exercise?.anchorEligibility ?? "").trim();
+    const subtypes = exercise?.anchorSubtypes;
+    return (
+      (pattern && !VALID_MOVEMENT_PATTERNS.has(pattern)) ||
+      (eligibility && !VALID_ANCHOR_ELIGIBILITY.has(eligibility)) ||
+      (subtypes != null && !Array.isArray(subtypes)) ||
+      (eligibility && !pattern)
+    );
+  });
+
+  const keyRows = ANCHOR_METADATA_KEY_EXERCISES.map((key) => {
+    const live = key.names.map((name) => liveByNorm.get(normalizeName(name))).find(Boolean);
+    const seed = key.names.map((name) => seedByNorm.get(normalizeName(name))).find(Boolean);
+    const missingLive = !live;
+    const missingMetadata =
+      !!live &&
+      !String(live?.movementPattern ?? "").trim() &&
+      !String(live?.anchorEligibility ?? "").trim() &&
+      !(Array.isArray(live?.anchorSubtypes) && live.anchorSubtypes.length > 0);
+    const diffs = live && seed ? metadataDiff(live, seed) : [];
+    const status = missingLive
+      ? "MISSING LIVE ROW"
+      : !seed
+        ? "NO SEED EXPECTATION"
+        : missingMetadata
+          ? "MISSING METADATA"
+          : diffs.length
+            ? `DIFF: ${diffs.join(", ")}`
+            : "OK";
+
+    return {
+      key,
+      live,
+      seed,
+      status,
+    };
+  });
+
+  const missingMetadata = keyRows.filter((row) => row.status === "MISSING METADATA");
+  const missingLive = keyRows.filter((row) => row.status === "MISSING LIVE ROW");
+  const diffs = keyRows.filter((row) => row.status.startsWith("DIFF:"));
+
+  const lines: string[] = [];
+  lines.push("Anchor Metadata Validation");
+  lines.push(`Generated: ${new Date().toLocaleString()}`);
+  lines.push("");
+  lines.push("Summary");
+  lines.push(`- Live exercises: ${exercises.length}`);
+  lines.push(`- Live exercises with any anchor metadata: ${rowsWithMetadata.length}`);
+  lines.push(`- Key exercises checked: ${keyRows.length}`);
+  lines.push(`- Key live rows missing: ${missingLive.length}`);
+  lines.push(`- Key rows missing metadata: ${missingMetadata.length}`);
+  lines.push(`- Key rows differing from seed: ${diffs.length}`);
+  lines.push(`- Suspicious live metadata rows: ${suspiciousRows.length}`);
+  lines.push("");
+  lines.push("Key Exercises");
+  for (const row of keyRows) {
+    lines.push(
+      `- ${row.key.label}: ${row.status} | live=${row.live?.name ?? "-"} | liveMeta=${formatMetadata(row.live)} | seedMeta=${formatMetadata(row.seed)}`
+    );
+  }
+
+  if (suspiciousRows.length) {
+    lines.push("");
+    lines.push("Suspicious Live Rows");
+    for (const exercise of suspiciousRows.slice(0, 40)) {
+      lines.push(`- ${exercise?.name ?? exercise?.id}: ${formatMetadata(exercise)}`);
+    }
+  }
+
+  return {
+    ok: missingMetadata.length === 0 && diffs.length === 0 && suspiciousRows.length === 0,
+    summary: `Metadata rows: ${rowsWithMetadata.length}/${exercises.length}; missing key metadata: ${missingMetadata.length}; seed diffs: ${diffs.length}; suspicious: ${suspiciousRows.length}`,
+    text: lines.join("\n"),
+  };
+}
+
 export default function DevDiagnosticsPage() {
   // Hard guard: never show in production builds.
   if (!import.meta.env.DEV) return <Navigate to="/" replace />;
@@ -90,6 +274,7 @@ export default function DevDiagnosticsPage() {
 
   const [aliasSyncStatus, setAliasSyncStatus] = useState<string>("");
   const [rdlRepairResult, setRdlRepairResult] = useState<RdlRepairResult | null>(null);
+  const [anchorMetadataResult, setAnchorMetadataResult] = useState<AnchorMetadataValidationResult | null>(null);
 
   /* --------------------------------------------------------------------------
      Build / version info
@@ -395,6 +580,24 @@ export default function DevDiagnosticsPage() {
     }
   }
 
+  async function onValidateAnchorMetadata() {
+    setAnchorMetadataResult({
+      ok: true,
+      summary: "Validating anchor metadata...",
+      text: "Validating anchor metadata...",
+    });
+
+    try {
+      setAnchorMetadataResult(await validateAnchorMetadata());
+    } catch (e: any) {
+      setAnchorMetadataResult({
+        ok: false,
+        summary: `Anchor metadata validation failed: ${e?.message ?? e}`,
+        text: `Anchor metadata validation failed:\n${e?.stack ?? e?.message ?? e}`,
+      });
+    }
+  }
+
   /* --------------------------------------------------------------------------
      Render
      ----------------------------------------------------------------------- */
@@ -459,6 +662,14 @@ export default function DevDiagnosticsPage() {
           >
             Repair RDL History
           </button>
+
+          <button
+            className="btn small"
+            onClick={onValidateAnchorMetadata}
+            title="Read live exercise rows and compare anchor metadata against seed expectations"
+          >
+            Validate Anchor Metadata
+          </button>
         </div>
 
         {aliasSyncStatus && (
@@ -481,6 +692,42 @@ export default function DevDiagnosticsPage() {
               Tracks moved: {rdlRepairResult.tracksMoved} · Session items moved:{" "}
               {rdlRepairResult.sessionItemsMoved} · Sets moved: {rdlRepairResult.setsMoved}
             </div>
+          </div>
+        )}
+
+        {anchorMetadataResult && (
+          <div
+            className="muted"
+            style={{
+              marginTop: 10,
+              color: anchorMetadataResult.ok ? "var(--text)" : "var(--danger)",
+              lineHeight: 1.45,
+            }}
+          >
+            <div style={{ fontWeight: 800 }}>{anchorMetadataResult.summary}</div>
+            <div className="row" style={{ gap: 8, marginTop: 8, marginBottom: 8 }}>
+              <button
+                className="btn small"
+                type="button"
+                onClick={() => void copyTextToClipboard(anchorMetadataResult.text)}
+              >
+                Copy anchor metadata report
+              </button>
+            </div>
+            <textarea
+              className="input"
+              readOnly
+              value={anchorMetadataResult.text}
+              rows={18}
+              style={{
+                width: "100%",
+                fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+                fontSize: 12,
+                lineHeight: 1.45,
+                whiteSpace: "pre",
+              }}
+              onFocus={(e) => e.currentTarget.select()}
+            />
           </div>
         )}
 

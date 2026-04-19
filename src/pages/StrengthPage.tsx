@@ -237,6 +237,7 @@ function formatAnchorE1RM(value: unknown): string {
 }
 
 function formatAnchorDate(value: unknown): string {
+  if (typeof value === "string" && value.trim()) return value.trim();
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return "Unknown";
   return new Date(n).toLocaleDateString();
@@ -247,6 +248,25 @@ function formatConfidence(value: unknown): string {
   if (value === "MEDIUM") return "Medium";
   if (value === "LOW") return "Low";
   return "Unknown";
+}
+
+function formatAnchorSetText(value: unknown): string {
+  return typeof value === "string" && value.trim() ? value.trim() : "Unknown";
+}
+
+function formatAnchorSetCount(value: unknown): string {
+  const n = Number(value);
+  return Number.isFinite(n) ? fmt0(n) : "Unknown";
+}
+
+function anchorDirectionLabel(capacityValue: unknown, stateValue: unknown): string {
+  const capacity = Number(capacityValue);
+  const state = Number(stateValue);
+  if (!Number.isFinite(capacity) || capacity <= 0 || !Number.isFinite(state) || state <= 0) {
+    return "State unknown";
+  }
+  if (state >= capacity) return "▲ Improving / At capacity";
+  return (capacity - state) / capacity <= 0.03 ? "▬ Stable" : "▼ Down";
 }
 
 /* ========================================================================== */
@@ -672,6 +692,8 @@ export default function StrengthPage() {
                     anchorSlots.map((slot) => {
                       const anchor = strengthV2.anchors[slot] ?? null;
                       const isResolved = Boolean(anchor?.exerciseName);
+                      const capacity = anchor?.capacity;
+                      const state = anchor?.state;
 
                       return (
                         <div key={slot} className="card" style={{ padding: 12 }}>
@@ -720,43 +742,122 @@ export default function StrengthPage() {
                             <div
                               style={{
                                 display: "grid",
-                                gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-                                gap: 8,
+                                gap: 10,
                                 marginTop: 10,
                               }}
                             >
-                              <div>
-                                <div className="muted" style={{ fontSize: 12 }}>
-                                  Best e1RM
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                                  gap: 8,
+                                }}
+                              >
+                                <div>
+                                  <div className="muted" style={{ fontSize: 12 }}>
+                                    Capacity
+                                  </div>
+                                  <div style={{ fontWeight: 900, fontSize: 18 }}>
+                                    {formatAnchorE1RM(capacity?.e1RM)}
+                                  </div>
                                 </div>
-                                <div style={{ fontWeight: 850 }}>
-                                  {formatAnchorE1RM(anchor?.e1RM)}
+                                <div>
+                                  <div className="muted" style={{ fontSize: 12 }}>
+                                    State
+                                  </div>
+                                  <div style={{ fontWeight: 900, fontSize: 18 }}>
+                                    {formatAnchorE1RM(state?.e1RM)}
+                                  </div>
                                 </div>
                               </div>
-                              <div>
-                                <div className="muted" style={{ fontSize: 12 }}>
-                                  Last performed
+
+                              <div
+                                className="muted"
+                                style={{
+                                  border: "1px solid var(--border)",
+                                  borderRadius: 8,
+                                  display: "inline-flex",
+                                  fontSize: 12,
+                                  fontWeight: 850,
+                                  justifySelf: "start",
+                                  padding: "4px 8px",
+                                }}
+                              >
+                                {anchorDirectionLabel(capacity?.e1RM, state?.e1RM)}
+                              </div>
+
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+                                  gap: 8,
+                                }}
+                              >
+                                <div>
+                                  <div className="muted" style={{ fontSize: 12 }}>
+                                    Capacity best
+                                  </div>
+                                  <div style={{ fontSize: 13, fontWeight: 850 }}>
+                                    {formatAnchorSetText(capacity?.bestSetText)}
+                                  </div>
                                 </div>
-                                <div style={{ fontWeight: 850 }}>
-                                  {formatAnchorDate(anchor?.lastPerformedAt)}
+                                <div>
+                                  <div className="muted" style={{ fontSize: 12 }}>
+                                    State best
+                                  </div>
+                                  <div style={{ fontSize: 13, fontWeight: 850 }}>
+                                    {formatAnchorSetText(state?.bestSetText)}
+                                  </div>
                                 </div>
                               </div>
-                              <div>
-                                <div className="muted" style={{ fontSize: 12 }}>
-                                  Confidence
+
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+                                  gap: 8,
+                                }}
+                              >
+                                <div>
+                                  <div className="muted" style={{ fontSize: 12 }}>
+                                    Last performed
+                                  </div>
+                                  <div style={{ fontWeight: 850 }}>
+                                    {formatAnchorDate(state?.lastPerformedAt)}
+                                  </div>
                                 </div>
-                                <div style={{ fontWeight: 850 }}>
-                                  {formatConfidence(anchor?.confidence)}
+                                <div>
+                                  <div className="muted" style={{ fontSize: 12 }}>
+                                    Confidence
+                                  </div>
+                                  <div style={{ fontWeight: 850 }}>
+                                    {formatConfidence(state?.confidence)}
+                                  </div>
                                 </div>
                               </div>
-                              <div>
-                                <div className="muted" style={{ fontSize: 12 }}>
-                                  Completed sets considered
+
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+                                  gap: 8,
+                                }}
+                              >
+                                <div>
+                                  <div className="muted" style={{ fontSize: 12 }}>
+                                    Sets (90d)
+                                  </div>
+                                  <div style={{ fontWeight: 850 }}>
+                                    {formatAnchorSetCount(capacity?.completedSetsConsidered)}
+                                  </div>
                                 </div>
-                                <div style={{ fontWeight: 850 }}>
-                                  {Number.isFinite(Number(anchor?.dataPoints))
-                                    ? fmt0(anchor?.dataPoints)
-                                    : "Unknown"}
+                                <div>
+                                  <div className="muted" style={{ fontSize: 12 }}>
+                                    Sets (28d)
+                                  </div>
+                                  <div style={{ fontWeight: 850 }}>
+                                    {formatAnchorSetCount(state?.completedSetsConsidered)}
+                                  </div>
                                 </div>
                               </div>
                             </div>
