@@ -226,6 +226,7 @@ const TIME_RANGES: DashboardRange[] = ["4W", "8W", "12W", "YTD", "ALL"];
    ============================================================================ */
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const SECONDARY_STRENGTH_WORKING_MULTIPLIER = 0.6;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -923,7 +924,11 @@ if (!movement) continue;
       });
 
     current.top = Math.max(current.top, scored);
-    current.working.push(scored);
+    current.working.push(
+      strengthSignalRole === "secondary"
+        ? scored * SECONDARY_STRENGTH_WORKING_MULTIPLIER
+        : scored
+    );
     current.completedWorkingSets += 1;
     contributors.set(contributorKey, current);
   }
