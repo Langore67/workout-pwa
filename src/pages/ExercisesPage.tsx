@@ -28,7 +28,7 @@ import React, { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
 import { db, normalizeName } from "../db";
-import type { Exercise, BodyPart, MetricMode, Track } from "../db";
+import type { Exercise, BodyPart, MetricMode, Track, ExerciseMovementPattern, StrengthSignalRole } from "../db";
 import { uuid } from "../utils";
 import { Page, Section } from "../components/Page.tsx";
 import { seedExercises } from "../seed/seedExercises";
@@ -122,6 +122,9 @@ const BODY_PARTS: BodyPart[] = [
   "Other",
 ];
 
+const MOVEMENT_PATTERNS: ExerciseMovementPattern[] = ["push", "pull", "hinge", "squat", "carry", "lunge"];
+const STRENGTH_SIGNAL_ROLES: StrengthSignalRole[] = ["included", "secondary", "excluded"];
+
 /* ========================================================================== */
 /*  Breadcrumb 2 — Small helpers (string/arrays)                              */
 /* ========================================================================== */
@@ -129,6 +132,20 @@ const BODY_PARTS: BodyPart[] = [
 function getFocusArea(e: Exercise): string | undefined {
   const fa = (e as any).focusArea as string | undefined;
   return fa && fa.trim() ? fa : undefined;
+}
+
+function normalizeExerciseMovementPattern(value: unknown): ExerciseMovementPattern | undefined {
+  const raw = String(value ?? "").trim().toLowerCase();
+  return MOVEMENT_PATTERNS.includes(raw as ExerciseMovementPattern)
+    ? (raw as ExerciseMovementPattern)
+    : undefined;
+}
+
+function normalizeStrengthSignalRoleForEdit(value: unknown): StrengthSignalRole {
+  const raw = String(value ?? "").trim().toLowerCase();
+  return STRENGTH_SIGNAL_ROLES.includes(raw as StrengthSignalRole)
+    ? (raw as StrengthSignalRole)
+    : "included";
 }
 
 function normalizeAliases(raw: string): string[] {
@@ -1145,8 +1162,8 @@ export default function ExercisesPage() {
   const [editAliasesText, setEditAliasesText] = useState("");
   const [editError, setEditError] = useState<string>("");
   const [editMetricMode, setEditMetricMode] = useState<MetricMode>("reps");
-  const [editMovementPattern, setEditMovementPattern] = useState<string>("");
-  const [editStrengthSignalRole, setEditStrengthSignalRole] = useState<string>("");
+  const [editMovementPattern, setEditMovementPattern] = useState<ExerciseMovementPattern | "">("");
+  const [editStrengthSignalRole, setEditStrengthSignalRole] = useState<StrengthSignalRole>("included");
 
   const [editSummary, setEditSummary] = useState("");
   const [editDirections, setEditDirections] = useState("");
@@ -1688,16 +1705,8 @@ export default function ExercisesPage() {
     setEditAliasesText((e.aliases ?? []).join("\n"));
 
     setEditMetricMode(normalizeMetricMode((e as any).metricMode));
-    setEditMovementPattern(String((e as any).movementPattern ?? ""));
-    {
-      const rawStrengthSignalRole = String((e as any).strengthSignalRole ?? "")
-        .trim()
-        .toLowerCase();
-
-      setEditStrengthSignalRole(
-        rawStrengthSignalRole === "included" ? "" : rawStrengthSignalRole
-      );
-    }
+    setEditMovementPattern(normalizeExerciseMovementPattern((e as any).movementPattern) ?? "");
+    setEditStrengthSignalRole(normalizeStrengthSignalRoleForEdit((e as any).strengthSignalRole));
 
     setEditSummary(String((e as any).summary ?? ""));
     setEditDirections(String((e as any).directions ?? ""));
@@ -1763,8 +1772,8 @@ export default function ExercisesPage() {
       commonMistakes: commonMistakes.length ? commonMistakes : undefined,
       videoUrl,
       metricMode: normalizeMetricMode(editMetricMode),
-      movementPattern: editMovementPattern || undefined,
-      strengthSignalRole: editStrengthSignalRole || undefined,
+      movementPattern: normalizeExerciseMovementPattern(editMovementPattern),
+      strengthSignalRole: normalizeStrengthSignalRoleForEdit(editStrengthSignalRole),
     };
 
     if (editFocusArea) patch.focusArea = editFocusArea;
@@ -3175,7 +3184,7 @@ export default function ExercisesPage() {
 	           <select
 	             className="input"
 	             value={editMovementPattern}
-	             onChange={(e) => setEditMovementPattern(e.target.value)}
+	             onChange={(e) => setEditMovementPattern(normalizeExerciseMovementPattern(e.target.value) ?? "")}
 	             title="Primary movement pattern used for movement breakdown and future classification cleanup"
 	           >
 	             <option value="">—</option>
@@ -3193,10 +3202,10 @@ export default function ExercisesPage() {
 		     <select
 		       className="input"
 		       value={editStrengthSignalRole}
-		       onChange={(e) => setEditStrengthSignalRole(e.target.value)}
+		       onChange={(e) => setEditStrengthSignalRole(normalizeStrengthSignalRoleForEdit(e.target.value))}
 		       title="Controls how strongly this exercise contributes to Strength Signal"
 		     >
-		       <option value="">Primary / Default</option>
+		       <option value="included">Primary / Default</option>
 		       <option value="secondary">Secondary (downweighted)</option>
 		       <option value="excluded">Excluded</option>
 		     </select>

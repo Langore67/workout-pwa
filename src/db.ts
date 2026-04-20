@@ -44,6 +44,7 @@ export type TrackingMode =
 
 export type MetricMode = "reps" | "distance" | "time";
 export type ExerciseMovementPattern = "push" | "pull" | "hinge" | "squat" | "carry" | "lunge";
+export type StrengthSignalRole = "included" | "secondary" | "excluded";
 export type AnchorEligibility = "none" | "conditional" | "primary";
 
 export type BodyPart =
@@ -117,6 +118,7 @@ export interface Exercise {
   equipment?: Equipment;
   metricMode?: MetricMode;
   movementPattern?: ExerciseMovementPattern;
+  strengthSignalRole?: StrengthSignalRole;
   anchorEligibility?: AnchorEligibility;
   anchorSubtypes?: string[];
 
