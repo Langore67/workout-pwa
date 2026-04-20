@@ -152,8 +152,21 @@ async function buildStrengthSignal(now: number) {
   };
 }
 
-function classifyPattern(exerciseName: string, trackDisplayName: string): StrengthPattern | undefined {
+function asStrengthPattern(value: unknown): StrengthPattern | undefined {
+  const pattern = String(value ?? "").trim().toLowerCase();
+  if (pattern === "push" || pattern === "pull" || pattern === "squat" || pattern === "hinge") {
+    return pattern;
+  }
+  return undefined;
+}
+
+function classifyPattern(
+  exercise: any,
+  exerciseName: string,
+  trackDisplayName: string
+): StrengthPattern | undefined {
   return (
+    asStrengthPattern(exercise?.movementPattern) ??
     classifyStrengthPatternFromExerciseName(exerciseName) ??
     classifyStrengthPatternFromExerciseName(trackDisplayName)
   );
@@ -197,9 +210,13 @@ async function buildAnchorLifts(
     if (!track) continue;
     if (!isStrengthTrackType(track.trackType)) continue;
     const exercise = exerciseById.get(track.exerciseId);
+    const strengthSignalRole = String(exercise?.strengthSignalRole ?? "")
+      .trim()
+      .toLowerCase();
+    if (strengthSignalRole === "excluded") continue;
     const exerciseName = String(exercise?.name ?? "").trim();
     const trackDisplayName = String(track?.displayName ?? "").trim();
-    const pattern = classifyPattern(exerciseName, trackDisplayName);
+    const pattern = classifyPattern(exercise, exerciseName, trackDisplayName);
     if (!pattern) continue;
     const performedAt = cleanNumber(setRow.completedAt ?? setRow.createdAt);
     const bodyweightAtSet =
