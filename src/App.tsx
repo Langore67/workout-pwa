@@ -15,7 +15,8 @@
    ============================================================================ */
 
 import React, { useEffect, useRef, useState } from "react";
-import { NavLink, Route, Routes, Navigate } from "react-router-dom";
+import { createPortal } from "react-dom";
+import { NavLink, Route, Routes, Navigate, useLocation } from "react-router-dom";
 import StartPage from "./pages/StartPage";
 import TemplatesPage from "./pages/TemplatesPage";
 import ExercisesPage from "./pages/ExercisesPage";
@@ -117,13 +118,31 @@ class AppErrorBoundary extends React.Component<
    ============================================================================ */
 
 function TopNav() {
+  const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [moreMenuPos, setMoreMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const navInnerRef = useRef<HTMLDivElement | null>(null);
   const moreRef = useRef<HTMLDivElement | null>(null);
+  const moreButtonRef = useRef<HTMLButtonElement | null>(null);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+
+  function updateMoreMenuPosition() {
+    const button = moreButtonRef.current;
+    if (!button) return;
+
+    const rect = button.getBoundingClientRect();
+    const pad = 8;
+    const menuWidth = 220;
+    setMoreMenuPos({
+      top: rect.bottom + pad,
+      left: Math.min(window.innerWidth - menuWidth - pad, Math.max(pad, rect.right - menuWidth)),
+    });
+  }
 
   useEffect(() => {
     function onDocMouseDown(e: MouseEvent) {
-      if (!moreRef.current) return;
-      if (!moreRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (!moreRef.current?.contains(target) && !moreMenuRef.current?.contains(target)) {
         setMoreOpen(false);
       }
     }
@@ -141,14 +160,52 @@ function TopNav() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!moreOpen) return;
+
+    updateMoreMenuPosition();
+    window.addEventListener("resize", updateMoreMenuPosition);
+    window.addEventListener("scroll", updateMoreMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateMoreMenuPosition);
+      window.removeEventListener("scroll", updateMoreMenuPosition, true);
+    };
+  }, [moreOpen]);
+
+  useEffect(() => {
+    const nav = navInnerRef.current;
+    if (!nav || !window.matchMedia("(max-width: 520px)").matches) return;
+
+    const raf = window.requestAnimationFrame(() => {
+      const active = nav.querySelector<HTMLElement>("a.active");
+      if (!active) return;
+
+      const navRect = nav.getBoundingClientRect();
+      const activeRect = active.getBoundingClientRect();
+      const gutter = 16;
+
+      if (activeRect.left < navRect.left + gutter) {
+        nav.scrollBy({
+          left: activeRect.left - navRect.left - gutter,
+          behavior: "auto",
+        });
+      } else if (activeRect.right > navRect.right - gutter) {
+        nav.scrollBy({
+          left: activeRect.right - navRect.right + gutter,
+          behavior: "auto",
+        });
+      }
+    });
+
+    return () => window.cancelAnimationFrame(raf);
+  }, [location.pathname]);
+
   const closeMore = () => setMoreOpen(false);
 
   return (
-    <div className="nav" style={{ position: "relative", zIndex: 2000, overflow: "visible" }}>
-      <div
-        className="nav-inner"
-        style={{ position: "relative", overflow: "visible", zIndex: 2001 }}
-      >
+    <div className="nav">
+      <div className="nav-inner" ref={navInnerRef}>
         <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>
           Start
         </NavLink>
@@ -174,46 +231,32 @@ function TopNav() {
 
         <div
           ref={moreRef}
+          className="nav-more"
           style={{
             position: "relative",
             display: "inline-flex",
-            overflow: "visible",
-            zIndex: 2002,
           }}
         >
           <button
+            ref={moreButtonRef}
             type="button"
-            className={moreOpen ? "active" : ""}
+            className={`nav-more-button ${moreOpen ? "active" : ""}`}
             aria-haspopup="menu"
             aria-expanded={moreOpen}
             onClick={() => setMoreOpen((v) => !v)}
-            style={{
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              font: "inherit",
-              padding: "0",
-              color: "inherit",
-            }}
           >
             More ▾
           </button>
 
-          {moreOpen ? (
+          {moreOpen && typeof document !== "undefined" ? createPortal(
             <div
+              ref={moreMenuRef}
               role="menu"
               aria-label="More"
-              className="card"
+              className="card nav-more-menu"
               style={{
-                position: "absolute",
-                top: "calc(100% + 8px)",
-                right: 0,
-                minWidth: 200,
-                zIndex: 9999,
-                display: "grid",
-                gap: 6,
-                padding: 10,
-                borderRadius: 14,
+                top: moreMenuPos?.top ?? 48,
+                left: moreMenuPos?.left ?? 8,
               }}
             >
               <NavLink
@@ -297,7 +340,8 @@ function TopNav() {
                   Dev
                 </NavLink>
               )}
-            </div>
+            </div>,
+            document.body
           ) : null}
         </div>
       </div>
