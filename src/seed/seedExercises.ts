@@ -26,7 +26,15 @@
 */
 
 import { db, normalizeName } from "../db";
-import type { AnchorEligibility, Exercise, BodyPart, ExerciseCategory, Equipment, ExerciseMovementPattern } from "../db";
+import type {
+  AnchorEligibility,
+  Exercise,
+  BodyPart,
+  ExerciseCategory,
+  Equipment,
+  ExerciseMovementPattern,
+  StrengthSignalRole,
+} from "../db";
 import { uuid } from "../utils";
 import exercisesSeed from "./exercises.seed.with_cues.json";
 
@@ -41,7 +49,7 @@ type SeedExercise = {
   movementPattern?: ExerciseMovementPattern | string;
   anchorEligibility?: AnchorEligibility | string;
   anchorSubtypes?: string[];
-  strengthSignalRole?: string;
+  strengthSignalRole?: StrengthSignalRole | string;
 
   // Coaching / media (optional)
   summary?: string;
@@ -68,6 +76,8 @@ type SeedExercise = {
 const BODY_PARTS: BodyPart[] = ["Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Full Body", "Cardio", "Other"];
 const CATEGORIES: ExerciseCategory[] = ["Strength", "Machine", "Bodyweight", "Cardio", "Mobility", "Warmup", "Other"];
 const EQUIPMENT: Equipment[] = ["Barbell", "Dumbbell", "Cable", "Machine", "Bodyweight", "Kettlebell", "Band", "Other"];
+const MOVEMENT_PATTERNS: ExerciseMovementPattern[] = ["push", "pull", "hinge", "squat", "carry", "lunge"];
+const STRENGTH_SIGNAL_ROLES: StrengthSignalRole[] = ["included", "secondary", "excluded"];
 
 function asBodyPart(v: any): BodyPart | undefined {
   return BODY_PARTS.includes(v) ? (v as BodyPart) : undefined;
@@ -77,6 +87,18 @@ function asCategory(v: any): ExerciseCategory | undefined {
 }
 function asEquipment(v: any): Equipment | undefined {
   return EQUIPMENT.includes(v) ? (v as Equipment) : undefined;
+}
+function asMovementPattern(v: any): ExerciseMovementPattern | undefined {
+  const value = typeof v === "string" ? v.trim().toLowerCase() : "";
+  return MOVEMENT_PATTERNS.includes(value as ExerciseMovementPattern)
+    ? (value as ExerciseMovementPattern)
+    : undefined;
+}
+function asStrengthSignalRole(v: any): StrengthSignalRole | undefined {
+  const value = typeof v === "string" ? v.trim().toLowerCase() : "";
+  return STRENGTH_SIGNAL_ROLES.includes(value as StrengthSignalRole)
+    ? (value as StrengthSignalRole)
+    : undefined;
 }
 
 function cleanText(v: any): string | undefined {
@@ -163,10 +185,10 @@ export async function seedExercises(): Promise<SeedExercisesResult> {
     seenInSeed.add(norm);
 
         // Normalize seed classification / coaching / media
-        const movementPattern = cleanText(x.movementPattern);
+        const movementPattern = asMovementPattern(x.movementPattern);
         const anchorEligibility = cleanText(x.anchorEligibility);
         const anchorSubtypes = cleanOptionalStringArray(x.anchorSubtypes);
-        const strengthSignalRole = cleanText(x.strengthSignalRole);
+        const strengthSignalRole = asStrengthSignalRole(x.strengthSignalRole);
     
         const summary = cleanText(x.summary);
         const directions = cleanText(x.directions);
