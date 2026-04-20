@@ -47,6 +47,10 @@ import {
   exerciseDuplicateAuditKey,
 } from "../domain/exercises/exerciseDuplicateCandidates";
 import {
+  buildExerciseCatalogIntegrityAudit,
+  type ExerciseCatalogIntegrityAudit,
+} from "../domain/exercises/exerciseCatalogIntegrityAudit";
+import {
   buildExerciseHistoryExportText,
   formatExerciseHistorySetLabel,
 } from "../domain/coaching/exerciseHistorySnapshot";
@@ -366,6 +370,7 @@ type ExerciseAuditSummary = {
   mergedExercises: number;
   duplicateClusters: ExerciseAuditCluster[];
   topUsageRows: ExerciseAuditRow[];
+  integrityAudit: ExerciseCatalogIntegrityAudit;
 };
 
 function classifyAuditCluster(rows: ExerciseAuditRow[]): {
@@ -460,7 +465,108 @@ function buildExerciseAuditSummary(args: {
     mergedExercises: rows.filter((r) => r.merged).length,
     duplicateClusters,
     topUsageRows,
+    integrityAudit: buildExerciseCatalogIntegrityAudit({
+      exercises,
+      tracks,
+    }),
   };
+}
+
+function CatalogIntegrityAuditPanel({ audit }: { audit: ExerciseCatalogIntegrityAudit }) {
+  const severityColor = (severity: string) =>
+    severity === "high" ? "#b91c1c" : severity === "medium" ? "#b45309" : "#6b7280";
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        padding: 10,
+        background: "var(--card)",
+        marginTop: 4,
+        marginBottom: 12,
+      }}
+    >
+      <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 8 }}>
+        Catalog Integrity Audit
+      </div>
+
+      <div className="muted" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 10 }}>
+        <div>Total findings: {audit.totalFindings}</div>
+        <div>High: {audit.highFindings}</div>
+        <div>Medium: {audit.mediumFindings}</div>
+        <div>Low: {audit.lowFindings}</div>
+      </div>
+
+      {audit.groups.length ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          {audit.groups.map((group) => (
+            <details
+              key={group.type}
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                padding: 8,
+                background: "var(--card)",
+              }}
+            >
+              <summary style={{ cursor: "pointer", fontWeight: 800 }}>
+                {group.title} ({group.rows.length}){" "}
+                <span
+                  style={{
+                    color: severityColor(group.severity),
+                    fontSize: 12,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {group.severity}
+                </span>
+              </summary>
+
+              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                {group.description}
+              </div>
+
+              <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+                {group.rows.slice(0, 20).map((row, index) => (
+                  <div
+                    key={`${group.type}-${row.exerciseId ?? row.key ?? index}`}
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      padding: 8,
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>
+                      {row.exerciseName ?? row.key ?? "Catalog issue"}
+                    </div>
+                    <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
+                      {row.details}
+                    </div>
+                    {row.relatedExerciseNames?.length ? (
+                      <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
+                        Related: {row.relatedExerciseNames.join(", ")}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+
+              {group.rows.length > 20 ? (
+                <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                  Showing first 20 findings in this group.
+                </div>
+              ) : null}
+            </details>
+          ))}
+        </div>
+      ) : (
+        <div className="muted" style={{ fontSize: 12 }}>
+          No catalog integrity findings detected.
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ========================================================================== */
@@ -1998,6 +2104,8 @@ export default function ExercisesPage() {
 		                      </div>
 		                    </div>
 		                  </div>
+
+                  <CatalogIntegrityAuditPanel audit={auditSummary.integrityAudit} />
 		  
 		                  <div
 		                    style={{
