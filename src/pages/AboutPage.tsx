@@ -26,6 +26,10 @@ import {
   repairRomanianDeadliftHistory,
   type RdlRepairResult,
 } from "../maintenance/repairRdlHistory";
+import {
+  repairAssistedPullUpLoads,
+  type AssistedPullUpLoadRepairResult,
+} from "../maintenance/repairAssistedPullUpLoads";
 
 /* ============================================================================
    Breadcrumb 1 — Small helpers
@@ -88,6 +92,8 @@ function formatBuildTimestamp(value: string) {
 export default function AboutPage() {
   const builtAtDisplay = formatBuildTimestamp(buildInfo.builtAt);
   const [rdlRepairResult, setRdlRepairResult] = useState<RdlRepairResult | null>(null);
+  const [assistedPullUpRepairResult, setAssistedPullUpRepairResult] =
+    useState<AssistedPullUpLoadRepairResult | null>(null);
 
   async function onRepairRdlHistory() {
     const ok = window.confirm(
@@ -121,6 +127,50 @@ export default function AboutPage() {
         tracksMoved: 0,
         sessionItemsMoved: 0,
         setsMoved: 0,
+      });
+    }
+  }
+
+  async function onRepairAssistedPullUpLoads() {
+    const ok = window.confirm(
+      [
+        "Repair Assisted Pull Up loads?",
+        "",
+        "This will find Assisted Pull Up history by canonical exercise resolution.",
+        "Only positive set weights on Assisted Pull Up sets will be flipped to negative.",
+        "",
+        "Already-negative, zero, blank, non-numeric, and unrelated exercise rows are left unchanged.",
+      ].join("\n")
+    );
+
+    if (!ok) return;
+
+    setAssistedPullUpRepairResult({
+      ok: true,
+      message: "Repairing Assisted Pull Up loads...",
+      canonicalExerciseId: null,
+      canonicalExerciseName: null,
+      tracksMatched: 0,
+      rowsScanned: 0,
+      rowsRepaired: 0,
+      rowsSkipped: 0,
+      warnings: [],
+    });
+
+    try {
+      const result = await repairAssistedPullUpLoads();
+      setAssistedPullUpRepairResult(result);
+    } catch (e: any) {
+      setAssistedPullUpRepairResult({
+        ok: false,
+        message: `Assisted Pull Up load repair failed: ${e?.message ?? e}`,
+        canonicalExerciseId: null,
+        canonicalExerciseName: null,
+        tracksMatched: 0,
+        rowsScanned: 0,
+        rowsRepaired: 0,
+        rowsSkipped: 0,
+        warnings: [],
       });
     }
   }
@@ -193,17 +243,26 @@ export default function AboutPage() {
           />
 
           <div className="muted" style={{ fontSize: 14, lineHeight: 1.5, marginBottom: 12 }}>
-            Repairs orphaned Romanian Deadlift history by moving exact old-ID references to
-            the active Romanian Deadlift exercise.
+            Manual one-time repair actions for known legacy history issues.
           </div>
 
-          <button
-            className="btn small"
-            onClick={onRepairRdlHistory}
-            title="Repoint orphan Romanian Deadlift history to the active Romanian Deadlift exercise"
-          >
-            Repair RDL History
-          </button>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <button
+              className="btn small"
+              onClick={onRepairRdlHistory}
+              title="Repoint orphan Romanian Deadlift history to the active Romanian Deadlift exercise"
+            >
+              Repair RDL History
+            </button>
+
+            <button
+              className="btn small"
+              onClick={onRepairAssistedPullUpLoads}
+              title="Flip legacy positive Assisted Pull Up assistance loads to negative"
+            >
+              Repair Assisted Pull Up Loads
+            </button>
+          </div>
 
           {rdlRepairResult && (
             <div
@@ -219,6 +278,36 @@ export default function AboutPage() {
                 Tracks moved: {rdlRepairResult.tracksMoved} · Session items moved:{" "}
                 {rdlRepairResult.sessionItemsMoved} · Sets moved: {rdlRepairResult.setsMoved}
               </div>
+            </div>
+          )}
+
+          {assistedPullUpRepairResult && (
+            <div
+              className="muted"
+              style={{
+                marginTop: 10,
+                color: assistedPullUpRepairResult.ok ? "var(--text)" : "var(--danger)",
+                lineHeight: 1.45,
+              }}
+            >
+              <div>{assistedPullUpRepairResult.message}</div>
+              <div>
+                Canonical: {assistedPullUpRepairResult.canonicalExerciseName ?? "Unknown"}
+                {assistedPullUpRepairResult.canonicalExerciseId
+                  ? ` (${assistedPullUpRepairResult.canonicalExerciseId})`
+                  : ""}
+              </div>
+              <div>
+                Tracks matched: {assistedPullUpRepairResult.tracksMatched} · Rows scanned:{" "}
+                {assistedPullUpRepairResult.rowsScanned} · Rows repaired:{" "}
+                {assistedPullUpRepairResult.rowsRepaired} · Rows skipped:{" "}
+                {assistedPullUpRepairResult.rowsSkipped}
+              </div>
+              {assistedPullUpRepairResult.warnings.length ? (
+                <div style={{ marginTop: 6 }}>
+                  Warnings: {assistedPullUpRepairResult.warnings.join(" | ")}
+                </div>
+              ) : null}
             </div>
           )}
         </div>
