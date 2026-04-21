@@ -472,7 +472,13 @@ function buildExerciseAuditSummary(args: {
   };
 }
 
-function CatalogIntegrityAuditPanel({ audit }: { audit: ExerciseCatalogIntegrityAudit }) {
+function CatalogIntegrityAuditPanel({
+  audit,
+  onAssignStrengthSignalRole,
+}: {
+  audit: ExerciseCatalogIntegrityAudit;
+  onAssignStrengthSignalRole?: (exerciseId: string, role: StrengthSignalRole) => void;
+}) {
   const severityColor = (severity: string) =>
     severity === "high" ? "#b91c1c" : severity === "medium" ? "#b45309" : "#6b7280";
 
@@ -546,6 +552,25 @@ function CatalogIntegrityAuditPanel({ audit }: { audit: ExerciseCatalogIntegrity
                     {row.relatedExerciseNames?.length ? (
                       <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
                         Related: {row.relatedExerciseNames.join(", ")}
+                      </div>
+                    ) : null}
+
+                    {group.type === "missing_strength_signal_role" && row.exerciseId ? (
+                      <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                        {STRENGTH_SIGNAL_ROLES.map((role) => (
+                          <button
+                            key={`${row.exerciseId}-${role}`}
+                            type="button"
+                            className="btn small"
+                            onClick={() => onAssignStrengthSignalRole?.(row.exerciseId!, role)}
+                          >
+                            {role === "included"
+                              ? "Set Included"
+                              : role === "secondary"
+                              ? "Set Secondary"
+                              : "Set Excluded"}
+                          </button>
+                        ))}
                       </div>
                     ) : null}
                   </div>
@@ -1351,6 +1376,29 @@ export default function ExercisesPage() {
     return result;
   }, []);
 
+  async function assignMissingStrengthSignalRole(exerciseId: string, role: StrengthSignalRole) {
+    if (!STRENGTH_SIGNAL_ROLES.includes(role)) return;
+
+    const exercise = await db.exercises.get(exerciseId);
+    if (!exercise) {
+      window.alert("Exercise not found.");
+      return;
+    }
+
+    const currentRole = String((exercise as any).strengthSignalRole ?? "")
+      .trim()
+      .toLowerCase();
+    if (STRENGTH_SIGNAL_ROLES.includes(currentRole as StrengthSignalRole)) {
+      window.alert("This exercise already has a strength signal role. Nothing was changed.");
+      return;
+    }
+
+    await db.exercises.update(exercise.id, {
+      strengthSignalRole: role,
+      updatedAt: Date.now(),
+    });
+  }
+
   const exerciseNameById = useMemo(() => {
     const map = new Map<string, string>();
     for (const ex of allExercises ?? []) map.set(ex.id, ex.name);
@@ -2105,7 +2153,10 @@ export default function ExercisesPage() {
 		                    </div>
 		                  </div>
 
-                  <CatalogIntegrityAuditPanel audit={auditSummary.integrityAudit} />
+                  <CatalogIntegrityAuditPanel
+                    audit={auditSummary.integrityAudit}
+                    onAssignStrengthSignalRole={assignMissingStrengthSignalRole}
+                  />
 		  
 		                  <div
 		                    style={{
