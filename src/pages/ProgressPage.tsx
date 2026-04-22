@@ -131,12 +131,6 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-type CopyDebugEvent = {
-  step: string;
-  detail: string;
-  at: string;
-};
-
 type FallbackCopyResult =
   | { ok: true; method: "execCommand" }
   | { ok: false; method: "execCommand"; detail: string };
@@ -199,22 +193,7 @@ export default function ProgressPage() {
   const [coachExportText, setCoachExportText] = useState<string>("");
   const [coachExportReadyState, setCoachExportReadyState] = useState<"preparing" | "ready" | "error">("preparing");
   const [manualCopyText, setManualCopyText] = useState<string | null>(null);
-  const [copyDebug, setCopyDebug] = useState<CopyDebugEvent[]>([]);
   const manualCopyRef = useRef<HTMLTextAreaElement | null>(null);
-
-  function pushCopyDebug(step: string, detail: string) {
-    const event = {
-      step,
-      detail,
-      at: new Date().toLocaleTimeString(),
-    };
-    setCopyDebug((prev) => [...prev.slice(-7), event]);
-    try {
-      console.info("[CoachExportCopy]", event);
-    } catch {
-      // ignore console issues
-    }
-  }
 
   useEffect(() => {
     if (!manualCopyText) return;
@@ -230,21 +209,17 @@ export default function ProgressPage() {
 
     async function prepareCoachExport() {
       setCoachExportReadyState("preparing");
-      pushCopyDebug("prepare:start", "Started coach export preparation.");
       try {
         const metrics = await buildCoachExportMetrics();
         if (cancelled) return;
-        pushCopyDebug("prepare:metrics", "Coach export metrics generated.");
         const nextText = formatCoachExportText(metrics);
         if (cancelled) return;
         setCoachExportText(nextText);
         setCoachExportReadyState("ready");
-        pushCopyDebug("prepare:ready", `Coach export prepared (${nextText.length} chars).`);
       } catch (err: any) {
         if (cancelled) return;
         setCoachExportText("");
         setCoachExportReadyState("error");
-        pushCopyDebug("prepare:error", err?.message || "Coach export preparation failed.");
       }
     }
 
@@ -260,19 +235,15 @@ export default function ProgressPage() {
     if (!text) {
       setCopyState("error");
       setManualCopyText("Could not generate coach export text.");
-      pushCopyDebug("copy:missing", "Coach export text was not ready at tap time.");
       return;
     }
 
     try {
       setManualCopyText(null);
-      pushCopyDebug("copy:start", "Attempting immediate coach export copy.");
       const copied = await copyTextToClipboard(text);
       if (!copied.ok) {
-        pushCopyDebug("copy:error", copied.detail);
         throw new Error(copied.detail);
       }
-      pushCopyDebug("copy:success", `Coach export copied via ${copied.method}.`);
       setCopyState("copied");
       window.setTimeout(() => {
         setCopyState((current) => (current === "copied" ? "idle" : current));
@@ -280,7 +251,6 @@ export default function ProgressPage() {
     } catch {
       setCopyState("error");
       setManualCopyText(text || "Could not generate coach export text.");
-      pushCopyDebug("manual:shown", "Automatic copy failed. Manual copy fallback shown.");
     }
   }
 
@@ -368,34 +338,6 @@ export default function ProgressPage() {
           </div>
         ) : null}
 
-        {copyDebug.length ? (
-          <div
-            className="card"
-            style={{
-              marginTop: 12,
-              padding: 12,
-              background: "rgba(15,23,42,0.04)",
-              border: "1px solid rgba(148,163,184,0.35)",
-            }}
-          >
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>Copy Debug</div>
-            <div
-              style={{
-                display: "grid",
-                gap: 4,
-                fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
-                fontSize: 12,
-                lineHeight: 1.45,
-              }}
-            >
-              {copyDebug.map((event, index) => (
-                <div key={`${event.step}-${index}`}>
-                  [{event.at}] {event.step} - {event.detail}
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
       </div>
 
       {/* ======================================================================
