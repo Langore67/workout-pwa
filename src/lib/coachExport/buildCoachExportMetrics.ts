@@ -13,6 +13,7 @@ import {
 } from "../../body/bodyCalculations";
 import { computeHydrationConfidenceFromBodyRows } from "../../body/hydrationConfidence";
 import { pickTime } from "../../body/bodySignalModel";
+import { computeSignalConfidence } from "../../body/signalConfidence";
 import {
   buildPhaseQualityInputsFromBodyRows,
   computeStrengthDeltaFromStrengthTrend,
@@ -188,6 +189,49 @@ function buildReadinessNotes(metrics: {
   return notes;
 }
 
+function buildExportConfidence(args: {
+  bodyComp: {
+    weight: CoachExportMetric;
+    waist: CoachExportMetric;
+  };
+  strengthSignal: {
+    current: number | null;
+    delta14d: number | null;
+    vs90dBestPct: number | null;
+  };
+  waistEntryCount: number;
+  waistTargetCount?: number;
+}) {
+  return computeSignalConfidence({
+    waistEntryCount: args.waistEntryCount,
+    waistTargetCount: args.waistTargetCount ?? 14,
+    weightNow: args.bodyComp.weight.latest ?? undefined,
+    weightPrev: args.bodyComp.weight.baseline14d ?? undefined,
+    waistNow: args.bodyComp.waist.latest ?? undefined,
+    waistPrev: args.bodyComp.waist.baseline14d ?? undefined,
+    strengthNow: args.strengthSignal.current ?? undefined,
+    strengthPrev:
+      args.strengthSignal.current != null && args.strengthSignal.delta14d != null
+        ? args.strengthSignal.current - args.strengthSignal.delta14d
+        : undefined,
+    strengthBest:
+      args.strengthSignal.current != null && args.strengthSignal.vs90dBestPct != null
+        ? args.strengthSignal.current /
+          (1 + args.strengthSignal.vs90dBestPct / 100)
+        : undefined,
+    weightDelta: args.bodyComp.weight.delta14d ?? undefined,
+    waistDelta: args.bodyComp.waist.delta14d ?? undefined,
+    strengthDeltaPct:
+      args.strengthSignal.current != null &&
+      args.strengthSignal.delta14d != null &&
+      args.strengthSignal.current - args.strengthSignal.delta14d > 0
+        ? (args.strengthSignal.delta14d /
+            (args.strengthSignal.current - args.strengthSignal.delta14d)) *
+          100
+        : undefined,
+  });
+}
+
 function buildDataNotes(metrics: CoachExportMetrics) {
   const notes: string[] = [];
 
@@ -237,6 +281,22 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
   const phaseQuality =
     (phaseQualityInputs.sampleCount ?? 0) > 0 ? evaluatePhaseQuality(currentPhase, phaseQualityInputs) : null;
   const anchorLifts = await buildAnchorLifts();
+  
+   const waistEntryCount = bodyRows.filter((row) => Number.isFinite(getWaistIn(row))).length;
+  const exportConfidence = buildExportConfidence({
+    bodyComp: {
+      weight: bodyComp.weight,
+      waist: bodyComp.waist,
+    },
+    strengthSignal: {
+      current: strengthSignal.current,
+      delta14d: strengthSignal.delta14d,
+      vs90dBestPct: strengthSignal.vs90dBestPct,
+    },
+    waistEntryCount,
+    waistTargetCount: 14,
+  }); 
+  
 
   const readinessNotes = buildReadinessNotes({
     phaseQualityStatus: phaseQuality?.finalStatus ?? null,
@@ -244,16 +304,17 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     hydrationNote: hydration.note,
   });
 
-  const metrics: CoachExportMetrics = {
-    generatedAt,
-    currentPhase,
-    bodyComp,
-    hydration,
-    strengthSignal,
-    phaseQuality,
-    anchorLifts,
-    readinessNotes,
-    dataNotes: [],
+      const metrics: CoachExportMetrics = {
+        generatedAt,
+        currentPhase,
+        bodyComp,
+        hydration,
+        strengthSignal,
+        phaseQuality,
+        anchorLifts,
+        readinessNotes,
+        dataNotes: [],
+        exportConfidence,
   };
 
   metrics.dataNotes = buildDataNotes(metrics);

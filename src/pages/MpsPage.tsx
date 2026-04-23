@@ -55,6 +55,7 @@ import {
   pickBodyFatPct as sharedPickBodyFatPct,
   type BodyMetricRow,
 } from "../body/bodySignalModel";
+import { computeSignalConfidence } from "../body/signalConfidence";
 
 
 
@@ -346,67 +347,37 @@ function buildMpsModel(args: {
            4) signal coherence across weight / waist / strength
          ------------------------------------------------------------------------ */
     
-      const waistReadiness = Math.min(1, waistTarget > 0 ? waistCount / waistTarget : 0);
-    
-      const weightDataReady =
-        Number.isFinite(weightNow) && Number.isFinite(weightPrev14) ? 1 : 0;
-    
-      const strengthDataReady =
-        Number.isFinite(normalizedStrengthNow) &&
-        Number.isFinite(normalizedStrengthPrev14) &&
-        Number.isFinite(normalizedBest90)
-          ? 1
-          : 0;
-    
-      let coherenceScore = 0;
-    
-      if (weightDataReady && strengthDataReady && hasWaist) {
-        const strengthStableOrUp = (normalizedDelta14Pct ?? -999) >= -1.5;
-        const strengthClearlyDown = (normalizedDelta14Pct ?? -999) < -1.5;
-        const weightDown = (weightDelta14 ?? 999) < 0;
-        const waistDown = (waistDelta14 ?? 999) < 0;
-        const waistFlatOrDown = (waistDelta14 ?? 999) <= 0;
-    
-        if (weightDown && waistDown && strengthStableOrUp) {
-          coherenceScore = 1;
-        } else if (weightDown && waistFlatOrDown && strengthStableOrUp) {
-          coherenceScore = 0.8;
-        } else if (weightDown && strengthClearlyDown) {
-          coherenceScore = 0.35;
-        } else {
-          coherenceScore = 0.55;
-        }
-      } else if (weightDataReady || strengthDataReady) {
-        coherenceScore = 0.4;
-      } else {
-        coherenceScore = 0;
-      }
-    
-      const confidenceScore = Math.round(
-        waistReadiness * 40 +
-          weightDataReady * 20 +
-          strengthDataReady * 25 +
-          coherenceScore * 15
+      const confidence = computeSignalConfidence({
+        waistEntryCount: waistCount,
+        waistTargetCount: waistTarget,
+        weightNow,
+        weightPrev: weightPrev14,
+        waistNow,
+        waistPrev: waistPrev14,
+        strengthNow: normalizedStrengthNow,
+        strengthPrev: normalizedStrengthPrev14,
+        strengthBest: normalizedBest90,
+        weightDelta: weightDelta14,
+        waistDelta: waistDelta14,
+        strengthDeltaPct: normalizedDelta14Pct,
+      });
+
+      const confidenceScore = confidence.score;
+      const confidenceLabel = confidence.label;
+
+      const partialScoreMissingCore = Math.min(confidenceScore, 24);
+      const partialLabelMissingCore = "Low";
+
+      const partialScoreMissingWaist = Math.min(
+        Math.round(
+          confidence.components.waistReadiness * 35 +
+            confidence.components.weightDataReady * 20 +
+            confidence.components.strengthDataReady * 20
+        ),
+        39
       );
-    
-            const confidenceLabel =
-              confidenceScore >= 85
-                ? "Strong"
-                : confidenceScore >= 65
-                ? "Moderate"
-                : confidenceScore >= 40
-                ? "Building"
-                : "Low";
-      
-            const partialScoreMissingCore = Math.min(confidenceScore, 24);
-            const partialLabelMissingCore = "Low";
-      
-            const partialScoreMissingWaist = Math.min(
-              Math.round(waistReadiness * 35 + weightDataReady * 20 + strengthDataReady * 20),
-              39,
-            );
-      
-            const partialLabelMissingWaist =
+
+      const partialLabelMissingWaist =
         partialScoreMissingWaist >= 25 ? "Building" : "Low";
 
             if (!hasStrength || !hasWeight) {
@@ -470,8 +441,8 @@ function buildMpsModel(args: {
         waistEntryCount: waistCount,
 	waistTargetCount: waistTarget,
 	waistEntriesNeeded: waistNeeded,
-	confidenceScore,
-        confidenceLabel,
+        confidenceScore: partialScoreMissingWaist,
+        confidenceLabel: partialLabelMissingWaist,
       };
   }
 
