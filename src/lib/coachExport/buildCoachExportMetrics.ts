@@ -1,14 +1,10 @@
 import { db, type BodyMetricEntry } from "../../db";
 import {
-  bodyweightFromRowsAt,
   computeStrengthIndexAt,
   computeStrengthTrend,
-  computeScoredE1RM,
-  calcEffectiveStrengthWeightLb,
-  classifyStrengthPatternFromExerciseName,
   type StrengthPattern,
 } from "../../strength/Strength";
-import { isStrengthTrackType } from "../../domain/trackingMode";
+import { computeStrengthSignalV2 } from "../../strength/v2/computeStrengthSignalV2";
 import {
   getBodyFatPctRaw,
   getLeanMassLb,
@@ -152,99 +148,32 @@ async function buildStrengthSignal(now: number) {
   };
 }
 
-function asStrengthPattern(value: unknown): StrengthPattern | undefined {
-  const pattern = String(value ?? "").trim().toLowerCase();
-  if (pattern === "push" || pattern === "pull" || pattern === "squat" || pattern === "hinge") {
-    return pattern;
-  }
-  return undefined;
-}
 
-function classifyPattern(
-  exercise: any,
-  exerciseName: string,
-  trackDisplayName: string
-): StrengthPattern | undefined {
-  return (
-    asStrengthPattern(exercise?.movementPattern) ??
-    classifyStrengthPatternFromExerciseName(exerciseName) ??
-    classifyStrengthPatternFromExerciseName(trackDisplayName)
-  );
-}
+async function buildAnchorLifts(): Promise<CoachExportAnchorLift[]> {
+  const result = await computeStrengthSignalV2();
 
-async function buildAnchorLifts(
-  bodyRows: BodyMetricEntry[]
-): Promise<CoachExportAnchorLift[]> {
-  const now = Date.now();
-  const cutoff = now - 120 * DAY_MS;
-  const sessions = await db.sessions.where("endedAt").between(cutoff, now, true, true).toArray();
-  const sessionIds = sessions.map((session: any) => session.id).filter(Boolean);
-  const empty: CoachExportAnchorLift[] = ["hinge", "push", "pull", "squat"].map((pattern) => ({
-    pattern: pattern as StrengthPattern,
-    exerciseName: null,
-    trackDisplayName: null,
-    effectiveWeightLb: null,
-    reps: null,
-    e1rm: null,
-    performedAt: null,
-  }));
+  const anchorForExport = {
+    hinge: result.anchors.hinge,
+    squat: result.anchors.squat,
+    push: result.anchors.push ?? result.anchors.horizontalPush ?? result.anchors.verticalPush,
+    pull: result.anchors.pull ?? result.anchors.verticalPull ?? result.anchors.horizontalPull,
+  };
 
-  if (!sessionIds.length) return empty;
+  const patterns: StrengthPattern[] = ["hinge", "push", "pull", "squat"];
 
-  const [sets, tracks] = await Promise.all([
-    db.sets.where("sessionId").anyOf(sessionIds).toArray(),
-    db.tracks.toArray(),
-  ]);
-  const trackById = new Map((tracks ?? []).map((track: any) => [track.id, track]));
-  const exerciseIds = Array.from(new Set((tracks ?? []).map((track: any) => track?.exerciseId).filter(Boolean)));
-  const exercises = await db.exercises.bulkGet(exerciseIds as any);
-  const exerciseById = new Map((exercises ?? []).filter(Boolean).map((exercise: any) => [exercise.id, exercise]));
+  return patterns.map((pattern) => {
+    const anchor = anchorForExport[pattern];
 
-  const bestByPattern = new Map<StrengthPattern, CoachExportAnchorLift>();
-
-  for (const setRow of sets as any[]) {
-    if (!setRow?.completedAt || setRow?.setType !== "working") continue;
-    if (typeof setRow.weight !== "number" || typeof setRow.reps !== "number") continue;
-
-    const track = trackById.get(setRow.trackId);
-    if (!track) continue;
-    if (!isStrengthTrackType(track.trackType)) continue;
-    const exercise = exerciseById.get(track.exerciseId);
-    const strengthSignalRole = String(exercise?.strengthSignalRole ?? "")
-      .trim()
-      .toLowerCase();
-    if (strengthSignalRole === "excluded") continue;
-    const exerciseName = String(exercise?.name ?? "").trim();
-    const trackDisplayName = String(track?.displayName ?? "").trim();
-    const pattern = classifyPattern(exercise, exerciseName, trackDisplayName);
-    if (!pattern) continue;
-    const performedAt = cleanNumber(setRow.completedAt ?? setRow.createdAt);
-    const bodyweightAtSet =
-      performedAt != null ? bodyweightFromRowsAt(bodyRows, performedAt) ?? null : null;
-
-    const effectiveWeight = calcEffectiveStrengthWeightLb(
-      setRow.weight,
-      exerciseName || trackDisplayName,
-      bodyweightAtSet ?? 0
-    );
-    const e1rm = computeScoredE1RM(effectiveWeight, setRow.reps);
-    if (!Number.isFinite(e1rm) || e1rm <= 0) continue;
-
-    const current = bestByPattern.get(pattern);
-    if (current?.e1rm != null && current.e1rm >= e1rm) continue;
-
-    bestByPattern.set(pattern, {
+    return {
       pattern,
-      exerciseName: exerciseName || null,
-      trackDisplayName: trackDisplayName || null,
-      effectiveWeightLb: effectiveWeight,
-      reps: setRow.reps,
-      e1rm,
-      performedAt,
-    });
-  }
-
-  return empty.map((row) => bestByPattern.get(row.pattern) ?? row);
+      exerciseName: anchor?.exerciseName ?? null,
+      trackDisplayName: anchor?.exerciseName ?? null,
+      effectiveWeightLb: anchor?.latestSet?.effectiveWeightLb ?? null,
+      reps: anchor?.latestSet?.reps ?? null,
+      e1rm: anchor?.capacity?.e1RM ?? null,
+      performedAt: anchor?.latestSet?.completedAt ?? null,
+    };
+  });
 }
 
 function buildReadinessNotes(metrics: {
@@ -307,7 +236,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
   );
   const phaseQuality =
     (phaseQualityInputs.sampleCount ?? 0) > 0 ? evaluatePhaseQuality(currentPhase, phaseQualityInputs) : null;
-  const anchorLifts = await buildAnchorLifts(bodyRows);
+  const anchorLifts = await buildAnchorLifts();
 
   const readinessNotes = buildReadinessNotes({
     phaseQualityStatus: phaseQuality?.finalStatus ?? null,
