@@ -54,6 +54,14 @@ import {
   computeStrengthTrend,
   type StrengthTrendRow,
 } from "../strength/Strength";
+import {
+  getPerformanceAnchorIdsFromStrengthSignalV2,
+  getSelectedAnchorLabelsByPattern,
+} from "../strength/performanceAnchorContext";
+import {
+  computeStrengthSignalV2,
+  type StrengthSignalV2Result,
+} from "../strength/v2/computeStrengthSignalV2";
 import { classifyStrengthPattern } from "../domain/exercises/strengthPatternClassifier";
 import {
   buildExerciseResolverIndex,
@@ -77,7 +85,6 @@ import {
 import {
   dashboardPhaseToPhase,
   getCurrentPhase,
-  getStrengthSignalConfig,
   phaseToDashboardPhase,
   setCurrentPhase,
 } from "../config/appConfig";
@@ -106,14 +113,15 @@ type ChartViewModel = {
     changePct: number;
     score: number;
   }>;
-  movementBreakdown?: Array<{
-    movement: string;
-    score: number;
-    exerciseCount: number;
-    includedExercises: Array<{
-      label: string;
+    movementBreakdown?: Array<{
+      movement: string;
       score: number;
-    }>;
+      exerciseCount: number;
+      anchorLabel?: string | null;
+      includedExercises: Array<{
+        label: string;
+        score: number;
+      }>;
   }>;
 };
 
@@ -176,6 +184,7 @@ type CompositeSignal = {
   movement: ExerciseSignal["movement"];
   score: number;
   exerciseCount: number;
+  anchorLabel?: string | null;
   includedExercises: Array<{
     label: string;
     score: number;
@@ -967,7 +976,8 @@ function buildStrengthSignalFromShared(
   phase: DashboardPhase,
   source: DbStrengthSource | null,
   result: Awaited<ReturnType<typeof computeStrengthIndex>> | null,
-  trendRows: StrengthTrendRow[]
+  trendRows: StrengthTrendRow[],
+  selectedAnchorIdsByPattern?: Parameters<typeof getSelectedAnchorLabelsByPattern>[1]
 ): StrengthSignalResult {
   const chartPoints = [...(trendRows ?? [])]
     .sort((a, b) => a.weekEndMs - b.weekEndMs)
@@ -984,6 +994,11 @@ function buildStrengthSignalFromShared(
   const patternContributors = buildPatternExerciseContributors(
     source,
     Number(result?.bodyweight ?? 0)
+  );
+  const selectedAnchorLabelsByPattern = getSelectedAnchorLabelsByPattern(
+    source,
+    selectedAnchorIdsByPattern,
+    { formatLabel: normalizeExerciseDisplayLabel }
   );
 
   const exerciseSignals = (result?.patterns ?? [])
@@ -1008,6 +1023,7 @@ function buildStrengthSignalFromShared(
     movement: signal.movement,
     score: signal.normalizedScore,
     exerciseCount: patternContributors[signal.movement].length,
+    anchorLabel: selectedAnchorLabelsByPattern[signal.movement],
     includedExercises: patternContributors[signal.movement],
   }));
 
@@ -1113,6 +1129,7 @@ function buildDashboardViewModel(
             movement: item.movement,
             score: item.score,
             exerciseCount: item.exerciseCount,
+            anchorLabel: item.anchorLabel,
             includedExercises: item.includedExercises,
           })),
       },
@@ -1305,6 +1322,8 @@ export default function PerformanceDashboardPage() {
     Awaited<ReturnType<typeof computeStrengthIndex>> | null
   >(null);
   const [sharedStrengthTrend, setSharedStrengthTrend] = useState<StrengthTrendRow[]>([]);
+  const [strengthSignalV2Result, setStrengthSignalV2Result] =
+    useState<StrengthSignalV2Result | null>(null);
   const [showDebug, setShowDebug] = useState(false);
 
   useEffect(() => {
@@ -1312,10 +1331,7 @@ export default function PerformanceDashboardPage() {
 
     async function loadPhase() {
       try {
-        const [phase] = await Promise.all([
-          getCurrentPhase(),
-          getStrengthSignalConfig(),
-        ]);
+        const phase = await getCurrentPhase();
         if (cancelled) return;
         setActivePhase(phaseToDashboardPhase(phase));
       } finally {
@@ -1364,7 +1380,11 @@ export default function PerformanceDashboardPage() {
     let cancelled = false;
 
     async function loadSharedStrength() {
+      if (!phaseLoaded) return;
+
       try {
+        await setCurrentPhase(dashboardPhaseToPhase(activePhase));
+
         const weeks =
           activeRange === "4W"
             ? 4
@@ -1378,20 +1398,23 @@ export default function PerformanceDashboardPage() {
                     ? 104
                     : 12;
 
-        const [result, trend] = await Promise.all([
+        const [result, trend, strengthV2Result] = await Promise.all([
           computeStrengthIndex(28),
           computeStrengthTrend(weeks, 28),
+          computeStrengthSignalV2(),
         ]);
 
         if (cancelled) return;
 
         setSharedStrengthResult(result ?? null);
         setSharedStrengthTrend(Array.isArray(trend) ? trend : []);
+        setStrengthSignalV2Result(strengthV2Result ?? null);
       } catch (err) {
         console.error("PerformanceDashboardPage shared strength load failed:", err);
         if (!cancelled) {
           setSharedStrengthResult(null);
           setSharedStrengthTrend([]);
+          setStrengthSignalV2Result(null);
         }
       }
     }
@@ -1401,7 +1424,7 @@ export default function PerformanceDashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeRange]);
+  }, [activePhase, activeRange, phaseLoaded]);
 
   const bodySnapshot = useMemo(
     () => buildCurrentBodySnapshot(dbSource?.bodyMetrics ?? []),
@@ -1409,14 +1432,19 @@ export default function PerformanceDashboardPage() {
   );
 
   const sharedStrengthSignal = useMemo(
-    () =>
-      buildStrengthSignalFromShared(
+    () => {
+      const selectedAnchorIdsByPattern =
+        getPerformanceAnchorIdsFromStrengthSignalV2(strengthSignalV2Result);
+
+      return buildStrengthSignalFromShared(
         activePhase,
         dbSource,
         sharedStrengthResult,
-        sharedStrengthTrend
-      ),
-    [activePhase, dbSource, sharedStrengthResult, sharedStrengthTrend]
+        sharedStrengthTrend,
+        selectedAnchorIdsByPattern
+      );
+    },
+    [activePhase, dbSource, sharedStrengthResult, sharedStrengthTrend, strengthSignalV2Result]
   );
 
   const sharedStrengthChartData: ChartDatum[] = useMemo(() => {
