@@ -67,6 +67,7 @@ import {
   evaluatePhaseQuality,
   type PhaseQualityResult,
 } from "../body/phaseQualityModel";
+import { dataReadinessConfidenceFromFlags } from "../body/dataReadinessConfidence";
 import { computeHydrationConfidenceFromBodyRows } from "../body/hydrationConfidence";
 import {
   db,
@@ -502,13 +503,11 @@ function buildPrimaryCoachingSignal(args: {
   const rawScore = strengthComponent + weightComponent + waistComponent;
   const score = round2(clamp(rawScore, 0, 100));
 
-  const confidencePoints =
-    (weightTrend.points >= 2 ? 1 : 0) +
-    (waistTrend.points >= 2 ? 1 : 0) +
-    (strengthSignal.exerciseSignals.length >= 3 ? 1 : 0);
-
-  const confidence =
-    confidencePoints === 3 ? "High" : confidencePoints === 2 ? "Moderate" : "Low";
+    const confidence = dataReadinessConfidenceFromFlags({
+      hasWeight: weightTrend.points >= 2,
+      hasWaist: waistTrend.points >= 2,
+      hasStrength: strengthSignal.exerciseSignals.length >= 3,
+    });
 
   const badge =
     score >= 80 ? "Strong" : score >= 65 ? "Good" : score >= 50 ? "Mixed" : "Watch";
