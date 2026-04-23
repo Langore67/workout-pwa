@@ -34,6 +34,17 @@ export type CoachExportStrengthSignal = {
   bodyweightDaysUsed: number | null;
 };
 
+export type CoachExportConfidence = {
+  score: number;
+  label: "Low" | "Building" | "Moderate" | "Strong";
+  components: {
+    waistReadiness: number;
+    weightDataReady: number;
+    strengthDataReady: number;
+    coherenceScore: number;
+  };
+};
+
 export type CoachExportMetrics = {
   generatedAt: number;
   currentPhase: CurrentPhase;
@@ -49,6 +60,7 @@ export type CoachExportMetrics = {
   strengthSignal: CoachExportStrengthSignal;
   phaseQuality: PhaseQualityResult | null;
   anchorLifts: CoachExportAnchorLift[];
+  exportConfidence: CoachExportConfidence;
   readinessNotes: string[];
   dataNotes: string[];
 };
