@@ -27,6 +27,7 @@ type DashboardChartViewModel = {
     movement: string;
     score: number;
     exerciseCount: number;
+    anchorLabel?: string | null;
     includedExercises: Array<{
       label: string;
       score: number;
@@ -161,6 +162,7 @@ function StrengthMovementBreakdown({
     movement: string;
     score: number;
     exerciseCount: number;
+    anchorLabel?: string | null;
     includedExercises: Array<{
       label: string;
       score: number;
@@ -266,7 +268,6 @@ function StrengthMovementBreakdown({
                 >
                   Included exercises
                 </div>
-
                 <div
                   className="muted"
                   style={{ fontSize: 12, lineHeight: 1.45, marginBottom: 8 }}
@@ -274,6 +275,16 @@ function StrengthMovementBreakdown({
                   Contribution score (0–10): higher means the exercise is contributing
                   more strongly to this pattern right now.
                 </div>
+
+                {item.anchorLabel ? (
+                  <div
+                    className="muted"
+                    style={{ fontSize: 12, lineHeight: 1.45, marginBottom: 8 }}
+                  >
+                    <strong style={{ color: "var(--text)" }}>Anchor:</strong>{" "}
+                    {item.anchorLabel}
+                  </div>
+                ) : null}
 
                 <div style={{ display: "grid", gap: 6 }}>
                   {item.includedExercises
