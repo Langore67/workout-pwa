@@ -48,8 +48,6 @@ import PerformanceInsightsSection from "../components/performance/PerformanceIns
 import PerformanceOverviewSection from "../components/performance/PerformanceOverviewSection";
 import PerformanceStrengthSignalSection from "../components/performance/PerformanceStrengthSignalSection";
 import {
-  calcEffectiveStrengthWeightLb,
-  computeScoredE1RM,
   computeStrengthIndex,
   computeStrengthTrend,
   type StrengthTrendRow,
@@ -58,15 +56,11 @@ import {
   getPerformanceAnchorIdsFromStrengthSignalV2,
   getSelectedAnchorLabelsByPattern,
 } from "../strength/performanceAnchorContext";
+import { buildStrengthPatternContributors } from "../strength/strengthContributors";
 import {
   computeStrengthSignalV2,
   type StrengthSignalV2Result,
 } from "../strength/v2/computeStrengthSignalV2";
-import { classifyStrengthPattern } from "../domain/exercises/strengthPatternClassifier";
-import {
-  buildExerciseResolverIndex,
-  resolveExerciseFromIndex,
-} from "../domain/exercises/exerciseResolver";
 import {
   buildPhaseQualityInputsFromBodyRows,
   computeStrengthDeltaFromStrengthTrend,
@@ -235,7 +229,6 @@ const TIME_RANGES: DashboardRange[] = ["4W", "8W", "12W", "YTD", "ALL"];
    ============================================================================ */
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const SECONDARY_STRENGTH_WORKING_MULTIPLIER = 0.6;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -814,163 +807,7 @@ function avgTopN(values: number[], count: number) {
   return clean.reduce((sum, value) => sum + value, 0) / clean.length;
 }
 
-function buildPatternExerciseContributors(
-  source: DbStrengthSource | null,
-  bodyweight: number
-): Record<ExerciseSignal["movement"], Array<{ label: string; score: number }>> {
-  const empty = {
-    squat: [],
-    hinge: [],
-    push: [],
-    pull: [],
-  } satisfies Record<ExerciseSignal["movement"], Array<{ label: string; score: number }>>;
 
-  if (!source) return empty;
-
-  const now = Date.now();
-  const cutoff = now - 28 * DAY_MS;
-  const sessionIds = new Set(
-    (source.sessions ?? [])
-      .filter((session) => {
-        const endedAt = Number(session.endedAt);
-        return Number.isFinite(endedAt) && endedAt >= cutoff && endedAt <= now;
-      })
-      .map((session) => session.id)
-  );
-
-  if (!sessionIds.size) return empty;
-
-  const trackById = new Map((source.tracks ?? []).map((track) => [track.id, track]));
-  const exerciseById = new Map((source.exercises ?? []).map((exercise) => [exercise.id, exercise]));
-  const resolverIndex = buildExerciseResolverIndex(source.exercises ?? []);
-
-  const contributors = new Map<
-    string,
-    {
-      label: string;
-      movement: ExerciseSignal["movement"];
-      top: number;
-      working: number[];
-      completedWorkingSets: number;
-    }
-  >();
-
-  for (const set of source.sets ?? []) {
-    if (!sessionIds.has(set.sessionId)) continue;
-    if (set.setType !== "working") continue;
-    if (!set.completedAt || Number(set.completedAt) > now) continue;
-    if (typeof set.weight !== "number" || typeof set.reps !== "number") continue;
-
-    const track = trackById.get(set.trackId);
-    if (!track?.exerciseId) continue;
-
-    const exercise = exerciseById.get(track.exerciseId);
-    const exerciseName = String(
-      exercise?.name ?? track.displayName ?? exercise?.normalizedName ?? ""
-    ).trim();
-    const resolvedExercise = resolveExerciseFromIndex(
-      {
-        rawName: exerciseName || track.displayName || "",
-        allowAlias: true,
-        followMerged: true,
-      },
-      resolverIndex
-    );
-    const canonicalExercise =
-      resolvedExercise.canonicalExercise ?? resolvedExercise.exercise ?? exercise ?? null;
-    const canonicalLabel = String(
-      canonicalExercise?.name ??
-        canonicalExercise?.normalizedName ??
-        exerciseName ??
-        track.displayName ??
-        "Unknown Exercise"
-    ).trim();
-    
-    const strengthSignalRole = String((canonicalExercise as any)?.strengthSignalRole ?? "")
-      .trim()
-      .toLowerCase();
-    
-    if (strengthSignalRole === "excluded") continue;
-    
-    const explicitMovement = String((canonicalExercise as any)?.movementPattern ?? "")
-      .trim()
-  .toLowerCase();
-    
-    const movement =
-      explicitMovement === "push" ||
-      explicitMovement === "pull" ||
-      explicitMovement === "squat" ||
-      explicitMovement === "hinge"
-        ? (explicitMovement as ExerciseSignal["movement"])
-        : classifyStrengthPattern({
-            exerciseId: canonicalExercise?.id ?? track.exerciseId,
-            exercise: canonicalExercise ?? null,
-            exerciseName: canonicalLabel,
-            trackDisplayName: track.displayName,
-          });
-    
-if (!movement) continue;
-
-    const effectiveWeight = calcEffectiveStrengthWeightLb(set.weight, exerciseName, bodyweight);
-    const scored = computeScoredE1RM(effectiveWeight, set.reps);
-    if (!Number.isFinite(scored) || scored <= 0) continue;
-
-    const contributorKey = String(canonicalExercise?.id ?? track.exerciseId);
-    const current =
-      contributors.get(contributorKey) ??
-      ({
-        label: canonicalLabel,
-        movement,
-        top: 0,
-        working: [],
-        completedWorkingSets: 0,
-      } satisfies {
-        label: string;
-        movement: ExerciseSignal["movement"];
-        top: number;
-        working: number[];
-        completedWorkingSets: number;
-      });
-
-    current.top = Math.max(current.top, scored);
-    current.working.push(
-      strengthSignalRole === "secondary"
-        ? scored * SECONDARY_STRENGTH_WORKING_MULTIPLIER
-        : scored
-    );
-    current.completedWorkingSets += 1;
-    contributors.set(contributorKey, current);
-  }
-
-  for (const movement of Object.keys(empty) as Array<ExerciseSignal["movement"]>) {
-    empty[movement] = Array.from(contributors.values())
-      .filter((contributor) => contributor.movement === movement)
-      .map((contributor) => {
-        const working = avgTopN(contributor.working, 3);
-        const exposure = Math.max(
-          0,
-          Math.min(1, contributor.completedWorkingSets / 6)
-        );
-        const absolute =
-          contributor.top * 0.55 +
-          working * 0.3 +
-          contributor.top * exposure * 0.15;
-        const score =
-          Number.isFinite(bodyweight) && bodyweight > 0
-            ? round2(absolute / Math.pow(bodyweight, 0.67))
-            : 0;
-
-        return {
-          label: normalizeExerciseDisplayLabel(contributor.label),
-          score,
-        };
-      })
-      .filter((item) => Number.isFinite(item.score) && item.score > 0)
-      .sort((a, b) => b.score - a.score || a.label.localeCompare(b.label));
-  }
-
-  return empty;
-}
 
 function buildStrengthSignalFromShared(
   phase: DashboardPhase,
@@ -991,9 +828,10 @@ function buildStrengthSignalFromShared(
   const scoreRaw =
     result && Number.isFinite(result.normalizedIndex) ? result.normalizedIndex : analysis.current;
   const score = Number.isFinite(scoreRaw) ? round2(scoreRaw) : 0;
-  const patternContributors = buildPatternExerciseContributors(
-    source,
-    Number(result?.bodyweight ?? 0)
+    const patternContributors = buildStrengthPatternContributors(
+      source,
+      Number(result?.bodyweight ?? 0),
+      { formatLabel: normalizeExerciseDisplayLabel }
   );
   const selectedAnchorLabelsByPattern = getSelectedAnchorLabelsByPattern(
     source,
