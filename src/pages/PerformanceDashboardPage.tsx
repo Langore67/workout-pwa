@@ -219,6 +219,13 @@ type MetricTrendSummary = {
   changePct: number;
 };
 
+type AnchorDiagnosticsRow = {
+  pattern: string;
+  selectionLabel: string | null;
+  anchorId: string | null;
+  reason: string | null;
+};
+
 /* ============================================================================
    Breadcrumb 2 — Static controls
    ============================================================================ */
@@ -307,6 +314,63 @@ function formatRangeLabel(range: DashboardRange): string {
     default:
       return range;
   }
+}
+
+function formatAnchorPatternLabel(value: string) {
+  switch (value) {
+    case "horizontalPush":
+      return "Horizontal Push";
+    case "verticalPush":
+      return "Vertical Push";
+    case "horizontalPull":
+      return "Horizontal Pull";
+    case "verticalPull":
+      return "Vertical Pull";
+    default:
+      return capitalize(value);
+  }
+}
+
+function formatAnchorReason(value: string | null | undefined) {
+  switch (value) {
+    case "configured_match":
+      return "Configured match";
+    case "primary_auto_selected":
+      return "Primary auto-selected";
+    case "conditional_auto_selected":
+      return "Conditional auto-selected";
+    default:
+      return null;
+  }
+}
+
+function buildAnchorDiagnosticsRows(
+  result: StrengthSignalV2Result | null | undefined
+): AnchorDiagnosticsRow[] {
+  if (!result) return [];
+
+  const patterns =
+    result.phase === "bulk"
+      ? [
+          "squat",
+          "hinge",
+          "horizontalPush",
+          "verticalPush",
+          "horizontalPull",
+          "verticalPull",
+          "carry",
+        ]
+      : ["push", "pull", "hinge", "squat"];
+
+  return patterns.map((pattern) => {
+    const anchor = result.anchors[pattern as keyof typeof result.anchors];
+    return {
+      pattern: formatAnchorPatternLabel(pattern),
+      selectionLabel: anchor?.exerciseName ?? null,
+      anchorId: anchor?.anchorId ?? null,
+      reason: formatAnchorReason(anchor?.reason),
+    };
+  });
 }
 
 function pickBodyMetricTime(entry: BodyMetricEntry): number {
@@ -1284,6 +1348,11 @@ export default function PerformanceDashboardPage() {
     [activePhase, dbSource, sharedStrengthResult, sharedStrengthTrend, strengthSignalV2Result]
   );
 
+  const anchorDiagnosticsRows = useMemo(
+    () => buildAnchorDiagnosticsRows(strengthSignalV2Result),
+    [strengthSignalV2Result]
+  );
+
   const sharedStrengthChartData: ChartDatum[] = useMemo(() => {
     const sorted = [...sharedStrengthTrend].sort((a, b) => a.weekEndMs - b.weekEndMs);
 
@@ -1626,6 +1695,75 @@ export default function PerformanceDashboardPage() {
               debugComposites={vm.debug.composites}
               debugTopExercises={vm.debug.topExercises}
             />
+
+            <div className="card">
+              <div style={{ display: "grid", gap: 12 }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16 }}>Anchor Diagnostics</h3>
+                  <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+                    Current shared v2 anchor selections for Performance.
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    fontSize: 13,
+                  }}
+                >
+                  <span className="chip">Phase {strengthSignalV2Result?.phase ?? "Unknown"}</span>
+                  <span className="chip">
+                    Anchors {anchorDiagnosticsRows.length || 0}
+                  </span>
+                </div>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  {anchorDiagnosticsRows.length ? (
+                    anchorDiagnosticsRows.map((row) => (
+                      <div
+                        key={row.pattern}
+                        style={{
+                          display: "grid",
+                          gap: 4,
+                          padding: "8px 10px",
+                          border: "1px solid var(--border)",
+                          borderRadius: 8,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 12,
+                            alignItems: "baseline",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <strong style={{ fontSize: 13 }}>{row.pattern}</strong>
+                          <span className="muted" style={{ fontSize: 12 }}>
+                            {row.reason ?? "Unresolved"}
+                          </span>
+                        </div>
+
+                        <div style={{ fontSize: 13 }}>
+                          {row.selectionLabel ?? "No anchor selected"}
+                        </div>
+
+                        <div className="muted" style={{ fontSize: 12 }}>
+                          {row.anchorId ? `ID ${row.anchorId}` : "No shared anchor identity"}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="muted" style={{ fontSize: 13 }}>
+                      Anchor diagnostics are unavailable.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
 
             <DashboardChartCard
               chart={vm.charts.bodyWeight}
