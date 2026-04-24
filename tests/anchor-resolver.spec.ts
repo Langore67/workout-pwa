@@ -187,4 +187,53 @@ test.describe("Strength Signal v2 anchor resolver", () => {
       wrongSubtypeRank: null,
     });
   });
+
+  test("selectBestAnchor chooses the latest candidate among the highest-ranked matches", async ({ page }) => {
+    await goto(page, "/");
+
+    const result = await page.evaluate(async () => {
+      const strengthV2 = await import("/src/strength/v2/computeStrengthSignalV2.ts");
+
+      return strengthV2.selectBestAnchor([
+        {
+          anchorId: "older-configured-anchor-id",
+          exerciseId: "older-configured-exercise-id",
+          reason: "configured_match",
+          matchRank: 1,
+          occurredAt: 1_000,
+        },
+        {
+          anchorId: "newer-configured-anchor-id",
+          exerciseId: "newer-configured-exercise-id",
+          reason: "configured_match",
+          matchRank: 1,
+          occurredAt: 2_000,
+        },
+        {
+          anchorId: "primary-anchor-id",
+          exerciseId: "primary-exercise-id",
+          reason: "primary_auto_selected",
+          matchRank: 2,
+          occurredAt: 9_000,
+        },
+      ]);
+    });
+
+    expect(result).toEqual({
+      anchorId: "newer-configured-anchor-id",
+      exerciseId: "newer-configured-exercise-id",
+      reason: "configured_match",
+    });
+  });
+
+  test("selectBestAnchor returns null when no valid match exists", async ({ page }) => {
+    await goto(page, "/");
+
+    const result = await page.evaluate(async () => {
+      const strengthV2 = await import("/src/strength/v2/computeStrengthSignalV2.ts");
+      return strengthV2.selectBestAnchor([]);
+    });
+
+    expect(result).toBeNull();
+  });
 });
