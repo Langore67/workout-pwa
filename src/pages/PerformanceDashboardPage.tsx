@@ -225,6 +225,7 @@ type AnchorDiagnosticsRow = {
   reason: string | null;
   selectionSummary: string | null;
   configuredExerciseName: string | null;
+  unresolvedReason: string | null;
 };
 
 /* ============================================================================
@@ -332,6 +333,21 @@ function formatAnchorPatternLabel(value: string) {
   }
 }
 
+function formatAnchorPatternNeed(value: string) {
+  switch (value) {
+    case "horizontalPush":
+      return "horizontal push";
+    case "verticalPush":
+      return "vertical push";
+    case "horizontalPull":
+      return "horizontal pull";
+    case "verticalPull":
+      return "vertical pull";
+    default:
+      return value.toLowerCase();
+  }
+}
+
 function formatAnchorReason(value: string | null | undefined) {
   switch (value) {
     case "configured_match":
@@ -387,6 +403,10 @@ function buildAnchorDiagnosticsRows(
       reason: formatAnchorReason(anchor?.reason),
       selectionSummary: formatAnchorSelectionSummary(anchor?.selectionSource, anchor?.confidence),
       configuredExerciseName: anchor?.configuredExerciseName ?? null,
+      unresolvedReason:
+        anchor?.exerciseName || anchor?.reason
+          ? null
+          : `Needs recent matching ${formatAnchorPatternNeed(pattern)} work`,
     };
   });
 }
@@ -1761,7 +1781,7 @@ export default function PerformanceDashboardPage() {
                         >
                           <strong style={{ fontSize: 13 }}>{row.pattern}</strong>
                           <span className="muted" style={{ fontSize: 12 }}>
-                            {row.reason ?? "Unresolved"}
+                            {row.reason ?? row.unresolvedReason ?? "Unresolved"}
                           </span>
                         </div>
 
