@@ -15,7 +15,7 @@
    ============================================================================ */
 
 import type { CurrentPhase } from "../../config/appConfig";
-import type { Exercise, Track } from "../../db";
+import { normalizeName, type Exercise, type Track } from "../../db";
 import type {
   StrengthSignalV2BulkPattern,
   StrengthSignalV2CutMaintainPattern,
@@ -119,6 +119,16 @@ export function exerciseIdsForMatch(exercise: Exercise, track: Track): string[] 
     .filter(Boolean);
 }
 
+export function exerciseNamesForMatch(exercise: Exercise, track: Track): string[] {
+  return [
+    exercise.normalizedName,
+    exercise.name,
+    track.displayName,
+  ]
+    .map((value) => normalizeName(String(value ?? "")))
+    .filter(Boolean);
+}
+
 export function anchorMatchRank(
   definition: AnchorDefinition,
   exercise: Exercise,
@@ -126,6 +136,8 @@ export function anchorMatchRank(
 ): number | null {
   const configuredIds = definition.configuredExerciseIds;
   const ids = exerciseIdsForMatch(exercise, track);
+  const configuredNames = configuredIds.map((value) => normalizeName(value)).filter(Boolean);
+  const names = exerciseNamesForMatch(exercise, track);
 
   const eligibility = String((exercise as any)?.anchorEligibility ?? "")
     .trim()
@@ -144,6 +156,10 @@ export function anchorMatchRank(
   }
 
   if (configuredIds.length && configuredIds.some((id) => ids.includes(id))) {
+    return 1;
+  }
+
+  if (configuredNames.length && configuredNames.some((name) => names.includes(name))) {
     return 1;
   }
 
