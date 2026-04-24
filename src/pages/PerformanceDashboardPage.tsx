@@ -222,11 +222,9 @@ type MetricTrendSummary = {
 type AnchorDiagnosticsRow = {
   pattern: string;
   selectionLabel: string | null;
-  anchorId: string | null;
   reason: string | null;
-  selectionSource: string | null;
+  selectionSummary: string | null;
   configuredExerciseName: string | null;
-  confidence: string | null;
 };
 
 /* ============================================================================
@@ -337,14 +335,30 @@ function formatAnchorPatternLabel(value: string) {
 function formatAnchorReason(value: string | null | undefined) {
   switch (value) {
     case "configured_match":
-      return "Configured match";
+      return "Selected from your configured anchor";
     case "primary_auto_selected":
-      return "Primary auto-selected";
+      return "Selected from your recent performance";
     case "conditional_auto_selected":
-      return "Conditional auto-selected";
+      return "Selected from recent matching work";
     default:
       return null;
   }
+}
+
+function formatAnchorSelectionSummary(
+  selectionSource: "CONFIGURED" | "AUTO_SELECTED" | null | undefined,
+  confidence: string | null | undefined
+) {
+  const sourceLabel =
+    selectionSource === "CONFIGURED"
+      ? "Configured"
+      : selectionSource === "AUTO_SELECTED"
+        ? "Auto"
+        : null;
+  const confidenceLabel = confidence ? `${capitalize(confidence.toLowerCase())} confidence` : null;
+
+  if (sourceLabel && confidenceLabel) return `${sourceLabel} • ${confidenceLabel}`;
+  return sourceLabel ?? confidenceLabel;
 }
 
 function buildAnchorDiagnosticsRows(
@@ -370,16 +384,9 @@ function buildAnchorDiagnosticsRows(
     return {
       pattern: formatAnchorPatternLabel(pattern),
       selectionLabel: anchor?.exerciseName ?? null,
-      anchorId: anchor?.anchorId ?? null,
       reason: formatAnchorReason(anchor?.reason),
-      selectionSource:
-        anchor?.selectionSource === "CONFIGURED"
-          ? "Configured"
-          : anchor?.selectionSource === "AUTO_SELECTED"
-            ? "Auto"
-            : null,
+      selectionSummary: formatAnchorSelectionSummary(anchor?.selectionSource, anchor?.confidence),
       configuredExerciseName: anchor?.configuredExerciseName ?? null,
-      confidence: anchor?.confidence ?? null,
     };
   });
 }
@@ -1762,21 +1769,9 @@ export default function PerformanceDashboardPage() {
                           {row.selectionLabel ?? "No anchor selected"}
                         </div>
 
-                        {(row.selectionSource || row.confidence) ? (
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 6,
-                              flexWrap: "wrap",
-                              fontSize: 12,
-                            }}
-                          >
-                            {row.selectionSource ? (
-                              <span className="chip">{row.selectionSource}</span>
-                            ) : null}
-                            {row.confidence ? (
-                              <span className="chip">{row.confidence}</span>
-                            ) : null}
+                        {row.selectionSummary ? (
+                          <div className="muted" style={{ fontSize: 12 }}>
+                            {row.selectionSummary}
                           </div>
                         ) : null}
 
@@ -1786,10 +1781,6 @@ export default function PerformanceDashboardPage() {
                             Configured {row.configuredExerciseName}
                           </div>
                         ) : null}
-
-                        <div className="muted" style={{ fontSize: 12 }}>
-                          {row.anchorId ? `ID ${row.anchorId}` : "No shared anchor identity"}
-                        </div>
                       </div>
                     ))
                   ) : (
