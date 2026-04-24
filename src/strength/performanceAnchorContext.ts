@@ -33,7 +33,7 @@ type AnchorExerciseSource = {
    ============================================================================ */
 
 function cleanResolvedAnchorId(anchor: StrengthSignalV2AnchorResult | null | undefined): string | null {
-  const id = String(anchor?.exerciseId ?? "").trim();
+  const id = String(anchor?.anchorId ?? "").trim();
   return id || null;
 }
 
