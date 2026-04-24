@@ -908,4 +908,109 @@ test.describe("Strength Signal v2 anchor resolver", () => {
       maintainCarryName: null,
     });
   });
+
+  test("Performance anchor context uses v2 anchorId and retains selection reason", async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const performanceAnchors = await import("/src/strength/performanceAnchorContext.ts");
+
+      const selections = performanceAnchors.getPerformanceAnchorSelectionsFromStrengthSignalV2({
+        phase: "cut",
+        anchors: {
+          hinge: {
+            anchorId: "canonical-hinge-id",
+            exerciseId: "merged-source-row-id",
+            exerciseName: "Romanian Deadlift",
+            latestSet: null,
+            capacity: {
+              e1RM: null,
+              bestSetText: null,
+              lastPerformedAt: null,
+              completedSetsConsidered: 0,
+              confidence: "LOW",
+            },
+            state: {
+              e1RM: null,
+              bestSetText: null,
+              lastPerformedAt: null,
+              completedSetsConsidered: 0,
+              confidence: "LOW",
+            },
+            e1RM: null,
+            lastPerformedAt: null,
+            dataPoints: 0,
+            confidence: "LOW",
+            selectionSource: "AUTO_SELECTED",
+            configuredExerciseName: null,
+            reason: "primary_auto_selected",
+          },
+        },
+        aggregate: {
+          averageE1RM: null,
+          trendDelta14d: null,
+          confidence: "LOW",
+        },
+      } as any);
+
+      const labels = performanceAnchors.getSelectedAnchorLabelsByPattern(
+        {
+          exercises: [
+            { id: "canonical-hinge-id", name: "Romanian Deadlift" },
+            { id: "merged-source-row-id", name: "Old Merge Source Name" },
+          ],
+        },
+        selections
+      );
+
+      return {
+        hingeSelection: selections.hinge,
+        hingeLabel: labels.hinge,
+        idsOnly: performanceAnchors.getPerformanceAnchorIdsFromStrengthSignalV2({
+          phase: "cut",
+          anchors: {
+            hinge: {
+              anchorId: "canonical-hinge-id",
+              exerciseId: "merged-source-row-id",
+              exerciseName: "Romanian Deadlift",
+              latestSet: null,
+              capacity: {
+                e1RM: null,
+                bestSetText: null,
+                lastPerformedAt: null,
+                completedSetsConsidered: 0,
+                confidence: "LOW",
+              },
+              state: {
+                e1RM: null,
+                bestSetText: null,
+                lastPerformedAt: null,
+                completedSetsConsidered: 0,
+                confidence: "LOW",
+              },
+              e1RM: null,
+              lastPerformedAt: null,
+              dataPoints: 0,
+              confidence: "LOW",
+              selectionSource: "AUTO_SELECTED",
+              configuredExerciseName: null,
+              reason: "primary_auto_selected",
+            },
+          },
+          aggregate: {
+            averageE1RM: null,
+            trendDelta14d: null,
+            confidence: "LOW",
+          },
+        } as any).hinge,
+      };
+    });
+
+    expect(result).toEqual({
+      hingeSelection: {
+        anchorId: "canonical-hinge-id",
+        reason: "primary_auto_selected",
+      },
+      hingeLabel: "Romanian Deadlift",
+      idsOnly: "canonical-hinge-id",
+    });
+  });
 });

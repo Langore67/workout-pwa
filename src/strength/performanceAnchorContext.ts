@@ -22,6 +22,12 @@ import type {
    ============================================================================ */
 
 export type PerformanceAnchorMovement = "push" | "pull" | "squat" | "hinge";
+export type PerformanceAnchorSelection = {
+  anchorId: string;
+  reason: string | null;
+};
+
+type PerformanceAnchorSelectionValue = PerformanceAnchorSelection | PerformanceAnchorSelection[] | null;
 type PerformanceAnchorIdValue = string | string[] | null;
 
 type AnchorExerciseSource = {
@@ -32,52 +38,88 @@ type AnchorExerciseSource = {
    Breadcrumb 2 — Small helpers
    ============================================================================ */
 
-function cleanResolvedAnchorId(anchor: StrengthSignalV2AnchorResult | null | undefined): string | null {
-  const id = String(anchor?.exerciseId ?? "").trim();
-  return id || null;
+function cleanResolvedAnchorSelection(
+  anchor: StrengthSignalV2AnchorResult | null | undefined
+): PerformanceAnchorSelection | null {
+  const anchorId = String(anchor?.anchorId ?? "").trim();
+  if (!anchorId) return null;
+  return {
+    anchorId,
+    reason: anchor?.reason ?? null,
+  };
 }
 
-function anchorIds(...anchors: Array<StrengthSignalV2AnchorResult | null | undefined>): PerformanceAnchorIdValue {
-  const ids = anchors.map(cleanResolvedAnchorId).filter((id): id is string => !!id);
-  if (!ids.length) return null;
-  return ids.length === 1 ? ids[0] : ids;
+function anchorSelections(
+  ...anchors: Array<StrengthSignalV2AnchorResult | null | undefined>
+): PerformanceAnchorSelectionValue {
+  const selections = anchors
+    .map(cleanResolvedAnchorSelection)
+    .filter((selection): selection is PerformanceAnchorSelection => !!selection);
+  if (!selections.length) return null;
+  return selections.length === 1 ? selections[0] : selections;
+}
+
+function cleanResolvedAnchorId(value: PerformanceAnchorSelectionValue): PerformanceAnchorIdValue {
+  if (!value) return null;
+  if (Array.isArray(value)) {
+    const ids = value
+      .map((selection) => String(selection.anchorId ?? "").trim())
+      .filter((id): id is string => !!id);
+    if (!ids.length) return null;
+    return ids.length === 1 ? ids[0] : ids;
+  }
+
+  const id = String(value.anchorId ?? "").trim();
+  return id || null;
 }
 
 /* ============================================================================
    Breadcrumb 3 — Public helpers
    ============================================================================ */
 
-export function getPerformanceAnchorIdsFromStrengthSignalV2(
+export function getPerformanceAnchorSelectionsFromStrengthSignalV2(
   result: StrengthSignalV2Result | null | undefined
-): Partial<Record<PerformanceAnchorMovement, PerformanceAnchorIdValue>> {
+): Partial<Record<PerformanceAnchorMovement, PerformanceAnchorSelectionValue>> {
   const anchors = result?.anchors ?? {};
 
   if (result?.phase === "bulk") {
     return {
-      push: anchorIds(
+      push: anchorSelections(
         anchors.horizontalPush ?? null,
         anchors.verticalPush ?? null
       ),
-      pull: anchorIds(
+      pull: anchorSelections(
         anchors.horizontalPull ?? null,
         anchors.verticalPull ?? null
       ),
-      squat: anchorIds(anchors.squat ?? null),
-      hinge: anchorIds(anchors.hinge ?? null),
+      squat: anchorSelections(anchors.squat ?? null),
+      hinge: anchorSelections(anchors.hinge ?? null),
     };
   }
 
   return {
-    push: anchorIds(anchors.push ?? null),
-    pull: anchorIds(anchors.pull ?? null),
-    squat: anchorIds(anchors.squat ?? null),
-    hinge: anchorIds(anchors.hinge ?? null),
+    push: anchorSelections(anchors.push ?? null),
+    pull: anchorSelections(anchors.pull ?? null),
+    squat: anchorSelections(anchors.squat ?? null),
+    hinge: anchorSelections(anchors.hinge ?? null),
+  };
+}
+
+export function getPerformanceAnchorIdsFromStrengthSignalV2(
+  result: StrengthSignalV2Result | null | undefined
+): Partial<Record<PerformanceAnchorMovement, PerformanceAnchorIdValue>> {
+  const selections = getPerformanceAnchorSelectionsFromStrengthSignalV2(result);
+  return {
+    push: cleanResolvedAnchorId(selections.push ?? null),
+    pull: cleanResolvedAnchorId(selections.pull ?? null),
+    squat: cleanResolvedAnchorId(selections.squat ?? null),
+    hinge: cleanResolvedAnchorId(selections.hinge ?? null),
   };
 }
 
 export function getSelectedAnchorLabelsByPattern(
   source: AnchorExerciseSource,
-  selectedAnchorIdsByPattern?: Partial<Record<PerformanceAnchorMovement, PerformanceAnchorIdValue>>,
+  selectedAnchorsByPattern?: Partial<Record<PerformanceAnchorMovement, PerformanceAnchorSelectionValue>>,
   options: {
     formatLabel?: (value: string) => string;
   } = {}
@@ -89,15 +131,16 @@ export function getSelectedAnchorLabelsByPattern(
     hinge: null,
   };
 
-  if (!source?.exercises?.length || !selectedAnchorIdsByPattern) return empty;
+  if (!source?.exercises?.length || !selectedAnchorsByPattern) return empty;
 
   const formatLabel = options.formatLabel ?? ((value: string) => value);
   const exerciseById = new Map(
     source.exercises.map((exercise) => [exercise.id, exercise] as const)
   );
 
-  const labelFor = (value: PerformanceAnchorIdValue): string | null => {
-    const ids = Array.isArray(value) ? value : value ? [value] : [];
+  const labelFor = (value: PerformanceAnchorSelectionValue): string | null => {
+    const anchorIds = cleanResolvedAnchorId(value);
+    const ids = Array.isArray(anchorIds) ? anchorIds : anchorIds ? [anchorIds] : [];
     const labels = ids
       .map((id) => formatLabel(exerciseById.get(id)?.name ?? ""))
       .filter(Boolean);
@@ -106,10 +149,10 @@ export function getSelectedAnchorLabelsByPattern(
   };
 
   return {
-    push: labelFor(selectedAnchorIdsByPattern.push ?? null),
-    pull: labelFor(selectedAnchorIdsByPattern.pull ?? null),
-    squat: labelFor(selectedAnchorIdsByPattern.squat ?? null),
-    hinge: labelFor(selectedAnchorIdsByPattern.hinge ?? null),
+    push: labelFor(selectedAnchorsByPattern.push ?? null),
+    pull: labelFor(selectedAnchorsByPattern.pull ?? null),
+    squat: labelFor(selectedAnchorsByPattern.squat ?? null),
+    hinge: labelFor(selectedAnchorsByPattern.hinge ?? null),
   };
 }
 

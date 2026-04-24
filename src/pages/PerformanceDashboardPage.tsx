@@ -53,7 +53,7 @@ import {
   type StrengthTrendRow,
 } from "../strength/Strength";
 import {
-  getPerformanceAnchorIdsFromStrengthSignalV2,
+  getPerformanceAnchorSelectionsFromStrengthSignalV2,
   getSelectedAnchorLabelsByPattern,
 } from "../strength/performanceAnchorContext";
 import { buildStrengthPatternContributors } from "../strength/strengthContributors";
@@ -813,7 +813,7 @@ function buildStrengthSignalFromShared(
   source: DbStrengthSource | null,
   result: Awaited<ReturnType<typeof computeStrengthIndex>> | null,
   trendRows: StrengthTrendRow[],
-  selectedAnchorIdsByPattern?: Parameters<typeof getSelectedAnchorLabelsByPattern>[1]
+  selectedAnchorsByPattern?: Parameters<typeof getSelectedAnchorLabelsByPattern>[1]
 ): StrengthSignalResult {
   const chartPoints = [...(trendRows ?? [])]
     .sort((a, b) => a.weekEndMs - b.weekEndMs)
@@ -834,7 +834,7 @@ function buildStrengthSignalFromShared(
   );
   const selectedAnchorLabelsByPattern = getSelectedAnchorLabelsByPattern(
     source,
-    selectedAnchorIdsByPattern,
+    selectedAnchorsByPattern,
     { formatLabel: normalizeExerciseDisplayLabel }
   );
 
@@ -1270,15 +1270,15 @@ export default function PerformanceDashboardPage() {
 
   const sharedStrengthSignal = useMemo(
     () => {
-      const selectedAnchorIdsByPattern =
-        getPerformanceAnchorIdsFromStrengthSignalV2(strengthSignalV2Result);
+      const selectedAnchorsByPattern =
+        getPerformanceAnchorSelectionsFromStrengthSignalV2(strengthSignalV2Result);
 
       return buildStrengthSignalFromShared(
         activePhase,
         dbSource,
         sharedStrengthResult,
         sharedStrengthTrend,
-        selectedAnchorIdsByPattern
+        selectedAnchorsByPattern
       );
     },
     [activePhase, dbSource, sharedStrengthResult, sharedStrengthTrend, strengthSignalV2Result]

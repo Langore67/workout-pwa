@@ -52,6 +52,7 @@ export type StrengthSignalV2AnchorMeasurement = {
 };
 
 export type StrengthSignalV2AnchorResult = {
+  anchorId: string | null;
   exerciseId: string | null;
   exerciseName: string | null;
   latestSet: StrengthSignalV2LatestSet | null;
@@ -64,6 +65,7 @@ export type StrengthSignalV2AnchorResult = {
   confidence: StrengthSignalV2Confidence;
   selectionSource: "CONFIGURED" | "AUTO_SELECTED";
   configuredExerciseName: string | null;
+  reason: string | null;
 };
 
 export type StrengthSignalV2Result = {
@@ -250,6 +252,7 @@ function findLatestSelectedCandidate(
 function emptyAnchorResult(): StrengthSignalV2AnchorResult {
   const emptyMeasurement = emptyAnchorMeasurement();
   return {
+    anchorId: null,
     exerciseId: null,
     exerciseName: null,
     latestSet: null,
@@ -261,6 +264,7 @@ function emptyAnchorResult(): StrengthSignalV2AnchorResult {
     confidence: "LOW",
     selectionSource: "AUTO_SELECTED",
     configuredExerciseName: null,
+    reason: null,
   };
 }
 
@@ -321,6 +325,7 @@ function buildScoredAnchorResult(
   const state = buildAnchorMeasurement(selectedExerciseCandidates, now, STATE_WINDOW_DAYS, true);
 
   return {
+    anchorId: selected.anchorId,
     exerciseId: latest.exercise.id,
     exerciseName: latest.exercise.name,
     latestSet: latestSetPayload(latest),
@@ -332,6 +337,7 @@ function buildScoredAnchorResult(
     confidence: capacity.confidence,
     selectionSource,
     configuredExerciseName: selectionSource === "CONFIGURED" ? latest.exercise.name : null,
+    reason: selected.reason ?? null,
   };
 }
 
@@ -390,6 +396,7 @@ function buildCarryAnchorResult(
   const capacity = buildAnchorMeasurement(selectedExerciseCandidates, now, CAPACITY_WINDOW_DAYS, false);
   const state = buildAnchorMeasurement(selectedExerciseCandidates, now, STATE_WINDOW_DAYS, false);
   return {
+    anchorId: selected.anchorId,
     exerciseId: latest.exercise.id,
     exerciseName: latest.exercise.name,
     latestSet: latestSetPayload(latest),
@@ -401,6 +408,7 @@ function buildCarryAnchorResult(
     confidence: capacity.confidence,
     selectionSource,
     configuredExerciseName: selectionSource === "CONFIGURED" ? latest.exercise.name : null,
+    reason: selected.reason ?? null,
   };
 }
 
