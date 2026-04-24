@@ -194,6 +194,55 @@ test.describe("Strength Signal v2 anchor resolver", () => {
     });
   });
 
+  test("CUT and MAINTAIN use the current 4-anchor model", async ({ page }) => {
+    await goto(page, "/");
+
+    const result = await page.evaluate(async () => {
+      const config = await import("/src/strength/v2/strengthSignalV2AnchorConfig.ts");
+
+      return {
+        cut: config.getStrengthSignalV2AnchorDefinitions("cut").map((row) => row.pattern),
+        maintain: config.getStrengthSignalV2AnchorDefinitions("maintain").map((row) => row.pattern),
+      };
+    });
+
+    expect(result.cut).toEqual(["push", "pull", "hinge", "squat"]);
+    expect(result.maintain).toEqual(["push", "pull", "hinge", "squat"]);
+  });
+
+  test("BULK uses the current broader anchor model", async ({ page }) => {
+    await goto(page, "/");
+
+    const result = await page.evaluate(async () => {
+      const config = await import("/src/strength/v2/strengthSignalV2AnchorConfig.ts");
+      return config.getStrengthSignalV2AnchorDefinitions("bulk").map((row) => ({
+        pattern: row.pattern,
+        allowedSubtypes: row.allowedSubtypes,
+      }));
+    });
+
+    expect(result).toEqual([
+      { pattern: "squat", allowedSubtypes: ["squat"] },
+      { pattern: "hinge", allowedSubtypes: ["hinge"] },
+      { pattern: "horizontalPush", allowedSubtypes: ["horizontalPush"] },
+      { pattern: "verticalPush", allowedSubtypes: ["verticalPush"] },
+      { pattern: "verticalPull", allowedSubtypes: ["verticalPull"] },
+      { pattern: "horizontalPull", allowedSubtypes: ["horizontalPull"] },
+      { pattern: "carry", allowedSubtypes: ["carry"] },
+    ]);
+  });
+
+  test("invalid phase falls back to the current non-bulk anchor model", async ({ page }) => {
+    await goto(page, "/");
+
+    const result = await page.evaluate(async () => {
+      const config = await import("/src/strength/v2/strengthSignalV2AnchorConfig.ts");
+      return config.getStrengthSignalV2AnchorDefinitions("not-a-real-phase").map((row) => row.pattern);
+    });
+
+    expect(result).toEqual(["push", "pull", "hinge", "squat"]);
+  });
+
   test("selectBestAnchor chooses the latest candidate among the highest-ranked matches", async ({ page }) => {
     await goto(page, "/");
 

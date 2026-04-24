@@ -16,45 +16,13 @@
 
 import type { CurrentPhase } from "../../config/appConfig";
 import { normalizeName, type Exercise, type Track } from "../../db";
-import type {
-  StrengthSignalV2BulkPattern,
-  StrengthSignalV2CutMaintainPattern,
-  StrengthSignalV2Pattern,
-} from "./computeStrengthSignalV2";
+import type { StrengthSignalV2Pattern } from "./computeStrengthSignalV2";
+import { getStrengthSignalV2AnchorDefinitions } from "./strengthSignalV2AnchorConfig";
 
 export type AnchorDefinition = {
   pattern: StrengthSignalV2Pattern;
   allowedSubtypes: string[];
   configuredExerciseIds: string[];
-};
-
-const CUT_MAINTAIN_PATTERNS: StrengthSignalV2CutMaintainPattern[] = [
-  "push",
-  "pull",
-  "hinge",
-  "squat",
-];
-
-const BULK_PATTERNS: StrengthSignalV2BulkPattern[] = [
-  "squat",
-  "hinge",
-  "horizontalPush",
-  "verticalPush",
-  "verticalPull",
-  "horizontalPull",
-  "carry",
-];
-
-const SLOT_SUBTYPES: Record<StrengthSignalV2Pattern, string[]> = {
-  push: ["horizontalPush", "verticalPush"],
-  pull: ["horizontalPull", "verticalPull"],
-  hinge: ["hinge"],
-  squat: ["squat"],
-  horizontalPush: ["horizontalPush"],
-  verticalPush: ["verticalPush"],
-  verticalPull: ["verticalPull"],
-  horizontalPull: ["horizontalPull"],
-  carry: ["carry"],
 };
 
 function configValueToTerms(value: unknown): string[] {
@@ -99,15 +67,13 @@ export function buildAnchorDefinitions(
   phase: CurrentPhase,
   config: any
 ): AnchorDefinition[] {
-  const patterns = phase === "bulk" ? BULK_PATTERNS : CUT_MAINTAIN_PATTERNS;
-
-  return patterns.map((pattern) => {
-    const configured = getPhaseSlotOverride(config, phase, pattern);
+  return getStrengthSignalV2AnchorDefinitions(phase).map((definition) => {
+    const configured = getPhaseSlotOverride(config, phase, definition.pattern);
     const configuredTerms = configValueToTerms(configured);
 
     return {
-      pattern,
-      allowedSubtypes: SLOT_SUBTYPES[pattern],
+      pattern: definition.pattern,
+      allowedSubtypes: definition.allowedSubtypes,
       configuredExerciseIds: configuredTerms,
     };
   });
