@@ -224,6 +224,9 @@ type AnchorDiagnosticsRow = {
   selectionLabel: string | null;
   anchorId: string | null;
   reason: string | null;
+  selectionSource: string | null;
+  configuredExerciseName: string | null;
+  confidence: string | null;
 };
 
 /* ============================================================================
@@ -369,6 +372,14 @@ function buildAnchorDiagnosticsRows(
       selectionLabel: anchor?.exerciseName ?? null,
       anchorId: anchor?.anchorId ?? null,
       reason: formatAnchorReason(anchor?.reason),
+      selectionSource:
+        anchor?.selectionSource === "CONFIGURED"
+          ? "Configured"
+          : anchor?.selectionSource === "AUTO_SELECTED"
+            ? "Auto"
+            : null,
+      configuredExerciseName: anchor?.configuredExerciseName ?? null,
+      confidence: anchor?.confidence ?? null,
     };
   });
 }
@@ -1750,6 +1761,31 @@ export default function PerformanceDashboardPage() {
                         <div style={{ fontSize: 13 }}>
                           {row.selectionLabel ?? "No anchor selected"}
                         </div>
+
+                        {(row.selectionSource || row.confidence) ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 6,
+                              flexWrap: "wrap",
+                              fontSize: 12,
+                            }}
+                          >
+                            {row.selectionSource ? (
+                              <span className="chip">{row.selectionSource}</span>
+                            ) : null}
+                            {row.confidence ? (
+                              <span className="chip">{row.confidence}</span>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        {row.configuredExerciseName &&
+                        row.configuredExerciseName !== row.selectionLabel ? (
+                          <div className="muted" style={{ fontSize: 12 }}>
+                            Configured {row.configuredExerciseName}
+                          </div>
+                        ) : null}
 
                         <div className="muted" style={{ fontSize: 12 }}>
                           {row.anchorId ? `ID ${row.anchorId}` : "No shared anchor identity"}
