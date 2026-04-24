@@ -908,4 +908,132 @@ test.describe("Strength Signal v2 anchor resolver", () => {
       maintainCarryName: null,
     });
   });
+
+  test("Strength v2 and Performance anchor context agree on selected anchorId for the same workout data", async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      // @ts-ignore
+      const db = window.__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const { setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
+      const strengthV2 = await import("/src/strength/v2/computeStrengthSignalV2.ts");
+      const performanceAnchors = await import("/src/strength/performanceAnchorContext.ts");
+
+      const now = Date.now();
+      const sessionId = crypto.randomUUID();
+
+      await setStrengthSignalConfig({
+        activeVersion: "v2",
+        strengthSignalV2Config: {
+          phases: {
+            cut: {
+              hinge: {
+                exerciseId: "canonical-hinge-id",
+              },
+            },
+          },
+        },
+      });
+      await setCurrentPhase("cut");
+
+      await db.sessions.add({
+        id: sessionId,
+        startedAt: now - 60_000,
+        endedAt: now,
+      });
+
+      await db.exercises.bulkAdd([
+        {
+          id: "canonical-hinge-id",
+          name: "Romanian Deadlift",
+          normalizedName: "romanian deadlift",
+          anchorEligibility: "primary",
+          anchorSubtypes: ["hinge"],
+          equipmentTags: ["test"],
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: "primary-other-hinge-id",
+          name: "Conventional Deadlift",
+          normalizedName: "conventional deadlift",
+          anchorEligibility: "primary",
+          anchorSubtypes: ["hinge"],
+          equipmentTags: ["test"],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]);
+
+      await db.tracks.bulkAdd([
+        {
+          id: "configured-hinge-track",
+          exerciseId: "canonical-hinge-id",
+          displayName: "Romanian Deadlift",
+          trackType: "hypertrophy",
+          trackingMode: "weightedReps",
+          warmupSetsDefault: 0,
+          workingSetsDefault: 2,
+          repMin: 1,
+          repMax: 10,
+          restSecondsDefault: 120,
+          weightJumpDefault: 5,
+          createdAt: now,
+        },
+        {
+          id: "primary-hinge-track",
+          exerciseId: "primary-other-hinge-id",
+          displayName: "Conventional Deadlift",
+          trackType: "hypertrophy",
+          trackingMode: "weightedReps",
+          warmupSetsDefault: 0,
+          workingSetsDefault: 2,
+          repMin: 1,
+          repMax: 10,
+          restSecondsDefault: 120,
+          weightJumpDefault: 5,
+          createdAt: now,
+        },
+      ]);
+
+      await db.sets.bulkAdd([
+        {
+          id: crypto.randomUUID(),
+          sessionId,
+          trackId: "configured-hinge-track",
+          setType: "working",
+          weight: 275,
+          reps: 8,
+          createdAt: now - 2_000,
+          completedAt: now - 2_000,
+        },
+        {
+          id: crypto.randomUUID(),
+          sessionId,
+          trackId: "primary-hinge-track",
+          setType: "working",
+          weight: 315,
+          reps: 5,
+          createdAt: now - 1_000,
+          completedAt: now - 1_000,
+        },
+      ]);
+
+      const v2Result = await strengthV2.computeStrengthSignalV2({ now });
+      const performanceAnchorIds =
+        performanceAnchors.getPerformanceAnchorIdsFromStrengthSignalV2(v2Result);
+
+      return {
+        v2AnchorId: v2Result.anchors.hinge?.anchorId ?? null,
+        performanceAnchorId: performanceAnchorIds.hinge ?? null,
+        selectedExerciseId: v2Result.anchors.hinge?.exerciseId ?? null,
+      };
+    });
+
+    expect(result).toEqual({
+      v2AnchorId: "canonical-hinge-id",
+      performanceAnchorId: "canonical-hinge-id",
+      selectedExerciseId: "canonical-hinge-id",
+    });
+  });
 });
