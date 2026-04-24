@@ -570,12 +570,15 @@ export async function computeStrengthIndexAt(
        track?.displayName ??
        ""
      ).trim();
- 
+     
      if (!resolverInput) {
        return directExercise;
      }
- 
-     const resolved = resolveExerciseFromIndex(resolverInput, resolverIndex);
+     
+     const resolved = resolveExerciseFromIndex(
+       { rawName: resolverInput },
+       resolverIndex
+     );
      const canonicalId = String(
        resolved?.exercise?.id ??
        resolved?.id ??
