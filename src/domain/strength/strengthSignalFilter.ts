@@ -11,9 +11,10 @@ export function isSetEligibleForStrengthSignal(args: {
   track: any;
   exercise: any;
 }) {
-  const { set, exercise } = args;
-
-  if (!set || !exercise) return false;
+  const { set, track, exercise } = args;
+  
+  if (!set || !track || !exercise) return false;
+  if (!isStrengthTrackType(track.trackType)) return false;
 
   const reps = Number(set?.reps);
   const weight = Number(set?.weight);
