@@ -637,4 +637,275 @@ test.describe("Strength Signal v2 anchor resolver", () => {
       selectionSource: "AUTO_SELECTED",
     });
   });
+
+  test("computeStrengthSignalV2 resolves only the 4-anchor model in CUT and MAINTAIN", async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      // @ts-ignore
+      const db = window.__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const { setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
+      const strengthV2 = await import("/src/strength/v2/computeStrengthSignalV2.ts");
+
+      const now = Date.now();
+      const sessionId = crypto.randomUUID();
+      const patterns = [
+        { id: "push-id", name: "Bench Press", subtype: "horizontalPush", weight: 205, reps: 8 },
+        { id: "pull-id", name: "Pull Up", subtype: "verticalPull", weight: 25, reps: 6 },
+        { id: "hinge-id", name: "Romanian Deadlift", subtype: "hinge", weight: 275, reps: 8 },
+        { id: "squat-id", name: "Front Squat", subtype: "squat", weight: 225, reps: 6 },
+        { id: "carry-id", name: "Farmer Carry", subtype: "carry", weight: 90, reps: 1 },
+      ];
+
+      await setStrengthSignalConfig({
+        activeVersion: "v2",
+        strengthSignalV2Config: { phases: {} },
+      });
+
+      await db.sessions.add({
+        id: sessionId,
+        startedAt: now - 60_000,
+        endedAt: now,
+      });
+
+      await db.exercises.bulkAdd(
+        patterns.map((pattern) => ({
+          id: pattern.id,
+          name: pattern.name,
+          normalizedName: pattern.name.toLowerCase(),
+          anchorEligibility: "primary",
+          anchorSubtypes: [pattern.subtype],
+          equipmentTags: ["test"],
+          createdAt: now,
+          updatedAt: now,
+        }))
+      );
+
+      await db.tracks.bulkAdd(
+        patterns.map((pattern) => ({
+          id: `${pattern.id}-track`,
+          exerciseId: pattern.id,
+          displayName: pattern.name,
+          trackType: "hypertrophy",
+          trackingMode: "weightedReps",
+          warmupSetsDefault: 0,
+          workingSetsDefault: 2,
+          repMin: 1,
+          repMax: 10,
+          restSecondsDefault: 120,
+          weightJumpDefault: 5,
+          createdAt: now,
+        }))
+      );
+
+      await db.sets.bulkAdd(
+        patterns.map((pattern, index) => ({
+          id: crypto.randomUUID(),
+          sessionId,
+          trackId: `${pattern.id}-track`,
+          setType: "working",
+          weight: pattern.weight,
+          reps: pattern.reps,
+          createdAt: now - (index + 1) * 1_000,
+          completedAt: now - (index + 1) * 1_000,
+        }))
+      );
+
+      await setCurrentPhase("cut");
+      const cut = await strengthV2.computeStrengthSignalV2({ now });
+
+      await setCurrentPhase("maintain");
+      const maintain = await strengthV2.computeStrengthSignalV2({ now });
+
+      return {
+        cutKeys: Object.keys(cut.anchors).sort(),
+        maintainKeys: Object.keys(maintain.anchors).sort(),
+        cutCarry: cut.anchors.carry?.exerciseName ?? null,
+        maintainCarry: maintain.anchors.carry?.exerciseName ?? null,
+      };
+    });
+
+    expect(result.cutKeys).toEqual(["hinge", "pull", "push", "squat"]);
+    expect(result.maintainKeys).toEqual(["hinge", "pull", "push", "squat"]);
+    expect(result.cutCarry).toBeNull();
+    expect(result.maintainCarry).toBeNull();
+  });
+
+  test("computeStrengthSignalV2 resolves the broader BULK anchor model", async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      // @ts-ignore
+      const db = window.__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const { setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
+      const strengthV2 = await import("/src/strength/v2/computeStrengthSignalV2.ts");
+
+      const now = Date.now();
+      const sessionId = crypto.randomUUID();
+      const patterns = [
+        { id: "squat-id", name: "Front Squat", subtype: "squat", weight: 225, reps: 6 },
+        { id: "hinge-id", name: "Romanian Deadlift", subtype: "hinge", weight: 275, reps: 8 },
+        { id: "hpush-id", name: "Bench Press", subtype: "horizontalPush", weight: 205, reps: 8 },
+        { id: "vpush-id", name: "Overhead Press", subtype: "verticalPush", weight: 135, reps: 6 },
+        { id: "vpull-id", name: "Pull Up", subtype: "verticalPull", weight: 25, reps: 6 },
+        { id: "hpull-id", name: "Barbell Row", subtype: "horizontalPull", weight: 185, reps: 8 },
+        { id: "carry-id", name: "Farmer Carry", subtype: "carry", weight: 90, reps: 1 },
+      ];
+
+      await setStrengthSignalConfig({
+        activeVersion: "v2",
+        strengthSignalV2Config: { phases: {} },
+      });
+      await setCurrentPhase("bulk");
+
+      await db.sessions.add({
+        id: sessionId,
+        startedAt: now - 60_000,
+        endedAt: now,
+      });
+
+      await db.exercises.bulkAdd(
+        patterns.map((pattern) => ({
+          id: pattern.id,
+          name: pattern.name,
+          normalizedName: pattern.name.toLowerCase(),
+          anchorEligibility: "primary",
+          anchorSubtypes: [pattern.subtype],
+          equipmentTags: ["test"],
+          createdAt: now,
+          updatedAt: now,
+        }))
+      );
+
+      await db.tracks.bulkAdd(
+        patterns.map((pattern) => ({
+          id: `${pattern.id}-track`,
+          exerciseId: pattern.id,
+          displayName: pattern.name,
+          trackType: "hypertrophy",
+          trackingMode: "weightedReps",
+          warmupSetsDefault: 0,
+          workingSetsDefault: 2,
+          repMin: 1,
+          repMax: 10,
+          restSecondsDefault: 120,
+          weightJumpDefault: 5,
+          createdAt: now,
+        }))
+      );
+
+      await db.sets.bulkAdd(
+        patterns.map((pattern, index) => ({
+          id: crypto.randomUUID(),
+          sessionId,
+          trackId: `${pattern.id}-track`,
+          setType: "working",
+          weight: pattern.weight,
+          reps: pattern.reps,
+          createdAt: now - (index + 1) * 1_000,
+          completedAt: now - (index + 1) * 1_000,
+        }))
+      );
+
+      const bulk = await strengthV2.computeStrengthSignalV2({ now });
+
+      return {
+        bulkKeys: Object.keys(bulk.anchors).sort(),
+        carryName: bulk.anchors.carry?.exerciseName ?? null,
+      };
+    });
+
+    expect(result.bulkKeys).toEqual([
+      "carry",
+      "hinge",
+      "horizontalPull",
+      "horizontalPush",
+      "squat",
+      "verticalPull",
+      "verticalPush",
+    ]);
+    expect(result.carryName).toBe("Farmer Carry");
+  });
+
+  test("a BULK-only anchor does not appear in CUT or MAINTAIN full-path results", async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      // @ts-ignore
+      const db = window.__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const { setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
+      const strengthV2 = await import("/src/strength/v2/computeStrengthSignalV2.ts");
+
+      const now = Date.now();
+      const sessionId = crypto.randomUUID();
+
+      await setStrengthSignalConfig({
+        activeVersion: "v2",
+        strengthSignalV2Config: { phases: {} },
+      });
+
+      await db.sessions.add({
+        id: sessionId,
+        startedAt: now - 60_000,
+        endedAt: now,
+      });
+
+      await db.exercises.add({
+        id: "carry-id",
+        name: "Farmer Carry",
+        normalizedName: "farmer carry",
+        anchorEligibility: "primary",
+        anchorSubtypes: ["carry"],
+        equipmentTags: ["test"],
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await db.tracks.add({
+        id: "carry-track",
+        exerciseId: "carry-id",
+        displayName: "Farmer Carry",
+        trackType: "hypertrophy",
+        trackingMode: "weightedReps",
+        warmupSetsDefault: 0,
+        workingSetsDefault: 2,
+        repMin: 1,
+        repMax: 10,
+        restSecondsDefault: 120,
+        weightJumpDefault: 5,
+        createdAt: now,
+      });
+
+      await db.sets.add({
+        id: crypto.randomUUID(),
+        sessionId,
+        trackId: "carry-track",
+        setType: "working",
+        weight: 90,
+        reps: 1,
+        createdAt: now - 1_000,
+        completedAt: now - 1_000,
+      });
+
+      await setCurrentPhase("cut");
+      const cut = await strengthV2.computeStrengthSignalV2({ now });
+
+      await setCurrentPhase("maintain");
+      const maintain = await strengthV2.computeStrengthSignalV2({ now });
+
+      return {
+        cutHasCarryKey: Object.prototype.hasOwnProperty.call(cut.anchors, "carry"),
+        maintainHasCarryKey: Object.prototype.hasOwnProperty.call(maintain.anchors, "carry"),
+        cutCarryName: cut.anchors.carry?.exerciseName ?? null,
+        maintainCarryName: maintain.anchors.carry?.exerciseName ?? null,
+      };
+    });
+
+    expect(result).toEqual({
+      cutHasCarryKey: false,
+      maintainHasCarryKey: false,
+      cutCarryName: null,
+      maintainCarryName: null,
+    });
+  });
 });
