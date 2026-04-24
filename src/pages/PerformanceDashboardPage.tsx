@@ -43,6 +43,8 @@ import { Page, Section } from "../components/Page.tsx";
 import { formatLbs } from "../components/charts/chartFormatters";
 import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTypes";
 import ProgressPageHeader from "../components/layout/ProgressPageHeader";
+import AnchorDiagnosticsCard from "../components/performance/AnchorDiagnosticsCard";
+import { buildAnchorDiagnosticsRows as buildAnchorDiagnosticsRowsPresenter } from "../components/performance/anchorDiagnosticsPresenter";
 import DashboardChartCard from "../components/performance/DashboardChartCard";
 import PerformanceInsightsSection from "../components/performance/PerformanceInsightsSection";
 import PerformanceOverviewSection from "../components/performance/PerformanceOverviewSection";
@@ -219,15 +221,6 @@ type MetricTrendSummary = {
   changePct: number;
 };
 
-type AnchorDiagnosticsRow = {
-  pattern: string;
-  selectionLabel: string | null;
-  reason: string | null;
-  selectionSummary: string | null;
-  configuredExerciseName: string | null;
-  unresolvedReason: string | null;
-};
-
 /* ============================================================================
    Breadcrumb 2 — Static controls
    ============================================================================ */
@@ -316,99 +309,6 @@ function formatRangeLabel(range: DashboardRange): string {
     default:
       return range;
   }
-}
-
-function formatAnchorPatternLabel(value: string) {
-  switch (value) {
-    case "horizontalPush":
-      return "Horizontal Push";
-    case "verticalPush":
-      return "Vertical Push";
-    case "horizontalPull":
-      return "Horizontal Pull";
-    case "verticalPull":
-      return "Vertical Pull";
-    default:
-      return capitalize(value);
-  }
-}
-
-function formatAnchorPatternNeed(value: string) {
-  switch (value) {
-    case "horizontalPush":
-      return "horizontal push";
-    case "verticalPush":
-      return "vertical push";
-    case "horizontalPull":
-      return "horizontal pull";
-    case "verticalPull":
-      return "vertical pull";
-    default:
-      return value.toLowerCase();
-  }
-}
-
-function formatAnchorReason(value: string | null | undefined) {
-  switch (value) {
-    case "configured_match":
-      return "Selected from your configured anchor";
-    case "primary_auto_selected":
-      return "Selected from your recent performance";
-    case "conditional_auto_selected":
-      return "Selected from recent matching work";
-    default:
-      return null;
-  }
-}
-
-function formatAnchorSelectionSummary(
-  selectionSource: "CONFIGURED" | "AUTO_SELECTED" | null | undefined,
-  confidence: string | null | undefined
-) {
-  const sourceLabel =
-    selectionSource === "CONFIGURED"
-      ? "Configured"
-      : selectionSource === "AUTO_SELECTED"
-        ? "Auto"
-        : null;
-  const confidenceLabel = confidence ? `${capitalize(confidence.toLowerCase())} confidence` : null;
-
-  if (sourceLabel && confidenceLabel) return `${sourceLabel} • ${confidenceLabel}`;
-  return sourceLabel ?? confidenceLabel;
-}
-
-function buildAnchorDiagnosticsRows(
-  result: StrengthSignalV2Result | null | undefined
-): AnchorDiagnosticsRow[] {
-  if (!result) return [];
-
-  const patterns =
-    result.phase === "bulk"
-      ? [
-          "squat",
-          "hinge",
-          "horizontalPush",
-          "verticalPush",
-          "horizontalPull",
-          "verticalPull",
-          "carry",
-        ]
-      : ["push", "pull", "hinge", "squat"];
-
-  return patterns.map((pattern) => {
-    const anchor = result.anchors[pattern as keyof typeof result.anchors];
-    return {
-      pattern: formatAnchorPatternLabel(pattern),
-      selectionLabel: anchor?.exerciseName ?? null,
-      reason: formatAnchorReason(anchor?.reason),
-      selectionSummary: formatAnchorSelectionSummary(anchor?.selectionSource, anchor?.confidence),
-      configuredExerciseName: anchor?.configuredExerciseName ?? null,
-      unresolvedReason:
-        anchor?.exerciseName || anchor?.reason
-          ? null
-          : `Needs recent matching ${formatAnchorPatternNeed(pattern)} work`,
-    };
-  });
 }
 
 function pickBodyMetricTime(entry: BodyMetricEntry): number {
@@ -1264,7 +1164,6 @@ export default function PerformanceDashboardPage() {
   const [strengthSignalV2Result, setStrengthSignalV2Result] =
     useState<StrengthSignalV2Result | null>(null);
   const [showDebug, setShowDebug] = useState(false);
-  const [showAnchorDiagnostics, setShowAnchorDiagnostics] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1388,17 +1287,9 @@ export default function PerformanceDashboardPage() {
   );
 
   const anchorDiagnosticsRows = useMemo(
-    () => buildAnchorDiagnosticsRows(strengthSignalV2Result),
+    () => buildAnchorDiagnosticsRowsPresenter(strengthSignalV2Result),
     [strengthSignalV2Result]
   );
-
-  const anchorDiagnosticsSummary = useMemo(() => {
-    const selected = anchorDiagnosticsRows.filter((row) => !!row.selectionLabel).length;
-    return {
-      selected,
-      unresolved: Math.max(0, anchorDiagnosticsRows.length - selected),
-    };
-  }, [anchorDiagnosticsRows]);
 
   const sharedStrengthChartData: ChartDatum[] = useMemo(() => {
     const sorted = [...sharedStrengthTrend].sort((a, b) => a.weekEndMs - b.weekEndMs);
@@ -1743,108 +1634,10 @@ export default function PerformanceDashboardPage() {
               debugTopExercises={vm.debug.topExercises}
             />
 
-            <div className="card">
-              <div style={{ display: "grid", gap: 12 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    alignItems: "flex-start",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 16 }}>Anchor Diagnostics</h3>
-                    <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-                      Current shared v2 anchor selections for Performance.
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="btn small"
-                    onClick={() => setShowAnchorDiagnostics((value) => !value)}
-                    aria-expanded={showAnchorDiagnostics}
-                  >
-                    {showAnchorDiagnostics ? "Hide" : "Show"}
-                  </button>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 8,
-                    flexWrap: "wrap",
-                    fontSize: 13,
-                  }}
-                >
-                  <span className="chip">Phase {strengthSignalV2Result?.phase ?? "Unknown"}</span>
-                  <span className="chip">
-                    Anchors {anchorDiagnosticsRows.length || 0}
-                  </span>
-                  <span className="chip">
-                    {anchorDiagnosticsSummary.selected} selected • {anchorDiagnosticsSummary.unresolved} unresolved
-                  </span>
-                </div>
-
-                {showAnchorDiagnostics ? (
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {anchorDiagnosticsRows.length ? (
-                      anchorDiagnosticsRows.map((row) => (
-                        <div
-                          key={row.pattern}
-                          style={{
-                            display: "grid",
-                            gap: 6,
-                            padding: "10px 12px",
-                            border: "1px solid color-mix(in srgb, var(--border) 70%, transparent)",
-                            borderRadius: 8,
-                            background: "color-mix(in srgb, var(--panel) 92%, white 8%)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              gap: 8,
-                              alignItems: "center",
-                              flexWrap: "wrap",
-                            }}
-                          >
-                            <strong style={{ fontSize: 13, lineHeight: 1.2 }}>{row.pattern}</strong>
-                            {row.selectionSummary ? (
-                              <span className="chip" style={{ fontSize: 11 }}>
-                                {row.selectionSummary}
-                              </span>
-                            ) : null}
-                          </div>
-
-                          <div style={{ fontSize: 13, lineHeight: 1.35 }}>
-                            {row.selectionLabel ?? "No anchor selected"}
-                          </div>
-
-                          {row.configuredExerciseName &&
-                          row.configuredExerciseName !== row.selectionLabel ? (
-                            <div className="muted" style={{ fontSize: 12 }}>
-                              Configured {row.configuredExerciseName}
-                            </div>
-                          ) : null}
-
-                          <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
-                            {row.reason ?? row.unresolvedReason ?? "Unresolved"}
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="muted" style={{ fontSize: 13 }}>
-                        Anchor diagnostics are unavailable.
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            </div>
+            <AnchorDiagnosticsCard
+              phase={strengthSignalV2Result?.phase ?? null}
+              rows={anchorDiagnosticsRows}
+            />
 
             <DashboardChartCard
               chart={vm.charts.bodyWeight}
@@ -1899,3 +1692,5 @@ function normalizeExerciseDisplayLabel(value: string) {
    FOOTER COMMENT
    FILE: src/pages/PerformanceDashboardPage.tsx
    ============================================================================ */
+
+
