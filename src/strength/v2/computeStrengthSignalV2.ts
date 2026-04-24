@@ -90,6 +90,20 @@ type CandidateSet = {
   matchRank: number;
 };
 
+export type SelectedAnchorCandidate = {
+  anchorId: string;
+  exerciseId: string;
+  reason?: string;
+  matchRank: number;
+  occurredAt: number;
+};
+
+export type SelectedAnchorCandidateResult = {
+  anchorId: string;
+  exerciseId: string;
+  reason?: string;
+};
+
 
 function finiteNumber(value: unknown): number | null {
   const n = Number(value);
@@ -195,6 +209,44 @@ function sameSelectedExercise(candidate: CandidateSet, selected: CandidateSet): 
   return candidate.exercise.id === selected.exercise.id || candidate.track.exerciseId === selected.track.exerciseId;
 }
 
+function selectedAnchorReason(matchRank: number): string {
+  if (matchRank === 1) return "configured_match";
+  if (matchRank === 2) return "primary_auto_selected";
+  return "conditional_auto_selected";
+}
+
+export function selectBestAnchor(
+  candidates: SelectedAnchorCandidate[]
+): SelectedAnchorCandidateResult | null {
+  if (!candidates.length) return null;
+
+  const bestRank = Math.min(...candidates.map((candidate) => candidate.matchRank));
+  const rankedCandidates = candidates.filter((candidate) => candidate.matchRank === bestRank);
+  const latest = rankedCandidates.slice().sort((a, b) => b.occurredAt - a.occurredAt)[0];
+
+  if (!latest) return null;
+
+  return {
+    anchorId: latest.anchorId,
+    exerciseId: latest.exerciseId,
+    reason: latest.reason,
+  };
+}
+
+function findLatestSelectedCandidate(
+  candidates: CandidateSet[],
+  selected: SelectedAnchorCandidateResult
+): CandidateSet | null {
+  const matchingCandidates = candidates.filter(
+    (candidate) =>
+      candidate.track.exerciseId === selected.anchorId &&
+      candidate.exercise.id === selected.exerciseId
+  );
+  if (!matchingCandidates.length) return null;
+
+  return matchingCandidates.slice().sort((a, b) => b.at - a.at)[0] ?? null;
+}
+
 function emptyAnchorResult(): StrengthSignalV2AnchorResult {
   const emptyMeasurement = emptyAnchorMeasurement();
   return {
@@ -247,11 +299,22 @@ function buildScoredAnchorResult(
 
   if (!candidates.length) return emptyAnchorResult();
 
-  const bestRank = Math.min(...candidates.map((candidate) => candidate.matchRank));
-  const rankedCandidates = candidates.filter((candidate) => candidate.matchRank === bestRank);
-  const latest = rankedCandidates.slice().sort((a, b) => b.at - a.at)[0];
-  const selectionSource = bestRank === 1 ? "CONFIGURED" : "AUTO_SELECTED";
-  const selectedExerciseCandidates = rankedCandidates.filter((candidate) => sameSelectedExercise(candidate, latest));
+  const selected = selectBestAnchor(
+    candidates.map((candidate) => ({
+      anchorId: candidate.track.exerciseId,
+      exerciseId: candidate.exercise.id,
+      reason: selectedAnchorReason(candidate.matchRank),
+      matchRank: candidate.matchRank,
+      occurredAt: candidate.at,
+    }))
+  );
+  if (!selected) return emptyAnchorResult();
+
+  const latest = findLatestSelectedCandidate(candidates, selected);
+  if (!latest) return emptyAnchorResult();
+
+  const selectionSource = latest.matchRank === 1 ? "CONFIGURED" : "AUTO_SELECTED";
+  const selectedExerciseCandidates = candidates.filter((candidate) => sameSelectedExercise(candidate, latest));
   // Slice 5A separates long-memory capacity (90d) from short-memory current state (28d)
   // while leaving the existing slot-level fields wired to capacity for compatibility.
   const capacity = buildAnchorMeasurement(selectedExerciseCandidates, now, CAPACITY_WINDOW_DAYS, true);
@@ -307,12 +370,22 @@ function buildCarryAnchorResult(
 
   if (!candidates.length) return emptyAnchorResult();
 
-  const bestRank = Math.min(...candidates.map((candidate) => candidate.matchRank));
-  const rankedCandidates = candidates.filter((candidate) => candidate.matchRank === bestRank);
-  const latest = rankedCandidates
-    .slice()
-    .sort((a, b) => b.at - a.at)[0];
-  const selectionSource = bestRank === 1 ? "CONFIGURED" : "AUTO_SELECTED";
+  const selected = selectBestAnchor(
+    candidates.map((candidate) => ({
+      anchorId: candidate.track.exerciseId,
+      exerciseId: candidate.exercise.id,
+      reason: selectedAnchorReason(candidate.matchRank),
+      matchRank: candidate.matchRank,
+      occurredAt: candidate.at,
+    }))
+  );
+  if (!selected) return emptyAnchorResult();
+
+  const latest = findLatestSelectedCandidate(candidates, selected);
+  if (!latest) return emptyAnchorResult();
+
+  const rankedCandidates = candidates.filter((candidate) => candidate.matchRank === latest.matchRank);
+  const selectionSource = latest.matchRank === 1 ? "CONFIGURED" : "AUTO_SELECTED";
   const selectedExerciseCandidates = rankedCandidates.filter((candidate) => sameSelectedExercise(candidate, latest));
   const capacity = buildAnchorMeasurement(selectedExerciseCandidates, now, CAPACITY_WINDOW_DAYS, false);
   const state = buildAnchorMeasurement(selectedExerciseCandidates, now, STATE_WINDOW_DAYS, false);
