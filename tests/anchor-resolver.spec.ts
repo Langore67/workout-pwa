@@ -1036,4 +1036,104 @@ test.describe("Strength Signal v2 anchor resolver", () => {
       selectedExerciseId: "canonical-hinge-id",
     });
   });
+
+  test("BULK Strength v2 and Performance anchor context agree on grouped push and pull anchorIds", async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      // @ts-ignore
+      const db = window.__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const { setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
+      const strengthV2 = await import("/src/strength/v2/computeStrengthSignalV2.ts");
+      const performanceAnchors = await import("/src/strength/performanceAnchorContext.ts");
+
+      const now = Date.now();
+      const sessionId = crypto.randomUUID();
+      const patterns = [
+        { id: "horizontal-push-id", name: "Bench Press", subtype: "horizontalPush", weight: 205, reps: 8 },
+        { id: "vertical-push-id", name: "Overhead Press", subtype: "verticalPush", weight: 135, reps: 6 },
+        { id: "horizontal-pull-id", name: "Barbell Row", subtype: "horizontalPull", weight: 185, reps: 8 },
+        { id: "vertical-pull-id", name: "Pull Up", subtype: "verticalPull", weight: 25, reps: 6 },
+      ];
+
+      await setStrengthSignalConfig({
+        activeVersion: "v2",
+        strengthSignalV2Config: { phases: {} },
+      });
+      await setCurrentPhase("bulk");
+
+      await db.sessions.add({
+        id: sessionId,
+        startedAt: now - 60_000,
+        endedAt: now,
+      });
+
+      await db.exercises.bulkAdd(
+        patterns.map((pattern) => ({
+          id: pattern.id,
+          name: pattern.name,
+          normalizedName: pattern.name.toLowerCase(),
+          anchorEligibility: "primary",
+          anchorSubtypes: [pattern.subtype],
+          equipmentTags: ["test"],
+          createdAt: now,
+          updatedAt: now,
+        }))
+      );
+
+      await db.tracks.bulkAdd(
+        patterns.map((pattern) => ({
+          id: `${pattern.id}-track`,
+          exerciseId: pattern.id,
+          displayName: pattern.name,
+          trackType: "hypertrophy",
+          trackingMode: "weightedReps",
+          warmupSetsDefault: 0,
+          workingSetsDefault: 2,
+          repMin: 1,
+          repMax: 10,
+          restSecondsDefault: 120,
+          weightJumpDefault: 5,
+          createdAt: now,
+        }))
+      );
+
+      await db.sets.bulkAdd(
+        patterns.map((pattern, index) => ({
+          id: crypto.randomUUID(),
+          sessionId,
+          trackId: `${pattern.id}-track`,
+          setType: "working",
+          weight: pattern.weight,
+          reps: pattern.reps,
+          createdAt: now - (index + 1) * 1_000,
+          completedAt: now - (index + 1) * 1_000,
+        }))
+      );
+
+      const v2Result = await strengthV2.computeStrengthSignalV2({ now });
+      const performanceAnchorIds =
+        performanceAnchors.getPerformanceAnchorIdsFromStrengthSignalV2(v2Result);
+
+      return {
+        v2PushAnchorIds: [
+          v2Result.anchors.horizontalPush?.anchorId ?? null,
+          v2Result.anchors.verticalPush?.anchorId ?? null,
+        ],
+        performancePushAnchorIds: performanceAnchorIds.push ?? null,
+        v2PullAnchorIds: [
+          v2Result.anchors.horizontalPull?.anchorId ?? null,
+          v2Result.anchors.verticalPull?.anchorId ?? null,
+        ],
+        performancePullAnchorIds: performanceAnchorIds.pull ?? null,
+      };
+    });
+
+    expect(result).toEqual({
+      v2PushAnchorIds: ["horizontal-push-id", "vertical-push-id"],
+      performancePushAnchorIds: ["horizontal-push-id", "vertical-push-id"],
+      v2PullAnchorIds: ["horizontal-pull-id", "vertical-pull-id"],
+      performancePullAnchorIds: ["horizontal-pull-id", "vertical-pull-id"],
+    });
+  });
 });
