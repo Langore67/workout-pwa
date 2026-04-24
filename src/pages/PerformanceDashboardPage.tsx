@@ -1764,36 +1764,33 @@ export default function PerformanceDashboardPage() {
                         key={row.pattern}
                         style={{
                           display: "grid",
-                          gap: 4,
-                          padding: "8px 10px",
-                          border: "1px solid var(--border)",
+                          gap: 6,
+                          padding: "10px 12px",
+                          border: "1px solid color-mix(in srgb, var(--border) 70%, transparent)",
                           borderRadius: 8,
+                          background: "color-mix(in srgb, var(--panel) 92%, white 8%)",
                         }}
                       >
                         <div
                           style={{
                             display: "flex",
                             justifyContent: "space-between",
-                            gap: 12,
-                            alignItems: "baseline",
+                            gap: 8,
+                            alignItems: "center",
                             flexWrap: "wrap",
                           }}
                         >
-                          <strong style={{ fontSize: 13 }}>{row.pattern}</strong>
-                          <span className="muted" style={{ fontSize: 12 }}>
-                            {row.reason ?? row.unresolvedReason ?? "Unresolved"}
-                          </span>
+                          <strong style={{ fontSize: 13, lineHeight: 1.2 }}>{row.pattern}</strong>
+                          {row.selectionSummary ? (
+                            <span className="chip" style={{ fontSize: 11 }}>
+                              {row.selectionSummary}
+                            </span>
+                          ) : null}
                         </div>
 
-                        <div style={{ fontSize: 13 }}>
+                        <div style={{ fontSize: 13, lineHeight: 1.35 }}>
                           {row.selectionLabel ?? "No anchor selected"}
                         </div>
-
-                        {row.selectionSummary ? (
-                          <div className="muted" style={{ fontSize: 12 }}>
-                            {row.selectionSummary}
-                          </div>
-                        ) : null}
 
                         {row.configuredExerciseName &&
                         row.configuredExerciseName !== row.selectionLabel ? (
@@ -1801,6 +1798,10 @@ export default function PerformanceDashboardPage() {
                             Configured {row.configuredExerciseName}
                           </div>
                         ) : null}
+
+                        <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
+                          {row.reason ?? row.unresolvedReason ?? "Unresolved"}
+                        </div>
                       </div>
                     ))
                   ) : (
