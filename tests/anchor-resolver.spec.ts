@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { resetDexieDb } from "./helpers/dbSeed";
 
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5173/";
 
@@ -7,6 +8,11 @@ async function goto(page: Page, path: string) {
 }
 
 test.describe("Strength Signal v2 anchor resolver", () => {
+  test.beforeEach(async ({ page }) => {
+    await goto(page, "/");
+    await resetDexieDb(page);
+  });
+
   test("exact configured exerciseId match wins over non-configured eligible candidates", async ({ page }) => {
     await goto(page, "/");
 
@@ -235,5 +241,351 @@ test.describe("Strength Signal v2 anchor resolver", () => {
     });
 
     expect(result).toBeNull();
+  });
+
+  test("computeStrengthSignalV2 selects the configured anchor when valid data exists", async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      // @ts-ignore
+      const db = window.__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const { setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
+      const strengthV2 = await import("/src/strength/v2/computeStrengthSignalV2.ts");
+
+      const now = Date.now();
+      const sessionId = crypto.randomUUID();
+      const configuredExerciseId = "configured-hinge-id";
+      const fallbackExerciseId = "fallback-hinge-id";
+      const configuredTrackId = crypto.randomUUID();
+      const fallbackTrackId = crypto.randomUUID();
+
+      await setCurrentPhase("cut");
+      await setStrengthSignalConfig({
+        activeVersion: "v2",
+        strengthSignalV2Config: {
+          phases: {
+            cut: {
+              hinge: configuredExerciseId,
+            },
+          },
+        },
+      });
+
+      await db.sessions.add({
+        id: sessionId,
+        startedAt: now - 60_000,
+        endedAt: now,
+      });
+
+      await db.exercises.bulkAdd([
+        {
+          id: configuredExerciseId,
+          name: "Barbell RDL",
+          normalizedName: "barbell rdl",
+          anchorEligibility: "conditional",
+          anchorSubtypes: ["hinge"],
+          equipmentTags: ["barbell"],
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: fallbackExerciseId,
+          name: "Conventional Deadlift",
+          normalizedName: "conventional deadlift",
+          anchorEligibility: "primary",
+          anchorSubtypes: ["hinge"],
+          equipmentTags: ["barbell"],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]);
+
+      await db.tracks.bulkAdd([
+        {
+          id: configuredTrackId,
+          exerciseId: configuredExerciseId,
+          displayName: "Barbell RDL",
+          trackType: "hypertrophy",
+          trackingMode: "weightedReps",
+          warmupSetsDefault: 0,
+          workingSetsDefault: 2,
+          repMin: 6,
+          repMax: 10,
+          restSecondsDefault: 120,
+          weightJumpDefault: 5,
+          createdAt: now,
+        },
+        {
+          id: fallbackTrackId,
+          exerciseId: fallbackExerciseId,
+          displayName: "Conventional Deadlift",
+          trackType: "hypertrophy",
+          trackingMode: "weightedReps",
+          warmupSetsDefault: 0,
+          workingSetsDefault: 2,
+          repMin: 3,
+          repMax: 8,
+          restSecondsDefault: 120,
+          weightJumpDefault: 10,
+          createdAt: now,
+        },
+      ]);
+
+      await db.sets.bulkAdd([
+        {
+          id: crypto.randomUUID(),
+          sessionId,
+          trackId: configuredTrackId,
+          setType: "working",
+          weight: 225,
+          reps: 8,
+          createdAt: now - 5_000,
+          completedAt: now - 5_000,
+        },
+        {
+          id: crypto.randomUUID(),
+          sessionId,
+          trackId: fallbackTrackId,
+          setType: "working",
+          weight: 315,
+          reps: 5,
+          createdAt: now - 1_000,
+          completedAt: now - 1_000,
+        },
+      ]);
+
+      const signal = await strengthV2.computeStrengthSignalV2({ now });
+      const anchor = signal.anchors.hinge ?? null;
+
+      return {
+        exerciseId: anchor?.exerciseId ?? null,
+        exerciseName: anchor?.exerciseName ?? null,
+        selectionSource: anchor?.selectionSource ?? null,
+      };
+    });
+
+    expect(result).toEqual({
+      exerciseId: "configured-hinge-id",
+      exerciseName: "Barbell RDL",
+      selectionSource: "CONFIGURED",
+    });
+  });
+
+  test("computeStrengthSignalV2 selects the exact fallback-name anchor when configured id is unavailable", async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      // @ts-ignore
+      const db = window.__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const { setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
+      const strengthV2 = await import("/src/strength/v2/computeStrengthSignalV2.ts");
+
+      const now = Date.now();
+      const sessionId = crypto.randomUUID();
+      const namedExerciseId = crypto.randomUUID();
+      const otherExerciseId = crypto.randomUUID();
+      const namedTrackId = crypto.randomUUID();
+      const otherTrackId = crypto.randomUUID();
+
+      await setCurrentPhase("cut");
+      await setStrengthSignalConfig({
+        activeVersion: "v2",
+        strengthSignalV2Config: {
+          phases: {
+            cut: {
+              hinge: {
+                exerciseName: "Romanian Deadlift",
+              },
+            },
+          },
+        },
+      });
+
+      await db.sessions.add({
+        id: sessionId,
+        startedAt: now - 60_000,
+        endedAt: now,
+      });
+
+      await db.exercises.bulkAdd([
+        {
+          id: namedExerciseId,
+          name: "Romanian Deadlift",
+          normalizedName: "romanian deadlift",
+          anchorEligibility: "conditional",
+          anchorSubtypes: ["hinge"],
+          equipmentTags: ["barbell"],
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: otherExerciseId,
+          name: "Good Morning",
+          normalizedName: "good morning",
+          anchorEligibility: "primary",
+          anchorSubtypes: ["hinge"],
+          equipmentTags: ["barbell"],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]);
+
+      await db.tracks.bulkAdd([
+        {
+          id: namedTrackId,
+          exerciseId: namedExerciseId,
+          displayName: "Romanian Deadlift",
+          trackType: "hypertrophy",
+          trackingMode: "weightedReps",
+          warmupSetsDefault: 0,
+          workingSetsDefault: 2,
+          repMin: 6,
+          repMax: 10,
+          restSecondsDefault: 120,
+          weightJumpDefault: 5,
+          createdAt: now,
+        },
+        {
+          id: otherTrackId,
+          exerciseId: otherExerciseId,
+          displayName: "Good Morning",
+          trackType: "hypertrophy",
+          trackingMode: "weightedReps",
+          warmupSetsDefault: 0,
+          workingSetsDefault: 2,
+          repMin: 6,
+          repMax: 10,
+          restSecondsDefault: 120,
+          weightJumpDefault: 5,
+          createdAt: now,
+        },
+      ]);
+
+      await db.sets.bulkAdd([
+        {
+          id: crypto.randomUUID(),
+          sessionId,
+          trackId: namedTrackId,
+          setType: "working",
+          weight: 205,
+          reps: 8,
+          createdAt: now - 5_000,
+          completedAt: now - 5_000,
+        },
+        {
+          id: crypto.randomUUID(),
+          sessionId,
+          trackId: otherTrackId,
+          setType: "working",
+          weight: 185,
+          reps: 10,
+          createdAt: now - 1_000,
+          completedAt: now - 1_000,
+        },
+      ]);
+
+      const signal = await strengthV2.computeStrengthSignalV2({ now });
+      const anchor = signal.anchors.hinge ?? null;
+
+      return {
+        exerciseName: anchor?.exerciseName ?? null,
+        selectionSource: anchor?.selectionSource ?? null,
+      };
+    });
+
+    expect(result).toEqual({
+      exerciseName: "Romanian Deadlift",
+      selectionSource: "CONFIGURED",
+    });
+  });
+
+  test("computeStrengthSignalV2 leaves the anchor unresolved when no valid candidate exists", async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      // @ts-ignore
+      const db = window.__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const { setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
+      const strengthV2 = await import("/src/strength/v2/computeStrengthSignalV2.ts");
+
+      const now = Date.now();
+      const sessionId = crypto.randomUUID();
+      const exerciseId = crypto.randomUUID();
+      const trackId = crypto.randomUUID();
+
+      await setCurrentPhase("cut");
+      await setStrengthSignalConfig({
+        activeVersion: "v2",
+        strengthSignalV2Config: {
+          phases: {
+            cut: {
+              hinge: {
+                exerciseName: "Romanian Deadlift",
+              },
+            },
+          },
+        },
+      });
+
+      await db.sessions.add({
+        id: sessionId,
+        startedAt: now - 60_000,
+        endedAt: now,
+      });
+
+      await db.exercises.add({
+        id: exerciseId,
+        name: "Romanian Deadlift",
+        normalizedName: "romanian deadlift",
+        anchorEligibility: "none",
+        anchorSubtypes: ["hinge"],
+        equipmentTags: ["barbell"],
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await db.tracks.add({
+        id: trackId,
+        exerciseId,
+        displayName: "Romanian Deadlift",
+        trackType: "hypertrophy",
+        trackingMode: "weightedReps",
+        warmupSetsDefault: 0,
+        workingSetsDefault: 2,
+        repMin: 6,
+        repMax: 10,
+        restSecondsDefault: 120,
+        weightJumpDefault: 5,
+        createdAt: now,
+      });
+
+      await db.sets.add({
+        id: crypto.randomUUID(),
+        sessionId,
+        trackId,
+        setType: "working",
+        weight: 205,
+        reps: 8,
+        createdAt: now - 1_000,
+        completedAt: now - 1_000,
+      });
+
+      const signal = await strengthV2.computeStrengthSignalV2({ now });
+      const anchor = signal.anchors.hinge ?? null;
+
+      return {
+        exerciseId: anchor?.exerciseId ?? null,
+        exerciseName: anchor?.exerciseName ?? null,
+        dataPoints: anchor?.dataPoints ?? null,
+        selectionSource: anchor?.selectionSource ?? null,
+      };
+    });
+
+    expect(result).toEqual({
+      exerciseId: null,
+      exerciseName: null,
+      dataPoints: 0,
+      selectionSource: "AUTO_SELECTED",
+    });
   });
 });
