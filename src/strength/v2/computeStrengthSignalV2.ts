@@ -7,6 +7,11 @@ import {
   calcEffectiveStrengthWeightLb,
   computeScoredE1RM,
 } from "../Strength";
+import {
+  anchorMatchRank,
+  buildAnchorDefinitions,
+  type AnchorDefinition,
+} from "./anchorResolver";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CAPACITY_WINDOW_DAYS = 90;
@@ -75,12 +80,6 @@ type ComputeStrengthSignalV2Options = {
   now?: number;
 };
 
-type AnchorDefinition = {
-  pattern: StrengthSignalV2Pattern;
-  allowedSubtypes: string[];
-  configuredExerciseIds: string[];
-};
-
 type CandidateSet = {
   set: SetEntry;
   track: Track;
@@ -91,28 +90,6 @@ type CandidateSet = {
   matchRank: number;
 };
 
-const CUT_MAINTAIN_PATTERNS: StrengthSignalV2CutMaintainPattern[] = ["push", "pull", "hinge", "squat"];
-const BULK_PATTERNS: StrengthSignalV2BulkPattern[] = [
-  "squat",
-  "hinge",
-  "horizontalPush",
-  "verticalPush",
-  "verticalPull",
-  "horizontalPull",
-  "carry",
-];
-
-const SLOT_SUBTYPES: Record<StrengthSignalV2Pattern, string[]> = {
-  push: ["horizontalPush", "verticalPush"],
-  pull: ["horizontalPull", "verticalPull"],
-  hinge: ["hinge"],
-  squat: ["squat"],
-  horizontalPush: ["horizontalPush"],
-  verticalPush: ["verticalPush"],
-  verticalPull: ["verticalPull"],
-  horizontalPull: ["horizontalPull"],
-  carry: ["carry"],
-};
 
 function finiteNumber(value: unknown): number | null {
   const n = Number(value);
@@ -199,83 +176,6 @@ function buildAnchorMeasurement(
   };
 }
 
-function configValueToTerms(value: unknown): string[] {
-  if (!value) return [];
-
-  if (typeof value === "string") return [value];
-
-  if (Array.isArray(value)) {
-    return value.flatMap(configValueToTerms);
-  }
-
-  if (typeof value === "object") {
-    const raw = value as any;
-    return [raw.exerciseId, raw.id, raw.exerciseName, raw.name]
-      .map((term) => String(term ?? "").trim())
-      .filter(Boolean);
-  }
-
-  return [];
-}
-
-function getPhaseSlotOverride(config: any, phase: CurrentPhase, pattern: StrengthSignalV2Pattern): unknown {
-  const phaseConfig = config?.strengthSignalV2Config?.phases?.[phase];
-  if (phaseConfig && Object.prototype.hasOwnProperty.call(phaseConfig, pattern)) {
-    return phaseConfig[pattern];
-  }
-
-  const legacyPhaseConfig = config?.v2Anchors?.byPhase?.[phase];
-  if (legacyPhaseConfig && Object.prototype.hasOwnProperty.call(legacyPhaseConfig, pattern)) {
-    return legacyPhaseConfig[pattern];
-  }
-
-  if (phase === "bulk") return config?.v2Anchors?.bulk?.[pattern];
-  return config?.v2Anchors?.cutMaintain?.[pattern];
-}
-
-function buildAnchorDefinitions(phase: CurrentPhase, config: any): AnchorDefinition[] {
-  const patterns = phase === "bulk" ? BULK_PATTERNS : CUT_MAINTAIN_PATTERNS;
-
-  return patterns.map((pattern) => {
-    const configured = getPhaseSlotOverride(config, phase, pattern);
-    const configuredTerms = configValueToTerms(configured);
-    return {
-      pattern,
-      allowedSubtypes: SLOT_SUBTYPES[pattern],
-      configuredExerciseIds: configuredTerms,
-    };
-  });
-}
-
-function exerciseIdsForMatch(exercise: Exercise, track: Track): string[] {
-  return [exercise.id, track.exerciseId]
-    .map((value) => String(value ?? "").trim())
-    .filter(Boolean);
-}
-
-function anchorMatchRank(definition: AnchorDefinition, exercise: Exercise, track: Track): number | null {
-  const configuredIds = definition.configuredExerciseIds;
-  const ids = exerciseIdsForMatch(exercise, track);
-
-  // Slice 4: phase-specific configured IDs rank first, but metadata
-  // eligibility/subtype filtering remains the primary gate before fallback.
-  const eligibility = String((exercise as any)?.anchorEligibility ?? "").trim().toLowerCase();
-  if (eligibility !== "primary" && eligibility !== "conditional") return null;
-
-  const subtypes = Array.isArray((exercise as any)?.anchorSubtypes)
-    ? (exercise as any).anchorSubtypes.map((value: unknown) => String(value ?? "").trim()).filter(Boolean)
-    : [];
-  if (!subtypes.some((subtype: string) => definition.allowedSubtypes.includes(subtype))) return null;
-
-  // 1. Exact configured exerciseId match.
-  if (configuredIds.length && configuredIds.some((id) => ids.includes(id))) return 1;
-
-  // 2. Primary eligible live exercise with matching subtype.
-  if (eligibility === "primary") return 2;
-
-  // 3. Conditional eligible live exercise with matching subtype.
-  return 3;
-}
 
 function latestSetPayload(candidate: CandidateSet): StrengthSignalV2LatestSet {
   return {

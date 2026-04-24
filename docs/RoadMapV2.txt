@@ -1,0 +1,214 @@
+IronForge Roadmap v2 (Aligned to Current Architecture)
+?? Layer 1 — Core Signal Engine (FOUNDATION)
+1. Strength Signal v2 (Complete + Replace v1)
+
+Goal: One canonical strength signal used everywhere.
+
+Current State
+v2 exists (computeStrengthSignalV2)
+Partially wired into Performance
+Anchors + fallback logic implemented
+Gaps
+Not fully replacing v1
+Aggregation rules not formally locked
+Phase integration incomplete
+Deliverables
+ Finalize anchor sets per phase (CUT / MAINTAIN / BULK)
+ Lock aggregation math (no more drift)
+ Remove v1 dependencies
+ Single export: computeStrengthSignal()
+2. Anchor Resolution Engine (NEW — MUST FORMALIZE)
+
+Goal: Anchor identity is resolved consistently everywhere.
+
+Current Reality (implicit system)
+
+You already have:
+
+Config anchors
+Canonical exercise IDs
+Alias matching
+Fallback hierarchy
+Problem
+
+This logic is:
+
+Implicit
+Distributed
+Not documented as a system
+Deliverables
+ Create resolveAnchorExercise() (single entry point)
+ Define strict match hierarchy:
+Config exerciseId
+Canonical ID (post-merge)
+Exact name match
+Approved fallback list
+ Remove anchor resolution from UI/pages
+ Add debug surface (dev-only)
+3. Signal Trust / Confidence System (ELEVATE EXISTING WORK)
+
+Goal: Every signal communicates reliability.
+
+Current State
+Hero meta (trend/confidence)
+Hydration confidence
+Sparse data handling (implicit)
+Gap
+Not unified
+Not consistently exposed
+Deliverables
+ Define computeSignalConfidence()
+ Inputs:
+Data density
+Recency
+Consistency
+ Standardize output:
+High / Medium / Low
+ Surface in:
+Strength page
+Performance page
+Coach Export
+?? Layer 2 — Data Governance (CRITICAL INFRASTRUCTURE)
+4. Exercise Data Governance System (RENAME + EXPAND)
+
+Goal: Clean, reliable, canonical exercise data.
+
+Current State
+Seed JSON (with cues, aliases, movementPattern, role)
+Alias system working
+Merge direction defined
+Gap
+No full workflow
+No enforcement
+Deliverables
+ Build Exercise Merge Engine
+Select source ? target
+Repoint all history
+ Add “canonical ID” enforcement
+ Run full catalog normalization pass
+ Retire legacy seed files
+5. Movement Classification System (DATA-DRIVEN)
+
+Goal: Eliminate classification logic drift.
+
+Current State
+movementPattern exists in seed
+Engine still has fallback logic
+Gap
+Not fully authoritative
+Deliverables
+ Make movementPattern required for all exercises
+ Remove fallback classification from Strength engine
+ Add validation tooling (missing/invalid patterns)
+ Ensure all pages consume the same field
+6. Intent-Based Exercise System (FORMALIZE)
+
+Goal: Exercise intent drives behavior consistently.
+
+Current State
+strength / technique / mobility / corrective / conditioning implemented
+Tracking modes mapped
+Gap
+Not formalized as a system
+Deliverables
+ Centralize intent config
+ Ensure:
+Naming
+Tracking mode
+Inclusion in Strength Signal
+ Lock rules in shared helper
+?? Layer 3 — Phase-Aware Architecture
+7. Phase-Driven Signal System (UPGRADE)
+
+Goal: Phase changes how strength is measured—not just displayed.
+
+Current State
+Phase exists
+Early anchor differences defined
+Gap
+Not fully driving computation
+Deliverables
+ Define per-phase:
+Anchor sets
+Weighting rules
+ Integrate into Signal Engine
+ Remove phase logic from UI layer
+?? Layer 4 — Unified Consumption Layer
+8. Strength / Performance / MPS Alignment
+
+Goal: All pages consume the same signal.
+
+Current State
+Performance partially aligned
+Strength uses canonical engine
+Gap
+Not fully audited
+Deliverables
+ Audit all pages:
+Strength
+Performance
+MPS
+ Remove duplicate calculations
+ Ensure:
+Same inputs
+Same outputs
+Same trend logic
+?? Layer 5 — Coaching & Interpretation Layer
+9. Coaching Insight System (EXPAND)
+
+Goal: Turn data into actionable insight.
+
+Current State
+Session Snapshot
+Readiness
+Focus Flags
+Carry Forward
+Gap
+Not connected to signal engine
+Deliverables
+ Integrate Strength Signal into coaching insights
+ Add:
+Trend interpretation
+Anchor-level feedback
+ Expand “Focus Flags” logic
+10. Coach Export System (FORMALIZE)
+
+Goal: Clean, reliable handoff output.
+
+Current State
+IF export format v1
+Used in sessions
+Gap
+Not systematized
+Deliverables
+ Standardize export builder
+ Ensure:
+Signal
+Confidence
+Phase context included
+ Add validation tests
+?? Layer 6 — Validation & Testing
+11. Signal Validation Suite
+
+Goal: Prevent silent drift.
+
+Deliverables
+ Unit tests for:
+Effective load
+Anchor resolution
+Aggregation
+ Playwright tests:
+Strength vs Performance consistency
+ Regression snapshots for signal outputs
+?? Priority Order (what to actually do next)
+?? Immediate (next PRs)
+Strength Signal v2 completion
+Anchor Resolution Engine (formalize + centralize)
+Strength/Performance alignment audit
+?? Next
+Exercise Merge Engine
+Movement classification cleanup
+Phase-driven signal rules
+?? Then
+Signal confidence system
+Coaching layer integration
