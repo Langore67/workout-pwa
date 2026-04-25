@@ -379,6 +379,7 @@ export default function DashboardChartCard({
         series={series}
         testIdBase={chartTestIdBase}
         yDomainMode={yDomainMode}
+        showTrendLine={true}
         valueFormatter={valueFormatter}
         yAxisTickFormatter={yAxisTickFormatter}
         tooltipLabelFormatter={(label, datum) => {
