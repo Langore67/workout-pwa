@@ -362,7 +362,10 @@ export default function VisxTrendChartCard({
   };
 
   return (
-    <div className="min-w-0 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-sm">
+    <div
+      className="min-w-0 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-sm"
+      data-testid={`visx-trend-chart-card:${title}`}
+    >
       <div className="mb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -429,6 +432,7 @@ export default function VisxTrendChartCard({
       <div
         ref={hostRef}
         className="mt-2"
+        data-testid={`visx-trend-chart-host:${title}`}
         style={{
           width: "100%",
           minWidth: 0,
@@ -438,7 +442,13 @@ export default function VisxTrendChartCard({
         }}
       >
         {canRender && innerWidth > 0 && innerHeight > 0 ? (
-          <svg width={chartWidth} height={chartHeight} role="img" aria-label={title}>
+          <svg
+            width={chartWidth}
+            height={chartHeight}
+            role="img"
+            aria-label={title}
+            data-testid={`visx-trend-chart-svg:${title}`}
+          >
             <Group left={margin.left} top={margin.top}>
               <GridRows
                 scale={yScale}
