@@ -1,6 +1,7 @@
 import React from "react";
 
 import TrendChartCard from "../charts/TrendChartCard";
+import VisxTrendChartCard from "../charts/VisxTrendChartCard";
 import type { ChartDatum, ChartSeriesConfig } from "../charts/chartTypes";
 
 type TrendDirection = "improving" | "stable" | "declining" | "watch";
@@ -332,6 +333,7 @@ type DashboardChartCardProps = {
   yDomainMode?: "auto" | "tight";
   valueFormatter?: (value: number | null | undefined) => string;
   emptyMessage?: string;
+  chartRenderer?: "recharts" | "visx";
 };
 
 export default function DashboardChartCard({
@@ -341,7 +343,10 @@ export default function DashboardChartCard({
   yDomainMode,
   valueFormatter,
   emptyMessage,
+  chartRenderer = "recharts",
 }: DashboardChartCardProps) {
+  const ChartComponent = chartRenderer === "visx" ? VisxTrendChartCard : TrendChartCard;
+
   return (
     <div className="card">
       <div
@@ -363,7 +368,7 @@ export default function DashboardChartCard({
         <TrendBadge direction={chart.direction} />
       </div>
 
-      <TrendChartCard
+      <ChartComponent
         title={chart.title}
         subtitle={chart.subtitle}
         data={chartData}
