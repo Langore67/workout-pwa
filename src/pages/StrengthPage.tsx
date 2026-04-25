@@ -1091,12 +1091,14 @@ export default function StrengthPage() {
       Weekly snapshots of bodyweight-normalized strength across your recent training history.
               </div>
 
-              <TrendChartCard
+              <VisxTrendChartCard
                 title="Relative Strength Trend"
                 subtitle="Weekly snapshots of bodyweight-normalized strength"
                 data={relativeChartData}
                 series={relativeStrengthSeries}
-                windowSize={12}
+                testIdBase="relative-strength-trend"
+                paneNavigationMode="movingPane"
+                windowSize={6}
                 yDomainMode="auto"
                 showTrendLine={true}
                 readoutMode="statRow"
