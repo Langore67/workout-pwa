@@ -39,6 +39,7 @@ import {
   type StrengthSignalV2Result,
 } from "../strength/v2/computeStrengthSignalV2";
 import TrendChartCard from "../components/charts/TrendChartCard";
+import VisxTrendChartCard from "../components/charts/VisxTrendChartCard";
 import { formatTwoDecimals } from "../components/charts/chartFormatters";
 import InfoStubButton from "../components/information/InfoStubButton";
 import { buildStrengthPageViewModel } from "./strength/strengthPageViewModel";
@@ -608,13 +609,13 @@ export default function StrengthPage() {
                 </div>
               </div>
 
-              <TrendChartCard
+              <VisxTrendChartCard
                 title="Strength Signal Trend"
                 subtitle="Weekly snapshots of normalized strength signal"
                 data={strengthSignalChartData}
                 series={strengthSignalSeries}
-            windowSize={6}
-            paneNavigationMode="movingPane"
+                windowSize={6}
+                paneNavigationMode="movingPane"
                 valueFormatter={formatTwoDecimals}
                 showTrendLine={true}
                 readoutMode="statRow"
