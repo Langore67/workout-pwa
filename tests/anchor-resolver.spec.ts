@@ -1136,4 +1136,243 @@ test.describe("Strength Signal v2 anchor resolver", () => {
       performancePullAnchorIds: ["horizontal-pull-id", "vertical-pull-id"],
     });
   });
+
+  test("anchor diagnostics presenter builds clean user-facing rows for selected and unresolved anchors", async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const presenter = await import("/src/components/performance/anchorDiagnosticsPresenter.ts");
+
+      const rows = presenter.buildAnchorDiagnosticsRows({
+        phase: "cut",
+        anchors: {
+          hinge: {
+            anchorId: "hinge-anchor-id",
+            exerciseId: "hinge-exercise-id",
+            exerciseName: "Romanian Deadlift",
+            latestSet: null,
+            capacity: {
+              e1RM: 315,
+              bestSetText: "275 x 8",
+              lastPerformedAt: "2026-04-24",
+              completedSetsConsidered: 3,
+              confidence: "HIGH",
+            },
+            state: {
+              e1RM: 315,
+              bestSetText: "275 x 8",
+              lastPerformedAt: "2026-04-24",
+              completedSetsConsidered: 3,
+              confidence: "HIGH",
+            },
+            e1RM: 315,
+            lastPerformedAt: Date.now(),
+            dataPoints: 3,
+            confidence: "HIGH",
+            selectionSource: "AUTO_SELECTED",
+            configuredExerciseName: null,
+            reason: "primary_auto_selected",
+          },
+          push: {
+            anchorId: null,
+            exerciseId: null,
+            exerciseName: null,
+            latestSet: null,
+            capacity: {
+              e1RM: null,
+              bestSetText: null,
+              lastPerformedAt: null,
+              completedSetsConsidered: 0,
+              confidence: "LOW",
+            },
+            state: {
+              e1RM: null,
+              bestSetText: null,
+              lastPerformedAt: null,
+              completedSetsConsidered: 0,
+              confidence: "LOW",
+            },
+            e1RM: null,
+            lastPerformedAt: null,
+            dataPoints: 0,
+            confidence: "LOW",
+            selectionSource: "AUTO_SELECTED",
+            configuredExerciseName: null,
+            reason: null,
+          },
+          pull: {
+            anchorId: null,
+            exerciseId: null,
+            exerciseName: null,
+            latestSet: null,
+            capacity: {
+              e1RM: null,
+              bestSetText: null,
+              lastPerformedAt: null,
+              completedSetsConsidered: 0,
+              confidence: "LOW",
+            },
+            state: {
+              e1RM: null,
+              bestSetText: null,
+              lastPerformedAt: null,
+              completedSetsConsidered: 0,
+              confidence: "LOW",
+            },
+            e1RM: null,
+            lastPerformedAt: null,
+            dataPoints: 0,
+            confidence: "LOW",
+            selectionSource: "AUTO_SELECTED",
+            configuredExerciseName: null,
+            reason: null,
+          },
+          squat: {
+            anchorId: null,
+            exerciseId: null,
+            exerciseName: null,
+            latestSet: null,
+            capacity: {
+              e1RM: null,
+              bestSetText: null,
+              lastPerformedAt: null,
+              completedSetsConsidered: 0,
+              confidence: "LOW",
+            },
+            state: {
+              e1RM: null,
+              bestSetText: null,
+              lastPerformedAt: null,
+              completedSetsConsidered: 0,
+              confidence: "LOW",
+            },
+            e1RM: null,
+            lastPerformedAt: null,
+            dataPoints: 0,
+            confidence: "LOW",
+            selectionSource: "AUTO_SELECTED",
+            configuredExerciseName: null,
+            reason: null,
+          },
+        },
+        aggregate: {
+          averageE1RM: 315,
+          trendDelta14d: null,
+          confidence: "HIGH",
+        },
+      } as any);
+
+      const hinge = rows.find((row) => row.pattern === "Hinge");
+      const push = rows.find((row) => row.pattern === "Push");
+
+      return {
+        rowKeys: rows.length ? Object.keys(rows[0]).sort() : [],
+        hinge,
+        push,
+      };
+    });
+
+    expect(result.rowKeys).toEqual([
+      "configuredExerciseName",
+      "pattern",
+      "reason",
+      "selectionLabel",
+      "selectionSummary",
+      "unresolvedReason",
+    ]);
+    expect(result.hinge).toEqual({
+      pattern: "Hinge",
+      selectionLabel: "Romanian Deadlift",
+      reason: "Selected from your recent performance",
+      selectionSummary: "Auto • High confidence",
+      configuredExerciseName: null,
+      unresolvedReason: null,
+    });
+    expect(result.push).toEqual({
+      pattern: "Push",
+      selectionLabel: null,
+      reason: null,
+      selectionSummary: "Auto • Low confidence",
+      configuredExerciseName: null,
+      unresolvedReason: "Needs recent matching push work",
+    });
+  });
+
+  test("Performance page renders Anchor Diagnostics collapsed by default and expands to show selected and unresolved copy", async ({ page }) => {
+    await page.evaluate(async () => {
+      // @ts-ignore
+      const db = window.__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const { setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
+
+      const now = Date.now();
+      const sessionId = crypto.randomUUID();
+
+      await setStrengthSignalConfig({
+        activeVersion: "v2",
+        strengthSignalV2Config: { phases: {} },
+      });
+      await setCurrentPhase("cut");
+
+      await db.sessions.add({
+        id: sessionId,
+        startedAt: now - 60_000,
+        endedAt: now,
+      });
+
+      await db.exercises.add({
+        id: "hinge-id",
+        name: "Romanian Deadlift",
+        normalizedName: "romanian deadlift",
+        anchorEligibility: "primary",
+        anchorSubtypes: ["hinge"],
+        equipmentTags: ["test"],
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await db.tracks.add({
+        id: "hinge-track",
+        exerciseId: "hinge-id",
+        displayName: "Romanian Deadlift",
+        trackType: "hypertrophy",
+        trackingMode: "weightedReps",
+        warmupSetsDefault: 0,
+        workingSetsDefault: 2,
+        repMin: 1,
+        repMax: 10,
+        restSecondsDefault: 120,
+        weightJumpDefault: 5,
+        createdAt: now,
+      });
+
+      await db.sets.add({
+        id: crypto.randomUUID(),
+        sessionId,
+        trackId: "hinge-track",
+        setType: "working",
+        weight: 275,
+        reps: 8,
+        createdAt: now - 1_000,
+        completedAt: now - 1_000,
+      });
+    });
+
+    await goto(page, "/performance");
+
+    await expect(page.getByRole("heading", { name: "Anchor Diagnostics" })).toBeVisible();
+    await expect(page.getByText("Phase cut")).toBeVisible();
+    await expect(page.getByText("4 selected • 0 unresolved")).toBeHidden();
+    await expect(page.getByText("1 selected • 3 unresolved")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Show", exact: true })).toBeVisible();
+    await expect(page.getByText("Romanian Deadlift")).toBeHidden();
+
+    await page.getByRole("button", { name: "Show", exact: true }).click();
+
+    await expect(page.getByRole("button", { name: "Hide" })).toBeVisible();
+    await expect(page.getByText("Romanian Deadlift")).toBeVisible();
+    await expect(page.getByText("Selected from your recent performance")).toBeVisible();
+    await expect(page.getByText("Needs recent matching push work")).toBeVisible();
+    await expect(page.getByText("Auto • Low confidence").first()).toBeVisible();
+    await expect(page.getByText("No anchor selected")).toHaveCount(3);
+  });
 });
