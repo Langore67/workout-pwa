@@ -156,6 +156,10 @@ test.describe("VisX chart smoke", () => {
 
     await goto(page, "/strength");
     await expectRenderedVisxTrendChart(page, "strength-signal-trend");
+    await expectRenderedVisxTrendChart(page, "relative-strength-trend");
+    await expect(page.getByTestId("relative-strength-trend:slider-input")).toBeVisible({
+      timeout: 15000,
+    });
 
     await goto(page, "/performance");
     await expectRenderedVisxTrendChart(page, "performance-strength-signal-trend");
