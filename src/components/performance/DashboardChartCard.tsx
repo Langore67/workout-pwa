@@ -334,6 +334,7 @@ type DashboardChartCardProps = {
   valueFormatter?: (value: number | null | undefined) => string;
   emptyMessage?: string;
   chartRenderer?: "recharts" | "visx";
+  chartTestIdBase?: string;
 };
 
 export default function DashboardChartCard({
@@ -344,6 +345,7 @@ export default function DashboardChartCard({
   valueFormatter,
   emptyMessage,
   chartRenderer = "recharts",
+  chartTestIdBase,
 }: DashboardChartCardProps) {
   const ChartComponent = chartRenderer === "visx" ? VisxTrendChartCard : TrendChartCard;
 
@@ -373,6 +375,7 @@ export default function DashboardChartCard({
         subtitle={chart.subtitle}
         data={chartData}
         series={series}
+        testIdBase={chartTestIdBase}
         yDomainMode={yDomainMode}
         valueFormatter={valueFormatter}
         tooltipLabelFormatter={(label, datum) => {

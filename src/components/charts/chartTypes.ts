@@ -58,6 +58,7 @@ export type TrendChartCardProps = {
   subtitle?: string;
   data: ChartDatum[];
   series: ChartSeriesConfig[];
+  testIdBase?: string;
 
   xKey?: string;
   height?: number;

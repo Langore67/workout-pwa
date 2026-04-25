@@ -6,6 +6,7 @@ type ChartViewportSliderProps = {
   startIndex: number;
   onStartIndexChange: (startIndex: number) => void;
   ariaLabel?: string;
+  testIdBase?: string;
 };
 
 export default function ChartViewportSlider({
@@ -14,6 +15,7 @@ export default function ChartViewportSlider({
   startIndex,
   onStartIndexChange,
   ariaLabel = "Visible chart window",
+  testIdBase,
 }: ChartViewportSliderProps) {
   const maxStart = getMaxPaneStartIndex(totalCount, windowSize);
   const clampedStart = clampPaneStartIndex(startIndex, totalCount, windowSize);
@@ -28,7 +30,7 @@ export default function ChartViewportSlider({
   };
 
   return (
-    <div className="mt-3">
+    <div className="mt-3" data-testid={testIdBase ? `${testIdBase}:slider` : undefined}>
       <div className="mb-2 flex items-center justify-between gap-2 text-xs text-[var(--muted)]">
         <span>Slide the visible window through the timeline</span>
         <span>
@@ -38,6 +40,7 @@ export default function ChartViewportSlider({
 
       <input
         type="range"
+        data-testid={testIdBase ? `${testIdBase}:slider-input` : undefined}
         min={0}
         max={maxStart}
         step={1}
