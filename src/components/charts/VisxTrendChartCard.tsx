@@ -31,6 +31,33 @@ type HoverPoint = {
   value: number | null;
 };
 
+function buildVisibleTickValues(
+  data: ChartDatum[],
+  xKey: string,
+  maxTicks: number
+): string[] {
+  if (!data.length) return [];
+
+  const safeMaxTicks = Math.max(2, Math.floor(maxTicks));
+  if (data.length <= safeMaxTicks) {
+    return data.map((row) => String(row[xKey] ?? ""));
+  }
+
+  const lastIndex = data.length - 1;
+  const tickIndexes = new Set<number>([0, lastIndex]);
+  const interiorSlots = Math.max(0, safeMaxTicks - 2);
+
+  for (let slot = 1; slot <= interiorSlots; slot += 1) {
+    const ratio = slot / (interiorSlots + 1);
+    const index = Math.round(ratio * lastIndex);
+    tickIndexes.add(Math.max(0, Math.min(lastIndex, index)));
+  }
+
+  return [...tickIndexes]
+    .sort((a, b) => a - b)
+    .map((index) => String(data[index]?.[xKey] ?? ""));
+}
+
 function buildTrendLineData(
   data: ChartDatum[],
   key: string,
@@ -332,6 +359,7 @@ export default function VisxTrendChartCard({
     range: [innerHeight, 0],
     nice: false,
   });
+  const xTickValues = buildVisibleTickValues(chartData, xKey, isNarrowChart ? 5 : 6);
 
   const handlePointerMove = (
     event: ReactPointerEvent<SVGRectElement> | ReactMouseEvent<SVGRectElement>
@@ -473,6 +501,7 @@ export default function VisxTrendChartCard({
               <GridColumns
                 scale={xScale}
                 height={innerHeight}
+                tickValues={xTickValues}
                 stroke="var(--line)"
                 strokeOpacity={0.12}
               />
@@ -493,6 +522,7 @@ export default function VisxTrendChartCard({
               <AxisBottom
                 top={innerHeight}
                 scale={xScale}
+                tickValues={xTickValues}
                 stroke="var(--line2)"
                 tickStroke="var(--line2)"
                 tickFormat={(value) => (xLabelFormatter ? xLabelFormatter(String(value)) : String(value))}
