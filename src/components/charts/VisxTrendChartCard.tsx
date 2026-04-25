@@ -40,7 +40,7 @@ function buildVisibleTickValues(
 
   const safeMaxTicks = Math.max(2, Math.floor(maxTicks));
   if (data.length <= safeMaxTicks) {
-    return data.map((row) => String(row[xKey] ?? ""));
+    return [...new Set(data.map((row) => String(row[xKey] ?? "")))];
   }
 
   const lastIndex = data.length - 1;
@@ -53,9 +53,17 @@ function buildVisibleTickValues(
     tickIndexes.add(Math.max(0, Math.min(lastIndex, index)));
   }
 
-  return [...tickIndexes]
+  const tickValues = [...tickIndexes]
     .sort((a, b) => a - b)
     .map((index) => String(data[index]?.[xKey] ?? ""));
+
+  return [...new Set(tickValues)];
+}
+
+function resolveVisibleTickCount(chartWidth: number): number {
+  if (chartWidth > 0 && chartWidth < 360) return 4;
+  if (chartWidth > 0 && chartWidth < 560) return 5;
+  return 6;
 }
 
 function buildTrendLineData(
@@ -359,7 +367,11 @@ export default function VisxTrendChartCard({
     range: [innerHeight, 0],
     nice: false,
   });
-  const xTickValues = buildVisibleTickValues(chartData, xKey, isNarrowChart ? 5 : 6);
+  const xTickValues = buildVisibleTickValues(
+    chartData,
+    xKey,
+    resolveVisibleTickCount(hostSize.width)
+  );
 
   const handlePointerMove = (
     event: ReactPointerEvent<SVGRectElement> | ReactMouseEvent<SVGRectElement>
