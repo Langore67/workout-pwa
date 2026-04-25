@@ -108,6 +108,7 @@ export default function VisxTrendChartCard({
   subtitle,
   data,
   series,
+  testIdBase,
   xKey = "label",
   height = 280,
   windowSize = 12,
@@ -125,6 +126,7 @@ export default function VisxTrendChartCard({
   tooltipLabelFormatter,
   emptyMessage = "Not enough data yet.",
 }: TrendChartCardProps) {
+  const resolvedTestIdBase = testIdBase || title;
   const safeWindowSize = Math.max(1, windowSize);
   const safeHeight = Number.isFinite(height) && height > 0 ? height : 280;
   const [windowStartIndex, setWindowStartIndex] = useState(
@@ -331,7 +333,7 @@ export default function VisxTrendChartCard({
     const point = localPoint(event);
     if (!point) return;
 
-    const x = point.x - margin.left;
+    const x = point.x;
     const points = chartData.map((datum, index) => ({
       index,
       datum,
@@ -364,7 +366,7 @@ export default function VisxTrendChartCard({
   return (
     <div
       className="min-w-0 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-sm"
-      data-testid={`visx-trend-chart-card:${title}`}
+      data-testid={`${resolvedTestIdBase}:card`}
     >
       <div className="mb-3">
         <div className="flex items-start justify-between gap-3">
@@ -401,13 +403,17 @@ export default function VisxTrendChartCard({
 
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span
+              data-testid={`${resolvedTestIdBase}:readout-value`}
               className="text-[26px] font-semibold text-[var(--text)] leading-none"
               style={{ letterSpacing: -0.3 }}
             >
               {statFormatted}
             </span>
 
-            <span className="min-w-0 text-[13px] text-[var(--muted)] opacity-75 leading-none">
+            <span
+              data-testid={`${resolvedTestIdBase}:readout-label`}
+              className="min-w-0 text-[13px] text-[var(--muted)] opacity-75 leading-none"
+            >
               {statLabel}
             </span>
           </div>
@@ -432,7 +438,7 @@ export default function VisxTrendChartCard({
       <div
         ref={hostRef}
         className="mt-2"
-        data-testid={`visx-trend-chart-host:${title}`}
+        data-testid={`${resolvedTestIdBase}:host`}
         style={{
           width: "100%",
           minWidth: 0,
@@ -447,7 +453,7 @@ export default function VisxTrendChartCard({
             height={chartHeight}
             role="img"
             aria-label={title}
-            data-testid={`visx-trend-chart-svg:${title}`}
+            data-testid={`${resolvedTestIdBase}:svg`}
           >
             <Group left={margin.left} top={margin.top}>
               <GridRows
@@ -555,6 +561,7 @@ export default function VisxTrendChartCard({
               ) : null}
 
               <rect
+                data-testid={`${resolvedTestIdBase}:overlay`}
                 x={0}
                 y={0}
                 width={innerWidth}
@@ -580,6 +587,7 @@ export default function VisxTrendChartCard({
             startIndex={windowStartIndex}
             onStartIndexChange={setWindowStartIndex}
             ariaLabel={`${title} viewport`}
+            testIdBase={resolvedTestIdBase}
           />
         ) : (
           <div className="mt-2 flex items-center justify-end gap-2">

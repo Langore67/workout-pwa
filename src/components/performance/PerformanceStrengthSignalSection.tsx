@@ -78,6 +78,7 @@ export default function PerformanceStrengthSignalSection({
         chartData={chartData}
         series={series}
         chartRenderer="visx"
+        chartTestIdBase="performance-strength-signal-trend"
         yDomainMode="auto"
         valueFormatter={(value) =>
           value == null || !Number.isFinite(value) ? "—" : value.toFixed(2)
