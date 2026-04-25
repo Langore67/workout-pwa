@@ -96,6 +96,7 @@ export type TrendChartCardProps = {
     value: number | null | undefined,
     seriesKey?: string
   ) => string;
+  yAxisTickFormatter?: (value: number) => string;
 
   xLabelFormatter?: (label: string) => string;
   tooltipLabelFormatter?: (label: string, datum?: ChartDatum) => string;

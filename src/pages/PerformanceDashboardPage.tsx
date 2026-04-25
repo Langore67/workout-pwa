@@ -257,6 +257,13 @@ function formatVolume(value: number | null | undefined): string {
   return `${Math.round(value).toLocaleString()} lb`;
 }
 
+function formatCompactVolume(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "â€”";
+  const rounded = Math.round(value);
+  if (Math.abs(rounded) >= 1000) return `${Math.round(rounded / 1000)}K`;
+  return `${rounded}`;
+}
+
 function formatInches(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return "—";
   return `${formatOneDecimal(value)} in`;
@@ -1548,7 +1555,7 @@ export default function PerformanceDashboardPage() {
       {
         key: "value",
         label: "Weekly Volume",
-        formatter: formatVolume,
+        formatter: formatCompactVolume,
       },
     ],
     []
@@ -1643,6 +1650,8 @@ export default function PerformanceDashboardPage() {
               chart={vm.charts.bodyWeight}
               chartData={bodyWeightChartData}
               series={bodyWeightSeries}
+              chartRenderer="visx"
+              chartTestIdBase="performance-bodyweight-trend"
               yDomainMode="auto"
               valueFormatter={formatLbs}
               emptyMessage="No body-weight entries yet."
@@ -1652,6 +1661,8 @@ export default function PerformanceDashboardPage() {
               chart={vm.charts.waist}
               chartData={waistChartData}
               series={waistSeries}
+              chartRenderer="visx"
+              chartTestIdBase="performance-waist-trend"
               yDomainMode="auto"
               valueFormatter={formatInches}
               emptyMessage="No waist entries yet."
@@ -1661,8 +1672,11 @@ export default function PerformanceDashboardPage() {
               chart={vm.charts.volume}
               chartData={volumeChartData}
               series={volumeSeries}
+              chartRenderer="visx"
+              chartTestIdBase="performance-volume-trend"
               yDomainMode="auto"
-              valueFormatter={formatVolume}
+              valueFormatter={formatCompactVolume}
+              yAxisTickFormatter={formatCompactVolume}
               emptyMessage="No completed training volume yet."
             />
           </div>

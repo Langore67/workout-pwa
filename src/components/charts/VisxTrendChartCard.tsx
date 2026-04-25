@@ -122,6 +122,7 @@ export default function VisxTrendChartCard({
   hideDeltaSummary = false,
   compactMetaLineText,
   valueFormatter,
+  yAxisTickFormatter,
   xLabelFormatter,
   tooltipLabelFormatter,
   emptyMessage = "Not enough data yet.",
@@ -479,6 +480,7 @@ export default function VisxTrendChartCard({
               <AxisLeft
                 scale={yScale}
                 numTicks={5}
+                tickFormat={(value) => yAxisTickFormatter?.(Number(value)) ?? String(value)}
                 stroke="var(--line2)"
                 tickStroke="var(--line2)"
                 tickLabelProps={() => ({

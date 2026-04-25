@@ -332,6 +332,7 @@ type DashboardChartCardProps = {
   series: ChartSeriesConfig[];
   yDomainMode?: "auto" | "tight";
   valueFormatter?: (value: number | null | undefined) => string;
+  yAxisTickFormatter?: (value: number) => string;
   emptyMessage?: string;
   chartRenderer?: "recharts" | "visx";
   chartTestIdBase?: string;
@@ -343,6 +344,7 @@ export default function DashboardChartCard({
   series,
   yDomainMode,
   valueFormatter,
+  yAxisTickFormatter,
   emptyMessage,
   chartRenderer = "recharts",
   chartTestIdBase,
@@ -378,6 +380,7 @@ export default function DashboardChartCard({
         testIdBase={chartTestIdBase}
         yDomainMode={yDomainMode}
         valueFormatter={valueFormatter}
+        yAxisTickFormatter={yAxisTickFormatter}
         tooltipLabelFormatter={(label, datum) => {
           if (typeof datum?.date === "string" && datum.date.trim()) return datum.date;
           return label;
