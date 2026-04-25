@@ -309,7 +309,13 @@ export default function VisxTrendChartCard({
     );
   }
 
-  const margin = { top: 8, right: 20, bottom: 32, left: 56 };
+  const isNarrowChart = hostSize.width > 0 && hostSize.width < 420;
+  const margin = {
+    top: 8,
+    right: isNarrowChart ? 12 : 20,
+    bottom: 32,
+    left: isNarrowChart ? 44 : 56,
+  };
   const chartWidth = Math.max(hostSize.width, 0);
   const chartHeight = Math.max(hostSize.height, safeHeight);
   const innerWidth = Math.max(0, chartWidth - margin.left - margin.right);
