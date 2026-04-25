@@ -8,7 +8,6 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { AxisBottom, AxisLeft } from "@visx/axis";
-import { localPoint } from "@visx/event";
 import { GridColumns, GridRows } from "@visx/grid";
 import { Group } from "@visx/group";
 import { scaleLinear, scalePoint } from "@visx/scale";
@@ -31,39 +30,104 @@ type HoverPoint = {
   value: number | null;
 };
 
-function buildVisibleTickValues(
-  data: ChartDatum[],
-  xKey: string,
-  maxTicks: number
-): string[] {
+type ChartPoint = {
+  index: number;
+  datum: ChartDatum;
+  label: string;
+  value: number | null;
+  x: number;
+};
+
+function getInnerPointerX(
+  event: ReactPointerEvent<SVGRectElement> | ReactMouseEvent<SVGRectElement>
+): number {
+  const bounds = event.currentTarget.getBoundingClientRect();
+  return event.clientX - bounds.left;
+}
+
+function toChartDate(value: unknown): Date | null {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return date;
+}
+
+function getChartDatumDate(row: ChartDatum, xKey: string): Date | null {
+  return toChartDate(row.date) ?? toChartDate(row[xKey]);
+}
+
+function buildVisibleTickValues(data: ChartDatum[], maxTicks: number): number[] {
   if (!data.length) return [];
 
   const safeMaxTicks = Math.max(2, Math.floor(maxTicks));
+
   if (data.length <= safeMaxTicks) {
-    return [...new Set(data.map((row) => String(row[xKey] ?? "")))];
+    return data.map((_, index) => index);
   }
 
   const lastIndex = data.length - 1;
-  const tickIndexes = new Set<number>([0, lastIndex]);
-  const interiorSlots = Math.max(0, safeMaxTicks - 2);
+  const tickIndexes = new Set<number>([0]);
 
-  for (let slot = 1; slot <= interiorSlots; slot += 1) {
-    const ratio = slot / (interiorSlots + 1);
-    const index = Math.round(ratio * lastIndex);
-    tickIndexes.add(Math.max(0, Math.min(lastIndex, index)));
+  if (safeMaxTicks === 3) {
+    tickIndexes.add(Math.round(lastIndex / 2));
+  } else if (safeMaxTicks === 4) {
+    tickIndexes.add(Math.round(lastIndex / 3));
+    tickIndexes.add(Math.round((lastIndex * 2) / 3));
+  } else {
+    const interiorSlots = Math.max(0, safeMaxTicks - 2);
+    for (let slot = 1; slot <= interiorSlots; slot += 1) {
+      const ratio = slot / (interiorSlots + 1);
+      const index = Math.round(ratio * lastIndex);
+      tickIndexes.add(Math.max(0, Math.min(lastIndex, index)));
+    }
   }
+  tickIndexes.add(lastIndex);
 
   const tickValues = [...tickIndexes]
-    .sort((a, b) => a - b)
-    .map((index) => String(data[index]?.[xKey] ?? ""));
+    .sort((a, b) => a - b);
 
-  return [...new Set(tickValues)];
+  return tickValues;
 }
 
 function resolveVisibleTickCount(chartWidth: number): number {
-  if (chartWidth > 0 && chartWidth < 360) return 4;
-  if (chartWidth > 0 && chartWidth < 560) return 5;
+  if (chartWidth > 0 && chartWidth < 360) return 3;
+  if (chartWidth > 0 && chartWidth < 560) return 4;
   return 6;
+}
+
+function pruneTickIndexesForSpacing(
+  tickIndexes: number[],
+  chartPoints: ChartPoint[],
+  minGapPx: number
+): number[] {
+  if (tickIndexes.length <= 2) return tickIndexes;
+
+  const sorted = [...tickIndexes].sort((a, b) => a - b);
+  const kept: number[] = [sorted[0]];
+
+  for (let index = 1; index < sorted.length - 1; index += 1) {
+    const candidate = sorted[index];
+    const previous = kept[kept.length - 1];
+    const previousX = chartPoints[previous]?.x ?? 0;
+    const candidateX = chartPoints[candidate]?.x ?? 0;
+    if (candidateX - previousX >= minGapPx) {
+      kept.push(candidate);
+    }
+  }
+
+  const last = sorted[sorted.length - 1];
+  const previous = kept[kept.length - 1];
+  const previousX = chartPoints[previous]?.x ?? 0;
+  const lastX = chartPoints[last]?.x ?? 0;
+
+  if (last !== previous) {
+    if (lastX - previousX < minGapPx && kept.length > 1) {
+      kept.pop();
+    }
+    kept.push(last);
+  }
+
+  return kept;
 }
 
 function buildTrendLineData(
@@ -356,8 +420,8 @@ export default function VisxTrendChartCard({
   const chartHeight = Math.max(hostSize.height, safeHeight);
   const innerWidth = Math.max(0, chartWidth - margin.left - margin.right);
   const innerHeight = Math.max(0, chartHeight - margin.top - margin.bottom);
-  const xDomain = chartData.map((row) => String(row[xKey] ?? ""));
-  const xScale = scalePoint<string>({
+  const xDomain = chartData.map((_, index) => index);
+  const indexScale = scalePoint<number>({
     domain: xDomain,
     range: [0, innerWidth],
     padding: 0.5,
@@ -367,44 +431,63 @@ export default function VisxTrendChartCard({
     range: [innerHeight, 0],
     nice: false,
   });
-  const xTickValues = buildVisibleTickValues(
-    chartData,
-    xKey,
-    resolveVisibleTickCount(hostSize.width)
-  );
+  const baseTickIndexes = buildVisibleTickValues(chartData, resolveVisibleTickCount(hostSize.width));
+  const chartPoints: ChartPoint[] = chartData.map((datum, index) => {
+    const raw = datum[latestSeries?.key ?? ""];
+    const value = typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+    const label = tooltipLabelFormatter
+      ? tooltipLabelFormatter(String(datum[xKey] ?? ""), datum)
+      : String(datum[xKey] ?? "");
+
+    return {
+      index,
+      datum,
+      label,
+      value,
+      x: indexScale(index) ?? 0,
+    };
+  });
+  const minTickGapPx = hostSize.width > 0 && hostSize.width < 420 ? 56 : 44;
+  const xTickValues = pruneTickIndexesForSpacing(baseTickIndexes, chartPoints, minTickGapPx);
+  const firstTickIndex = xTickValues[0] ?? 0;
+  const lastTickIndex = xTickValues[xTickValues.length - 1] ?? firstTickIndex;
+  const trendPoints =
+    showTrendLine && isSingleSeries
+      ? chartPoints.filter(
+          (point) =>
+            typeof point.datum[trendKey] === "number" &&
+            Number.isFinite(point.datum[trendKey] as number)
+        )
+      : [];
+  const resolveTickLabelProps = (pointIndex: number) => ({
+    "data-testid": `${resolvedTestIdBase}:x-tick`,
+    fill: "var(--muted)",
+    fontSize: 11,
+    textAnchor:
+      pointIndex === firstTickIndex
+        ? ("start" as const)
+        : pointIndex === lastTickIndex
+          ? ("end" as const)
+          : ("middle" as const),
+  });
 
   const handlePointerMove = (
     event: ReactPointerEvent<SVGRectElement> | ReactMouseEvent<SVGRectElement>
   ) => {
-    if (!chartData.length || !innerWidth) return;
-    const point = localPoint(event);
-    if (!point) return;
-
-    const x = point.x;
-    const points = chartData.map((datum, index) => ({
-      index,
-      datum,
-      x: xScale(String(datum[xKey] ?? "")) ?? 0,
-    }));
-
-    const nearest = points.reduce((best, candidate) => {
+    if (!chartPoints.length || !innerWidth) return;
+    const x = getInnerPointerX(event);
+    const nearest = chartPoints.reduce((best, candidate) => {
       if (!best) return candidate;
       return Math.abs(candidate.x - x) < Math.abs(best.x - x) ? candidate : best;
-    }, points[0]);
-
-    const raw = nearest?.datum?.[latestSeries?.key ?? ""];
-    const numeric = typeof raw === "number" && Number.isFinite(raw) ? raw : null;
-    const label = tooltipLabelFormatter
-      ? tooltipLabelFormatter(String(nearest?.datum?.[xKey] ?? ""), nearest?.datum)
-      : String(nearest?.datum?.[xKey] ?? "");
+    }, chartPoints[0]);
 
     setHoverPoint(
       nearest
         ? {
             index: nearest.index,
             datum: nearest.datum,
-            label,
-            value: numeric,
+            label: nearest.label,
+            value: nearest.value,
           }
         : null
     );
@@ -511,7 +594,7 @@ export default function VisxTrendChartCard({
                 strokeOpacity={0.25}
               />
               <GridColumns
-                scale={xScale}
+                scale={indexScale}
                 height={innerHeight}
                 tickValues={xTickValues}
                 stroke="var(--line)"
@@ -533,25 +616,22 @@ export default function VisxTrendChartCard({
               />
               <AxisBottom
                 top={innerHeight}
-                scale={xScale}
+                scale={indexScale}
                 tickValues={xTickValues}
                 stroke="var(--line2)"
                 tickStroke="var(--line2)"
-                tickFormat={(value) => (xLabelFormatter ? xLabelFormatter(String(value)) : String(value))}
-                tickLabelProps={() => ({
-                  fill: "var(--muted)",
-                  fontSize: 11,
-                  textAnchor: "middle",
-                })}
+                tickFormat={(value) => {
+                  const label = String(chartData[Number(value)]?.[xKey] ?? "");
+                  return xLabelFormatter ? xLabelFormatter(label) : label;
+                }}
+                tickLabelProps={(value) => resolveTickLabelProps(Number(value))}
               />
 
               {showTrendLine && isSingleSeries ? (
-                <LinePath<ChartDatum>
-                  data={chartData.filter(
-                    (row) => typeof row[trendKey] === "number" && Number.isFinite(row[trendKey] as number)
-                  )}
-                  x={(datum) => xScale(String(datum[xKey] ?? "")) ?? 0}
-                  y={(datum) => yScale(datum[trendKey] as number)}
+                <LinePath<ChartPoint>
+                  data={trendPoints}
+                  x={(point) => point.x}
+                  y={(point) => yScale(point.datum[trendKey] as number)}
                   stroke="var(--muted)"
                   strokeOpacity={0.55}
                   strokeWidth={1.5}
@@ -560,31 +640,37 @@ export default function VisxTrendChartCard({
               ) : null}
 
               {series.map((item) => {
-                const lineData = chartData.filter(
-                  (row) => typeof row[item.key] === "number" && Number.isFinite(row[item.key] as number)
+                const seriesPoints = chartPoints.filter(
+                  (point) =>
+                    typeof point.datum[item.key] === "number" &&
+                    Number.isFinite(point.datum[item.key] as number)
                 );
                 const stroke = item.stroke ?? "var(--accent)";
 
                 return (
                   <g key={item.key}>
-                    <LinePath<ChartDatum>
-                      data={lineData}
-                      x={(datum) => xScale(String(datum[xKey] ?? "")) ?? 0}
-                      y={(datum) => yScale(datum[item.key] as number)}
+                    <LinePath<ChartPoint>
+                      data={seriesPoints}
+                      x={(point) => point.x}
+                      y={(point) => yScale(point.datum[item.key] as number)}
                       stroke={stroke}
                       strokeWidth={3}
                     />
-                    {lineData.map((datum, index) => (
+                    {seriesPoints.map((point) => {
+                      return (
                       <circle
-                        key={`${item.key}-${String(datum[xKey] ?? "")}-${index}`}
-                        cx={xScale(String(datum[xKey] ?? "")) ?? 0}
-                        cy={yScale(datum[item.key] as number)}
+                        key={`${item.key}-${String(point.datum[xKey] ?? "")}-${point.index}`}
+                        data-testid={`${resolvedTestIdBase}:point`}
+                        data-point-index={point.index}
+                        cx={point.x}
+                        cy={yScale(point.datum[item.key] as number)}
                         r={4}
                         fill={stroke}
-                        stroke={stroke}
-                        strokeWidth={0}
+                        stroke="var(--card)"
+                        strokeWidth={1.25}
                       />
-                    ))}
+                      );
+                    })}
                   </g>
                 );
               })}
@@ -592,8 +678,8 @@ export default function VisxTrendChartCard({
               {hoverPoint ? (
                 <>
                   <line
-                    x1={xScale(String(hoverPoint.datum[xKey] ?? "")) ?? 0}
-                    x2={xScale(String(hoverPoint.datum[xKey] ?? "")) ?? 0}
+                    x1={chartPoints[hoverPoint.index]?.x ?? 0}
+                    x2={chartPoints[hoverPoint.index]?.x ?? 0}
                     y1={0}
                     y2={innerHeight}
                     stroke="var(--line2)"
@@ -601,10 +687,13 @@ export default function VisxTrendChartCard({
                   />
                   {hoverPoint.value != null ? (
                     <circle
-                      cx={xScale(String(hoverPoint.datum[xKey] ?? "")) ?? 0}
+                      data-testid={`${resolvedTestIdBase}:active-point`}
+                      cx={chartPoints[hoverPoint.index]?.x ?? 0}
                       cy={yScale(hoverPoint.value)}
                       r={5}
                       fill={latestSeries?.stroke ?? "var(--accent)"}
+                      stroke="var(--card)"
+                      strokeWidth={1.5}
                     />
                   ) : null}
                 </>
