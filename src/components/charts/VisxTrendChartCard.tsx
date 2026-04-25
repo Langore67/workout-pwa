@@ -396,7 +396,7 @@ export default function VisxTrendChartCard({
             </div>
           ) : null}
 
-          <div className="flex items-baseline gap-2">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span
               className="text-[26px] font-semibold text-[var(--text)] leading-none"
               style={{ letterSpacing: -0.3 }}
@@ -404,17 +404,23 @@ export default function VisxTrendChartCard({
               {statFormatted}
             </span>
 
-            <span className="text-[13px] text-[var(--muted)] opacity-75 leading-none">
+            <span className="min-w-0 text-[13px] text-[var(--muted)] opacity-75 leading-none">
               {statLabel}
             </span>
           </div>
 
           {!hideWindowSummary || !hideDeltaSummary ? (
-            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--muted)]">
+            <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-[var(--muted)]">
               {!hideWindowSummary && firstVisibleLabel && lastVisibleLabel ? (
-                <span>{`${firstVisibleLabel} → ${lastVisibleLabel}`}</span>
+                <span className="rounded-full border border-[var(--line)] px-2 py-0.5">
+                  {`${firstVisibleLabel} → ${lastVisibleLabel}`}
+                </span>
               ) : null}
-              {!hideDeltaSummary && deltaSummary ? <span>{deltaSummary}</span> : null}
+              {!hideDeltaSummary && deltaSummary ? (
+                <span className="rounded-full border border-[var(--line)] px-2 py-0.5">
+                  {deltaSummary}
+                </span>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -481,8 +487,9 @@ export default function VisxTrendChartCard({
                   x={(datum) => xScale(String(datum[xKey] ?? "")) ?? 0}
                   y={(datum) => yScale(datum[trendKey] as number)}
                   stroke="var(--muted)"
-                  strokeWidth={2}
-                  strokeDasharray="4 4"
+                  strokeOpacity={0.55}
+                  strokeWidth={1.5}
+                  strokeDasharray="3 4"
                 />
               ) : null}
 
