@@ -45,6 +45,18 @@ type DragState = {
   stepWidth: number;
   minShift: number;
   maxShift: number;
+  lastClientX: number;
+  lastTimestampMs: number;
+  velocityPxPerMs: number;
+};
+
+type MomentumState = {
+  startWindowStartIndex: number;
+  stepWidth: number;
+  minShift: number;
+  maxShift: number;
+  velocityPxPerMs: number;
+  lastTimestampMs: number;
 };
 
 function getInnerPointerX(
@@ -211,6 +223,17 @@ function formatSignedLikeBase(
   return absText;
 }
 
+function resolveSnappedShift(offsetPx: number, stepWidth: number): number {
+  if (!Number.isFinite(stepWidth) || stepWidth <= 0) return 0;
+  const direction = offsetPx < 0 ? 1 : -1;
+  const distance = Math.abs(offsetPx);
+  const wholeSteps = Math.floor(distance / stepWidth);
+  const remainder = distance - wholeSteps * stepWidth;
+  const thresholdPx = stepWidth * 0.35;
+  const shouldAdvanceExtra = remainder >= thresholdPx ? 1 : 0;
+  return direction * (wholeSteps + shouldAdvanceExtra);
+}
+
 export default function VisxTrendChartCard({
   title,
   subtitle,
@@ -247,6 +270,11 @@ export default function VisxTrendChartCard({
   const [dragOffsetPx, setDragOffsetPx] = useState(0);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
+  const dragOffsetPxRef = useRef(0);
+  const dragRafIdRef = useRef<number | null>(null);
+  const momentumRafIdRef = useRef<number | null>(null);
+  const momentumStateRef = useRef<MomentumState | null>(null);
+  const removeDragListenersRef = useRef<(() => void) | null>(null);
   const [hostSize, setHostSize] = useState({ width: 0, height: 0 });
   const [canRender, setCanRender] = useState(false);
 
@@ -302,30 +330,73 @@ export default function VisxTrendChartCard({
   useEffect(() => {
     setHoverPoint(null);
     setDragOffsetPx(0);
+    dragOffsetPxRef.current = 0;
+    if (dragRafIdRef.current != null) {
+      window.cancelAnimationFrame(dragRafIdRef.current);
+      dragRafIdRef.current = null;
+    }
+    if (momentumRafIdRef.current != null) {
+      window.cancelAnimationFrame(momentumRafIdRef.current);
+      momentumRafIdRef.current = null;
+    }
+    removeDragListenersRef.current?.();
+    removeDragListenersRef.current = null;
     dragStateRef.current = null;
+    momentumStateRef.current = null;
   }, [windowStartIndex, currentWindowEndIndex, data.length]);
+
+  useEffect(() => {
+    return () => {
+      if (dragRafIdRef.current != null) {
+        window.cancelAnimationFrame(dragRafIdRef.current);
+        dragRafIdRef.current = null;
+      }
+      if (momentumRafIdRef.current != null) {
+        window.cancelAnimationFrame(momentumRafIdRef.current);
+        momentumRafIdRef.current = null;
+      }
+      removeDragListenersRef.current?.();
+      removeDragListenersRef.current = null;
+      momentumStateRef.current = null;
+    };
+  }, []);
+
+  const scheduleDragOffsetRender = () => {
+    if (dragRafIdRef.current != null) return;
+
+    dragRafIdRef.current = window.requestAnimationFrame(() => {
+      dragRafIdRef.current = null;
+      setDragOffsetPx(dragOffsetPxRef.current);
+    });
+  };
 
   const isSingleSeries = series.length === 1;
   const resolvedReadoutMode = resolveReadoutMode(readoutMode, isSingleSeries);
   const canPageOlder = windowStartIndex > 0;
   const canPageNewer = currentWindowEndIndex < data.length - 1;
+  const canDragScroll =
+    dragScrollEnabled &&
+    paneNavigationMode === "movingPane" &&
+    data.length > safeWindowSize;
+  const dragInteractionEnabled = canDragScroll && visibleData.length > 1;
+  const showRenderedTrendLine = showTrendLine && !dragInteractionEnabled;
   const trendKey = isSingleSeries ? `__trend_${series[0].key}` : "__trend";
 
   const chartData = useMemo(() => {
-    if (!showTrendLine || !isSingleSeries) return visibleData;
+    if (!showRenderedTrendLine || !isSingleSeries) return visibleData;
     return buildTrendLineData(visibleData, series[0].key, trendKey);
-  }, [showTrendLine, isSingleSeries, visibleData, series, trendKey]);
+  }, [showRenderedTrendLine, isSingleSeries, visibleData, series, trendKey]);
 
   const yDomain = useMemo(() => {
     const values = getSeriesValues(chartData, series);
-    if (showTrendLine && isSingleSeries) {
+    if (showRenderedTrendLine && isSingleSeries) {
       const trendValues = chartData
         .map((row) => row[trendKey])
         .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
       return getPaddedDomain([...values, ...trendValues], yDomainMode);
     }
     return getPaddedDomain(values, yDomainMode);
-  }, [chartData, isSingleSeries, series, showTrendLine, trendKey, yDomainMode]);
+  }, [chartData, isSingleSeries, series, showRenderedTrendLine, trendKey, yDomainMode]);
 
   const latestDatum = data.length ? data[data.length - 1] : undefined;
   const latestSeries = series[0];
@@ -463,18 +534,13 @@ export default function VisxTrendChartCard({
     };
   });
   const minTickGapPx = hostSize.width > 0 && hostSize.width < 420 ? 56 : 44;
-  const canDragScroll =
-    dragScrollEnabled &&
-    paneNavigationMode === "movingPane" &&
-    data.length > safeWindowSize &&
-    chartPoints.length > 1;
   const xTickValues = canDragScroll
     ? chartData.map((_, index) => index)
     : pruneTickIndexesForSpacing(baseTickIndexes, chartPoints, minTickGapPx);
   const firstTickIndex = xTickValues[0] ?? 0;
   const lastTickIndex = xTickValues[xTickValues.length - 1] ?? firstTickIndex;
   const trendPoints =
-    showTrendLine && isSingleSeries
+    showRenderedTrendLine && isSingleSeries
       ? chartPoints.filter(
           (point) =>
             typeof point.datum[trendKey] === "number" &&
@@ -497,6 +563,7 @@ export default function VisxTrendChartCard({
     event: ReactPointerEvent<SVGRectElement> | ReactMouseEvent<SVGRectElement>
   ) => {
     if (!chartPoints.length || !innerWidth) return;
+    if (momentumStateRef.current) return;
     const dragState = dragStateRef.current;
     if (
       dragState &&
@@ -506,7 +573,9 @@ export default function VisxTrendChartCard({
       const rawOffsetPx = event.clientX - dragState.startClientX;
       const minOffsetPx = -dragState.maxShift * dragState.stepWidth;
       const maxOffsetPx = -dragState.minShift * dragState.stepWidth;
-      setDragOffsetPx(Math.max(minOffsetPx, Math.min(maxOffsetPx, rawOffsetPx)));
+      const nextOffsetPx = Math.max(minOffsetPx, Math.min(maxOffsetPx, rawOffsetPx));
+      dragOffsetPxRef.current = nextOffsetPx;
+      scheduleDragOffsetRender();
       return;
     }
     const x = getInnerPointerX(event);
@@ -528,9 +597,15 @@ export default function VisxTrendChartCard({
   };
 
   const handlePointerDown = (event: ReactPointerEvent<SVGRectElement>) => {
-    if (!canDragScroll || chartPoints.length < 2) return;
+    if (!dragInteractionEnabled) return;
 
-    const stepWidth = chartPoints[1].x - chartPoints[0].x;
+    if (momentumRafIdRef.current != null) {
+      window.cancelAnimationFrame(momentumRafIdRef.current);
+      momentumRafIdRef.current = null;
+    }
+    momentumStateRef.current = null;
+
+    const stepWidth = innerWidth / Math.max(1, safeWindowSize - 1);
     if (!Number.isFinite(stepWidth) || stepWidth <= 0) return;
 
     const maxStartIndex = Math.max(0, data.length - safeWindowSize);
@@ -541,34 +616,133 @@ export default function VisxTrendChartCard({
       stepWidth,
       minShift: -windowStartIndex,
       maxShift: maxStartIndex - windowStartIndex,
+      lastClientX: event.clientX,
+      lastTimestampMs: performance.now(),
+      velocityPxPerMs: 0,
     };
     setHoverPoint(null);
+    dragOffsetPxRef.current = 0;
     setDragOffsetPx(0);
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
 
-  const finishDrag = (
-    event: ReactPointerEvent<SVGRectElement>,
-    cancelled = false
-  ) => {
-    const dragState = dragStateRef.current;
-    if (!dragState || event.pointerId !== dragState.pointerId) return;
+    const handleWindowPointerMove = (nextEvent: PointerEvent) => {
+      const dragState = dragStateRef.current;
+      if (!dragState || nextEvent.pointerId !== dragState.pointerId) return;
+      const nowMs = performance.now();
+      const elapsedMs = Math.max(1, nowMs - dragState.lastTimestampMs);
+      const deltaX = nextEvent.clientX - dragState.lastClientX;
+      const rawOffsetPx = nextEvent.clientX - dragState.startClientX;
+      const minOffsetPx = -dragState.maxShift * dragState.stepWidth;
+      const maxOffsetPx = -dragState.minShift * dragState.stepWidth;
+      const nextOffsetPx = Math.max(minOffsetPx, Math.min(maxOffsetPx, rawOffsetPx));
+      const instantVelocity = deltaX / elapsedMs;
+      dragState.velocityPxPerMs = dragState.velocityPxPerMs * 0.75 + instantVelocity * 0.25;
+      dragState.lastClientX = nextEvent.clientX;
+      dragState.lastTimestampMs = nowMs;
+      dragOffsetPxRef.current = nextOffsetPx;
+      scheduleDragOffsetRender();
+    };
 
-    if (!cancelled) {
-      const snappedShift = Math.max(
-        dragState.minShift,
-        Math.min(dragState.maxShift, Math.round(-dragOffsetPx / dragState.stepWidth))
-      );
-      setWindowStartIndex(dragState.startWindowStartIndex + snappedShift);
-    }
+    const finishWindowDrag = (nextEvent: PointerEvent, cancelled = false) => {
+      const dragState = dragStateRef.current;
+      if (!dragState || nextEvent.pointerId !== dragState.pointerId) return;
 
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
+      const initialVelocity = dragState.velocityPxPerMs;
 
-    dragStateRef.current = null;
-    setDragOffsetPx(0);
-    setHoverPoint(null);
+      removeDragListenersRef.current?.();
+      removeDragListenersRef.current = null;
+      dragStateRef.current = null;
+
+      const completeSnap = (baseState: {
+        startWindowStartIndex: number;
+        stepWidth: number;
+        minShift: number;
+        maxShift: number;
+      }) => {
+        const snappedShift = Math.max(
+          baseState.minShift,
+          Math.min(
+            baseState.maxShift,
+            resolveSnappedShift(dragOffsetPxRef.current, baseState.stepWidth)
+          )
+        );
+        setWindowStartIndex(baseState.startWindowStartIndex + snappedShift);
+        dragOffsetPxRef.current = 0;
+        setDragOffsetPx(0);
+        setHoverPoint(null);
+      };
+
+      if (dragRafIdRef.current != null) {
+        window.cancelAnimationFrame(dragRafIdRef.current);
+        dragRafIdRef.current = null;
+      }
+
+      if (cancelled || Math.abs(initialVelocity) < 0.02) {
+        completeSnap(dragState);
+        return;
+      }
+
+      momentumStateRef.current = {
+        startWindowStartIndex: dragState.startWindowStartIndex,
+        stepWidth: dragState.stepWidth,
+        minShift: dragState.minShift,
+        maxShift: dragState.maxShift,
+        velocityPxPerMs: initialVelocity,
+        lastTimestampMs: performance.now(),
+      };
+
+      const runMomentum = () => {
+        const momentumState = momentumStateRef.current;
+        if (!momentumState) return;
+
+        const nowMs = performance.now();
+        const dtMs = Math.max(1, nowMs - momentumState.lastTimestampMs);
+        momentumState.lastTimestampMs = nowMs;
+
+        const nextOffsetPx = dragOffsetPxRef.current + momentumState.velocityPxPerMs * dtMs;
+        const minOffsetPx = -momentumState.maxShift * momentumState.stepWidth;
+        const maxOffsetPx = -momentumState.minShift * momentumState.stepWidth;
+        const clampedOffsetPx = Math.max(minOffsetPx, Math.min(maxOffsetPx, nextOffsetPx));
+
+        dragOffsetPxRef.current = clampedOffsetPx;
+        scheduleDragOffsetRender();
+
+        const decelPerMs = 0.004;
+        const nextSpeed = Math.max(
+          0,
+          Math.abs(momentumState.velocityPxPerMs) - decelPerMs * dtMs
+        );
+        momentumState.velocityPxPerMs =
+          Math.sign(momentumState.velocityPxPerMs) * nextSpeed;
+
+        const hitBound =
+          clampedOffsetPx === minOffsetPx || clampedOffsetPx === maxOffsetPx;
+
+        if (hitBound || nextSpeed < 0.02) {
+          if (momentumRafIdRef.current != null) {
+            window.cancelAnimationFrame(momentumRafIdRef.current);
+            momentumRafIdRef.current = null;
+          }
+          momentumStateRef.current = null;
+          completeSnap(momentumState);
+          return;
+        }
+
+        momentumRafIdRef.current = window.requestAnimationFrame(runMomentum);
+      };
+
+      momentumRafIdRef.current = window.requestAnimationFrame(runMomentum);
+    };
+
+    const cancelWindowDrag = (nextEvent: PointerEvent) => finishWindowDrag(nextEvent, true);
+
+    window.addEventListener("pointermove", handleWindowPointerMove);
+    window.addEventListener("pointerup", finishWindowDrag);
+    window.addEventListener("pointercancel", cancelWindowDrag);
+    removeDragListenersRef.current = () => {
+      window.removeEventListener("pointermove", handleWindowPointerMove);
+      window.removeEventListener("pointerup", finishWindowDrag);
+      window.removeEventListener("pointercancel", cancelWindowDrag);
+    };
   };
 
   return (
@@ -726,7 +900,7 @@ export default function VisxTrendChartCard({
                   tickLabelProps={(value) => resolveTickLabelProps(Number(value))}
                 />
 
-                {showTrendLine && isSingleSeries ? (
+                {showRenderedTrendLine && isSingleSeries ? (
                   <LinePath<ChartPoint>
                     data={trendPoints}
                     x={(point) => point.x}
@@ -805,18 +979,16 @@ export default function VisxTrendChartCard({
                 height={innerHeight}
                 fill="transparent"
                 style={{
-                  cursor: canDragScroll
+                  cursor: dragInteractionEnabled
                     ? dragStateRef.current
                       ? "grabbing"
                       : "grab"
                     : "crosshair",
-                  touchAction: canDragScroll ? "none" : "auto",
+                  touchAction: dragInteractionEnabled ? "none" : "auto",
                 }}
                 onPointerDown={handlePointerDown}
                 onMouseMove={handlePointerMove}
                 onPointerMove={handlePointerMove}
-                onPointerUp={(event) => finishDrag(event)}
-                onPointerCancel={(event) => finishDrag(event, true)}
                 onMouseLeave={() => {
                   if (!dragStateRef.current) setHoverPoint(null);
                 }}
@@ -831,7 +1003,7 @@ export default function VisxTrendChartCard({
         )}
       </div>
 
-      {data.length > safeWindowSize && !canDragScroll ? (
+      {data.length > safeWindowSize && !dragInteractionEnabled ? (
         paneNavigationMode === "movingPane" ? (
           <ChartViewportSlider
             totalCount={data.length}
