@@ -94,6 +94,7 @@ export type DashboardPhase = "CUT" | "MAINTAIN" | "BULK";
 export type DashboardRange = "4W" | "8W" | "12W" | "YTD" | "ALL";
 type BodyWeightResolution = "D" | "W" | "M";
 type WaistResolution = "W" | "M";
+type VolumeResolution = "W" | "M";
 export type TrendDirection = "improving" | "stable" | "declining" | "watch";
 
 type ChartViewModel = {
@@ -868,6 +869,45 @@ function buildVolumeTrend(
     }));
 }
 
+function buildVolumeTimelineTrend(
+  sessions: Session[],
+  sets: SetEntry[],
+  resolution: VolumeResolution
+): ChartDatum[] {
+  const sessionById = new Map(sessions.filter((s) => !s.deletedAt).map((s) => [s.id, s]));
+  const buckets = new Map<string, { value: number; at: number }>();
+
+  sets.forEach((set) => {
+    if (set.deletedAt) return;
+    if (set.setType !== "working") return;
+    if (!set.completedAt) return;
+    if (typeof set.reps !== "number" || set.reps <= 0) return;
+    if (typeof set.weight !== "number" || !Number.isFinite(set.weight) || set.weight <= 0) return;
+
+    const session = sessionById.get(set.sessionId);
+    if (!session) return;
+
+    const at = session.startedAt ?? set.completedAt ?? set.createdAt;
+    if (!Number.isFinite(at) || at <= 0) return;
+
+    const volume = set.weight * set.reps;
+    const key = resolution === "W" ? weekKeyFromMs(at) : monthKeyFromMs(at);
+    const bucket = buckets.get(key) ?? { value: 0, at };
+    bucket.value += volume;
+    bucket.at = Math.min(bucket.at, at);
+    buckets.set(key, bucket);
+  });
+
+  return Array.from(buckets.entries())
+    .sort((a, b) => a[1].at - b[1].at)
+    .map(([key, bucket]) => ({
+      label: resolution === "W" ? `W${weekNumberFromMs(bucket.at)}` : monthLabelFromKey(key),
+      value: round2(bucket.value),
+      date: key,
+      unitStartMs: bucket.at,
+    }));
+}
+
 /* ============================================================================
    Breadcrumb 4 — Mock fallback data
    ============================================================================ */
@@ -1302,6 +1342,7 @@ export default function PerformanceDashboardPage() {
   const [bodyWeightResolution, setBodyWeightResolution] =
     useState<BodyWeightResolution>("W");
   const [waistResolution, setWaistResolution] = useState<WaistResolution>("W");
+  const [volumeResolution, setVolumeResolution] = useState<VolumeResolution>("W");
   const [dbSource, setDbSource] = useState<DbStrengthSource | null>(null);
   const [sharedStrengthResult, setSharedStrengthResult] = useState<
     Awaited<ReturnType<typeof computeStrengthIndex>> | null
@@ -1662,6 +1703,10 @@ export default function PerformanceDashboardPage() {
     () => buildVolumeTrend(dbSource?.sessions ?? [], dbSource?.sets ?? [], activeRange),
     [dbSource, activeRange]
   );
+  const volumeTimelineChartData = useMemo(
+    () => buildVolumeTimelineTrend(dbSource?.sessions ?? [], dbSource?.sets ?? [], volumeResolution),
+    [dbSource, volumeResolution]
+  );
 
   const strengthSeries: ChartSeriesConfig[] = useMemo(
     () => [
@@ -1839,10 +1884,21 @@ export default function PerformanceDashboardPage() {
 
             <DashboardChartCard
               chart={vm.charts.volume}
-              chartData={volumeChartData}
+              chartData={volumeTimelineChartData}
               series={volumeSeries}
               chartRenderer="visx"
               chartTestIdBase="performance-volume-trend"
+              windowSize={5}
+              paneNavigationMode="movingPane"
+              dragScrollEnabled={true}
+              yAxisSide="right"
+              headerControls={
+                <ResolutionControl
+                  activeResolution={volumeResolution}
+                  resolutions={["W", "M"] as const}
+                  onChange={setVolumeResolution}
+                />
+              }
               yDomainMode="auto"
               valueFormatter={formatCompactVolume}
               yAxisTickFormatter={formatCompactVolume}
