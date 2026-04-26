@@ -92,6 +92,7 @@ import {
 
 export type DashboardPhase = "CUT" | "MAINTAIN" | "BULK";
 export type DashboardRange = "4W" | "8W" | "12W" | "YTD" | "ALL";
+type BodyWeightResolution = "D" | "W" | "M";
 export type TrendDirection = "improving" | "stable" | "declining" | "watch";
 
 type ChartViewModel = {
@@ -299,6 +300,31 @@ function weekKeyFromMs(ms: number) {
 function weekLabelFromKey(key: string) {
   const d = new Date(`${key}T00:00:00`);
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function formatShortMonthDay(ms: number) {
+  const d = new Date(ms);
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${month}/${day}`;
+}
+
+function monthKeyFromMs(ms: number) {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabelFromKey(key: string) {
+  const [year, month] = key.split("-");
+  const d = new Date(Number(year), Number(month) - 1, 1);
+  return d.toLocaleDateString(undefined, { month: "short" });
+}
+
+function weekNumberFromMs(ms: number) {
+  const d = new Date(ms);
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  const diffDays = Math.floor((d.getTime() - yearStart.getTime()) / DAY_MS);
+  return Math.floor(diffDays / 7) + 1;
 }
 
 function formatRangeLabel(range: DashboardRange): string {
@@ -689,6 +715,52 @@ function buildBodyWeightTrend(
     value: round2(average(values)),
     date: key,
   }));
+}
+
+function buildBodyWeightTimelineTrend(
+  bodyMetrics: BodyMetricEntry[],
+  resolution: BodyWeightResolution
+): ChartDatum[] {
+  const filtered = bodyMetrics
+    .filter((entry) => {
+      const at = pickBodyMetricTime(entry);
+      return at > 0 && typeof entry.weightLb === "number" && Number.isFinite(entry.weightLb);
+    })
+    .sort((a, b) => pickBodyMetricTime(a) - pickBodyMetricTime(b));
+
+  const buckets = new Map<string, { values: number[]; at: number }>();
+
+  filtered.forEach((entry) => {
+    const at = pickBodyMetricTime(entry);
+    const key =
+      resolution === "D"
+        ? new Date(at).toISOString().slice(0, 10)
+        : resolution === "W"
+          ? weekKeyFromMs(at)
+          : monthKeyFromMs(at);
+    const bucket = buckets.get(key) ?? { values: [], at };
+    bucket.values.push(entry.weightLb as number);
+    bucket.at = Math.min(bucket.at, at);
+    buckets.set(key, bucket);
+  });
+
+  return Array.from(buckets.entries())
+    .sort((a, b) => a[1].at - b[1].at)
+    .map(([key, bucket]) => {
+      const label =
+        resolution === "D"
+          ? formatShortMonthDay(bucket.at)
+          : resolution === "W"
+            ? `W${weekNumberFromMs(bucket.at)}`
+            : monthLabelFromKey(key);
+
+      return {
+        label,
+        value: round2(average(bucket.values)),
+        date: key,
+        unitStartMs: bucket.at,
+      };
+    });
 }
 
 function buildWaistTrend(
@@ -1153,6 +1225,33 @@ function TimeRangeControl({
   );
 }
 
+function ResolutionControl({
+  activeResolution,
+  onChange,
+}: {
+  activeResolution: BodyWeightResolution;
+  onChange: (resolution: BodyWeightResolution) => void;
+}) {
+  return (
+    <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+      {(["D", "W", "M"] as const).map((resolution) => {
+        const active = resolution === activeResolution;
+        return (
+          <button
+            key={resolution}
+            type="button"
+            className={`btn small ${active ? "primary" : ""}`}
+            onClick={() => onChange(resolution)}
+            style={{ minWidth: 34, paddingInline: 10 }}
+          >
+            {resolution}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ============================================================================
    Breadcrumb 8 — Page
    ============================================================================ */
@@ -1163,6 +1262,8 @@ export default function PerformanceDashboardPage() {
   const [activePhase, setActivePhase] = useState<DashboardPhase>("CUT");
   const [phaseLoaded, setPhaseLoaded] = useState(false);
   const [activeRange, setActiveRange] = useState<DashboardRange>("8W");
+  const [bodyWeightResolution, setBodyWeightResolution] =
+    useState<BodyWeightResolution>("W");
   const [dbSource, setDbSource] = useState<DbStrengthSource | null>(null);
   const [sharedStrengthResult, setSharedStrengthResult] = useState<
     Awaited<ReturnType<typeof computeStrengthIndex>> | null
@@ -1321,6 +1422,10 @@ export default function PerformanceDashboardPage() {
   const bodyWeightChartData = useMemo(
     () => buildBodyWeightTrend(dbSource?.bodyMetrics ?? [], activeRange),
     [dbSource, activeRange]
+  );
+  const bodyWeightTimelineChartData = useMemo(
+    () => buildBodyWeightTimelineTrend(dbSource?.bodyMetrics ?? [], bodyWeightResolution),
+    [dbSource, bodyWeightResolution]
   );
 
   const waistChartData = useMemo(
@@ -1648,10 +1753,20 @@ export default function PerformanceDashboardPage() {
 
             <DashboardChartCard
               chart={vm.charts.bodyWeight}
-              chartData={bodyWeightChartData}
+              chartData={bodyWeightTimelineChartData}
               series={bodyWeightSeries}
               chartRenderer="visx"
               chartTestIdBase="performance-bodyweight-trend"
+              windowSize={5}
+              paneNavigationMode="movingPane"
+              dragScrollEnabled={true}
+              yAxisSide="right"
+              headerControls={
+                <ResolutionControl
+                  activeResolution={bodyWeightResolution}
+                  onChange={setBodyWeightResolution}
+                />
+              }
               yDomainMode="auto"
               valueFormatter={formatLbs}
               emptyMessage="No body-weight entries yet."

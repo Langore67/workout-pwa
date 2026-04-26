@@ -2,7 +2,7 @@ import React from "react";
 
 import TrendChartCard from "../charts/TrendChartCard";
 import VisxTrendChartCard from "../charts/VisxTrendChartCard";
-import type { ChartDatum, ChartSeriesConfig } from "../charts/chartTypes";
+import type { ChartDatum, ChartSeriesConfig, YAxisSide } from "../charts/chartTypes";
 
 type TrendDirection = "improving" | "stable" | "declining" | "watch";
 
@@ -336,6 +336,11 @@ type DashboardChartCardProps = {
   emptyMessage?: string;
   chartRenderer?: "recharts" | "visx";
   chartTestIdBase?: string;
+  windowSize?: number;
+  paneNavigationMode?: "default" | "movingPane";
+  dragScrollEnabled?: boolean;
+  yAxisSide?: YAxisSide;
+  headerControls?: React.ReactNode;
 };
 
 export default function DashboardChartCard({
@@ -348,6 +353,11 @@ export default function DashboardChartCard({
   emptyMessage,
   chartRenderer = "recharts",
   chartTestIdBase,
+  windowSize,
+  paneNavigationMode,
+  dragScrollEnabled,
+  yAxisSide,
+  headerControls,
 }: DashboardChartCardProps) {
   const ChartComponent = chartRenderer === "visx" ? VisxTrendChartCard : TrendChartCard;
 
@@ -368,6 +378,8 @@ export default function DashboardChartCard({
               {chart.momentumMessage}
             </div>
           ) : null}
+
+          {headerControls ? <div style={{ marginTop: 8 }}>{headerControls}</div> : null}
         </div>
         <TrendBadge direction={chart.direction} />
       </div>
@@ -378,7 +390,11 @@ export default function DashboardChartCard({
         data={chartData}
         series={series}
         testIdBase={chartTestIdBase}
+        windowSize={windowSize}
+        paneNavigationMode={paneNavigationMode}
+        dragScrollEnabled={dragScrollEnabled}
         yDomainMode={yDomainMode}
+        yAxisSide={yAxisSide}
         showTrendLine={true}
         valueFormatter={valueFormatter}
         yAxisTickFormatter={yAxisTickFormatter}
