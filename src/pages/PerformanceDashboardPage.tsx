@@ -91,7 +91,6 @@ import {
    ============================================================================ */
 
 export type DashboardPhase = "CUT" | "MAINTAIN" | "BULK";
-export type DashboardRange = "4W" | "8W" | "12W" | "YTD" | "ALL";
 type BodyWeightResolution = "D" | "W" | "M";
 type WaistResolution = "W" | "M";
 type VolumeResolution = "W" | "M";
@@ -138,7 +137,6 @@ type InsightViewModel = {
 
 type DashboardViewModel = {
   activePhase: DashboardPhase;
-  activeRange: DashboardRange;
   flagshipTitle: string;
   flagshipScore: number;
   flagshipBadge: string;
@@ -229,7 +227,6 @@ type MetricTrendSummary = {
    Breadcrumb 2 — Static controls
    ============================================================================ */
 
-const TIMELINE_ANALYSIS_RANGE: DashboardRange = "ALL";
 const SHARED_STRENGTH_TIMELINE_WEEKS = 104;
 
 /* ============================================================================
@@ -281,17 +278,6 @@ function trendFromChange(changePct: number): TrendDirection {
   return "watch";
 }
 
-function rangeStartMs(range: DashboardRange, now = Date.now()): number | undefined {
-  if (range === "4W") return now - 28 * DAY_MS;
-  if (range === "8W") return now - 56 * DAY_MS;
-  if (range === "12W") return now - 84 * DAY_MS;
-  if (range === "YTD") {
-    const d = new Date(now);
-    return new Date(d.getFullYear(), 0, 1).getTime();
-  }
-  return undefined;
-}
-
 function weekKeyFromMs(ms: number) {
   const d = new Date(ms);
   const start = new Date(d);
@@ -329,23 +315,6 @@ function weekNumberFromMs(ms: number) {
   const yearStart = new Date(d.getFullYear(), 0, 1);
   const diffDays = Math.floor((d.getTime() - yearStart.getTime()) / DAY_MS);
   return Math.floor(diffDays / 7) + 1;
-}
-
-function formatRangeLabel(range: DashboardRange): string {
-  switch (range) {
-    case "4W":
-      return "Last 4 weeks";
-    case "8W":
-      return "Last 8 weeks";
-    case "12W":
-      return "Last 12 weeks";
-    case "YTD":
-      return "Year to date";
-    case "ALL":
-      return "All available";
-    default:
-      return range;
-  }
 }
 
 function pickBodyMetricTime(entry: BodyMetricEntry): number {
@@ -692,15 +661,12 @@ function buildCurrentBodySnapshot(bodyMetrics: BodyMetricEntry[]): DashboardBody
 }
 
 function buildBodyWeightTrend(
-  bodyMetrics: BodyMetricEntry[],
-  range: DashboardRange
+  bodyMetrics: BodyMetricEntry[]
 ): ChartDatum[] {
-  const startMs = rangeStartMs(range) ?? 0;
-
   const filtered = bodyMetrics
     .filter((entry) => {
       const at = pickBodyMetricTime(entry);
-      return at > 0 && at >= startMs && typeof entry.weightLb === "number";
+      return at > 0 && typeof entry.weightLb === "number";
     })
     .sort((a, b) => pickBodyMetricTime(a) - pickBodyMetricTime(b));
 
@@ -768,16 +734,13 @@ function buildBodyWeightTimelineTrend(
 }
 
 function buildWaistTrend(
-  bodyMetrics: BodyMetricEntry[],
-  range: DashboardRange
+  bodyMetrics: BodyMetricEntry[]
 ): ChartDatum[] {
-  const startMs = rangeStartMs(range) ?? 0;
-
   const filtered = bodyMetrics
     .filter((entry) => {
       const at = pickBodyMetricTime(entry);
       const waist = (entry as any).waistIn ?? (entry as any).waist;
-      return at > 0 && at >= startMs && typeof waist === "number" && Number.isFinite(waist);
+      return at > 0 && typeof waist === "number" && Number.isFinite(waist);
     })
     .sort((a, b) => pickBodyMetricTime(a) - pickBodyMetricTime(b));
 
@@ -835,11 +798,9 @@ function buildWaistTimelineTrend(
 
 function buildVolumeTrend(
   sessions: Session[],
-  sets: SetEntry[],
-  range: DashboardRange
+  sets: SetEntry[]
 ): ChartDatum[] {
   const sessionById = new Map(sessions.filter((s) => !s.deletedAt).map((s) => [s.id, s]));
-  const startMs = rangeStartMs(range) ?? 0;
   const byWeek = new Map<string, number>();
 
   sets.forEach((set) => {
@@ -855,7 +816,7 @@ function buildVolumeTrend(
     if (!session) return;
 
     const at = session.startedAt ?? set.completedAt ?? set.createdAt;
-    if (!Number.isFinite(at) || at < startMs) return;
+    if (!Number.isFinite(at)) return;
 
     const volume = set.weight * set.reps;
     const key = weekKeyFromMs(at);
@@ -997,6 +958,19 @@ function buildMomentumMessage(changePct: number) {
   return "Momentum has dipped recently.";
 }
 
+function buildTimelineInsight(
+  trend: MetricTrendSummary,
+  stableThreshold: number,
+  strongThreshold: number
+) {
+  if (trend.points < 2) return "Trend history is still building.";
+  const change = trend.changeAbs;
+  const absChange = Math.abs(change);
+  if (absChange <= stableThreshold) return "Holding steady.";
+  if (change > 0) return absChange >= strongThreshold ? "Trending up." : "Slight increase recently.";
+  return absChange >= strongThreshold ? "Trending down." : "Slight decrease recently.";
+}
+
 function avgTopN(values: number[], count: number) {
   const clean = values
     .filter((value) => Number.isFinite(value) && value > 0)
@@ -1088,11 +1062,11 @@ function buildStrengthSignalFromShared(
 
 function buildDashboardViewModel(
   phase: DashboardPhase,
-  range: DashboardRange,
   strengthSignal: StrengthSignalResult,
   bodySnapshot: DashboardBodySnapshot,
   bodyWeightTrendData: ChartDatum[],
   waistTrendData: ChartDatum[],
+  volumeTrendData: ChartDatum[],
   sharedCutQuality?: PhaseQualityResult | null
 ): DashboardViewModel {
   const strengthAnalysis = analyzeStrengthChart(strengthSignal.chartPoints);
@@ -1103,6 +1077,7 @@ function buildDashboardViewModel(
 
   const weightTrend = analyzeMetricTrend(bodyWeightTrendData);
   const waistTrend = analyzeMetricTrend(waistTrendData);
+  const volumeTrend = analyzeMetricTrend(volumeTrendData);
 
   const primarySignal = buildPrimaryCoachingSignal({
     phase,
@@ -1115,7 +1090,6 @@ function buildDashboardViewModel(
 
   return {
     activePhase: phase,
-    activeRange: range,
     flagshipTitle: primarySignal.title,
     flagshipScore: primarySignal.score,
     flagshipBadge: primarySignal.badge,
@@ -1177,6 +1151,7 @@ function buildDashboardViewModel(
         title: "Body Weight",
         subtitle: "Recent trend over time",
         direction: getWeightTrendDirection(phase, weightTrend),
+        momentumMessage: buildTimelineInsight(weightTrend, 0.4, 1),
         analysisRows: [
           { label: "Current Weight", value: bodySnapshot.weightLabel },
           { label: "As Of", value: bodySnapshot.asOfLabel },
@@ -1203,6 +1178,7 @@ function buildDashboardViewModel(
         title: "Waist Trend",
         subtitle: "Recent trend over time",
         direction: getWaistTrendDirection(phase, waistTrend),
+        momentumMessage: buildTimelineInsight(waistTrend, 0.1, 0.3),
         analysisRows: [
           { label: "Current Waist", value: bodySnapshot.waistLabel },
           { label: "As Of", value: bodySnapshot.asOfLabel },
@@ -1229,6 +1205,7 @@ function buildDashboardViewModel(
         title: "Training Load",
         subtitle: "Recent training load over time",
         direction: phase === "BULK" ? "improving" : "stable",
+        momentumMessage: buildTimelineInsight(volumeTrend, 1500, 5000),
         analysisRows: [
           { label: "Source", value: "Completed working sets" },
           { label: "Unit", value: "Weight × reps" },
@@ -1499,7 +1476,7 @@ export default function PerformanceDashboardPage() {
   }, [sharedStrengthResult]);
 
   const bodyWeightChartData = useMemo(
-    () => buildBodyWeightTrend(dbSource?.bodyMetrics ?? [], TIMELINE_ANALYSIS_RANGE),
+    () => buildBodyWeightTrend(dbSource?.bodyMetrics ?? []),
     [dbSource]
   );
   const bodyWeightTimelineChartData = useMemo(
@@ -1508,12 +1485,16 @@ export default function PerformanceDashboardPage() {
   );
 
   const waistChartData = useMemo(
-    () => buildWaistTrend(dbSource?.bodyMetrics ?? [], TIMELINE_ANALYSIS_RANGE),
+    () => buildWaistTrend(dbSource?.bodyMetrics ?? []),
     [dbSource]
   );
   const waistTimelineChartData = useMemo(
     () => buildWaistTimelineTrend(dbSource?.bodyMetrics ?? [], waistResolution),
     [dbSource, waistResolution]
+  );
+  const volumeChartData = useMemo(
+    () => buildVolumeTrend(dbSource?.sessions ?? [], dbSource?.sets ?? []),
+    [dbSource]
   );
 
   const sharedCutQuality = useMemo(() => {
@@ -1535,11 +1516,11 @@ export default function PerformanceDashboardPage() {
     () =>
       buildDashboardViewModel(
         activePhase,
-        TIMELINE_ANALYSIS_RANGE,
         sharedStrengthSignal,
         bodySnapshot,
         bodyWeightChartData,
         waistChartData,
+        volumeChartData,
         sharedCutQuality
       ),
     [
@@ -1548,6 +1529,7 @@ export default function PerformanceDashboardPage() {
       bodySnapshot,
       bodyWeightChartData,
       waistChartData,
+      volumeChartData,
       sharedCutQuality,
     ]
   );
@@ -1697,10 +1679,6 @@ export default function PerformanceDashboardPage() {
     sharedStrongestPatternLabel,
   ]);
 
-  const volumeChartData = useMemo(
-    () => buildVolumeTrend(dbSource?.sessions ?? [], dbSource?.sets ?? [], TIMELINE_ANALYSIS_RANGE),
-    [dbSource]
-  );
   const volumeTimelineChartData = useMemo(
     () => buildVolumeTimelineTrend(dbSource?.sessions ?? [], dbSource?.sets ?? [], volumeResolution),
     [dbSource, volumeResolution]
