@@ -30,7 +30,9 @@ import ProgressPageHeader from "../components/layout/ProgressPageHeader";
 import { Page, Section } from "../components/Page.tsx";
 import {
   computeStrengthSnapshot,
+  computeStrengthTrend,
   StrengthSnapshot,
+  type StrengthTrendRow,
 } from "../strength/Strength";
 import {
   computeStrengthSignalV2,
@@ -53,8 +55,82 @@ import {
 } from "../config/appConfig";
 
 type Mode = CurrentPhase;
+type StrengthResolution = "W" | "M";
 
 const MODE_KEY = "workout_pwa_strength_mode_v1";
+const STRENGTH_SIGNAL_TIMELINE_WEEKS = 104;
+
+function monthKeyFromMs(ms: number) {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabelFromKey(key: string) {
+  const [year, month] = key.split("-");
+  const d = new Date(Number(year), Number(month) - 1, 1);
+  return d.toLocaleDateString(undefined, { month: "short" });
+}
+
+function weekNumberFromMs(ms: number) {
+  const d = new Date(ms);
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  const diffDays = Math.floor((d.getTime() - yearStart.getTime()) / (24 * 60 * 60 * 1000));
+  return Math.floor(diffDays / 7) + 1;
+}
+
+function average(values: number[]) {
+  if (!values.length) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function hasMeaningfulStrengthSignal(row: StrengthTrendRow) {
+  const normalized = Number(row?.normalizedIndex);
+  const absolute = Number(row?.absoluteIndex);
+  return Number.isFinite(normalized) && normalized > 0 && Number.isFinite(absolute) && absolute > 0;
+}
+
+function buildStrengthSignalTimelineChartData(
+  trendSorted: StrengthTrendRow[],
+  resolution: StrengthResolution
+) {
+  const chronological = trendSorted
+    .slice()
+    .reverse()
+    .filter(
+      (row) =>
+        typeof row.weekEndMs === "number" &&
+        Number.isFinite(row.weekEndMs) &&
+        hasMeaningfulStrengthSignal(row)
+    );
+
+  if (resolution === "W") {
+    return chronological.map((row) => ({
+      label: `W${weekNumberFromMs(row.weekEndMs)}`,
+      value: row.normalizedIndex,
+      date: new Date(row.weekEndMs).toISOString().slice(0, 10),
+      unitStartMs: row.weekEndMs,
+    }));
+  }
+
+  const buckets = new Map<string, { values: number[]; at: number }>();
+
+  chronological.forEach((row) => {
+    const key = monthKeyFromMs(row.weekEndMs);
+    const bucket = buckets.get(key) ?? { values: [], at: row.weekEndMs };
+    bucket.values.push(row.normalizedIndex);
+    bucket.at = Math.min(bucket.at, row.weekEndMs);
+    buckets.set(key, bucket);
+  });
+
+  return Array.from(buckets.entries())
+    .sort((a, b) => a[1].at - b[1].at)
+    .map(([key, bucket]) => ({
+      label: monthLabelFromKey(key),
+      value: average(bucket.values),
+      date: key,
+      unitStartMs: bucket.at,
+    }));
+}
 
 /* ========================================================================== */
 /*  Breadcrumb 1 — Formatting helpers                                         */
@@ -199,6 +275,35 @@ function modeHint(mode: Mode) {
   return "Maintain: Look for stable-to-rising Strength Signal and consistency across squat, hinge, push, and pull patterns.";
 }
 
+function ResolutionControl({
+  activeResolution,
+  resolutions,
+  onChange,
+}: {
+  activeResolution: StrengthResolution;
+  resolutions: readonly StrengthResolution[];
+  onChange: (resolution: StrengthResolution) => void;
+}) {
+  return (
+    <div className="row" style={{ gap: 6, flexWrap: "nowrap", marginBottom: 10 }}>
+      {resolutions.map((resolution) => {
+        const active = resolution === activeResolution;
+        return (
+          <button
+            key={resolution}
+            type="button"
+            className={`btn small ${active ? "primary" : ""}`}
+            onClick={() => onChange(resolution)}
+            style={{ minWidth: 34, paddingInline: 10 }}
+          >
+            {resolution}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 const CUT_MAINTAIN_ANCHOR_SLOTS: StrengthSignalV2Pattern[] = [
   "push",
   "pull",
@@ -315,10 +420,12 @@ export default function StrengthPage() {
   const windowDays = 28;
 
   const [mode, setMode] = useState<Mode>(() => loadLegacyMode());
+  const [strengthResolution, setStrengthResolution] = useState<StrengthResolution>("W");
   const [phaseLoaded, setPhaseLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
   const [snapshot, setSnapshot] = useState<StrengthSnapshot | null>(null);
+  const [strengthSignalTimelineTrend, setStrengthSignalTimelineTrend] = useState<StrengthTrendRow[]>([]);
   const [strengthV2, setStrengthV2] = useState<StrengthSignalV2Result | null>(null);
   const [strengthV2Err, setStrengthV2Err] = useState<string>("");
   const [strengthConfig, setStrengthConfig] = useState<StrengthSignalConfig | null>(null);
@@ -427,6 +534,25 @@ export default function StrengthPage() {
     };
   }, [windowDays]);
 
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        const timelineTrend = await computeStrengthTrend(STRENGTH_SIGNAL_TIMELINE_WEEKS, windowDays);
+        if (!alive) return;
+        setStrengthSignalTimelineTrend(Array.isArray(timelineTrend) ? timelineTrend : []);
+      } catch {
+        if (!alive) return;
+        setStrengthSignalTimelineTrend([]);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [windowDays]);
+
   const result = snapshot?.result ?? null;
   const heroMeta = snapshot?.heroMeta ?? null;
   const {
@@ -435,11 +561,14 @@ export default function StrengthPage() {
     bwSeries,
     absSeries,
     relativeChartData,
-    strengthSignalChartData,
     relativeStrengthSeries,
     strengthSignalSeries,
     strengthSignalCompactMetaLine,
   } = useMemo(() => buildStrengthPageViewModel(snapshot), [snapshot]);
+  const strengthSignalTimelineChartData = useMemo(
+    () => buildStrengthSignalTimelineChartData(strengthSignalTimelineTrend, strengthResolution),
+    [strengthSignalTimelineTrend, strengthResolution]
+  );
   const anchorSlots = useMemo(() => anchorSlotsForMode(mode), [mode]);
   const eligibleAnchorExercisesBySlot = useMemo(() => {
     const rows: Partial<Record<StrengthSignalV2Pattern, Exercise[]>> = {};
@@ -609,16 +738,23 @@ export default function StrengthPage() {
                 </div>
               </div>
 
+              <ResolutionControl
+                activeResolution={strengthResolution}
+                resolutions={["W", "M"] as const}
+                onChange={setStrengthResolution}
+              />
+
               <VisxTrendChartCard
                 title="Strength Signal Trend"
-                subtitle="Weekly snapshots of normalized strength signal"
-                data={strengthSignalChartData}
+                subtitle="Normalized strength signal timeline"
+                data={strengthSignalTimelineChartData}
                 series={strengthSignalSeries}
                 testIdBase="strength-signal-trend"
-                windowSize={6}
+                windowSize={5}
                 paneNavigationMode="movingPane"
+                dragScrollEnabled={true}
+                yAxisSide="right"
                 valueFormatter={formatTwoDecimals}
-                showTrendLine={true}
                 readoutMode="statRow"
                 compactMetaLineText={strengthSignalCompactMetaLine}
               />
