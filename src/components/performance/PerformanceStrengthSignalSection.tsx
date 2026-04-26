@@ -5,7 +5,12 @@ import StrengthSignalDetailsCard, {
   type StrengthSignalDetailsComposite,
   type StrengthSignalDetailsExercise,
 } from "./StrengthSignalDetailsCard";
-import type { ChartDatum, ChartSeriesConfig } from "../charts/chartTypes";
+import type {
+  ChartDatum,
+  ChartSeriesConfig,
+  PaneNavigationMode,
+  YAxisSide,
+} from "../charts/chartTypes";
 
 type TrendDirection = "improving" | "stable" | "declining" | "watch";
 
@@ -42,6 +47,11 @@ type PerformanceStrengthSignalSectionProps = {
   chart: ChartViewModel;
   chartData: ChartDatum[];
   series: ChartSeriesConfig[];
+  windowSize?: number;
+  paneNavigationMode?: PaneNavigationMode;
+  dragScrollEnabled?: boolean;
+  yAxisSide?: YAxisSide;
+  headerControls?: React.ReactNode;
   showDebug: boolean;
   setShowDebug: React.Dispatch<React.SetStateAction<boolean>>;
   sourceUsed: string;
@@ -59,6 +69,11 @@ export default function PerformanceStrengthSignalSection({
   chart,
   chartData,
   series,
+  windowSize,
+  paneNavigationMode,
+  dragScrollEnabled,
+  yAxisSide,
+  headerControls,
   showDebug,
   setShowDebug,
   sourceUsed,
@@ -79,6 +94,11 @@ export default function PerformanceStrengthSignalSection({
         series={series}
         chartRenderer="visx"
         chartTestIdBase="performance-strength-signal-trend"
+        windowSize={windowSize}
+        paneNavigationMode={paneNavigationMode}
+        dragScrollEnabled={dragScrollEnabled}
+        yAxisSide={yAxisSide}
+        headerControls={headerControls}
         yDomainMode="auto"
         valueFormatter={(value) =>
           value == null || !Number.isFinite(value) ? "—" : value.toFixed(2)
