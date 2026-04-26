@@ -63,6 +63,66 @@ async function seedBenchDuplicateCandidate(page: Parameters<typeof test>[0]["pag
   });
 }
 
+async function seedMachineBenchReviewCandidate(page: Parameters<typeof test>[0]["page"]) {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const now = Date.now();
+    const exerciseId = crypto.randomUUID();
+    const trackId = crypto.randomUUID();
+    const sessionId = crypto.randomUUID();
+
+    await db.exercises.add({
+      id: exerciseId,
+      name: "DB Machine Bench Press",
+      normalizedName: "db machine bench press",
+      aliases: [],
+      equipmentTags: ["dumbbell", "machine"],
+      bodyPart: "Chest",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await db.tracks.add({
+      id: trackId,
+      exerciseId,
+      displayName: "DB Machine Bench Press",
+      trackType: "hypertrophy",
+      trackingMode: "weightedReps",
+      warmupSetsDefault: 2,
+      workingSetsDefault: 3,
+      repMin: 8,
+      repMax: 12,
+      restSecondsDefault: 120,
+      weightJumpDefault: 5,
+      createdAt: now,
+    });
+
+    await db.sessionItems.add({
+      id: crypto.randomUUID(),
+      sessionId,
+      trackId,
+      orderIndex: 0,
+      createdAt: now,
+    });
+
+    await db.sets.add({
+      id: crypto.randomUUID(),
+      sessionId,
+      trackId,
+      setType: "working",
+      weight: 70,
+      reps: 8,
+      createdAt: now,
+    });
+  });
+}
+
 async function openPasteWorkoutReview(page: Parameters<typeof test>[0]["page"]) {
   await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
 
@@ -220,6 +280,34 @@ test("Paste Workout REVIEW requires acknowledgment before creating likely duplic
 
   expect(dbState.count).toBe(2);
   expect(dbState.importedExercise?.name).toBe("Dumbbell Bench Press");
+});
+
+test("Paste Workout REVIEW surfaces medium-confidence duplicate candidates and supports Use existing", async ({
+  page,
+}) => {
+  await seedMachineBenchReviewCandidate(page);
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+
+  await page.getByRole("textbox").first().fill(`Session: Upper B
+Date: 2026-04-03
+Start: 08:00
+End: 09:00
+
+Dumbbell Machine Bench Press
+work 65x10 @2`);
+
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+
+  await expect(page.getByText("Review before create", { exact: true })).toBeVisible();
+  await expect(page.locator("span.badge").filter({ hasText: /^REVIEW$/ })).toBeVisible();
+  await expect(page.getByText("Possible duplicate", { exact: true })).toBeVisible();
+  await expect(page.getByText("DB Machine Bench Press", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(/machine-specific variant/i)
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Use existing" }).click();
+  await expect(page.getByText(/Using existing: DB Machine Bench Press/i)).toBeVisible();
 });
 
 test("Paste Workout preview and import preserve per-set weight semantics", async ({
