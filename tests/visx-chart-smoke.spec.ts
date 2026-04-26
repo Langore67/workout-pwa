@@ -356,10 +356,11 @@ async function readChartBounds(page: Page, testIdBase: string) {
 }
 
 function expectLandmarkLabelsPresent(
-  ticks: Array<{ text: string; left: number; right: number; width: number }>
+  ticks: Array<{ text: string; left: number; right: number; width: number }>,
+  pattern: RegExp = /^[A-Z][a-z]{2}\s\d{1,2}$/
 ) {
-  expect(ticks[0]?.text).toMatch(/^[A-Z][a-z]{2}\s\d{1,2}$/);
-  expect(ticks[ticks.length - 1]?.text).toMatch(/^[A-Z][a-z]{2}\s\d{1,2}$/);
+  expect(ticks[0]?.text).toMatch(pattern);
+  expect(ticks[ticks.length - 1]?.text).toMatch(pattern);
 }
 
 function expectTicksInsideChartBounds(
@@ -498,7 +499,7 @@ test.describe("VisX chart smoke", () => {
     await expectRenderedVisxTrendChart(page, testIdBase);
 
     const points = await readVisiblePointState(page, testIdBase);
-    expect(points.length).toBeGreaterThan(10);
+    expect(points.length).toBe(5);
 
     const first = points[0];
     const middle = points[Math.floor(points.length / 2)];
@@ -590,8 +591,14 @@ test.describe("VisX chart smoke", () => {
       for (const chartId of charts) {
         await expectRenderedVisxTrendChart(page, chartId);
         const ticks = await readXAxisTickState(page, chartId);
-        expectReasonableMobileTickLayout(ticks);
-        expectLandmarkLabelsPresent(ticks);
+        if (chartId === "performance-bodyweight-trend") {
+          expect(ticks.length).toBeGreaterThanOrEqual(3);
+          expect(ticks.length).toBeLessThanOrEqual(5);
+          expectLandmarkLabelsPresent(ticks, /^W\d{1,2}$/);
+        } else {
+          expectReasonableMobileTickLayout(ticks);
+          expectLandmarkLabelsPresent(ticks);
+        }
       }
     }
   });

@@ -7,7 +7,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { AxisBottom, AxisLeft } from "@visx/axis";
+import { AxisBottom, AxisLeft, AxisRight } from "@visx/axis";
 import { GridColumns, GridRows } from "@visx/grid";
 import { Group } from "@visx/group";
 import { scaleLinear, scalePoint } from "@visx/scale";
@@ -36,6 +36,15 @@ type ChartPoint = {
   label: string;
   value: number | null;
   x: number;
+};
+
+type DragState = {
+  pointerId: number;
+  startClientX: number;
+  startWindowStartIndex: number;
+  stepWidth: number;
+  minShift: number;
+  maxShift: number;
 };
 
 function getInnerPointerX(
@@ -212,7 +221,9 @@ export default function VisxTrendChartCard({
   height = 280,
   windowSize = 12,
   paneNavigationMode = "default",
+  dragScrollEnabled = false,
   yDomainMode = "auto",
+  yAxisSide = "left",
   showTrendLine = false,
   readoutMode = "auto",
   headerBadgeText,
@@ -233,7 +244,9 @@ export default function VisxTrendChartCard({
     getLatestPaneStartIndex(data.length, safeWindowSize)
   );
   const [hoverPoint, setHoverPoint] = useState<HoverPoint | null>(null);
+  const [dragOffsetPx, setDragOffsetPx] = useState(0);
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef<DragState | null>(null);
   const [hostSize, setHostSize] = useState({ width: 0, height: 0 });
   const [canRender, setCanRender] = useState(false);
 
@@ -288,6 +301,8 @@ export default function VisxTrendChartCard({
 
   useEffect(() => {
     setHoverPoint(null);
+    setDragOffsetPx(0);
+    dragStateRef.current = null;
   }, [windowStartIndex, currentWindowEndIndex, data.length]);
 
   const isSingleSeries = series.length === 1;
@@ -412,9 +427,9 @@ export default function VisxTrendChartCard({
   const isNarrowChart = hostSize.width > 0 && hostSize.width < 420;
   const margin = {
     top: 8,
-    right: isNarrowChart ? 12 : 20,
+    right: yAxisSide === "right" ? (isNarrowChart ? 44 : 56) : isNarrowChart ? 12 : 20,
     bottom: 32,
-    left: isNarrowChart ? 44 : 56,
+    left: yAxisSide === "right" ? (isNarrowChart ? 12 : 20) : isNarrowChart ? 44 : 56,
   };
   const chartWidth = Math.max(hostSize.width, 0);
   const chartHeight = Math.max(hostSize.height, safeHeight);
@@ -448,7 +463,14 @@ export default function VisxTrendChartCard({
     };
   });
   const minTickGapPx = hostSize.width > 0 && hostSize.width < 420 ? 56 : 44;
-  const xTickValues = pruneTickIndexesForSpacing(baseTickIndexes, chartPoints, minTickGapPx);
+  const canDragScroll =
+    dragScrollEnabled &&
+    paneNavigationMode === "movingPane" &&
+    data.length > safeWindowSize &&
+    chartPoints.length > 1;
+  const xTickValues = canDragScroll
+    ? chartData.map((_, index) => index)
+    : pruneTickIndexesForSpacing(baseTickIndexes, chartPoints, minTickGapPx);
   const firstTickIndex = xTickValues[0] ?? 0;
   const lastTickIndex = xTickValues[xTickValues.length - 1] ?? firstTickIndex;
   const trendPoints =
@@ -475,6 +497,18 @@ export default function VisxTrendChartCard({
     event: ReactPointerEvent<SVGRectElement> | ReactMouseEvent<SVGRectElement>
   ) => {
     if (!chartPoints.length || !innerWidth) return;
+    const dragState = dragStateRef.current;
+    if (
+      dragState &&
+      "pointerId" in event &&
+      event.pointerId === dragState.pointerId
+    ) {
+      const rawOffsetPx = event.clientX - dragState.startClientX;
+      const minOffsetPx = -dragState.maxShift * dragState.stepWidth;
+      const maxOffsetPx = -dragState.minShift * dragState.stepWidth;
+      setDragOffsetPx(Math.max(minOffsetPx, Math.min(maxOffsetPx, rawOffsetPx)));
+      return;
+    }
     const x = getInnerPointerX(event);
     const nearest = chartPoints.reduce((best, candidate) => {
       if (!best) return candidate;
@@ -491,6 +525,50 @@ export default function VisxTrendChartCard({
           }
         : null
     );
+  };
+
+  const handlePointerDown = (event: ReactPointerEvent<SVGRectElement>) => {
+    if (!canDragScroll || chartPoints.length < 2) return;
+
+    const stepWidth = chartPoints[1].x - chartPoints[0].x;
+    if (!Number.isFinite(stepWidth) || stepWidth <= 0) return;
+
+    const maxStartIndex = Math.max(0, data.length - safeWindowSize);
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startWindowStartIndex: windowStartIndex,
+      stepWidth,
+      minShift: -windowStartIndex,
+      maxShift: maxStartIndex - windowStartIndex,
+    };
+    setHoverPoint(null);
+    setDragOffsetPx(0);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const finishDrag = (
+    event: ReactPointerEvent<SVGRectElement>,
+    cancelled = false
+  ) => {
+    const dragState = dragStateRef.current;
+    if (!dragState || event.pointerId !== dragState.pointerId) return;
+
+    if (!cancelled) {
+      const snappedShift = Math.max(
+        dragState.minShift,
+        Math.min(dragState.maxShift, Math.round(-dragOffsetPx / dragState.stepWidth))
+      );
+      setWindowStartIndex(dragState.startWindowStartIndex + snappedShift);
+    }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    dragStateRef.current = null;
+    setDragOffsetPx(0);
+    setHoverPoint(null);
   };
 
   return (
@@ -593,111 +671,131 @@ export default function VisxTrendChartCard({
                 stroke="var(--line)"
                 strokeOpacity={0.25}
               />
-              <GridColumns
-                scale={indexScale}
-                height={innerHeight}
-                tickValues={xTickValues}
-                stroke="var(--line)"
-                strokeOpacity={0.12}
-              />
 
-              <AxisLeft
-                scale={yScale}
-                numTicks={5}
-                tickFormat={(value) => yAxisTickFormatter?.(Number(value)) ?? String(value)}
-                stroke="var(--line2)"
-                tickStroke="var(--line2)"
-                tickLabelProps={() => ({
-                  fill: "var(--muted)",
-                  fontSize: 11,
-                  textAnchor: "end",
-                  dy: "0.33em",
-                })}
-              />
-              <AxisBottom
-                top={innerHeight}
-                scale={indexScale}
-                tickValues={xTickValues}
-                stroke="var(--line2)"
-                tickStroke="var(--line2)"
-                tickFormat={(value) => {
-                  const label = String(chartData[Number(value)]?.[xKey] ?? "");
-                  return xLabelFormatter ? xLabelFormatter(label) : label;
-                }}
-                tickLabelProps={(value) => resolveTickLabelProps(Number(value))}
-              />
-
-              {showTrendLine && isSingleSeries ? (
-                <LinePath<ChartPoint>
-                  data={trendPoints}
-                  x={(point) => point.x}
-                  y={(point) => yScale(point.datum[trendKey] as number)}
-                  stroke="var(--muted)"
-                  strokeOpacity={0.55}
-                  strokeWidth={1.5}
-                  strokeDasharray="3 4"
+              {yAxisSide === "right" ? (
+                <AxisRight
+                  left={innerWidth}
+                  scale={yScale}
+                  numTicks={5}
+                  tickFormat={(value) => yAxisTickFormatter?.(Number(value)) ?? String(value)}
+                  stroke="var(--line2)"
+                  tickStroke="var(--line2)"
+                  tickLabelProps={() => ({
+                    fill: "var(--muted)",
+                    fontSize: 11,
+                    textAnchor: "start",
+                    dx: "0.33em",
+                    dy: "0.33em",
+                  })}
                 />
-              ) : null}
+              ) : (
+                <AxisLeft
+                  scale={yScale}
+                  numTicks={5}
+                  tickFormat={(value) => yAxisTickFormatter?.(Number(value)) ?? String(value)}
+                  stroke="var(--line2)"
+                  tickStroke="var(--line2)"
+                  tickLabelProps={() => ({
+                    fill: "var(--muted)",
+                    fontSize: 11,
+                    textAnchor: "end",
+                    dy: "0.33em",
+                  })}
+                />
+              )}
 
-              {series.map((item) => {
-                const seriesPoints = chartPoints.filter(
-                  (point) =>
-                    typeof point.datum[item.key] === "number" &&
-                    Number.isFinite(point.datum[item.key] as number)
-                );
-                const stroke = item.stroke ?? "var(--accent)";
+              <Group left={dragOffsetPx}>
+                <GridColumns
+                  scale={indexScale}
+                  height={innerHeight}
+                  tickValues={xTickValues}
+                  stroke="var(--line)"
+                  strokeOpacity={0.12}
+                />
 
-                return (
-                  <g key={item.key}>
-                    <LinePath<ChartPoint>
-                      data={seriesPoints}
-                      x={(point) => point.x}
-                      y={(point) => yScale(point.datum[item.key] as number)}
-                      stroke={stroke}
-                      strokeWidth={3}
-                    />
-                    {seriesPoints.map((point) => {
-                      return (
-                      <circle
-                        key={`${item.key}-${String(point.datum[xKey] ?? "")}-${point.index}`}
-                        data-testid={`${resolvedTestIdBase}:point`}
-                        data-point-index={point.index}
-                        cx={point.x}
-                        cy={yScale(point.datum[item.key] as number)}
-                        r={4}
-                        fill={stroke}
-                        stroke="var(--card)"
-                        strokeWidth={1.25}
-                      />
-                      );
-                    })}
-                  </g>
-                );
-              })}
+                <AxisBottom
+                  top={innerHeight}
+                  scale={indexScale}
+                  tickValues={xTickValues}
+                  stroke="var(--line2)"
+                  tickStroke="var(--line2)"
+                  tickFormat={(value) => {
+                    const label = String(chartData[Number(value)]?.[xKey] ?? "");
+                    return xLabelFormatter ? xLabelFormatter(label) : label;
+                  }}
+                  tickLabelProps={(value) => resolveTickLabelProps(Number(value))}
+                />
 
-              {hoverPoint ? (
-                <>
-                  <line
-                    x1={chartPoints[hoverPoint.index]?.x ?? 0}
-                    x2={chartPoints[hoverPoint.index]?.x ?? 0}
-                    y1={0}
-                    y2={innerHeight}
-                    stroke="var(--line2)"
-                    strokeWidth={1}
+                {showTrendLine && isSingleSeries ? (
+                  <LinePath<ChartPoint>
+                    data={trendPoints}
+                    x={(point) => point.x}
+                    y={(point) => yScale(point.datum[trendKey] as number)}
+                    stroke="var(--muted)"
+                    strokeOpacity={0.55}
+                    strokeWidth={1.5}
+                    strokeDasharray="3 4"
                   />
-                  {hoverPoint.value != null ? (
-                    <circle
-                      data-testid={`${resolvedTestIdBase}:active-point`}
-                      cx={chartPoints[hoverPoint.index]?.x ?? 0}
-                      cy={yScale(hoverPoint.value)}
-                      r={5}
-                      fill={latestSeries?.stroke ?? "var(--accent)"}
-                      stroke="var(--card)"
-                      strokeWidth={1.5}
+                ) : null}
+
+                {series.map((item) => {
+                  const seriesPoints = chartPoints.filter(
+                    (point) =>
+                      typeof point.datum[item.key] === "number" &&
+                      Number.isFinite(point.datum[item.key] as number)
+                  );
+                  const stroke = item.stroke ?? "var(--accent)";
+
+                  return (
+                    <g key={item.key}>
+                      <LinePath<ChartPoint>
+                        data={seriesPoints}
+                        x={(point) => point.x}
+                        y={(point) => yScale(point.datum[item.key] as number)}
+                        stroke={stroke}
+                        strokeWidth={3}
+                      />
+                      {seriesPoints.map((point) => (
+                        <circle
+                          key={`${item.key}-${String(point.datum[xKey] ?? "")}-${point.index}`}
+                          data-testid={`${resolvedTestIdBase}:point`}
+                          data-point-index={point.index}
+                          cx={point.x}
+                          cy={yScale(point.datum[item.key] as number)}
+                          r={4}
+                          fill={stroke}
+                          stroke="var(--card)"
+                          strokeWidth={1.25}
+                        />
+                      ))}
+                    </g>
+                  );
+                })}
+
+                {hoverPoint ? (
+                  <>
+                    <line
+                      x1={chartPoints[hoverPoint.index]?.x ?? 0}
+                      x2={chartPoints[hoverPoint.index]?.x ?? 0}
+                      y1={0}
+                      y2={innerHeight}
+                      stroke="var(--line2)"
+                      strokeWidth={1}
                     />
-                  ) : null}
-                </>
-              ) : null}
+                    {hoverPoint.value != null ? (
+                      <circle
+                        data-testid={`${resolvedTestIdBase}:active-point`}
+                        cx={chartPoints[hoverPoint.index]?.x ?? 0}
+                        cy={yScale(hoverPoint.value)}
+                        r={5}
+                        fill={latestSeries?.stroke ?? "var(--accent)"}
+                        stroke="var(--card)"
+                        strokeWidth={1.5}
+                      />
+                    ) : null}
+                  </>
+                ) : null}
+              </Group>
 
               <rect
                 data-testid={`${resolvedTestIdBase}:overlay`}
@@ -706,10 +804,25 @@ export default function VisxTrendChartCard({
                 width={innerWidth}
                 height={innerHeight}
                 fill="transparent"
+                style={{
+                  cursor: canDragScroll
+                    ? dragStateRef.current
+                      ? "grabbing"
+                      : "grab"
+                    : "crosshair",
+                  touchAction: canDragScroll ? "none" : "auto",
+                }}
+                onPointerDown={handlePointerDown}
                 onMouseMove={handlePointerMove}
                 onPointerMove={handlePointerMove}
-                onMouseLeave={() => setHoverPoint(null)}
-                onPointerLeave={() => setHoverPoint(null)}
+                onPointerUp={(event) => finishDrag(event)}
+                onPointerCancel={(event) => finishDrag(event, true)}
+                onMouseLeave={() => {
+                  if (!dragStateRef.current) setHoverPoint(null);
+                }}
+                onPointerLeave={() => {
+                  if (!dragStateRef.current) setHoverPoint(null);
+                }}
               />
             </Group>
           </svg>
@@ -718,7 +831,7 @@ export default function VisxTrendChartCard({
         )}
       </div>
 
-      {data.length > safeWindowSize ? (
+      {data.length > safeWindowSize && !canDragScroll ? (
         paneNavigationMode === "movingPane" ? (
           <ChartViewportSlider
             totalCount={data.length}

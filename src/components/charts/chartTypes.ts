@@ -52,6 +52,7 @@ export type ReadoutMode = "auto" | "statRow" | "tooltipOnly" | "none";
 
 export type HeaderBadgeMode = "auto" | "hidden";
 export type PaneNavigationMode = "default" | "movingPane";
+export type YAxisSide = "left" | "right";
 
 export type TrendChartCardProps = {
   title: string;
@@ -68,8 +69,10 @@ export type TrendChartCardProps = {
 
   /* opt-in shared slider viewport navigation */
   paneNavigationMode?: PaneNavigationMode;
+  dragScrollEnabled?: boolean;
 
   yDomainMode?: YDomainMode;
+  yAxisSide?: YAxisSide;
 
   /* optional single-series linear trend overlay */
   showTrendLine?: boolean;
