@@ -732,6 +732,41 @@ test.describe("VisX chart smoke", () => {
     expect(afterDragTicks.map((tick) => tick.text)).not.toEqual(monthlyTicks.map((tick) => tick.text));
   });
 
+  test("Performance volume uses W/M timeline controls with drag navigation and no slider", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium", "Volume timeline coverage is chromium-only");
+
+    await seedPerformanceRangeData(page);
+    await goto(page, "/performance");
+
+    const testIdBase = "performance-volume-trend";
+    await expectRenderedVisxTrendChart(page, testIdBase);
+    const card = page
+      .getByRole("heading", { name: "Training Load", exact: true })
+      .locator("xpath=ancestor::div[contains(@class,'card')][1]");
+
+    await expect(card.getByRole("button", { name: "W", exact: true }).first()).toBeVisible();
+    await expect(card.getByRole("button", { name: "M", exact: true }).first()).toBeVisible();
+    await expect(page.getByTestId(`${testIdBase}:slider-input`)).toHaveCount(0);
+
+    const weeklyTicks = await readXAxisTickState(page, testIdBase);
+    expect(weeklyTicks.length).toBe(5);
+    expectLandmarkLabelsPresent(weeklyTicks, /^W\d{1,2}$/);
+
+    await card.getByRole("button", { name: "M", exact: true }).first().click();
+    await expect(card.getByRole("button", { name: "M", exact: true }).first()).toHaveClass(/primary/);
+
+    const monthlyTicks = await readXAxisTickState(page, testIdBase);
+    expect(monthlyTicks.length).toBe(5);
+    expectLandmarkLabelsPresent(monthlyTicks, /^[A-Z][a-z]{2}$/);
+
+    await dragVisxChart(page, testIdBase, 140);
+    await waitForTimelineDragToSettle(page, testIdBase);
+    const afterDragTicks = await readXAxisTickState(page, testIdBase);
+    expect(afterDragTicks.map((tick) => tick.text)).not.toEqual(monthlyTicks.map((tick) => tick.text));
+  });
+
   test("Performance mobile range charts keep x-axis labels readable across 4W/8W/12W/YTD/ALL", async ({
     page,
   }, testInfo) => {
@@ -758,7 +793,10 @@ test.describe("VisX chart smoke", () => {
           expect(ticks.length).toBeGreaterThanOrEqual(3);
           expect(ticks.length).toBeLessThanOrEqual(5);
           expectLandmarkLabelsPresent(ticks, /^W\d{1,2}$/);
-        } else if (chartId === "performance-waist-trend") {
+        } else if (
+          chartId === "performance-waist-trend" ||
+          chartId === "performance-volume-trend"
+        ) {
           expect(ticks.length).toBeGreaterThanOrEqual(3);
           expect(ticks.length).toBeLessThanOrEqual(5);
           expectLandmarkLabelsPresent(ticks, /^W\d{1,2}$/);
