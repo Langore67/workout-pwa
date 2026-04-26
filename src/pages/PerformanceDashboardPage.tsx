@@ -93,6 +93,7 @@ import {
 export type DashboardPhase = "CUT" | "MAINTAIN" | "BULK";
 export type DashboardRange = "4W" | "8W" | "12W" | "YTD" | "ALL";
 type BodyWeightResolution = "D" | "W" | "M";
+type WaistResolution = "W" | "M";
 export type TrendDirection = "improving" | "stable" | "declining" | "watch";
 
 type ChartViewModel = {
@@ -795,6 +796,40 @@ function buildWaistTrend(
   }));
 }
 
+function buildWaistTimelineTrend(
+  bodyMetrics: BodyMetricEntry[],
+  resolution: WaistResolution
+): ChartDatum[] {
+  const filtered = bodyMetrics
+    .filter((entry) => {
+      const at = pickBodyMetricTime(entry);
+      const waist = (entry as any).waistIn ?? (entry as any).waist;
+      return at > 0 && typeof waist === "number" && Number.isFinite(waist);
+    })
+    .sort((a, b) => pickBodyMetricTime(a) - pickBodyMetricTime(b));
+
+  const buckets = new Map<string, { values: number[]; at: number }>();
+
+  filtered.forEach((entry) => {
+    const at = pickBodyMetricTime(entry);
+    const key = resolution === "W" ? weekKeyFromMs(at) : monthKeyFromMs(at);
+    const waist = (entry as any).waistIn ?? (entry as any).waist;
+    const bucket = buckets.get(key) ?? { values: [], at };
+    bucket.values.push(waist as number);
+    bucket.at = Math.min(bucket.at, at);
+    buckets.set(key, bucket);
+  });
+
+  return Array.from(buckets.entries())
+    .sort((a, b) => a[1].at - b[1].at)
+    .map(([key, bucket]) => ({
+      label: resolution === "W" ? `W${weekNumberFromMs(bucket.at)}` : monthLabelFromKey(key),
+      value: round2(average(bucket.values)),
+      date: key,
+      unitStartMs: bucket.at,
+    }));
+}
+
 function buildVolumeTrend(
   sessions: Session[],
   sets: SetEntry[],
@@ -1225,16 +1260,18 @@ function TimeRangeControl({
   );
 }
 
-function ResolutionControl({
+function ResolutionControl<T extends string>({
   activeResolution,
+  resolutions,
   onChange,
 }: {
-  activeResolution: BodyWeightResolution;
-  onChange: (resolution: BodyWeightResolution) => void;
+  activeResolution: T;
+  resolutions: readonly T[];
+  onChange: (resolution: T) => void;
 }) {
   return (
     <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
-      {(["D", "W", "M"] as const).map((resolution) => {
+      {resolutions.map((resolution) => {
         const active = resolution === activeResolution;
         return (
           <button
@@ -1264,6 +1301,7 @@ export default function PerformanceDashboardPage() {
   const [activeRange, setActiveRange] = useState<DashboardRange>("8W");
   const [bodyWeightResolution, setBodyWeightResolution] =
     useState<BodyWeightResolution>("W");
+  const [waistResolution, setWaistResolution] = useState<WaistResolution>("W");
   const [dbSource, setDbSource] = useState<DbStrengthSource | null>(null);
   const [sharedStrengthResult, setSharedStrengthResult] = useState<
     Awaited<ReturnType<typeof computeStrengthIndex>> | null
@@ -1431,6 +1469,10 @@ export default function PerformanceDashboardPage() {
   const waistChartData = useMemo(
     () => buildWaistTrend(dbSource?.bodyMetrics ?? [], activeRange),
     [dbSource, activeRange]
+  );
+  const waistTimelineChartData = useMemo(
+    () => buildWaistTimelineTrend(dbSource?.bodyMetrics ?? [], waistResolution),
+    [dbSource, waistResolution]
   );
 
   const sharedCutQuality = useMemo(() => {
@@ -1764,6 +1806,7 @@ export default function PerformanceDashboardPage() {
               headerControls={
                 <ResolutionControl
                   activeResolution={bodyWeightResolution}
+                  resolutions={["D", "W", "M"] as const}
                   onChange={setBodyWeightResolution}
                 />
               }
@@ -1774,10 +1817,21 @@ export default function PerformanceDashboardPage() {
 
             <DashboardChartCard
               chart={vm.charts.waist}
-              chartData={waistChartData}
+              chartData={waistTimelineChartData}
               series={waistSeries}
               chartRenderer="visx"
               chartTestIdBase="performance-waist-trend"
+              windowSize={5}
+              paneNavigationMode="movingPane"
+              dragScrollEnabled={true}
+              yAxisSide="right"
+              headerControls={
+                <ResolutionControl
+                  activeResolution={waistResolution}
+                  resolutions={["W", "M"] as const}
+                  onChange={setWaistResolution}
+                />
+              }
               yDomainMode="auto"
               valueFormatter={formatInches}
               emptyMessage="No waist entries yet."

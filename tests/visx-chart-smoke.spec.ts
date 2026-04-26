@@ -345,7 +345,7 @@ async function dragVisxChart(page: Page, testIdBase: string, deltaX: number) {
   await page.mouse.up();
 }
 
-async function waitForBodyweightDragToSettle(page: Page, testIdBase: string) {
+async function waitForTimelineDragToSettle(page: Page, testIdBase: string) {
   await expect
     .poll(async () => {
       const pointState = await readVisiblePointState(page, testIdBase);
@@ -372,7 +372,7 @@ async function waitForBodyweightDragToSettle(page: Page, testIdBase: string) {
     await page.waitForTimeout(120);
   }
 
-  throw new Error(`Bodyweight drag did not settle: ${testIdBase}`);
+  throw new Error(`Timeline drag did not settle: ${testIdBase}`);
 }
 
 async function readXAxisTickState(page: Page, testIdBase: string) {
@@ -691,11 +691,45 @@ test.describe("VisX chart smoke", () => {
 
     const beforeTicks = await readXAxisTickState(page, testIdBase);
     await dragVisxChart(page, testIdBase, 80);
-    await waitForBodyweightDragToSettle(page, testIdBase);
+    await waitForTimelineDragToSettle(page, testIdBase);
     const afterTicks = await readXAxisTickState(page, testIdBase);
 
     expect(afterTicks.map((tick) => tick.text)).not.toEqual(beforeTicks.map((tick) => tick.text));
     expect(afterTicks.length).toBe(5);
+  });
+
+  test("Performance waist uses W/M timeline controls with drag navigation and no slider", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium", "Waist timeline coverage is chromium-only");
+
+    await seedPerformanceRangeData(page);
+    await goto(page, "/performance");
+
+    const testIdBase = "performance-waist-trend";
+    await expectRenderedVisxTrendChart(page, testIdBase);
+    const card = page
+      .getByRole("heading", { name: "Waist Trend", exact: true })
+      .locator("xpath=ancestor::div[contains(@class,'card')][1]");
+    await expect(card.getByRole("button", { name: "W", exact: true }).first()).toBeVisible();
+    await expect(card.getByRole("button", { name: "M", exact: true }).first()).toBeVisible();
+    await expect(page.getByTestId(`${testIdBase}:slider-input`)).toHaveCount(0);
+
+    const weeklyTicks = await readXAxisTickState(page, testIdBase);
+    expect(weeklyTicks.length).toBe(5);
+    expectLandmarkLabelsPresent(weeklyTicks, /^W\d{1,2}$/);
+
+    await card.getByRole("button", { name: "M", exact: true }).first().click();
+    await expect(card.getByRole("button", { name: "M", exact: true }).first()).toHaveClass(/primary/);
+
+    const monthlyTicks = await readXAxisTickState(page, testIdBase);
+    expect(monthlyTicks.length).toBe(5);
+    expectLandmarkLabelsPresent(monthlyTicks, /^[A-Z][a-z]{2}$/);
+
+    await dragVisxChart(page, testIdBase, 140);
+    await waitForTimelineDragToSettle(page, testIdBase);
+    const afterDragTicks = await readXAxisTickState(page, testIdBase);
+    expect(afterDragTicks.map((tick) => tick.text)).not.toEqual(monthlyTicks.map((tick) => tick.text));
   });
 
   test("Performance mobile range charts keep x-axis labels readable across 4W/8W/12W/YTD/ALL", async ({
@@ -721,6 +755,10 @@ test.describe("VisX chart smoke", () => {
         await expectRenderedVisxTrendChart(page, chartId);
         const ticks = await readXAxisTickState(page, chartId);
         if (chartId === "performance-bodyweight-trend") {
+          expect(ticks.length).toBeGreaterThanOrEqual(3);
+          expect(ticks.length).toBeLessThanOrEqual(5);
+          expectLandmarkLabelsPresent(ticks, /^W\d{1,2}$/);
+        } else if (chartId === "performance-waist-trend") {
           expect(ticks.length).toBeGreaterThanOrEqual(3);
           expect(ticks.length).toBeLessThanOrEqual(5);
           expectLandmarkLabelsPresent(ticks, /^W\d{1,2}$/);
