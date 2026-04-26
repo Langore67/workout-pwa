@@ -345,6 +345,36 @@ async function dragVisxChart(page: Page, testIdBase: string, deltaX: number) {
   await page.mouse.up();
 }
 
+async function waitForBodyweightDragToSettle(page: Page, testIdBase: string) {
+  await expect
+    .poll(async () => {
+      const pointState = await readVisiblePointState(page, testIdBase);
+      return pointState.map((point) => point.index).join(",");
+    }, { timeout: 4000 })
+    .toMatch(/^\d+,\d+,\d+,\d+,\d+$/);
+
+  let stableTicks = "";
+  let stableCount = 0;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < 4000) {
+    const ticks = await readXAxisTickState(page, testIdBase);
+    const nextSignature = ticks.map((tick) => tick.text).join("|");
+
+    if (nextSignature === stableTicks) {
+      stableCount += 1;
+      if (stableCount >= 3) return;
+    } else {
+      stableTicks = nextSignature;
+      stableCount = 1;
+    }
+
+    await page.waitForTimeout(120);
+  }
+
+  throw new Error(`Bodyweight drag did not settle: ${testIdBase}`);
+}
+
 async function readXAxisTickState(page: Page, testIdBase: string) {
   const ticks = page.locator(`[data-testid="${testIdBase}:x-tick"]`);
   await expect(ticks.first()).toBeVisible({ timeout: 15000 });
@@ -644,6 +674,28 @@ test.describe("VisX chart smoke", () => {
 
     const ticksAtAll = await readXAxisTickState(page, testIdBase);
     expect(ticksAtAll.map((tick) => tick.text)).toEqual(ticksAt4W.map((tick) => tick.text));
+  });
+
+  test("Performance bodyweight drag scroll updates the fixed window after release", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium", "Drag momentum coverage is chromium-only");
+
+    await seedDailyBodyweightHistory(page);
+    await goto(page, "/performance");
+    await page.getByRole("button", { name: "D", exact: true }).click();
+    await expect(page.getByRole("button", { name: "D", exact: true })).toHaveClass(/primary/);
+
+    const testIdBase = "performance-bodyweight-trend";
+    await expectRenderedVisxTrendChart(page, testIdBase);
+
+    const beforeTicks = await readXAxisTickState(page, testIdBase);
+    await dragVisxChart(page, testIdBase, 80);
+    await waitForBodyweightDragToSettle(page, testIdBase);
+    const afterTicks = await readXAxisTickState(page, testIdBase);
+
+    expect(afterTicks.map((tick) => tick.text)).not.toEqual(beforeTicks.map((tick) => tick.text));
+    expect(afterTicks.length).toBe(5);
   });
 
   test("Performance mobile range charts keep x-axis labels readable across 4W/8W/12W/YTD/ALL", async ({
