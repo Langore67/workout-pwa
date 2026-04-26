@@ -227,6 +227,43 @@ async function seedUnevenPerformanceBodyweightData(page: Page) {
   });
 }
 
+async function seedDailyBodyweightHistory(page: Page) {
+  return await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const uuid = () => crypto.randomUUID();
+    const totalDays = 40;
+
+    const entries = Array.from({ length: totalDays }, (_, index) => {
+      const daysAgo = totalDays - 1 - index;
+      const measuredAt = now - daysAgo * dayMs;
+      const month = String(new Date(measuredAt).getMonth() + 1).padStart(2, "0");
+      const day = String(new Date(measuredAt).getDate()).padStart(2, "0");
+      return {
+        id: uuid(),
+        weightLb: 210 - index * 0.2,
+        measuredAt,
+        takenAt: measuredAt,
+        createdAt: measuredAt,
+        label: `${month}/${day}`,
+      };
+    });
+
+    await db.bodyMetrics.bulkAdd(
+      entries.map(({ label, ...entry }) => entry)
+    );
+
+    return {
+      oldestLabel: entries[0].label,
+      newestLabel: entries[entries.length - 1].label,
+    };
+  });
+}
+
 async function expectRenderedVisxTrendChart(page: Page, testIdBase: string) {
   const card = page.getByTestId(`${testIdBase}:card`).first();
   await expect(card).toBeVisible({ timeout: 15000 });
@@ -291,6 +328,21 @@ async function hoverVisxChartAtPoint(page: Page, testIdBase: string, centerX: nu
       y: Math.max(1, Math.min(box.height - 1, box.height * 0.45)),
     },
   });
+}
+
+async function dragVisxChart(page: Page, testIdBase: string, deltaX: number) {
+  const overlay = page.getByTestId(`${testIdBase}:overlay`);
+  await expect(overlay).toBeVisible({ timeout: 15000 });
+  const box = await overlay.boundingBox();
+  if (!box) throw new Error(`Overlay bounding box missing: ${testIdBase}`);
+
+  const startX = box.x + box.width * 0.5;
+  const y = box.y + box.height * 0.45;
+
+  await page.mouse.move(startX, y);
+  await page.mouse.down();
+  await page.mouse.move(startX + deltaX, y, { steps: 8 });
+  await page.mouse.up();
 }
 
 async function readXAxisTickState(page: Page, testIdBase: string) {
@@ -567,6 +619,31 @@ test.describe("VisX chart smoke", () => {
     expect(Math.abs(firstActive.centerX - first.centerX)).toBeLessThanOrEqual(6);
     expect(Math.abs(middleActive.centerX - middle.centerX)).toBeLessThanOrEqual(6);
     expect(Math.abs(lastActive.centerX - last.centerX)).toBeLessThanOrEqual(6);
+  });
+
+  test("Performance bodyweight D mode ignores the top Performance range filter", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium", "Daily D-mode range independence coverage is chromium-only");
+
+    await seedDailyBodyweightHistory(page);
+    await goto(page, "/performance");
+    await page.getByRole("button", { name: "4W", exact: true }).click();
+    await expect(page.getByRole("button", { name: "4W", exact: true })).toHaveClass(/primary/);
+
+    await page.getByRole("button", { name: "D", exact: true }).click();
+    await expect(page.getByRole("button", { name: "D", exact: true })).toHaveClass(/primary/);
+
+    const testIdBase = "performance-bodyweight-trend";
+    await expectRenderedVisxTrendChart(page, testIdBase);
+
+    const ticksAt4W = await readXAxisTickState(page, testIdBase);
+
+    await page.getByRole("button", { name: "ALL", exact: true }).click();
+    await expect(page.getByRole("button", { name: "ALL", exact: true })).toHaveClass(/primary/);
+
+    const ticksAtAll = await readXAxisTickState(page, testIdBase);
+    expect(ticksAtAll.map((tick) => tick.text)).toEqual(ticksAt4W.map((tick) => tick.text));
   });
 
   test("Performance mobile range charts keep x-axis labels readable across 4W/8W/12W/YTD/ALL", async ({

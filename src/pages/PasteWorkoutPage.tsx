@@ -971,7 +971,7 @@ export default function PasteWorkoutPage() {
           sessionItems,
           sets,
           maxCandidates: 3,
-        }).filter((candidate) => candidate.confidence === "high");
+        });
 
         if (duplicateCandidates.length) {
           reviewExerciseNames.add(ex.exercise);
