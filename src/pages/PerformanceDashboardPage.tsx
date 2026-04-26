@@ -95,6 +95,7 @@ export type DashboardRange = "4W" | "8W" | "12W" | "YTD" | "ALL";
 type BodyWeightResolution = "D" | "W" | "M";
 type WaistResolution = "W" | "M";
 type VolumeResolution = "W" | "M";
+type StrengthResolution = "W" | "M";
 export type TrendDirection = "improving" | "stable" | "declining" | "watch";
 
 type ChartViewModel = {
@@ -908,6 +909,49 @@ function buildVolumeTimelineTrend(
     }));
 }
 
+function buildStrengthSignalTimelineTrend(
+  trendRows: StrengthTrendRow[],
+  resolution: StrengthResolution
+): ChartDatum[] {
+  const sorted = [...(trendRows ?? [])]
+    .filter(
+      (row) =>
+        typeof row.weekEndMs === "number" &&
+        Number.isFinite(row.weekEndMs) &&
+        Number.isFinite(row.normalizedIndex)
+    )
+    .sort((a, b) => a.weekEndMs - b.weekEndMs);
+
+  if (resolution === "W") {
+    return sorted.map((row, index) => ({
+      label: `W${weekNumberFromMs(row.weekEndMs)}`,
+      value: round2(row.normalizedIndex),
+      date: new Date(row.weekEndMs).toISOString().slice(0, 10),
+      unitStartMs: row.weekEndMs,
+      sourceWeekLabel: row.label ?? `W${index + 1}`,
+    }));
+  }
+
+  const buckets = new Map<string, { values: number[]; at: number }>();
+
+  sorted.forEach((row) => {
+    const key = monthKeyFromMs(row.weekEndMs);
+    const bucket = buckets.get(key) ?? { values: [], at: row.weekEndMs };
+    bucket.values.push(row.normalizedIndex);
+    bucket.at = Math.min(bucket.at, row.weekEndMs);
+    buckets.set(key, bucket);
+  });
+
+  return Array.from(buckets.entries())
+    .sort((a, b) => a[1].at - b[1].at)
+    .map(([key, bucket]) => ({
+      label: monthLabelFromKey(key),
+      value: round2(average(bucket.values)),
+      date: key,
+      unitStartMs: bucket.at,
+    }));
+}
+
 /* ============================================================================
    Breadcrumb 4 — Mock fallback data
    ============================================================================ */
@@ -1343,6 +1387,7 @@ export default function PerformanceDashboardPage() {
     useState<BodyWeightResolution>("W");
   const [waistResolution, setWaistResolution] = useState<WaistResolution>("W");
   const [volumeResolution, setVolumeResolution] = useState<VolumeResolution>("W");
+  const [strengthResolution, setStrengthResolution] = useState<StrengthResolution>("W");
   const [dbSource, setDbSource] = useState<DbStrengthSource | null>(null);
   const [sharedStrengthResult, setSharedStrengthResult] = useState<
     Awaited<ReturnType<typeof computeStrengthIndex>> | null
@@ -1490,6 +1535,10 @@ export default function PerformanceDashboardPage() {
           : row.label ?? `W${index + 1}`,
       }));
   }, [sharedStrengthTrend]);
+  const sharedStrengthTimelineChartData = useMemo(
+    () => buildStrengthSignalTimelineTrend(sharedStrengthTrend, strengthResolution),
+    [sharedStrengthTrend, strengthResolution]
+  );
 
   const hasSharedStrengthChart = sharedStrengthChartData.length > 0;
 
@@ -1814,8 +1863,19 @@ export default function PerformanceDashboardPage() {
 
             <PerformanceStrengthSignalSection
               chart={effectiveStrengthChart}
-              chartData={sharedStrengthChartData}
+              chartData={sharedStrengthTimelineChartData}
               series={strengthSeries}
+              windowSize={5}
+              paneNavigationMode="movingPane"
+              dragScrollEnabled={true}
+              yAxisSide="right"
+              headerControls={
+                <ResolutionControl
+                  activeResolution={strengthResolution}
+                  resolutions={["W", "M"] as const}
+                  onChange={setStrengthResolution}
+                />
+              }
               showDebug={showDebug}
               setShowDebug={setShowDebug}
               sourceUsed="Shared Strength Engine"
