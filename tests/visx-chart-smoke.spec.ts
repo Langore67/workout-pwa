@@ -574,8 +574,6 @@ test.describe("VisX chart smoke", () => {
 
     await seedPerformanceRangeData(page);
     await goto(page, "/performance");
-    await page.getByRole("button", { name: "ALL", exact: true }).click();
-    await expect(page.getByRole("button", { name: "ALL", exact: true })).toHaveClass(/primary/);
 
     const testIdBase = "performance-bodyweight-trend";
     await expectRenderedVisxTrendChart(page, testIdBase);
@@ -615,8 +613,6 @@ test.describe("VisX chart smoke", () => {
 
     await seedUnevenPerformanceBodyweightData(page);
     await goto(page, "/performance");
-    await page.getByRole("button", { name: "ALL", exact: true }).click();
-    await expect(page.getByRole("button", { name: "ALL", exact: true })).toHaveClass(/primary/);
 
     const testIdBase = "performance-bodyweight-trend";
     await expectRenderedVisxTrendChart(page, testIdBase);
@@ -651,29 +647,21 @@ test.describe("VisX chart smoke", () => {
     expect(Math.abs(lastActive.centerX - last.centerX)).toBeLessThanOrEqual(6);
   });
 
-  test("Performance bodyweight D mode ignores the top Performance range filter", async ({
+  test("Performance bodyweight D mode uses full daily history without range controls", async ({
     page,
   }, testInfo) => {
-    test.skip(testInfo.project.name !== "chromium", "Daily D-mode range independence coverage is chromium-only");
+    test.skip(testInfo.project.name !== "chromium", "Daily D-mode timeline coverage is chromium-only");
 
     await seedDailyBodyweightHistory(page);
     await goto(page, "/performance");
-    await page.getByRole("button", { name: "4W", exact: true }).click();
-    await expect(page.getByRole("button", { name: "4W", exact: true })).toHaveClass(/primary/);
-
     await page.getByRole("button", { name: "D", exact: true }).click();
     await expect(page.getByRole("button", { name: "D", exact: true })).toHaveClass(/primary/);
 
     const testIdBase = "performance-bodyweight-trend";
     await expectRenderedVisxTrendChart(page, testIdBase);
 
-    const ticksAt4W = await readXAxisTickState(page, testIdBase);
-
-    await page.getByRole("button", { name: "ALL", exact: true }).click();
-    await expect(page.getByRole("button", { name: "ALL", exact: true })).toHaveClass(/primary/);
-
-    const ticksAtAll = await readXAxisTickState(page, testIdBase);
-    expect(ticksAtAll.map((tick) => tick.text)).toEqual(ticksAt4W.map((tick) => tick.text));
+    const ticks = await readXAxisTickState(page, testIdBase);
+    expect(ticks.length).toBe(5);
   });
 
   test("Performance bodyweight drag scroll updates the fixed window after release", async ({
@@ -774,8 +762,6 @@ test.describe("VisX chart smoke", () => {
 
     await seedPerformanceRangeData(page);
     await goto(page, "/performance");
-    await page.getByRole("button", { name: "ALL", exact: true }).click();
-    await expect(page.getByRole("button", { name: "ALL", exact: true })).toHaveClass(/primary/);
 
     const testIdBase = "performance-strength-signal-trend";
     await expectRenderedVisxTrendChart(page, testIdBase);
@@ -805,48 +791,35 @@ test.describe("VisX chart smoke", () => {
     expect(afterDragTicks.map((tick) => tick.text)).not.toEqual(monthlyTicks.map((tick) => tick.text));
   });
 
-  test("Performance mobile range charts keep x-axis labels readable across 4W/8W/12W/YTD/ALL", async ({
+  test("Performance mobile timeline charts keep x-axis labels readable", async ({
     page,
   }, testInfo) => {
     test.skip(testInfo.project.name !== "iphone", "Mobile x-axis coverage only");
 
     await seedPerformanceRangeData(page);
     await goto(page, "/performance");
-
-    const ranges = ["4W", "8W", "12W", "YTD", "ALL"] as const;
     const charts = [
       "performance-bodyweight-trend",
       "performance-waist-trend",
       "performance-volume-trend",
     ] as const;
 
-    for (const range of ranges) {
-      await page.getByRole("button", { name: range, exact: true }).click();
-      await expect(page.getByRole("button", { name: range, exact: true })).toHaveClass(/primary/);
-
-      for (const chartId of charts) {
-        await expectRenderedVisxTrendChart(page, chartId);
-        const ticks = await readXAxisTickState(page, chartId);
-        if (chartId === "performance-bodyweight-trend") {
-          expect(ticks.length).toBeGreaterThanOrEqual(3);
-          expect(ticks.length).toBeLessThanOrEqual(5);
-          expectLandmarkLabelsPresent(ticks, /^W\d{1,2}$/);
-        } else if (
-          chartId === "performance-waist-trend" ||
-          chartId === "performance-volume-trend"
-        ) {
-          expect(ticks.length).toBeGreaterThanOrEqual(3);
-          expect(ticks.length).toBeLessThanOrEqual(5);
-          expectLandmarkLabelsPresent(ticks, /^W\d{1,2}$/);
-        } else {
-          expectReasonableMobileTickLayout(ticks);
-          expectLandmarkLabelsPresent(ticks);
-        }
+    for (const chartId of charts) {
+      await expectRenderedVisxTrendChart(page, chartId);
+      const ticks = await readXAxisTickState(page, chartId);
+      if (chartId === "performance-bodyweight-trend") {
+        expect(ticks.length).toBeGreaterThanOrEqual(3);
+        expect(ticks.length).toBeLessThanOrEqual(5);
+        expectLandmarkLabelsPresent(ticks, /^W\d{1,2}$/);
+      } else {
+        expect(ticks.length).toBeGreaterThanOrEqual(3);
+        expect(ticks.length).toBeLessThanOrEqual(5);
+        expectLandmarkLabelsPresent(ticks, /^W\d{1,2}$/);
       }
     }
   });
 
-  test("Performance Strength mobile timeline labels stay readable and YTD markers stay visible", async ({
+  test("Performance Strength mobile timeline labels stay readable and markers stay visible", async ({
     page,
   }, testInfo) => {
     test.skip(testInfo.project.name !== "iphone", "Mobile strength x-axis coverage only");
@@ -854,26 +827,15 @@ test.describe("VisX chart smoke", () => {
     await seedPerformanceRangeData(page);
     await goto(page, "/performance");
 
-    for (const range of ["8W", "12W"] as const) {
-      await page.getByRole("button", { name: range, exact: true }).click();
-      await expect(page.getByRole("button", { name: range, exact: true })).toHaveClass(/primary/);
-
-      await expectRenderedVisxTrendChart(page, "performance-strength-signal-trend");
-      const ticks = await readXAxisTickState(page, "performance-strength-signal-trend");
-      const bounds = await readChartBounds(page, "performance-strength-signal-trend");
-
-      expect(ticks.length).toBeGreaterThanOrEqual(3);
-      expect(ticks.length).toBeLessThanOrEqual(5);
-      expectLandmarkLabelsPresent(ticks, /^W\d{1,2}$/);
-      expectTicksInsideChartBounds(ticks, bounds);
-    }
-
-    await page.getByRole("button", { name: "YTD", exact: true }).click();
-    await expect(page.getByRole("button", { name: "YTD", exact: true })).toHaveClass(/primary/);
-
     await expectRenderedVisxTrendChart(page, "performance-strength-signal-trend");
+    const ticks = await readXAxisTickState(page, "performance-strength-signal-trend");
     const bounds = await readChartBounds(page, "performance-strength-signal-trend");
     const markers = await readVisibleMarkerState(page, "performance-strength-signal-trend");
+
+    expect(ticks.length).toBeGreaterThanOrEqual(3);
+    expect(ticks.length).toBeLessThanOrEqual(5);
+    expectLandmarkLabelsPresent(ticks, /^W\d{1,2}$/);
+    expectTicksInsideChartBounds(ticks, bounds);
 
     expect(markers.length).toBeGreaterThanOrEqual(5);
     for (const marker of markers) {

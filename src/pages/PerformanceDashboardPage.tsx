@@ -229,7 +229,8 @@ type MetricTrendSummary = {
    Breadcrumb 2 — Static controls
    ============================================================================ */
 
-const TIME_RANGES: DashboardRange[] = ["4W", "8W", "12W", "YTD", "ALL"];
+const TIMELINE_ANALYSIS_RANGE: DashboardRange = "ALL";
+const SHARED_STRENGTH_TIMELINE_WEEKS = 104;
 
 /* ============================================================================
    Breadcrumb 3 — Small helpers
@@ -574,7 +575,7 @@ function buildPrimaryCoachingSignal(args: {
       ? `${waistTrend.changeAbs > 0 ? "+" : ""}${formatOneDecimal(waistTrend.changeAbs)} in`
       : "trend history is still building";
 
-  const body = `Strength Signal is ${strengthSignal.trend}. Body weight is ${weightText} over the selected range, and waist ${
+  const body = `Strength Signal is ${strengthSignal.trend}. Body weight is ${weightText} over time, and waist ${
     waistTrend.points >= 2 ? `is ${waistText}` : waistText
   }. Confidence is ${confidence.toLowerCase()}.`;
 
@@ -1130,7 +1131,7 @@ function buildDashboardViewModel(
       strength: {
         id: "strength",
         title: "Strength Signal Trend",
-        subtitle: `Weekly historical trend • ${range}`,
+        subtitle: "Recent trend over time",
         direction: strengthSignal.trend,
         momentumMessage,
         analysisRows: [
@@ -1174,7 +1175,7 @@ function buildDashboardViewModel(
       bodyWeight: {
         id: "bodyWeight",
         title: "Body Weight",
-        subtitle: `Weekly trend • ${range}`,
+        subtitle: "Recent trend over time",
         direction: getWeightTrendDirection(phase, weightTrend),
         analysisRows: [
           { label: "Current Weight", value: bodySnapshot.weightLabel },
@@ -1200,7 +1201,7 @@ function buildDashboardViewModel(
       waist: {
         id: "waist",
         title: "Waist Trend",
-        subtitle: `Weekly trend • ${range}`,
+        subtitle: "Recent trend over time",
         direction: getWaistTrendDirection(phase, waistTrend),
         analysisRows: [
           { label: "Current Waist", value: bodySnapshot.waistLabel },
@@ -1226,7 +1227,7 @@ function buildDashboardViewModel(
       volume: {
         id: "volume",
         title: "Training Load",
-        subtitle: `Weekly working-set volume • ${range}`,
+        subtitle: "Recent training load over time",
         direction: phase === "BULK" ? "improving" : "stable",
         analysisRows: [
           { label: "Source", value: "Completed working sets" },
@@ -1273,7 +1274,7 @@ function buildDashboardViewModel(
     ],
     debug: {
       dataSource: "Shared Strength engine",
-      dateWindowUsed: formatRangeLabel(range),
+      dateWindowUsed: "Timeline view",
       confidenceLevel:
         strengthSignal.exerciseSignals.length < 2
           ? "Low"
@@ -1308,42 +1309,6 @@ function buildDashboardViewModel(
    Breadcrumb 7 — UI helpers
    ============================================================================ */
 
-function TimeRangeControl({
-  activeRange,
-  onChange,
-}: {
-  activeRange: DashboardRange;
-  onChange: (range: DashboardRange) => void;
-}) {
-  return (
-    <div
-      className="row dashboard-range-scroll"
-      style={{
-        overflowX: "auto",
-        flexWrap: "nowrap",
-        WebkitOverflowScrolling: "touch",
-        scrollbarWidth: "none",
-      }}
-    >
-      {TIME_RANGES.map((range) => {
-        const active = range === activeRange;
-
-        return (
-          <button
-            key={range}
-            type="button"
-            className={`btn small ${active ? "primary" : ""}`}
-            onClick={() => onChange(range)}
-            style={{ flex: "0 0 auto" }}
-          >
-            {range}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function ResolutionControl<T extends string>({
   activeResolution,
   resolutions,
@@ -1354,7 +1319,7 @@ function ResolutionControl<T extends string>({
   onChange: (resolution: T) => void;
 }) {
   return (
-    <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+    <div className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
       {resolutions.map((resolution) => {
         const active = resolution === activeResolution;
         return (
@@ -1382,7 +1347,6 @@ export default function PerformanceDashboardPage() {
 
   const [activePhase, setActivePhase] = useState<DashboardPhase>("CUT");
   const [phaseLoaded, setPhaseLoaded] = useState(false);
-  const [activeRange, setActiveRange] = useState<DashboardRange>("8W");
   const [bodyWeightResolution, setBodyWeightResolution] =
     useState<BodyWeightResolution>("W");
   const [waistResolution, setWaistResolution] = useState<WaistResolution>("W");
@@ -1456,22 +1420,9 @@ export default function PerformanceDashboardPage() {
       try {
         await setCurrentPhase(dashboardPhaseToPhase(activePhase));
 
-        const weeks =
-          activeRange === "4W"
-            ? 4
-            : activeRange === "8W"
-              ? 8
-              : activeRange === "12W"
-                ? 12
-                : activeRange === "YTD"
-                  ? 52
-                  : activeRange === "ALL"
-                    ? 104
-                    : 12;
-
         const [result, trend, strengthV2Result] = await Promise.all([
           computeStrengthIndex(28),
-          computeStrengthTrend(weeks, 28),
+          computeStrengthTrend(SHARED_STRENGTH_TIMELINE_WEEKS, 28),
           computeStrengthSignalV2(),
         ]);
 
@@ -1495,7 +1446,7 @@ export default function PerformanceDashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [activePhase, activeRange, phaseLoaded]);
+  }, [activePhase, phaseLoaded]);
 
   const bodySnapshot = useMemo(
     () => buildCurrentBodySnapshot(dbSource?.bodyMetrics ?? []),
@@ -1548,8 +1499,8 @@ export default function PerformanceDashboardPage() {
   }, [sharedStrengthResult]);
 
   const bodyWeightChartData = useMemo(
-    () => buildBodyWeightTrend(dbSource?.bodyMetrics ?? [], activeRange),
-    [dbSource, activeRange]
+    () => buildBodyWeightTrend(dbSource?.bodyMetrics ?? [], TIMELINE_ANALYSIS_RANGE),
+    [dbSource]
   );
   const bodyWeightTimelineChartData = useMemo(
     () => buildBodyWeightTimelineTrend(dbSource?.bodyMetrics ?? [], bodyWeightResolution),
@@ -1557,8 +1508,8 @@ export default function PerformanceDashboardPage() {
   );
 
   const waistChartData = useMemo(
-    () => buildWaistTrend(dbSource?.bodyMetrics ?? [], activeRange),
-    [dbSource, activeRange]
+    () => buildWaistTrend(dbSource?.bodyMetrics ?? [], TIMELINE_ANALYSIS_RANGE),
+    [dbSource]
   );
   const waistTimelineChartData = useMemo(
     () => buildWaistTimelineTrend(dbSource?.bodyMetrics ?? [], waistResolution),
@@ -1584,7 +1535,7 @@ export default function PerformanceDashboardPage() {
     () =>
       buildDashboardViewModel(
         activePhase,
-        activeRange,
+        TIMELINE_ANALYSIS_RANGE,
         sharedStrengthSignal,
         bodySnapshot,
         bodyWeightChartData,
@@ -1593,7 +1544,6 @@ export default function PerformanceDashboardPage() {
       ),
     [
       activePhase,
-      activeRange,
       sharedStrengthSignal,
       bodySnapshot,
       bodyWeightChartData,
@@ -1649,7 +1599,7 @@ export default function PerformanceDashboardPage() {
 
     return {
       ...vm.charts.strength,
-      subtitle: `Weekly historical trend • ${activeRange}`,
+      subtitle: "Recent trend over time",
       direction,
       momentumMessage: buildMomentumMessage(changePct),
       analysisRows: [
@@ -1666,9 +1616,9 @@ export default function PerformanceDashboardPage() {
         { label: "Source", value: "Shared Strength engine" },
       ],
       interpretation:
-        "Strength Signal trend is now using the shared Strength engine for charted performance over the selected window.",
+        "Strength Signal trend is now using the shared Strength engine over time.",
     };
-  }, [vm.charts.strength, sharedStrengthChartData, activeRange, hasSharedStrengthChart]);
+  }, [vm.charts.strength, sharedStrengthChartData, hasSharedStrengthChart]);
 
   const sharedStrengthConfidenceLabel = useMemo(() => {
     if (!hasSharedStrengthChart) {
@@ -1732,16 +1682,15 @@ export default function PerformanceDashboardPage() {
           : "—";
 
     return {
-      heroSummary: `Shared Strength engine is active. Current Strength Signal is ${currentLabel} with ${directionText} trend over ${formatRangeLabel(activeRange).toLowerCase()}.`,
+      heroSummary: `Shared Strength engine is active. Current Strength Signal is ${currentLabel} with ${directionText} direction over time.`,
       flagshipBody: `Strength narrative is using the shared Strength engine only. Current signal, chart trend, strongest pattern, and confidence now reflect the same shared source of truth.`,
       evidence: [
         `Shared Strength Signal: ${currentLabel}`,
-        `Trend: ${changePct > 0 ? "+" : ""}${changePct.toFixed(2)}% over ${formatRangeLabel(activeRange)}`,
+        `Direction: ${changePct > 0 ? "+" : ""}${changePct.toFixed(2)}% over time`,
         `Strongest Pattern: ${sharedStrongestPatternLabel}`,
       ],
     };
   }, [
-    activeRange,
     hasSharedStrengthChart,
     sharedCurrentStrengthSignal,
     sharedStrengthChartData,
@@ -1749,8 +1698,8 @@ export default function PerformanceDashboardPage() {
   ]);
 
   const volumeChartData = useMemo(
-    () => buildVolumeTrend(dbSource?.sessions ?? [], dbSource?.sets ?? [], activeRange),
-    [dbSource, activeRange]
+    () => buildVolumeTrend(dbSource?.sessions ?? [], dbSource?.sets ?? [], TIMELINE_ANALYSIS_RANGE),
+    [dbSource]
   );
   const volumeTimelineChartData = useMemo(
     () => buildVolumeTimelineTrend(dbSource?.sessions ?? [], dbSource?.sets ?? [], volumeResolution),
@@ -1848,15 +1797,8 @@ export default function PerformanceDashboardPage() {
                 <div>
                   <h2 style={{ margin: 0 }}>Trend Charts</h2>
                   <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-                    Pattern recognition, quick analysis, and interpretation.
+                    Recent trend, current direction, and slide to explore history.
                   </div>
-                </div>
-
-                <div>
-                  <TimeRangeControl
-                    activeRange={activeRange}
-                    onChange={setActiveRange}
-                  />
                 </div>
               </div>
             </div>
@@ -1879,7 +1821,7 @@ export default function PerformanceDashboardPage() {
               showDebug={showDebug}
               setShowDebug={setShowDebug}
               sourceUsed="Shared Strength Engine"
-              dateWindowUsed={formatRangeLabel(activeRange)}
+              dateWindowUsed="Timeline view"
               confidenceLevel={sharedStrengthConfidenceLabel}
               exercisesIncluded={String(vm.debug.exercisesCounted)}
               currentStrengthSignal={
