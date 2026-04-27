@@ -14,7 +14,12 @@ export type SessionSnapshotTrackSummary = {
 type SessionSnapshotDerivation = {
   readiness: string;
   focusFlags: string[];
+  movementQualitySignals: string[];
+  stimulusCoverage: string[];
+  fatigueReadiness: string[];
   carryForward: string[];
+  nextWorkoutFocus: string[];
+  discussWithCoach: string[];
 };
 
 type SessionNoteSignals = {
@@ -29,7 +34,242 @@ type SessionNoteSignals = {
   hasDiagnosticFraming: boolean;
   hasCorrectiveOrRehabFraming: boolean;
   hasPositiveQualitySignal: boolean;
+  engagementSignals: string[];
+  loadSignals: string[];
+  fatigueSignals: string[];
+  jointSignals: string[];
+  qualitySignals: string[];
+  exerciseSignals: SessionExerciseSignal[];
 };
+
+type SessionExerciseSignal = {
+  exercise: string;
+  raw: string;
+  movementQuality: string[];
+  stimulus: string[];
+  fatigue: string[];
+  nextWorkout: string[];
+  discuss: string[];
+};
+
+function normalizeBulletText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function uniqueCompact(values: Array<string | null | undefined>, limit = 4): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of values) {
+    const value = normalizeBulletText(String(raw ?? ""));
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function splitSessionNoteThoughts(notesRaw: string): string[] {
+  return notesRaw
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .flatMap((line) =>
+      line
+        .split(/(?<=[.!?])\s+/)
+        .map((part) => part.trim())
+        .filter(Boolean)
+    );
+}
+
+function cleanExerciseObservation(value: string): string {
+  return normalizeBulletText(value)
+    .replace(/[.]+$/g, "")
+    .replace(/\s*;\s*/g, "; ");
+}
+
+function normalizeExerciseNameForMatch(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function inferMovementFamily(exerciseName: string): "Pull" | "Push" | "Shoulders" | "Carry" | "Other" {
+  const name = exerciseName.toLowerCase();
+  if (
+    name.includes("pulldown") ||
+    name.includes("pull down") ||
+    name.includes("row") ||
+    name.includes("pull-up") ||
+    name.includes("pullup") ||
+    name.includes("chin")
+  ) {
+    return "Pull";
+  }
+  if (name.includes("carry") || name.includes("farmer")) return "Carry";
+  if (
+    name.includes("press") ||
+    name.includes("bench") ||
+    name.includes("push")
+  ) {
+    if (name.includes("bradford") || name.includes("overhead") || name.includes("shoulder")) {
+      return "Shoulders";
+    }
+    return "Push";
+  }
+  if (name.includes("delt") || name.includes("lateral raise") || name.includes("upright row")) {
+    return "Shoulders";
+  }
+  return "Other";
+}
+
+function summarizeExerciseObservation(exercise: string, rawObservation: string): SessionExerciseSignal {
+  const raw = cleanExerciseObservation(rawObservation);
+  const text = raw.toLowerCase();
+  const movementQuality: string[] = [];
+  const stimulus: string[] = [];
+  const fatigue: string[] = [];
+  const nextWorkout: string[] = [];
+  const discuss: string[] = [];
+  const family = inferMovementFamily(exercise);
+
+  if (text.includes("breakthrough")) {
+    movementQuality.push(`${exercise}: breakthrough pattern found`);
+  }
+  if (text.includes("improved stretch") || text.includes("improved contraction")) {
+    movementQuality.push(`${exercise}: improved stretch and contraction`);
+  }
+  if (text.includes("lat dominance")) {
+    movementQuality.push(`${exercise}: lat dominance achieved`);
+    stimulus.push("Pull: strong lat stimulus");
+    nextWorkout.push("Maintain lat-driven pulling before increasing load");
+  }
+  if (text.includes("no biceps") || text.includes("no trap takeover") || text.includes("no biceps/trap takeover")) {
+    movementQuality.push(`${exercise}: no biceps/trap takeover`);
+    nextWorkout.push("Keep the same pulling setup that reduced arm and trap takeover");
+  }
+  if (text.includes("arms only at terminal reps")) {
+    movementQuality.push(`${exercise}: arms only at terminal reps`);
+    fatigue.push("Fatigue mostly appeared at terminal reps");
+  }
+  if (text.includes("slight trap involvement")) {
+    movementQuality.push(`${exercise}: slight trap involvement noted but controlled`);
+    discuss.push("Discuss reducing trap compensation during carries");
+  }
+  if (text.includes("stopped due to") || text.includes("stopped because of")) {
+    movementQuality.push(`${exercise}: ${raw}`);
+  }
+  if (text.includes("twinge") || text.includes("pain") || text.includes("sensitive")) {
+    fatigue.push(`${exercise}: ${raw}`);
+    if (text.includes("shoulder")) {
+      nextWorkout.push("Avoid behind-the-neck pressing positions");
+      discuss.push("Review safe overhead pressing range");
+      if (family === "Shoulders") {
+        stimulus.push("Shoulders: vertical pressing safe range needs review");
+      }
+    }
+  }
+  if (text.includes("too light")) {
+    movementQuality.push(`${exercise}: load looked too light`);
+    nextWorkout.push("Increase load only if mechanics stay clean");
+  }
+  if (text.includes("too heavy")) {
+    movementQuality.push(`${exercise}: load looked too heavy`);
+    nextWorkout.push("Keep pressing progression controlled");
+  }
+  if (
+    text.includes("form breaking") ||
+    text.includes("form breakdown") ||
+    text.includes("weakening") ||
+    text.includes("terminal reps")
+  ) {
+    fatigue.push(`${exercise}: terminal-rep quality dropped`);
+  }
+  if (text.includes("safe substitute") || text.includes("substitute") || text.includes("swap")) {
+    nextWorkout.push(`Keep ${exercise} on the safer variation that worked today`);
+  }
+
+  if (!movementQuality.length) {
+    movementQuality.push(`${exercise}: ${raw}`);
+  }
+
+  const hasLateralDeltRefinementSignal =
+    text.includes("medial delt") || text.includes("lateral delt");
+
+  if (!stimulus.length) {
+    if (family === "Pull" && (text.includes("lat") || text.includes("stretch") || text.includes("contraction"))) {
+      stimulus.push("Pull: strong lat stimulus");
+    } else if (family === "Push" && (text.includes("chest") || text.includes("pressing"))) {
+      stimulus.push("Push: chest-dominant pressing with stable mechanics");
+    } else if (
+      family === "Shoulders" &&
+      !hasLateralDeltRefinementSignal &&
+      (text.includes("delt") || text.includes("shoulder"))
+    ) {
+      stimulus.push("Shoulders: pressing pattern needs tighter isolation and setup");
+    }
+  }
+
+  if (hasLateralDeltRefinementSignal) {
+    nextWorkout.push("Improve medial delt isolation");
+    discuss.push("Review medial delt isolation setup");
+    stimulus.push("Shoulders: lateral delt isolation needs refinement");
+  }
+
+  return {
+    exercise,
+    raw,
+    movementQuality: uniqueCompact(movementQuality, 2),
+    stimulus: uniqueCompact(stimulus, 2),
+    fatigue: uniqueCompact(fatigue, 2),
+    nextWorkout: uniqueCompact(nextWorkout, 3),
+    discuss: uniqueCompact(discuss, 3),
+  };
+}
+
+function deriveExerciseSignals(
+  sessionNotes: string,
+  trackSummaries: SessionSnapshotTrackSummary[]
+): SessionExerciseSignal[] {
+  const thoughts = splitSessionNoteThoughts(sessionNotes);
+  const knownExercises = trackSummaries.map((summary) => ({
+    name: summary.displayName,
+    key: normalizeExerciseNameForMatch(summary.displayName),
+  }));
+  const signals: SessionExerciseSignal[] = [];
+
+  for (const thought of thoughts) {
+    if (/^(carry forward|session notes|start state|end verdict):/i.test(thought)) continue;
+    const colonIndex = thought.indexOf(":");
+    if (colonIndex <= 0) continue;
+
+    const rawExercise = thought.slice(0, colonIndex).trim();
+    const rawObservation = thought.slice(colonIndex + 1).trim();
+    if (!rawExercise || !rawObservation) continue;
+
+    const exerciseKey = normalizeExerciseNameForMatch(rawExercise);
+    const matched =
+      knownExercises.find((candidate) => exerciseKey === candidate.key) ??
+      knownExercises.find((candidate) => exerciseKey.includes(candidate.key) || candidate.key.includes(exerciseKey));
+
+    if (!matched) continue;
+    signals.push(summarizeExerciseObservation(matched.name, rawObservation));
+  }
+
+  return signals;
+}
+
+function pushRegexMatches(
+  target: string[],
+  notesRaw: string,
+  regex: RegExp,
+  formatter: (match: RegExpExecArray) => string | null
+) {
+  for (const match of notesRaw.matchAll(regex)) {
+    const next = formatter(match as RegExpExecArray);
+    if (next) target.push(next);
+  }
+}
 
 function deriveSessionNoteSignals(sessionNotes?: string): SessionNoteSignals {
   const notesRaw = String(sessionNotes ?? "");
@@ -37,6 +277,11 @@ function deriveSessionNoteSignals(sessionNotes?: string): SessionNoteSignals {
   const explicitLines = notesRaw.split("\n");
   const explicitStart = explicitLines.findIndex((line) => line.trim().toLowerCase() === "carry forward:");
   const explicitCarryForward: string[] = [];
+  const engagementSignals: string[] = [];
+  const loadSignals: string[] = [];
+  const fatigueSignals: string[] = [];
+  const jointSignals: string[] = [];
+  const qualitySignals: string[] = [];
 
   if (explicitStart >= 0) {
     for (let i = explicitStart + 1; i < explicitLines.length; i += 1) {
@@ -47,6 +292,71 @@ function deriveSessionNoteSignals(sessionNotes?: string): SessionNoteSignals {
       if (explicitCarryForward.length >= 3) break;
     }
   }
+
+  pushRegexMatches(
+    engagementSignals,
+    notesRaw,
+    /(?<!not\s)\bfelt in ([a-z0-9 /-]+)/gi,
+    (match) => {
+      const area = normalizeBulletText(match[1]).replace(/[.,;:!?]+$/, "");
+      return area ? `Good engagement in ${area}` : null;
+    }
+  );
+
+  pushRegexMatches(
+    engagementSignals,
+    notesRaw,
+    /\b(?:not felt in|didn't feel in|did not feel in) ([a-z0-9 /-]+)/gi,
+    (match) => {
+      const area = normalizeBulletText(match[1]).replace(/[.,;:!?]+$/, "");
+      return area ? `Poor engagement in ${area}` : null;
+    }
+  );
+
+  pushRegexMatches(
+    qualitySignals,
+    notesRaw,
+    /\b(form (?:breaking|breakdown|weakening)|technique (?:breaking|breaking down|slipping)|lost position)\b/gi,
+    (match) => {
+      const phrase = normalizeBulletText(match[1]).replace(/[.,;:!?]+$/, "");
+      return phrase ? `${phrase[0].toUpperCase()}${phrase.slice(1)}` : null;
+    }
+  );
+
+  pushRegexMatches(
+    fatigueSignals,
+    notesRaw,
+    /\b(fatigue|fatigued|gassed|tired|exhausted|reduced capacity|cut volume|cut short)\b/gi,
+    (match) => {
+      const phrase = normalizeBulletText(match[1]).replace(/[.,;:!?]+$/, "");
+      return phrase ? `${phrase[0].toUpperCase()}${phrase.slice(1)} showed up` : null;
+    }
+  );
+
+  pushRegexMatches(
+    loadSignals,
+    notesRaw,
+    /\btoo light\b/gi,
+    () => "Load looked too light"
+  );
+  pushRegexMatches(
+    loadSignals,
+    notesRaw,
+    /\btoo heavy\b/gi,
+    () => "Load looked too heavy"
+  );
+
+  pushRegexMatches(
+    jointSignals,
+    notesRaw,
+    /\b(knee|elbow|shoulder|hip|wrist|ankle|low back|back)\s+(pain|felt|feedback|tight|tightness|unstable|instability|irritated|fatigue)\b/gi,
+    (match) => {
+      const joint = normalizeBulletText(match[1]);
+      const feedback = normalizeBulletText(match[2]);
+      if (!joint || !feedback) return null;
+      return `${joint[0].toUpperCase()}${joint.slice(1)} ${feedback}`;
+    }
+  );
 
   return {
     notes,
@@ -98,6 +408,12 @@ function deriveSessionNoteSignals(sessionNotes?: string): SessionNoteSignals {
       notes.includes("good") ||
       notes.includes("better") ||
       notes.includes("ready"),
+    engagementSignals: uniqueCompact(engagementSignals, 4),
+    loadSignals: uniqueCompact(loadSignals, 3),
+    fatigueSignals: uniqueCompact(fatigueSignals, 4),
+    jointSignals: uniqueCompact(jointSignals, 4),
+    qualitySignals: uniqueCompact(qualitySignals, 4),
+    exerciseSignals: [],
   };
 }
 
@@ -196,20 +512,157 @@ function deriveSessionCarryForward(params: {
   return Array.from(new Set(reminders)).slice(0, 3);
 }
 
+function deriveMovementQualitySignals(params: {
+  noteSignals: SessionNoteSignals;
+}): string[] {
+  const { noteSignals } = params;
+  if (noteSignals.exerciseSignals.length) {
+    const primary = noteSignals.exerciseSignals
+      .map((signal) => signal.movementQuality[0])
+      .filter(Boolean);
+    const secondary = noteSignals.exerciseSignals.flatMap((signal) => signal.movementQuality.slice(1));
+    return uniqueCompact([...primary, ...secondary], 4);
+  }
+  const bullets = [
+    ...noteSignals.engagementSignals,
+    ...noteSignals.qualitySignals,
+  ];
+
+  if (!bullets.length && noteSignals.hasPositiveQualitySignal) {
+    bullets.push("Movement quality looked solid");
+  }
+
+  return uniqueCompact(bullets, 4);
+}
+
+function deriveStimulusCoverage(params: {
+  noteSignals: SessionNoteSignals;
+  totalExercises: number;
+  completedExercises: number;
+}): string[] {
+  const { noteSignals, totalExercises, completedExercises } = params;
+  const bullets: string[] = [];
+
+  bullets.push(
+    totalExercises > 0
+      ? `${completedExercises}/${totalExercises} exercises produced completed work`
+      : "No completed exercise coverage yet"
+  );
+
+  if (noteSignals.exerciseSignals.length) {
+    bullets.push(...noteSignals.exerciseSignals.flatMap((signal) => signal.stimulus));
+  } else {
+    bullets.push(...noteSignals.engagementSignals.map((signal) =>
+      signal.startsWith("Good engagement in ")
+        ? signal.replace("Good engagement in ", "Stimulus reached ")
+        : signal.startsWith("Poor engagement in ")
+          ? signal.replace("Poor engagement in ", "Stimulus missed ")
+          : signal
+    ));
+  }
+
+  bullets.push(...noteSignals.loadSignals);
+
+  return uniqueCompact(bullets, 4);
+}
+
+function deriveFatigueReadinessBullets(params: {
+  noteSignals: SessionNoteSignals;
+  readiness: string;
+}): string[] {
+  const { noteSignals, readiness } = params;
+  const bullets = [
+    ...noteSignals.exerciseSignals.flatMap((signal) => signal.fatigue),
+    ...noteSignals.fatigueSignals,
+    ...noteSignals.jointSignals,
+  ];
+
+  if (!bullets.length) {
+    if (readiness.startsWith("Readiness: good")) bullets.push("Readiness looked solid");
+    else if (readiness.startsWith("Readiness: steady")) bullets.push("Readiness looked steady");
+    else if (readiness.startsWith("Readiness: unknown")) bullets.push("Readiness is still building");
+  }
+
+  return uniqueCompact(bullets, 4);
+}
+
+function deriveDiscussWithCoach(params: {
+  noteSignals: SessionNoteSignals;
+  currentTrack: Pick<Track, "displayName" | "trackType" | "trackingMode"> | null;
+}): string[] {
+  const { noteSignals, currentTrack } = params;
+  const bullets: string[] = [...noteSignals.exerciseSignals.flatMap((signal) => signal.discuss)];
+
+  if (noteSignals.jointSignals.length) {
+    bullets.push(`Review joint feedback around ${currentTrack?.displayName ?? "today's main work"}`);
+  }
+  if (noteSignals.qualitySignals.length) {
+    bullets.push("Review form breakdown before adding load");
+  }
+  if (noteSignals.loadSignals.includes("Load looked too heavy")) {
+    bullets.push("Discuss a lighter entry load or rep target");
+  }
+  if (noteSignals.loadSignals.includes("Load looked too light")) {
+    bullets.push("Discuss a faster progression step");
+  }
+  if (noteSignals.engagementSignals.some((signal) => signal.startsWith("Poor engagement in "))) {
+    bullets.push("Review setup cues to improve target-muscle coverage");
+  }
+  if (noteSignals.hasExerciseSubstitution) {
+    bullets.push("Confirm whether the substitution stays in next session");
+  }
+
+  return uniqueCompact(bullets, 3);
+}
+
+function deriveNextWorkoutFocus(params: {
+  noteSignals: SessionNoteSignals;
+}): string[] {
+  const { noteSignals } = params;
+  const bullets = noteSignals.exerciseSignals.length
+    ? [
+        ...noteSignals.exerciseSignals
+          .map((signal) => signal.nextWorkout[0])
+          .filter(Boolean),
+        ...noteSignals.exerciseSignals.flatMap((signal) => signal.nextWorkout.slice(1)),
+      ]
+    : [];
+
+  if (!bullets.length) {
+    if (noteSignals.hasFatigueOrReducedCapacity) {
+      bullets.push("Keep progression conservative if fatigue returns early");
+    }
+    if (noteSignals.hasExerciseSubstitution) {
+      bullets.push("Start with the safer exercise option that already worked");
+    }
+    if (noteSignals.hasCompensationOrBreakdown) {
+      bullets.push("Clean up technique before increasing load");
+    }
+  }
+
+  return uniqueCompact(bullets, 3);
+}
+
 function deriveSessionSnapshot(params: {
   sessionNotes?: string;
   totalExercises: number;
   completedExercises: number;
   currentTrack: Pick<Track, "displayName" | "trackType" | "trackingMode"> | null;
   currentRecommendation: WorkingRecommendation | null;
+  trackSummaries: SessionSnapshotTrackSummary[];
 }): SessionSnapshotDerivation {
   const noteSignals = deriveSessionNoteSignals(params.sessionNotes);
+  noteSignals.exerciseSignals = deriveExerciseSignals(
+    String(params.sessionNotes ?? ""),
+    params.trackSummaries
+  );
+  const readiness = deriveSessionReadiness({
+    noteSignals,
+    totalExercises: params.totalExercises,
+    completedExercises: params.completedExercises,
+  });
   return {
-    readiness: deriveSessionReadiness({
-      noteSignals,
-      totalExercises: params.totalExercises,
-      completedExercises: params.completedExercises,
-    }),
+    readiness,
     focusFlags: deriveSessionFocusFlags({
       noteSignals,
       totalExercises: params.totalExercises,
@@ -217,8 +670,27 @@ function deriveSessionSnapshot(params: {
       currentTrack: params.currentTrack,
       currentRecommendation: params.currentRecommendation,
     }),
+    movementQualitySignals: deriveMovementQualitySignals({
+      noteSignals,
+    }),
+    stimulusCoverage: deriveStimulusCoverage({
+      noteSignals,
+      totalExercises: params.totalExercises,
+      completedExercises: params.completedExercises,
+    }),
+    fatigueReadiness: deriveFatigueReadinessBullets({
+      noteSignals,
+      readiness,
+    }),
     carryForward: deriveSessionCarryForward({
       noteSignals,
+    }),
+    nextWorkoutFocus: deriveNextWorkoutFocus({
+      noteSignals,
+    }),
+    discussWithCoach: deriveDiscussWithCoach({
+      noteSignals,
+      currentTrack: params.currentTrack,
     }),
   };
 }
@@ -312,6 +784,7 @@ export function buildSessionSnapshotText(params: {
     completedExercises,
     currentTrack,
     currentRecommendation,
+    trackSummaries,
   });
 
   const lines: string[] = [];
@@ -328,11 +801,51 @@ export function buildSessionSnapshotText(params: {
     lines.push(`- ${flag}`);
   }
 
+  if (derived.movementQualitySignals.length) {
+    lines.push("");
+    lines.push("Movement Quality Signals");
+    for (const item of derived.movementQualitySignals) {
+      lines.push(`- ${item}`);
+    }
+  }
+
+  if (derived.stimulusCoverage.length) {
+    lines.push("");
+    lines.push("Stimulus / Coverage");
+    for (const item of derived.stimulusCoverage) {
+      lines.push(`- ${item}`);
+    }
+  }
+
+  if (derived.fatigueReadiness.length) {
+    lines.push("");
+    lines.push("Fatigue / Readiness");
+    for (const item of derived.fatigueReadiness) {
+      lines.push(`- ${item}`);
+    }
+  }
+
   if (derived.carryForward.length) {
     lines.push("");
     lines.push("Carry Forward");
     for (const reminder of derived.carryForward) {
       lines.push(`- ${reminder}`);
+    }
+  }
+
+  if (derived.nextWorkoutFocus.length) {
+    lines.push("");
+    lines.push("Next Workout Focus");
+    for (const item of derived.nextWorkoutFocus) {
+      lines.push(`- ${item}`);
+    }
+  }
+
+  if (derived.discussWithCoach.length) {
+    lines.push("");
+    lines.push("Discuss with Gaz");
+    for (const item of derived.discussWithCoach) {
+      lines.push(`- ${item}`);
     }
   }
 
