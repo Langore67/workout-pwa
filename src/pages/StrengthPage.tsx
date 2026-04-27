@@ -12,7 +12,6 @@
 /*  Changes (STRENGTHPAGE-07)                                                 */
 /*  ✅ Align Relative Strength chart with shared chart contract               */
 /*  ✅ Add shortLabel support for compact shared chart readouts               */
-/*  ✅ Remove old showBrush prop usage after chart paging refactor            */
 /*  ✅ Preserve dashboard, pattern scores, and weekly trend table             */
 /*                                                                            */
 /*  Prior version (STRENGTHPAGE-06)                                           */
@@ -43,6 +42,7 @@ import {
 import TrendChartCard from "../components/charts/TrendChartCard";
 import VisxTrendChartCard from "../components/charts/VisxTrendChartCard";
 import { formatTwoDecimals } from "../components/charts/chartFormatters";
+import { formatTimelineLabel, monthKeyFromMs } from "../components/charts/timelineLabels";
 import InfoStubButton from "../components/information/InfoStubButton";
 import { buildStrengthPageViewModel } from "./strength/strengthPageViewModel";
 import {
@@ -59,24 +59,6 @@ type StrengthResolution = "W" | "M";
 
 const MODE_KEY = "workout_pwa_strength_mode_v1";
 const STRENGTH_SIGNAL_TIMELINE_WEEKS = 104;
-
-function monthKeyFromMs(ms: number) {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function monthLabelFromKey(key: string) {
-  const [year, month] = key.split("-");
-  const d = new Date(Number(year), Number(month) - 1, 1);
-  return d.toLocaleDateString(undefined, { month: "short" });
-}
-
-function weekNumberFromMs(ms: number) {
-  const d = new Date(ms);
-  const yearStart = new Date(d.getFullYear(), 0, 1);
-  const diffDays = Math.floor((d.getTime() - yearStart.getTime()) / (24 * 60 * 60 * 1000));
-  return Math.floor(diffDays / 7) + 1;
-}
 
 function average(values: number[]) {
   if (!values.length) return 0;
@@ -105,7 +87,7 @@ function buildStrengthSignalTimelineChartData(
 
   if (resolution === "W") {
     return chronological.map((row) => ({
-      label: `W${weekNumberFromMs(row.weekEndMs)}`,
+      label: formatTimelineLabel({ resolution: "W", unitStartMs: row.weekEndMs }),
       value: row.normalizedIndex,
       date: new Date(row.weekEndMs).toISOString().slice(0, 10),
       unitStartMs: row.weekEndMs,
@@ -125,7 +107,11 @@ function buildStrengthSignalTimelineChartData(
   return Array.from(buckets.entries())
     .sort((a, b) => a[1].at - b[1].at)
     .map(([key, bucket]) => ({
-      label: monthLabelFromKey(key),
+      label: formatTimelineLabel({
+        resolution: "M",
+        unitStartMs: bucket.at,
+        monthKey: key,
+      }),
       value: average(bucket.values),
       date: key,
       unitStartMs: bucket.at,
