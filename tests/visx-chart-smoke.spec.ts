@@ -113,6 +113,99 @@ async function seedSharedStrengthTrendData(page: Page) {
   });
 }
 
+async function seedExtendedStrengthTimelineData(page: Page) {
+  return await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const uuid = () => crypto.randomUUID();
+
+    const exercises = [
+      { name: "Back Squat", equipment: "Barbell", category: "Barbell", baseWeight: 225 },
+      { name: "Romanian Deadlift", equipment: "Barbell", category: "Barbell", baseWeight: 245 },
+      { name: "Bench Press", equipment: "Barbell", category: "Barbell", baseWeight: 185 },
+      { name: "Pull Up", equipment: "Bodyweight", category: "Bodyweight", baseWeight: 0 },
+    ];
+
+    const tracks = await Promise.all(
+      exercises.map(async (exercise, index) => {
+        const exerciseId = uuid();
+        const trackId = uuid();
+
+        await db.exercises.add({
+          id: exerciseId,
+          name: exercise.name,
+          equipment: exercise.equipment,
+          category: exercise.category,
+          equipmentTags: [exercise.category.toLowerCase()],
+          createdAt: now - (520 + index) * dayMs,
+        });
+
+        await db.tracks.add({
+          id: trackId,
+          exerciseId,
+          trackType: "strength",
+          displayName: exercise.name,
+          trackingMode: "weightedReps",
+          warmupSetsDefault: 0,
+          workingSetsDefault: 1,
+          repMin: 4,
+          repMax: 8,
+          restSecondsDefault: 150,
+          weightJumpDefault: 5,
+          createdAt: now - (520 + index) * dayMs,
+        });
+
+        return { ...exercise, trackId };
+      })
+    );
+
+    await db.bodyMetrics.bulkAdd(
+      Array.from({ length: 90 }, (_, index) => {
+        const measuredAt = now - index * 7 * dayMs;
+        return {
+          id: uuid(),
+          weightLb: 208 - index * 0.25,
+          measuredAt,
+          takenAt: measuredAt,
+          createdAt: measuredAt,
+        };
+      })
+    );
+
+    for (let week = 0; week < 80; week += 1) {
+      const sessionId = uuid();
+      const sessionAt = now - (79 - week) * 7 * dayMs;
+
+      await db.sessions.add({
+        id: sessionId,
+        startedAt: sessionAt,
+        endedAt: sessionAt + 45 * 60 * 1000,
+      });
+
+      for (const exercise of tracks) {
+        const load =
+          exercise.name === "Pull Up" ? 0 : exercise.baseWeight + week * 2.5;
+
+        await db.sets.add({
+          id: uuid(),
+          sessionId,
+          trackId: exercise.trackId,
+          setType: "working",
+          weight: load,
+          reps: exercise.name === "Pull Up" ? 6 : 5,
+          rpe: 8,
+          completedAt: sessionAt + 5 * 60 * 1000,
+          createdAt: sessionAt + 5 * 60 * 1000,
+        });
+      }
+    }
+  });
+}
+
 async function seedPerformanceRangeData(page: Page) {
   return await page.evaluate(async () => {
     // @ts-ignore
@@ -384,6 +477,8 @@ async function readXAxisTickState(page: Page, testIdBase: string) {
       const rect = node.getBoundingClientRect();
       return {
         text: (node.textContent ?? "").trim(),
+        date: String(node.getAttribute("data-tick-date") ?? ""),
+        index: Number(node.getAttribute("data-tick-index") ?? "-1"),
         left: rect.left,
         right: rect.right,
         width: rect.width,
@@ -495,6 +590,12 @@ async function readActivePointState(page: Page, testIdBase: string) {
   });
 }
 
+async function readOverlayCursor(page: Page, testIdBase: string) {
+  const overlay = page.getByTestId(`${testIdBase}:overlay`);
+  await expect(overlay).toBeVisible({ timeout: 15000 });
+  return await overlay.evaluate((node) => window.getComputedStyle(node).cursor);
+}
+
 test.describe("VisX chart smoke", () => {
   test.beforeEach(async ({ page }) => {
     await goto(page, "/");
@@ -513,7 +614,7 @@ test.describe("VisX chart smoke", () => {
     await expectRenderedVisxTrendChart(page, "performance-strength-signal-trend");
   });
 
-  test("Strength VisX chart hover/readout and slider window interactions stay wired", async ({
+  test("Strength VisX chart hover/readout stays wired", async ({
     page,
   }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium", "Pointer interaction coverage is chromium-only");
@@ -527,22 +628,47 @@ test.describe("VisX chart smoke", () => {
     const readoutValue = card.getByTestId("strength-signal-trend:readout-value");
     const readoutLabel = card.getByTestId("strength-signal-trend:readout-label");
     const chart = card.getByTestId("strength-signal-trend:svg");
-    const slider = card.getByTestId("strength-signal-trend:slider-input");
     const baselineCircles = await chart.locator("circle").count();
 
     expect(((await readoutValue.textContent()) ?? "").trim()).not.toBe("");
     expect(((await readoutLabel.textContent()) ?? "").trim()).not.toBe("");
-    await expect(slider).toHaveAttribute("aria-valuenow", "7");
+    await expect(card.getByTestId("strength-signal-trend:slider-input")).toHaveCount(0);
 
     await hoverVisxChart(page, "strength-signal-trend", 0.5);
 
     await expect.poll(async () => chart.locator("circle").count()).toBeGreaterThan(baselineCircles);
+  });
 
-    await setSliderValue(page, "strength-signal-trend", 2);
-    await expect(slider).toHaveAttribute("aria-valuenow", "3");
+  test("Strength page strength signal uses W/M timeline controls and drag surface without slider", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium", "Strength timeline coverage is chromium-only");
 
-    await setSliderValue(page, "strength-signal-trend", 5);
-    await expect(slider).toHaveAttribute("aria-valuenow", "6");
+    await seedExtendedStrengthTimelineData(page);
+    await goto(page, "/strength");
+
+    const testIdBase = "strength-signal-trend";
+    await expectRenderedVisxTrendChart(page, testIdBase);
+    const section = page
+      .getByText("Strength Signal", { exact: true })
+      .locator("xpath=ancestor::div[contains(@class,'card')][1]");
+
+    await expect(section.getByRole("button", { name: "W", exact: true })).toBeVisible();
+    await expect(section.getByRole("button", { name: "M", exact: true })).toBeVisible();
+    await expect(page.getByTestId(`${testIdBase}:slider-input`)).toHaveCount(0);
+
+    const weeklyTicks = await readXAxisTickState(page, testIdBase);
+    expect(weeklyTicks.length).toBe(5);
+    expectLandmarkLabelsPresent(weeklyTicks, /^W\d{1,2}$/);
+
+    await section.getByRole("button", { name: "M", exact: true }).click();
+    await expect(section.getByRole("button", { name: "M", exact: true })).toHaveClass(/primary/);
+
+    const monthlyTicks = await readXAxisTickState(page, testIdBase);
+    expect(monthlyTicks.length).toBeGreaterThanOrEqual(2);
+    expect(monthlyTicks.length).toBeLessThanOrEqual(5);
+    expectLandmarkLabelsPresent(monthlyTicks, /^[A-Z][a-z]{2}$/);
+    expect(await readOverlayCursor(page, testIdBase)).toBe("grab");
   });
 
   test("Performance VisX chart hover/readout stays wired", async ({ page }, testInfo) => {
@@ -717,10 +843,10 @@ test.describe("VisX chart smoke", () => {
     await dragVisxChart(page, testIdBase, 140);
     await waitForTimelineDragToSettle(page, testIdBase);
     const afterDragTicks = await readXAxisTickState(page, testIdBase);
-    expect(afterDragTicks.map((tick) => tick.text)).not.toEqual(monthlyTicks.map((tick) => tick.text));
+    expect(afterDragTicks.map((tick) => tick.date)).not.toEqual(monthlyTicks.map((tick) => tick.date));
   });
 
-  test("Performance volume uses W/M timeline controls with drag navigation and no slider", async ({
+  test("Performance volume uses W/M timeline controls and drag surface without slider", async ({
     page,
   }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium", "Volume timeline coverage is chromium-only");
@@ -748,11 +874,7 @@ test.describe("VisX chart smoke", () => {
     const monthlyTicks = await readXAxisTickState(page, testIdBase);
     expect(monthlyTicks.length).toBe(5);
     expectLandmarkLabelsPresent(monthlyTicks, /^[A-Z][a-z]{2}$/);
-
-    await dragVisxChart(page, testIdBase, 140);
-    await waitForTimelineDragToSettle(page, testIdBase);
-    const afterDragTicks = await readXAxisTickState(page, testIdBase);
-    expect(afterDragTicks.map((tick) => tick.text)).not.toEqual(monthlyTicks.map((tick) => tick.text));
+    expect(await readOverlayCursor(page, testIdBase)).toBe("grab");
   });
 
   test("Performance strength signal uses W/M timeline controls with drag navigation and no slider", async ({
@@ -788,7 +910,7 @@ test.describe("VisX chart smoke", () => {
     await dragVisxChart(page, testIdBase, 140);
     await waitForTimelineDragToSettle(page, testIdBase);
     const afterDragTicks = await readXAxisTickState(page, testIdBase);
-    expect(afterDragTicks.map((tick) => tick.text)).not.toEqual(monthlyTicks.map((tick) => tick.text));
+    expect(afterDragTicks.map((tick) => tick.date)).not.toEqual(monthlyTicks.map((tick) => tick.date));
   });
 
   test("Performance mobile timeline charts keep x-axis labels readable", async ({

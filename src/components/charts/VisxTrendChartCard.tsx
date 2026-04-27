@@ -379,7 +379,7 @@ export default function VisxTrendChartCard({
     paneNavigationMode === "movingPane" &&
     data.length > safeWindowSize;
   const dragInteractionEnabled = canDragScroll && visibleData.length > 1;
-  const showRenderedTrendLine = showTrendLine && !dragInteractionEnabled;
+  const showRenderedTrendLine = showTrendLine && !dragScrollEnabled;
   const trendKey = isSingleSeries ? `__trend_${series[0].key}` : "__trend";
 
   const chartData = useMemo(() => {
@@ -549,6 +549,8 @@ export default function VisxTrendChartCard({
       : [];
   const resolveTickLabelProps = (pointIndex: number) => ({
     "data-testid": `${resolvedTestIdBase}:x-tick`,
+    "data-tick-index": String(pointIndex),
+    "data-tick-date": String(chartData[pointIndex]?.date ?? ""),
     fill: "var(--muted)",
     fontSize: 11,
     textAnchor:
