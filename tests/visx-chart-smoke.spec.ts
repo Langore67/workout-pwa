@@ -656,6 +656,10 @@ test.describe("VisX chart smoke", () => {
     await expect(section.getByRole("button", { name: "W", exact: true })).toBeVisible();
     await expect(section.getByRole("button", { name: "M", exact: true })).toBeVisible();
     await expect(page.getByTestId(`${testIdBase}:slider-input`)).toHaveCount(0);
+    await expect(page.getByTestId(`${testIdBase}:trend-line`)).toHaveCount(0);
+    await expect(page.getByTestId(`${testIdBase}:y-axis-right`)).toBeVisible();
+    await expect(page.getByTestId(`${testIdBase}:y-axis-left`)).toHaveCount(0);
+    await expect(page.getByTestId(`${testIdBase}:svg`)).toHaveAttribute("data-y-axis-side", "right");
 
     const weeklyTicks = await readXAxisTickState(page, testIdBase);
     expect(weeklyTicks.length).toBe(5);

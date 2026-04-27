@@ -379,6 +379,7 @@ export default function VisxTrendChartCard({
     paneNavigationMode === "movingPane" &&
     data.length > safeWindowSize;
   const dragInteractionEnabled = canDragScroll && visibleData.length > 1;
+  const suppressLegacyViewportUi = dragScrollEnabled && paneNavigationMode === "movingPane";
   const showRenderedTrendLine = showTrendLine && !dragScrollEnabled;
   const trendKey = isSingleSeries ? `__trend_${series[0].key}` : "__trend";
 
@@ -838,6 +839,7 @@ export default function VisxTrendChartCard({
             role="img"
             aria-label={title}
             data-testid={`${resolvedTestIdBase}:svg`}
+            data-y-axis-side={yAxisSide}
           >
             <Group left={margin.left} top={margin.top}>
               <GridRows
@@ -849,35 +851,39 @@ export default function VisxTrendChartCard({
               />
 
               {yAxisSide === "right" ? (
-                <AxisRight
-                  left={innerWidth}
-                  scale={yScale}
-                  numTicks={5}
-                  tickFormat={(value) => yAxisTickFormatter?.(Number(value)) ?? String(value)}
-                  stroke="var(--line2)"
-                  tickStroke="var(--line2)"
-                  tickLabelProps={() => ({
-                    fill: "var(--muted)",
-                    fontSize: 11,
-                    textAnchor: "start",
-                    dx: "0.33em",
-                    dy: "0.33em",
-                  })}
-                />
+                <Group data-testid={`${resolvedTestIdBase}:y-axis-right`}>
+                  <AxisRight
+                    left={innerWidth}
+                    scale={yScale}
+                    numTicks={5}
+                    tickFormat={(value) => yAxisTickFormatter?.(Number(value)) ?? String(value)}
+                    stroke="var(--line2)"
+                    tickStroke="var(--line2)"
+                    tickLabelProps={() => ({
+                      fill: "var(--muted)",
+                      fontSize: 11,
+                      textAnchor: "start",
+                      dx: "0.33em",
+                      dy: "0.33em",
+                    })}
+                  />
+                </Group>
               ) : (
-                <AxisLeft
-                  scale={yScale}
-                  numTicks={5}
-                  tickFormat={(value) => yAxisTickFormatter?.(Number(value)) ?? String(value)}
-                  stroke="var(--line2)"
-                  tickStroke="var(--line2)"
-                  tickLabelProps={() => ({
-                    fill: "var(--muted)",
-                    fontSize: 11,
-                    textAnchor: "end",
-                    dy: "0.33em",
-                  })}
-                />
+                <Group data-testid={`${resolvedTestIdBase}:y-axis-left`}>
+                  <AxisLeft
+                    scale={yScale}
+                    numTicks={5}
+                    tickFormat={(value) => yAxisTickFormatter?.(Number(value)) ?? String(value)}
+                    stroke="var(--line2)"
+                    tickStroke="var(--line2)"
+                    tickLabelProps={() => ({
+                      fill: "var(--muted)",
+                      fontSize: 11,
+                      textAnchor: "end",
+                      dy: "0.33em",
+                    })}
+                  />
+                </Group>
               )}
 
               <Group left={dragOffsetPx}>
@@ -904,6 +910,7 @@ export default function VisxTrendChartCard({
 
                 {showRenderedTrendLine && isSingleSeries ? (
                   <LinePath<ChartPoint>
+                    data-testid={`${resolvedTestIdBase}:trend-line`}
                     data={trendPoints}
                     x={(point) => point.x}
                     y={(point) => yScale(point.datum[trendKey] as number)}
@@ -1005,7 +1012,7 @@ export default function VisxTrendChartCard({
         )}
       </div>
 
-      {data.length > safeWindowSize && !dragInteractionEnabled ? (
+      {data.length > safeWindowSize && !suppressLegacyViewportUi ? (
         paneNavigationMode === "movingPane" ? (
           <ChartViewportSlider
             totalCount={data.length}
