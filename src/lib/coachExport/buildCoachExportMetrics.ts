@@ -265,6 +265,116 @@ function uniqueCompact(values: Array<string | null | undefined>, limit = 4): str
   return out;
 }
 
+type ScoredSignalInput = {
+  text: string;
+  sessionIndex: number;
+};
+
+function normalizeSignalKey(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/\b(lat pulldown|3-point db row|bradford press|farmer'?s carry|lateral raise|bench press|incline press)\b/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function canonicalizeSignal(value: string) {
+  const text = value.toLowerCase();
+  if (/medial delt|lateral delt/.test(text)) return "shoulder-delt-isolation";
+  if (/behind-the-neck|overhead pressing range|shoulder twinge|vertical pressing/.test(text)) {
+    return "shoulder-overhead-safety";
+  }
+  if (/trap compensation|trap involvement/.test(text)) return "carry-trap-compensation";
+  if (/lat-driven pulling|lat stimulus|lat dominance/.test(text)) return "pull-lat-pattern";
+  if (/terminal reps|terminal-rep quality/.test(text)) return "terminal-rep-fatigue";
+  if (/joint feedback/.test(text)) return "joint-feedback";
+  if (/form breakdown|adding load/.test(text)) return "form-before-load";
+  if (/stopped due to/.test(text)) return "stopped-movement";
+  if (/improved stretch and contraction/.test(text)) return "improved-stretch-contraction";
+  if (/breakthrough/.test(text)) return "breakthrough-pattern";
+  return normalizeSignalKey(value) || text;
+}
+
+function signalBaseScore(value: string) {
+  const text = value.toLowerCase();
+  let score = 0;
+
+  if (/pain|twinge|stopped due to|avoid /.test(text)) score += 12;
+  if (/compensation|takeover|trap involvement|joint feedback/.test(text)) score += 10;
+  if (/breakthrough|lat dominance|strong lat stimulus|safe overhead pressing range/.test(text)) score += 8;
+  if (/improved stretch and contraction|medial delt isolation|lateral delt isolation/.test(text)) score += 7;
+  if (/terminal reps|fatigue/.test(text)) score += 6;
+  if (/movement quality looked solid|readiness looked|exercises produced completed work/.test(text)) score -= 6;
+  if (value.includes(":")) score += 3;
+
+  return score;
+}
+
+function rankRecentSignals(
+  values: ScoredSignalInput[],
+  options?: {
+    limit?: number;
+    dropPatterns?: RegExp[];
+  }
+) {
+  const limit = options?.limit ?? 4;
+  const dropPatterns = options?.dropPatterns ?? [];
+  const filtered = values
+    .filter(({ text }) => {
+      const trimmed = String(text ?? "").trim();
+      if (!trimmed) return false;
+      return !dropPatterns.some((pattern) => pattern.test(trimmed));
+    });
+
+  const byCanonical = new Map<
+    string,
+    {
+      bestText: string;
+      bestSpecificity: number;
+      score: number;
+      seenSessionIndexes: Set<number>;
+    }
+  >();
+
+  for (const item of filtered) {
+    const canonical = canonicalizeSignal(item.text);
+    const recencyWeight = Math.max(1, 4 - item.sessionIndex);
+    const specificity = item.text.includes(":") ? 2 : 1;
+    const score = signalBaseScore(item.text) + recencyWeight;
+    const current =
+      byCanonical.get(canonical) ??
+      {
+        bestText: item.text,
+        bestSpecificity: specificity,
+        score: 0,
+        seenSessionIndexes: new Set<number>(),
+      };
+
+    current.score += score;
+    current.seenSessionIndexes.add(item.sessionIndex);
+
+    if (
+      specificity > current.bestSpecificity ||
+      (specificity === current.bestSpecificity &&
+        signalBaseScore(item.text) > signalBaseScore(current.bestText))
+    ) {
+      current.bestText = item.text;
+      current.bestSpecificity = specificity;
+    }
+
+    byCanonical.set(canonical, current);
+  }
+
+  return Array.from(byCanonical.values())
+    .map((entry) => ({
+      text: entry.bestText,
+      score: entry.score + Math.max(0, entry.seenSessionIndexes.size - 1) * 4,
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((entry) => entry.text);
+}
+
 function sortRecentSessions(sessions: Session[]) {
   return (sessions ?? [])
     .filter((session) => !session.deletedAt && Number.isFinite(session.endedAt ?? session.startedAt))
@@ -312,7 +422,7 @@ function buildTrainingSignalsFromRecentSessions(args: {
   tracks: Track[];
 }) {
   const tracksById = new Map((args.tracks ?? []).map((track) => [track.id, track]));
-  const recentSessions = sortRecentSessions(args.sessions).slice(0, 3);
+  const recentSessions = sortRecentSessions(args.sessions).slice(0, 4);
   const aggregated = {
     movementQuality: [] as string[],
     stimulusCoverage: [] as string[],
@@ -321,7 +431,7 @@ function buildTrainingSignalsFromRecentSessions(args: {
     discussWithGaz: [] as string[],
   };
 
-  for (const session of recentSessions) {
+  for (const [sessionIndex, session] of recentSessions.entries()) {
     const trackSummaries = buildSessionTrackSummariesForExport({
       session,
       sets: args.sets,
@@ -346,23 +456,63 @@ function buildTrainingSignalsFromRecentSessions(args: {
       trackSummaries,
     });
 
-    aggregated.movementQuality.push(...signals.movementQualitySignals);
+    aggregated.movementQuality.push(
+      ...signals.movementQualitySignals.map((bullet) => `${sessionIndex}::${bullet}`)
+    );
     aggregated.stimulusCoverage.push(
-      ...(signals.stimulusCoverage.filter((bullet) => !/^\d+\/\d+ exercises produced completed work$/i.test(bullet)))
+      ...signals.stimulusCoverage.map((bullet) => `${sessionIndex}::${bullet}`)
     );
     aggregated.fatigueReadiness.push(
-      ...(signals.fatigueReadiness.filter((bullet) => !/^Readiness looked /i.test(bullet)))
+      ...signals.fatigueReadiness.map((bullet) => `${sessionIndex}::${bullet}`)
     );
-    aggregated.nextWorkoutFocus.push(...signals.nextWorkoutFocus, ...signals.carryForward);
-    aggregated.discussWithGaz.push(...signals.discussWithCoach);
+    aggregated.nextWorkoutFocus.push(
+      ...signals.nextWorkoutFocus.map((bullet) => `${sessionIndex}::${bullet}`),
+      ...signals.carryForward.map((bullet) => `${sessionIndex}::${bullet}`)
+    );
+    aggregated.discussWithGaz.push(
+      ...signals.discussWithCoach.map((bullet) => `${sessionIndex}::${bullet}`)
+    );
   }
 
+  const unpack = (values: string[]) =>
+    values.map((value) => {
+      const splitIndex = value.indexOf("::");
+      return {
+        sessionIndex: splitIndex >= 0 ? Number(value.slice(0, splitIndex)) : 0,
+        text: splitIndex >= 0 ? value.slice(splitIndex + 2) : value,
+      };
+    });
+
   return {
-    movementQuality: uniqueCompact(aggregated.movementQuality, 4),
-    stimulusCoverage: uniqueCompact(aggregated.stimulusCoverage, 4),
-    fatigueReadiness: uniqueCompact(aggregated.fatigueReadiness, 4),
-    nextWorkoutFocus: uniqueCompact(aggregated.nextWorkoutFocus, 4),
-    discussWithGaz: uniqueCompact(aggregated.discussWithGaz, 4),
+    movementQuality: rankRecentSignals(
+      unpack(aggregated.movementQuality),
+      {
+        limit: 4,
+        dropPatterns: [/^Movement quality looked solid$/i],
+      }
+    ),
+    stimulusCoverage: rankRecentSignals(
+      unpack(aggregated.stimulusCoverage),
+      {
+        limit: 4,
+        dropPatterns: [/^\d+\/\d+ exercises produced completed work$/i],
+      }
+    ),
+    fatigueReadiness: rankRecentSignals(
+      unpack(aggregated.fatigueReadiness),
+      {
+        limit: 4,
+        dropPatterns: [/^Readiness looked /i, /^Fatigue showed up$/i],
+      }
+    ),
+    nextWorkoutFocus: rankRecentSignals(
+      unpack(aggregated.nextWorkoutFocus),
+      { limit: 4 }
+    ),
+    discussWithGaz: rankRecentSignals(
+      unpack(aggregated.discussWithGaz),
+      { limit: 4 }
+    ),
   };
 }
 
