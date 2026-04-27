@@ -67,7 +67,7 @@ export type TrendChartCardProps = {
   /* number of visible points in the chart viewport */
   windowSize?: number;
 
-  /* opt-in shared slider viewport navigation */
+  /* opt-in shared viewport navigation (pager or drag timeline) */
   paneNavigationMode?: PaneNavigationMode;
   dragScrollEnabled?: boolean;
 

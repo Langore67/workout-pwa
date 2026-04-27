@@ -42,6 +42,7 @@ import { useNavigate } from "react-router-dom";
 import { Page, Section } from "../components/Page.tsx";
 import { formatLbs } from "../components/charts/chartFormatters";
 import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTypes";
+import { formatTimelineLabel, monthKeyFromMs } from "../components/charts/timelineLabels";
 import ProgressPageHeader from "../components/layout/ProgressPageHeader";
 import AnchorDiagnosticsCard from "../components/performance/AnchorDiagnosticsCard";
 import { buildAnchorDiagnosticsRows as buildAnchorDiagnosticsRowsPresenter } from "../components/performance/anchorDiagnosticsPresenter";
@@ -233,8 +234,6 @@ const SHARED_STRENGTH_TIMELINE_WEEKS = 104;
    Breadcrumb 3 — Small helpers
    ============================================================================ */
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -290,31 +289,6 @@ function weekKeyFromMs(ms: number) {
 function weekLabelFromKey(key: string) {
   const d = new Date(`${key}T00:00:00`);
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-function formatShortMonthDay(ms: number) {
-  const d = new Date(ms);
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${month}/${day}`;
-}
-
-function monthKeyFromMs(ms: number) {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function monthLabelFromKey(key: string) {
-  const [year, month] = key.split("-");
-  const d = new Date(Number(year), Number(month) - 1, 1);
-  return d.toLocaleDateString(undefined, { month: "short" });
-}
-
-function weekNumberFromMs(ms: number) {
-  const d = new Date(ms);
-  const yearStart = new Date(d.getFullYear(), 0, 1);
-  const diffDays = Math.floor((d.getTime() - yearStart.getTime()) / DAY_MS);
-  return Math.floor(diffDays / 7) + 1;
 }
 
 function pickBodyMetricTime(entry: BodyMetricEntry): number {
@@ -717,12 +691,11 @@ function buildBodyWeightTimelineTrend(
   return Array.from(buckets.entries())
     .sort((a, b) => a[1].at - b[1].at)
     .map(([key, bucket]) => {
-      const label =
-        resolution === "D"
-          ? formatShortMonthDay(bucket.at)
-          : resolution === "W"
-            ? `W${weekNumberFromMs(bucket.at)}`
-            : monthLabelFromKey(key);
+      const label = formatTimelineLabel({
+        resolution,
+        unitStartMs: bucket.at,
+        monthKey: resolution === "M" ? key : undefined,
+      });
 
       return {
         label,
@@ -789,7 +762,11 @@ function buildWaistTimelineTrend(
   return Array.from(buckets.entries())
     .sort((a, b) => a[1].at - b[1].at)
     .map(([key, bucket]) => ({
-      label: resolution === "W" ? `W${weekNumberFromMs(bucket.at)}` : monthLabelFromKey(key),
+      label: formatTimelineLabel({
+        resolution,
+        unitStartMs: bucket.at,
+        monthKey: resolution === "M" ? key : undefined,
+      }),
       value: round2(average(bucket.values)),
       date: key,
       unitStartMs: bucket.at,
@@ -864,7 +841,11 @@ function buildVolumeTimelineTrend(
   return Array.from(buckets.entries())
     .sort((a, b) => a[1].at - b[1].at)
     .map(([key, bucket]) => ({
-      label: resolution === "W" ? `W${weekNumberFromMs(bucket.at)}` : monthLabelFromKey(key),
+      label: formatTimelineLabel({
+        resolution,
+        unitStartMs: bucket.at,
+        monthKey: resolution === "M" ? key : undefined,
+      }),
       value: round2(bucket.value),
       date: key,
       unitStartMs: bucket.at,
@@ -886,7 +867,7 @@ function buildStrengthSignalTimelineTrend(
 
   if (resolution === "W") {
     return sorted.map((row, index) => ({
-      label: `W${weekNumberFromMs(row.weekEndMs)}`,
+      label: formatTimelineLabel({ resolution: "W", unitStartMs: row.weekEndMs }),
       value: round2(row.normalizedIndex),
       date: new Date(row.weekEndMs).toISOString().slice(0, 10),
       unitStartMs: row.weekEndMs,
@@ -907,7 +888,11 @@ function buildStrengthSignalTimelineTrend(
   return Array.from(buckets.entries())
     .sort((a, b) => a[1].at - b[1].at)
     .map(([key, bucket]) => ({
-      label: monthLabelFromKey(key),
+      label: formatTimelineLabel({
+        resolution: "M",
+        unitStartMs: bucket.at,
+        monthKey: key,
+      }),
       value: round2(average(bucket.values)),
       date: key,
       unitStartMs: bucket.at,

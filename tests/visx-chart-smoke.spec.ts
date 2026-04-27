@@ -8,21 +8,6 @@ async function goto(page: Page, path: string) {
   await page.goto(new URL(path, BASE_URL).toString(), { waitUntil: "domcontentloaded" });
 }
 
-async function setSliderValue(page: Page, testIdBase: string, nextValue: number) {
-  await page.evaluate(
-    ({ testIdBase, nextValue }) => {
-      const slider = document.querySelector<HTMLInputElement>(
-        `[data-testid="${testIdBase}:slider-input"]`
-      );
-      if (!slider) throw new Error(`Slider not found: ${testIdBase}`);
-      slider.value = String(nextValue);
-      slider.dispatchEvent(new Event("input", { bubbles: true }));
-      slider.dispatchEvent(new Event("change", { bubbles: true }));
-    },
-    { testIdBase, nextValue }
-  );
-}
-
 async function seedSharedStrengthTrendData(page: Page) {
   return await page.evaluate(async () => {
     // @ts-ignore
@@ -639,7 +624,7 @@ test.describe("VisX chart smoke", () => {
     await expect.poll(async () => chart.locator("circle").count()).toBeGreaterThan(baselineCircles);
   });
 
-  test("Strength page strength signal uses W/M timeline controls and drag surface without slider", async ({
+  test("Strength page strength signal uses W/M timeline controls and drag surface", async ({
     page,
   }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium", "Strength timeline coverage is chromium-only");
@@ -777,7 +762,7 @@ test.describe("VisX chart smoke", () => {
     expect(Math.abs(lastActive.centerX - last.centerX)).toBeLessThanOrEqual(6);
   });
 
-  test("Performance bodyweight D mode uses full daily history without range controls", async ({
+  test("Performance bodyweight D mode uses full daily history in the timeline view", async ({
     page,
   }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium", "Daily D-mode timeline coverage is chromium-only");
@@ -816,7 +801,7 @@ test.describe("VisX chart smoke", () => {
     expect(afterTicks.length).toBe(5);
   });
 
-  test("Performance waist uses W/M timeline controls with drag navigation and no slider", async ({
+  test("Performance waist uses W/M timeline controls with drag navigation", async ({
     page,
   }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium", "Waist timeline coverage is chromium-only");
@@ -850,7 +835,7 @@ test.describe("VisX chart smoke", () => {
     expect(afterDragTicks.map((tick) => tick.date)).not.toEqual(monthlyTicks.map((tick) => tick.date));
   });
 
-  test("Performance volume uses W/M timeline controls and drag surface without slider", async ({
+  test("Performance volume uses W/M timeline controls and drag surface", async ({
     page,
   }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium", "Volume timeline coverage is chromium-only");
@@ -881,7 +866,7 @@ test.describe("VisX chart smoke", () => {
     expect(await readOverlayCursor(page, testIdBase)).toBe("grab");
   });
 
-  test("Performance strength signal uses W/M timeline controls with drag navigation and no slider", async ({
+  test("Performance strength signal uses W/M timeline controls with drag navigation", async ({
     page,
   }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium", "Strength timeline coverage is chromium-only");
