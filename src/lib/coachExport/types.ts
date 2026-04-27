@@ -45,6 +45,14 @@ export type CoachExportConfidence = {
   };
 };
 
+export type CoachExportTrainingSignals = {
+  movementQuality: string[];
+  stimulusCoverage: string[];
+  fatigueReadiness: string[];
+  nextWorkoutFocus: string[];
+  discussWithGaz: string[];
+};
+
 export type CoachExportMetrics = {
   generatedAt: number;
   currentPhase: CurrentPhase;
@@ -60,6 +68,7 @@ export type CoachExportMetrics = {
   strengthSignal: CoachExportStrengthSignal;
   phaseQuality: PhaseQualityResult | null;
   anchorLifts: CoachExportAnchorLift[];
+  trainingSignals: CoachExportTrainingSignals;
   exportConfidence: CoachExportConfidence;
   readinessNotes: string[];
   dataNotes: string[];

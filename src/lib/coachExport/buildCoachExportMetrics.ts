@@ -1,4 +1,4 @@
-import { db, type BodyMetricEntry } from "../../db";
+import { db, type BodyMetricEntry, type Session, type SetEntry, type Track } from "../../db";
 import {
   computeStrengthIndexAt,
   computeStrengthTrend,
@@ -19,6 +19,10 @@ import {
   computeStrengthDeltaFromStrengthTrend,
   evaluatePhaseQuality,
 } from "../../body/phaseQualityModel";
+import {
+  buildSessionCoachingSignals,
+  type SessionSnapshotTrackSummary,
+} from "../../domain/coaching/sessionSnapshot";
 import type {
   CoachExportAnchorLift,
   CoachExportMetric,
@@ -246,6 +250,122 @@ function buildDataNotes(metrics: CoachExportMetrics) {
   return notes.length ? notes : ["No major data gaps detected."];
 }
 
+function uniqueCompact(values: Array<string | null | undefined>, limit = 4): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of values) {
+    const value = String(raw ?? "").replace(/\s+/g, " ").trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function sortRecentSessions(sessions: Session[]) {
+  return (sessions ?? [])
+    .filter((session) => !session.deletedAt && Number.isFinite(session.endedAt ?? session.startedAt))
+    .slice()
+    .sort(
+      (a, b) =>
+        Number(b.endedAt ?? b.startedAt ?? 0) - Number(a.endedAt ?? a.startedAt ?? 0)
+    );
+}
+
+function buildSessionTrackSummariesForExport(args: {
+  session: Session;
+  sets: SetEntry[];
+  tracksById: Map<string, Track>;
+}): SessionSnapshotTrackSummary[] {
+  const { session, sets, tracksById } = args;
+  const byTrackId = new Map<string, SetEntry[]>();
+
+  for (const set of sets) {
+    if (set.deletedAt) continue;
+    if (set.sessionId !== session.id) continue;
+    const bucket = byTrackId.get(set.trackId) ?? [];
+    bucket.push(set);
+    byTrackId.set(set.trackId, bucket);
+  }
+
+  return Array.from(byTrackId.entries())
+    .map(([trackId, trackSets]) => {
+      const track = tracksById.get(trackId);
+      if (!track) return null;
+      const completedCount = trackSets.filter((set) => !!set.completedAt && !set.deletedAt).length;
+      return {
+        displayName: track.displayName,
+        trackType: track.trackType,
+        trackingMode: track.trackingMode,
+        completedSets: completedCount ? [`${completedCount} completed set${completedCount === 1 ? "" : "s"}`] : [],
+      } satisfies SessionSnapshotTrackSummary;
+    })
+    .filter((value): value is SessionSnapshotTrackSummary => value != null);
+}
+
+function buildTrainingSignalsFromRecentSessions(args: {
+  sessions: Session[];
+  sets: SetEntry[];
+  tracks: Track[];
+}) {
+  const tracksById = new Map((args.tracks ?? []).map((track) => [track.id, track]));
+  const recentSessions = sortRecentSessions(args.sessions).slice(0, 3);
+  const aggregated = {
+    movementQuality: [] as string[],
+    stimulusCoverage: [] as string[],
+    fatigueReadiness: [] as string[],
+    nextWorkoutFocus: [] as string[],
+    discussWithGaz: [] as string[],
+  };
+
+  for (const session of recentSessions) {
+    const trackSummaries = buildSessionTrackSummariesForExport({
+      session,
+      sets: args.sets,
+      tracksById,
+    });
+    const completedExercises = trackSummaries.filter((summary) => summary.completedSets.length > 0).length;
+    const totalExercises = trackSummaries.length;
+    if (!session.notes?.trim() && completedExercises === 0) continue;
+
+    const signals = buildSessionCoachingSignals({
+      sessionNotes: session.notes,
+      totalExercises,
+      completedExercises,
+      currentTrack: trackSummaries[0]
+        ? {
+            displayName: trackSummaries[0].displayName,
+            trackType: trackSummaries[0].trackType,
+            trackingMode: trackSummaries[0].trackingMode,
+          }
+        : null,
+      currentRecommendation: null,
+      trackSummaries,
+    });
+
+    aggregated.movementQuality.push(...signals.movementQualitySignals);
+    aggregated.stimulusCoverage.push(
+      ...(signals.stimulusCoverage.filter((bullet) => !/^\d+\/\d+ exercises produced completed work$/i.test(bullet)))
+    );
+    aggregated.fatigueReadiness.push(
+      ...(signals.fatigueReadiness.filter((bullet) => !/^Readiness looked /i.test(bullet)))
+    );
+    aggregated.nextWorkoutFocus.push(...signals.nextWorkoutFocus, ...signals.carryForward);
+    aggregated.discussWithGaz.push(...signals.discussWithCoach);
+  }
+
+  return {
+    movementQuality: uniqueCompact(aggregated.movementQuality, 4),
+    stimulusCoverage: uniqueCompact(aggregated.stimulusCoverage, 4),
+    fatigueReadiness: uniqueCompact(aggregated.fatigueReadiness, 4),
+    nextWorkoutFocus: uniqueCompact(aggregated.nextWorkoutFocus, 4),
+    discussWithGaz: uniqueCompact(aggregated.discussWithGaz, 4),
+  };
+}
+
 export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
   const generatedAt = Date.now();
   const currentPhase = await getCurrentPhase();
@@ -270,6 +390,11 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
 
   const hydration = buildHydration(bodyRows);
   const strengthSignal = await buildStrengthSignal(generatedAt);
+  const [sessions, sets, tracks] = await Promise.all([
+    db.sessions.toArray(),
+    db.sets.toArray(),
+    db.tracks.toArray(),
+  ]);
   const sharedStrengthTrend = await computeStrengthTrend(12, 28);
   const computedStrength = computeStrengthDeltaFromStrengthTrend(sharedStrengthTrend, currentPhase);
   const phaseQualityInputs = buildPhaseQualityInputsFromBodyRows(
@@ -281,6 +406,11 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
   const phaseQuality =
     (phaseQualityInputs.sampleCount ?? 0) > 0 ? evaluatePhaseQuality(currentPhase, phaseQualityInputs) : null;
   const anchorLifts = await buildAnchorLifts();
+  const trainingSignals = buildTrainingSignalsFromRecentSessions({
+    sessions: sessions ?? [],
+    sets: sets ?? [],
+    tracks: tracks ?? [],
+  });
   
    const waistEntryCount = bodyRows.filter((row) => Number.isFinite(getWaistIn(row))).length;
   const exportConfidence = buildExportConfidence({
@@ -312,6 +442,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
         strengthSignal,
         phaseQuality,
         anchorLifts,
+        trainingSignals,
         readinessNotes,
         dataNotes: [],
         exportConfidence,

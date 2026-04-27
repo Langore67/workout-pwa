@@ -71,6 +71,34 @@ function formatPhaseQuestions(phase: CurrentPhase) {
 }
 
 export function formatCoachExportText(metrics: CoachExportMetrics) {
+  const trainingSignalLines = [
+    "Training Signals (Recent Sessions)",
+    "Movement Quality",
+    ...(metrics.trainingSignals.movementQuality.length
+      ? metrics.trainingSignals.movementQuality.map((item) => `- ${item}`)
+      : ["- No recent movement-quality notes."]),
+    "",
+    "Stimulus / Coverage",
+    ...(metrics.trainingSignals.stimulusCoverage.length
+      ? metrics.trainingSignals.stimulusCoverage.map((item) => `- ${item}`)
+      : ["- No recent stimulus notes."]),
+    "",
+    "Fatigue / Readiness",
+    ...(metrics.trainingSignals.fatigueReadiness.length
+      ? metrics.trainingSignals.fatigueReadiness.map((item) => `- ${item}`)
+      : ["- No recent fatigue notes."]),
+    "",
+    "Next Workout Focus",
+    ...(metrics.trainingSignals.nextWorkoutFocus.length
+      ? metrics.trainingSignals.nextWorkoutFocus.map((item) => `- ${item}`)
+      : ["- No carry-forward focus set yet."]),
+    "",
+    "Discuss with Gaz",
+    ...(metrics.trainingSignals.discussWithGaz.length
+      ? metrics.trainingSignals.discussWithGaz.map((item) => `- ${item}`)
+      : ["- No coach discussion flags from recent sessions."]),
+  ];
+
   const lines = [
     "IronForge Coach Export",
     `Generated: ${formatDate(metrics.generatedAt)}`,
@@ -109,9 +137,11 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
         "",
         "Export Confidence",
         `- Confidence: ${metrics.exportConfidence.label} (${metrics.exportConfidence.score})`,
-        "",
+    "",
     "Anchor Lifts",
     ...metrics.anchorLifts.map(formatAnchorLift),
+    "",
+    ...trainingSignalLines,
     "",
     "Readiness / Confidence Notes",
     ...metrics.readinessNotes.map((note) => `- ${note || "Unknown"}`),

@@ -11,6 +11,17 @@ export type SessionSnapshotTrackSummary = {
   completedSets: string[];
 };
 
+export type SessionCoachingSignals = {
+  readiness: string;
+  focusFlags: string[];
+  movementQualitySignals: string[];
+  stimulusCoverage: string[];
+  fatigueReadiness: string[];
+  carryForward: string[];
+  nextWorkoutFocus: string[];
+  discussWithCoach: string[];
+};
+
 type SessionSnapshotDerivation = {
   readiness: string;
   focusFlags: string[];
@@ -910,4 +921,15 @@ export function buildSessionSnapshotText(params: {
   }
 
   return lines.join("\n").trim() + "\n";
+}
+
+export function buildSessionCoachingSignals(params: {
+  sessionNotes?: string;
+  totalExercises: number;
+  completedExercises: number;
+  currentTrack: Pick<Track, "displayName" | "trackType" | "trackingMode"> | null;
+  currentRecommendation: WorkingRecommendation | null;
+  trackSummaries: SessionSnapshotTrackSummary[];
+}): SessionCoachingSignals {
+  return deriveSessionSnapshot(params);
 }
