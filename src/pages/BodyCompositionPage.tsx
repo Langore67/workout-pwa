@@ -1148,6 +1148,13 @@ export default function BodyCompositionPage() {
 {hydrationConfidence && (
   <Section>
     <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+      <div style={{ marginBottom: 6 }}>
+        <SectionHeaderRow
+          title="Hydration Confidence"
+          infoPageKey="bodyComposition"
+          infoKey="hydrationConfidence"
+        />
+      </div>
       <div
         style={{
           display: "flex",
@@ -1156,10 +1163,6 @@ export default function BodyCompositionPage() {
           marginBottom: 6,
         }}
       >
-        <div style={{ fontWeight: 900, fontSize: 16 }}>
-          Hydration Confidence
-        </div>
-
         <div
 	  style={{
 	    fontSize: 12,
@@ -1343,8 +1346,12 @@ export default function BodyCompositionPage() {
           Breadcrumb 4H — Phase Quality
          ================================================================== */}
       <Section>
-        <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>
-          Phase Quality
+        <div style={{ marginBottom: 6 }}>
+          <SectionHeaderRow
+            title="Phase Quality"
+            infoPageKey="bodyComposition"
+            infoKey="phaseQuality"
+          />
         </div>
         <div className="muted" style={{ marginBottom: 6 }}>
           Direction + composition + strength combined into a single quality signal.

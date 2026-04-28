@@ -28,6 +28,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import InfoStubButton from "../components/information/InfoStubButton";
 import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetrics";
 import { formatCoachExportText } from "../lib/coachExport/formatCoachExportText";
 
@@ -287,6 +288,7 @@ export default function ProgressPage() {
           >
             {coachExportReadyState === "preparing" ? "Preparing Export…" : "Copy Coach Export"}
           </button>
+          <InfoStubButton pageKey="progress" infoKey="coachExport" />
           <div className="muted" style={{ fontSize: 13, flex: "1 1 220px", minWidth: 0 }}>
             {coachExportReadyState === "preparing"
               ? "Preparing a copy/paste summary for ChatGPT."
