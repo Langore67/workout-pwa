@@ -61,6 +61,12 @@ export type PatternSummary = {
   progression: string[];
 };
 
+export type CoachExportNextWorkoutFocus = {
+  progressionGuardrails: string[];
+  executionPriorities: string[];
+  adjustmentTriggers: string[];
+};
+
 export type CoachExportMetrics = {
   generatedAt: number;
   currentPhase: CurrentPhase;
@@ -78,6 +84,7 @@ export type CoachExportMetrics = {
   anchorLifts: CoachExportAnchorLift[];
   trainingSignals: CoachExportTrainingSignals;
   patternSummary: PatternSummary;
+  nextWorkoutFocus: CoachExportNextWorkoutFocus;
   exportConfidence: CoachExportConfidence;
   readinessNotes: string[];
   dataNotes: string[];

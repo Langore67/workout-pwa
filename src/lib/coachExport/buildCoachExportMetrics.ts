@@ -27,6 +27,7 @@ import {
   buildPatternSummary,
   type CompletedSession,
 } from "./buildPatternSummary";
+import { buildNextWorkoutFocus } from "./buildNextWorkoutFocus";
 import type {
   CoachExportAnchorLift,
   CoachExportMetric,
@@ -590,6 +591,11 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     sessions: trainingSignalBundle.completedSessions,
     trainingSignals: trainingSignalBundle.trainingSignals,
   });
+  const nextWorkoutFocus = buildNextWorkoutFocus({
+    trainingSignals: trainingSignalBundle.trainingSignals,
+    patternSummary,
+    phaseQuality,
+  });
   
    const waistEntryCount = bodyRows.filter((row) => Number.isFinite(getWaistIn(row))).length;
   const exportConfidence = buildExportConfidence({
@@ -623,6 +629,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
         anchorLifts,
         trainingSignals: trainingSignalBundle.trainingSignals,
         patternSummary,
+        nextWorkoutFocus,
         readinessNotes,
         dataNotes: [],
         exportConfidence,
