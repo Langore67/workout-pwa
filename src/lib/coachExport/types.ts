@@ -53,6 +53,14 @@ export type CoachExportTrainingSignals = {
   discussWithGaz: string[];
 };
 
+export type PatternSummary = {
+  movementQuality: string[];
+  stimulus: string[];
+  fatigue: string[];
+  constraints: string[];
+  progression: string[];
+};
+
 export type CoachExportMetrics = {
   generatedAt: number;
   currentPhase: CurrentPhase;
@@ -69,6 +77,7 @@ export type CoachExportMetrics = {
   phaseQuality: PhaseQualityResult | null;
   anchorLifts: CoachExportAnchorLift[];
   trainingSignals: CoachExportTrainingSignals;
+  patternSummary: PatternSummary;
   exportConfidence: CoachExportConfidence;
   readinessNotes: string[];
   dataNotes: string[];

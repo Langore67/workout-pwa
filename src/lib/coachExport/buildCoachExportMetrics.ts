@@ -23,10 +23,15 @@ import {
   buildSessionCoachingSignals,
   type SessionSnapshotTrackSummary,
 } from "../../domain/coaching/sessionSnapshot";
+import {
+  buildPatternSummary,
+  type CompletedSession,
+} from "./buildPatternSummary";
 import type {
   CoachExportAnchorLift,
   CoachExportMetric,
   CoachExportMetrics,
+  CoachExportTrainingSignals,
 } from "./types";
 import { getCurrentPhase } from "../../config/appConfig";
 
@@ -423,6 +428,7 @@ function buildTrainingSignalsFromRecentSessions(args: {
 }) {
   const tracksById = new Map((args.tracks ?? []).map((track) => [track.id, track]));
   const recentSessions = sortRecentSessions(args.sessions).slice(0, 4);
+  const completedSessions: CompletedSession[] = [];
   const aggregated = {
     movementQuality: [] as string[],
     stimulusCoverage: [] as string[],
@@ -472,6 +478,20 @@ function buildTrainingSignalsFromRecentSessions(args: {
     aggregated.discussWithGaz.push(
       ...signals.discussWithCoach.map((bullet) => `${sessionIndex}::${bullet}`)
     );
+    completedSessions.push({
+      id: session.id,
+      endedAt: session.endedAt ?? session.startedAt ?? null,
+      trainingSignals: {
+        movementQuality: signals.movementQualitySignals,
+        stimulusCoverage: signals.stimulusCoverage,
+        fatigueReadiness: signals.fatigueReadiness,
+        nextWorkoutFocus: uniqueCompact(
+          [...signals.nextWorkoutFocus, ...signals.carryForward],
+          4
+        ),
+        discussWithGaz: signals.discussWithCoach,
+      },
+    });
   }
 
   const unpack = (values: string[]) =>
@@ -483,7 +503,7 @@ function buildTrainingSignalsFromRecentSessions(args: {
       };
     });
 
-  return {
+  const trainingSignals: CoachExportTrainingSignals = {
     movementQuality: rankRecentSignals(
       unpack(aggregated.movementQuality),
       {
@@ -513,6 +533,11 @@ function buildTrainingSignalsFromRecentSessions(args: {
       unpack(aggregated.discussWithGaz),
       { limit: 4 }
     ),
+  };
+
+  return {
+    trainingSignals,
+    completedSessions,
   };
 }
 
@@ -556,10 +581,14 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
   const phaseQuality =
     (phaseQualityInputs.sampleCount ?? 0) > 0 ? evaluatePhaseQuality(currentPhase, phaseQualityInputs) : null;
   const anchorLifts = await buildAnchorLifts();
-  const trainingSignals = buildTrainingSignalsFromRecentSessions({
+  const trainingSignalBundle = buildTrainingSignalsFromRecentSessions({
     sessions: sessions ?? [],
     sets: sets ?? [],
     tracks: tracks ?? [],
+  });
+  const patternSummary = buildPatternSummary({
+    sessions: trainingSignalBundle.completedSessions,
+    trainingSignals: trainingSignalBundle.trainingSignals,
   });
   
    const waistEntryCount = bodyRows.filter((row) => Number.isFinite(getWaistIn(row))).length;
@@ -592,7 +621,8 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
         strengthSignal,
         phaseQuality,
         anchorLifts,
-        trainingSignals,
+        trainingSignals: trainingSignalBundle.trainingSignals,
+        patternSummary,
         readinessNotes,
         dataNotes: [],
         exportConfidence,
