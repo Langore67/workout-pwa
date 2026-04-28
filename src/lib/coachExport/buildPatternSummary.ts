@@ -21,9 +21,11 @@ type PatternCandidate = {
   key: string;
   text: string;
   score: number;
+  allowEmerging?: boolean;
 };
 
 const MAX_BULLETS_PER_CATEGORY = 4;
+const LOOKBACK_SESSIONS = 4;
 
 function uniqueCompact(values: Array<string | null | undefined>, limit = 4): string[] {
   const out: string[] = [];
@@ -40,24 +42,8 @@ function uniqueCompact(values: Array<string | null | undefined>, limit = 4): str
   return out;
 }
 
-function canonicalizeSignal(value: string) {
-  const text = value.toLowerCase();
-  if (/medial delt|lateral delt/.test(text)) return "shoulder-delt-isolation";
-  if (/behind-the-neck|overhead pressing range|shoulder twinge|vertical pressing/.test(text)) {
-    return "shoulder-overhead-safety";
-  }
-  if (/trap compensation|trap involvement/.test(text)) return "carry-trap-compensation";
-  if (/lat-driven pulling|lat stimulus|lat dominance/.test(text)) return "pull-lat-pattern";
-  if (/terminal reps|terminal-rep quality/.test(text)) return "terminal-rep-fatigue";
-  if (/joint feedback|elbow pain|elbow|knee pain|shoulder sensitive|shoulder pain/.test(text)) {
-    return "joint-feedback";
-  }
-  if (/form breakdown|adding load|too heavy|too light/.test(text)) return "load-and-form-control";
-  if (/stopped due to/.test(text)) return "stopped-movement";
-  if (/improved stretch and contraction/.test(text)) return "improved-stretch-contraction";
-  if (/breakthrough/.test(text)) return "breakthrough-pattern";
-  if (/reduced capacity|cut short|fatigue showed up/.test(text)) return "reduced-capacity";
-  return text.replace(/[^a-z0-9]+/g, " ").trim();
+function withFrequency(text: string, seenCount: number, totalCount: number) {
+  return `${text} (${seenCount}/${totalCount})`;
 }
 
 function buildPatternCandidates(signal: string): PatternCandidate[] {
@@ -83,7 +69,7 @@ function buildPatternCandidates(signal: string): PatternCandidate[] {
     candidates.push({
       category: "stimulus",
       key: "pull-stimulus-strong",
-      text: "Pull stimulus consistently strong",
+      text: "Pull stimulus remains repeatable across recent sessions",
       score: 8,
     });
   }
@@ -92,19 +78,19 @@ function buildPatternCandidates(signal: string): PatternCandidate[] {
     candidates.push({
       category: "movementQuality",
       key: "delt-isolation-inconsistent",
-      text: "Lateral delt isolation remains inconsistent",
+      text: "Lateral delt isolation remains inconsistent across shoulder work",
       score: 8,
     });
     candidates.push({
       category: "stimulus",
       key: "shoulder-isolation-inconsistent",
-      text: "Shoulder isolation inconsistent across sessions",
+      text: "Shoulder isolation stimulus remains inconsistent across sessions",
       score: 7,
     });
     candidates.push({
       category: "progression",
       key: "isolation-not-stable",
-      text: "Isolation movements are not yet stable",
+      text: "Isolation movements are not yet repeatable enough to progress confidently",
       score: 7,
     });
   }
@@ -113,7 +99,7 @@ function buildPatternCandidates(signal: string): PatternCandidate[] {
     candidates.push({
       category: "fatigue",
       key: "terminal-rep-fatigue",
-      text: "Fatigue consistently appears at terminal reps",
+      text: "Fatigue shows up at terminal reps across recent working sets",
       score: 8,
     });
   }
@@ -122,7 +108,7 @@ function buildPatternCandidates(signal: string): PatternCandidate[] {
     candidates.push({
       category: "fatigue",
       key: "reduced-capacity-later-sets",
-      text: "Reduced capacity observed in later sets",
+      text: "Reduced capacity shows up in later sets across recent sessions",
       score: 7,
     });
   }
@@ -131,14 +117,16 @@ function buildPatternCandidates(signal: string): PatternCandidate[] {
     candidates.push({
       category: "movementQuality",
       key: "shoulder-overhead-sensitivity",
-      text: "Shoulder sensitivity appears in overhead positions",
+      text: "Shoulder sensitivity appears in overhead or vertical pressing positions",
       score: 9,
+      allowEmerging: true,
     });
     candidates.push({
       category: "constraints",
       key: "shoulder-overhead-constraint",
-      text: "Shoulder sensitivity linked to behind-head or overhead positions",
+      text: "Shoulder sensitivity is linked to behind-head or overhead positions",
       score: 10,
+      allowEmerging: true,
     });
   }
 
@@ -146,8 +134,9 @@ function buildPatternCandidates(signal: string): PatternCandidate[] {
     candidates.push({
       category: "constraints",
       key: "stopped-movements-recurring",
-      text: "Pain or twinge has interrupted at least one recent movement",
+      text: "Pain or twinge has interrupted recent movement quality",
       score: 10,
+      allowEmerging: true,
     });
   }
 
@@ -157,6 +146,7 @@ function buildPatternCandidates(signal: string): PatternCandidate[] {
       key: "joint-feedback-under-fatigue",
       text: "Joint feedback appears under higher-fatigue conditions",
       score: 9,
+      allowEmerging: true,
     });
   }
 
@@ -170,25 +160,20 @@ function buildPatternCandidates(signal: string): PatternCandidate[] {
     candidates.push({
       category: "constraints",
       key: "trap-compensation-constraint",
-      text: "Trap compensation remains a recurring carry constraint",
+      text: "Trap compensation remains a carry constraint",
       score: 7,
     });
   }
 
-  if (/push: chest-dominant pressing with stable mechanics/.test(text)) {
-    candidates.push({
-      category: "stimulus",
-      key: "pressing-stimulus-stable",
-      text: "Press stimulus is generally stable across recent sessions",
-      score: 6,
-    });
-  }
+  // Intentionally do not emit a generic "pressing stimulus stable" pattern.
+  // Stable press mechanics already appear in Training Signals and only become
+  // useful here when paired with a specific repeated constraint.
 
   if (/load looked too heavy|pressing progression controlled|form breakdown|adding load/.test(text)) {
     candidates.push({
       category: "progression",
       key: "pressing-progression-constrained",
-      text: "Pressing progression is still constrained by setup and fatigue quality",
+      text: "Pressing progression is constrained by setup or fatigue quality",
       score: 6,
     });
   }
@@ -201,7 +186,7 @@ function sortRecentSessions(sessions: CompletedSession[]) {
     .filter((session) => Number.isFinite(session.endedAt ?? NaN))
     .slice()
     .sort((a, b) => Number(b.endedAt ?? 0) - Number(a.endedAt ?? 0))
-    .slice(0, 4);
+    .slice(0, LOOKBACK_SESSIONS);
 }
 
 export function buildPatternSummary(ctx: {
@@ -209,13 +194,6 @@ export function buildPatternSummary(ctx: {
   trainingSignals: CoachExportTrainingSignals;
 }): PatternSummary {
   const recentSessions = sortRecentSessions(ctx.sessions);
-  const seedSignals = uniqueCompact([
-    ...ctx.trainingSignals.movementQuality,
-    ...ctx.trainingSignals.stimulusCoverage,
-    ...ctx.trainingSignals.fatigueReadiness,
-    ...ctx.trainingSignals.nextWorkoutFocus,
-    ...ctx.trainingSignals.discussWithGaz,
-  ], 40);
 
   const byCategory: Record<PatternCategory, string[]> = {
     movementQuality: [],
@@ -225,7 +203,7 @@ export function buildPatternSummary(ctx: {
     progression: [],
   };
 
-  if (recentSessions.length < 2 || seedSignals.length === 0) {
+  if (recentSessions.length < 2) {
     return byCategory;
   }
 
@@ -235,6 +213,7 @@ export function buildPatternSummary(ctx: {
       category: PatternCategory;
       text: string;
       score: number;
+      allowEmerging: boolean;
       seenSessions: Set<number>;
     }
   >();
@@ -255,10 +234,13 @@ export function buildPatternSummary(ctx: {
           category: candidate.category,
           text: candidate.text,
           score: 0,
+          allowEmerging: Boolean(candidate.allowEmerging),
           seenSessions: new Set<number>(),
         };
-        const recencyWeight = Math.max(1, 4 - sessionIndex);
+
+        const recencyWeight = Math.max(1, LOOKBACK_SESSIONS - sessionIndex);
         current.score += candidate.score + recencyWeight;
+        current.allowEmerging = current.allowEmerging || Boolean(candidate.allowEmerging);
         current.seenSessions.add(sessionIndex);
         aggregate.set(key, current);
       });
@@ -266,7 +248,7 @@ export function buildPatternSummary(ctx: {
   });
 
   const grouped = Array.from(aggregate.values())
-    .filter((entry) => entry.seenSessions.size >= 2)
+    .filter((entry) => entry.seenSessions.size >= 2 || entry.allowEmerging)
     .sort((a, b) => {
       if (b.seenSessions.size !== a.seenSessions.size) {
         return b.seenSessions.size - a.seenSessions.size;
@@ -277,7 +259,11 @@ export function buildPatternSummary(ctx: {
   grouped.forEach((entry) => {
     const bucket = byCategory[entry.category];
     if (bucket.length >= MAX_BULLETS_PER_CATEGORY) return;
-    bucket.push(entry.text);
+
+    const seenCount = entry.seenSessions.size;
+    const totalCount = recentSessions.length;
+    const prefix = seenCount >= 2 ? "" : "Emerging: ";
+    bucket.push(withFrequency(`${prefix}${entry.text}`, seenCount, totalCount));
   });
 
   return {

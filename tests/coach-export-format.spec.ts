@@ -185,14 +185,15 @@ test("pattern summary uses repeated recent signals and caps subsection bullets",
     trainingSignals: repeatedSignals,
   });
 
-  expect(summary.movementQuality).toContain("Lat engagement improving across recent pull work");
-  expect(summary.movementQuality).toContain("Shoulder sensitivity appears in overhead positions");
-  expect(summary.stimulus).toContain("Pull stimulus consistently strong");
-  expect(summary.fatigue).toContain("Fatigue consistently appears at terminal reps");
+  expect(summary.movementQuality).toContain("Lat engagement improving across recent pull work (4/4)");
+  expect(summary.movementQuality).toContain("Shoulder sensitivity appears in overhead or vertical pressing positions (4/4)");
+  expect(summary.stimulus).toContain("Pull stimulus remains repeatable across recent sessions (4/4)");
+expect(summary.fatigue).toContain("Fatigue shows up at terminal reps across recent working sets (4/4)");
   expect(summary.constraints).toContain(
-    "Shoulder sensitivity linked to behind-head or overhead positions"
+    "Shoulder sensitivity is linked to behind-head or overhead positions (4/4)"
   );
-  expect(summary.progression).toContain("Pulling movements show improving consistency");
+expect(summary.progression).toContain("Pulling movements show improving consistency (4/4)");
+  
 
   expect(summary.movementQuality.length).toBeLessThanOrEqual(4);
   expect(summary.stimulus.length).toBeLessThanOrEqual(4);
