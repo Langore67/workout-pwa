@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { formatCoachExportText } from "../src/lib/coachExport/formatCoachExportText";
-import type { CoachExportMetrics } from "../src/lib/coachExport/types";
+import { buildPatternSummary, type CompletedSession } from "../src/lib/coachExport/buildPatternSummary";
+import type { CoachExportMetrics, CoachExportTrainingSignals } from "../src/lib/coachExport/types";
 
 function buildMetrics(): CoachExportMetrics {
   return {
@@ -62,6 +63,19 @@ function buildMetrics(): CoachExportMetrics {
         "Review safe overhead pressing range",
       ],
     },
+    patternSummary: {
+      movementQuality: [
+        "Lat engagement improving across recent pull work",
+        "Shoulder sensitivity appears in overhead positions",
+      ],
+      stimulus: [
+        "Pull stimulus consistently strong",
+        "Shoulder isolation inconsistent across sessions",
+      ],
+      fatigue: ["Fatigue consistently appears at terminal reps"],
+      constraints: ["Shoulder sensitivity linked to behind-head or overhead positions"],
+      progression: ["Pulling movements show improving consistency"],
+    },
     exportConfidence: {
       score: 82,
       label: "Strong",
@@ -91,4 +105,98 @@ test("coach export includes recent training signals section", async () => {
   expect(text).toContain("- Improve medial delt isolation");
   expect(text).toContain("Discuss with Gaz");
   expect(text).toContain("- Review safe overhead pressing range");
+  expect(text).toContain("Recent Patterns (Last 4 Sessions)");
+  expect(text).toContain("- Lat engagement improving across recent pull work");
+  expect(text).toContain("- Pulling movements show improving consistency");
+});
+
+test("pattern summary uses repeated recent signals and caps subsection bullets", async () => {
+  const repeatedSignals: CoachExportTrainingSignals = {
+    movementQuality: [
+      "Lat Pulldown: improved stretch and contraction",
+      "3-Point DB Row: breakthrough pattern found",
+      "Lateral Raise: medial delt isolation still not clean",
+      "Bradford Press: stopped due to shoulder twinge",
+    ],
+    stimulusCoverage: [
+      "Pull: strong lat stimulus",
+      "Shoulders: lateral delt isolation needs refinement",
+    ],
+    fatigueReadiness: [
+      "Fatigue mostly appeared at terminal reps",
+      "Bradford Press: shoulder twinge showed up again",
+    ],
+    nextWorkoutFocus: [
+      "Maintain lat-driven pulling before increasing load",
+      "Improve medial delt isolation",
+      "Avoid behind-the-neck pressing positions",
+    ],
+    discussWithGaz: [
+      "Review safe overhead pressing range",
+      "Review medial delt isolation setup",
+    ],
+  };
+
+  const sessions: CompletedSession[] = [
+    {
+      id: "s1",
+      endedAt: new Date("2026-04-27T09:00:00-04:00").getTime(),
+      trainingSignals: repeatedSignals,
+    },
+    {
+      id: "s2",
+      endedAt: new Date("2026-04-24T09:00:00-04:00").getTime(),
+      trainingSignals: {
+        ...repeatedSignals,
+        movementQuality: [
+          "Lat Pulldown: improved stretch and contraction",
+          "Lateral Raise: medial delt isolation still not clean",
+          "Bradford Press: stopped due to shoulder twinge",
+        ],
+      },
+    },
+    {
+      id: "s3",
+      endedAt: new Date("2026-04-20T09:00:00-04:00").getTime(),
+      trainingSignals: {
+        ...repeatedSignals,
+        movementQuality: [
+          "3-Point DB Row: breakthrough pattern found",
+          "Lateral Raise: medial delt isolation still not clean",
+        ],
+      },
+    },
+    {
+      id: "s4",
+      endedAt: new Date("2026-04-16T09:00:00-04:00").getTime(),
+      trainingSignals: {
+        ...repeatedSignals,
+        movementQuality: [
+          "Lat Pulldown: improved stretch and contraction",
+          "Farmer's Carry: slight trap involvement noted but controlled",
+        ],
+        fatigueReadiness: ["Fatigue mostly appeared at terminal reps"],
+      },
+    },
+  ];
+
+  const summary = buildPatternSummary({
+    sessions,
+    trainingSignals: repeatedSignals,
+  });
+
+  expect(summary.movementQuality).toContain("Lat engagement improving across recent pull work");
+  expect(summary.movementQuality).toContain("Shoulder sensitivity appears in overhead positions");
+  expect(summary.stimulus).toContain("Pull stimulus consistently strong");
+  expect(summary.fatigue).toContain("Fatigue consistently appears at terminal reps");
+  expect(summary.constraints).toContain(
+    "Shoulder sensitivity linked to behind-head or overhead positions"
+  );
+  expect(summary.progression).toContain("Pulling movements show improving consistency");
+
+  expect(summary.movementQuality.length).toBeLessThanOrEqual(4);
+  expect(summary.stimulus.length).toBeLessThanOrEqual(4);
+  expect(summary.fatigue.length).toBeLessThanOrEqual(4);
+  expect(summary.constraints.length).toBeLessThanOrEqual(4);
+  expect(summary.progression.length).toBeLessThanOrEqual(4);
 });

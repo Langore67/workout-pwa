@@ -99,6 +99,34 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
       : ["- No coach discussion flags from recent sessions."]),
   ];
 
+  const patternSummaryLines = [
+    "Recent Patterns (Last 4 Sessions)",
+    "Movement Quality",
+    ...(metrics.patternSummary.movementQuality.length
+      ? metrics.patternSummary.movementQuality.map((item) => `- ${item}`)
+      : ["- No repeated movement-quality pattern yet."]),
+    "",
+    "Stimulus",
+    ...(metrics.patternSummary.stimulus.length
+      ? metrics.patternSummary.stimulus.map((item) => `- ${item}`)
+      : ["- No repeated stimulus pattern yet."]),
+    "",
+    "Fatigue / Readiness",
+    ...(metrics.patternSummary.fatigue.length
+      ? metrics.patternSummary.fatigue.map((item) => `- ${item}`)
+      : ["- No repeated fatigue pattern yet."]),
+    "",
+    "Constraints",
+    ...(metrics.patternSummary.constraints.length
+      ? metrics.patternSummary.constraints.map((item) => `- ${item}`)
+      : ["- No repeated constraint pattern yet."]),
+    "",
+    "Progression",
+    ...(metrics.patternSummary.progression.length
+      ? metrics.patternSummary.progression.map((item) => `- ${item}`)
+      : ["- No repeated progression pattern yet."]),
+  ];
+
   const lines = [
     "IronForge Coach Export",
     `Generated: ${formatDate(metrics.generatedAt)}`,
@@ -142,6 +170,8 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     ...metrics.anchorLifts.map(formatAnchorLift),
     "",
     ...trainingSignalLines,
+    "",
+    ...patternSummaryLines,
     "",
     "Readiness / Confidence Notes",
     ...metrics.readinessNotes.map((note) => `- ${note || "Unknown"}`),
