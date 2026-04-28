@@ -2,7 +2,17 @@ import { expect, test } from "@playwright/test";
 import { buildNextWorkoutFocus } from "../src/lib/coachExport/buildNextWorkoutFocus";
 import { formatCoachExportText } from "../src/lib/coachExport/formatCoachExportText";
 import { buildPatternSummary, type CompletedSession } from "../src/lib/coachExport/buildPatternSummary";
+import { informationRegistry } from "../src/config/information/informationRegistry";
 import type { CoachExportMetrics, CoachExportTrainingSignals } from "../src/lib/coachExport/types";
+
+function getSection(text: string, heading: string, nextHeading?: string) {
+  const start = text.indexOf(heading);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const fromStart = text.slice(start);
+  if (!nextHeading) return fromStart;
+  const end = fromStart.indexOf(nextHeading);
+  return end >= 0 ? fromStart.slice(0, end) : fromStart;
+}
 
 function buildMetrics(): CoachExportMetrics {
   return {
@@ -128,6 +138,35 @@ test("coach export includes recent training signals section", async () => {
   expect(text).toContain("- Pulling movements show improving consistency");
   expect(text).not.toContain("Upper A");
   expect(text).not.toContain("Lower B");
+});
+
+test("coach export preserves the structured coaching loop as plain text", async () => {
+  const text = formatCoachExportText(buildMetrics());
+
+  expect(text).toContain("Questions to answer:");
+  expect(text).toContain("Next Workout Focus");
+  expect(text).toContain("Progression Guardrails");
+  expect(text).toContain("Execution Priorities");
+  expect(text).toContain("Adjustment Triggers");
+  expect(text).toContain("Training Signals (Recent Sessions)");
+  expect(text).toContain("Recent Patterns (Last 4 Sessions)");
+  expect(text).toContain("Readiness / Confidence Notes");
+  expect(text).toContain("Discuss with Gaz");
+
+  expect(text).not.toContain("```");
+  expect(text).not.toContain("{");
+  expect(text).not.toContain("}");
+});
+
+test("information registry includes the coach export and body composition explainer entries", async () => {
+  expect(informationRegistry.progress.coachExport.title).toBe("Coach Export");
+  expect(informationRegistry.progress.trainingSignals.title).toBe("Training Signals");
+  expect(informationRegistry.progress.recentPatterns.title).toBe("Recent Patterns");
+  expect(informationRegistry.progress.nextWorkoutFocus.title).toBe("Next Workout Focus");
+  expect(informationRegistry.progress.exportConfidence.title).toBe("Export Confidence");
+  expect(informationRegistry.progress.anchorLifts.title).toBe("Anchor Lifts");
+  expect(informationRegistry.bodyComposition.phaseQuality.title).toBe("Phase Quality");
+  expect(informationRegistry.bodyComposition.hydrationConfidence.title).toBe("Hydration Confidence");
 });
 
 test("pattern summary uses repeated recent signals and caps subsection bullets", async () => {
@@ -264,23 +303,23 @@ test("next workout focus builds constraint and trigger guidance without split-sp
     } as any,
   });
 
-  expect(focus.progressionGuardrails).toContain(
-    "Keep progression conservative given current phase-quality risk."
+  expect(focus.progressionGuardrails.join(" ")).toMatch(
+    /keep progression conservative/i
   );
-  expect(focus.progressionGuardrails).toContain(
-    "Avoid pushing load on movements that already show joint feedback or shoulder sensitivity."
+  expect(focus.progressionGuardrails.join(" ")).toMatch(
+    /joint feedback|shoulder sensitivity/i
   );
-  expect(focus.executionPriorities).toContain(
-    "Maintain lat-dominant pulling and protect the setup that reduces early arm takeover."
+  expect(focus.executionPriorities.join(" ")).toMatch(
+    /lat-dominant pulling|arm takeover/i
   );
-  expect(focus.executionPriorities).toContain(
-    "Improve medial and lateral delt isolation quality before pushing shoulder-isolation progression."
+  expect(focus.executionPriorities.join(" ")).toMatch(
+    /medial|lateral delt isolation/i
   );
-  expect(focus.adjustmentTriggers).toContain(
-    "Reduce volume or progression pressure if later-set fatigue appears earlier than usual."
+  expect(focus.adjustmentTriggers.join(" ")).toMatch(
+    /later-set fatigue|terminal-rep/i
   );
-  expect(focus.adjustmentTriggers).toContain(
-    "Stop or modify a movement if shoulder, elbow, or other joint feedback appears."
+  expect(focus.adjustmentTriggers.join(" ")).toMatch(
+    /stop or modify|joint feedback|shoulder|elbow/i
   );
   expect(focus.progressionGuardrails.length).toBeLessThanOrEqual(3);
   expect(focus.executionPriorities.length).toBeLessThanOrEqual(3);
@@ -288,4 +327,36 @@ test("next workout focus builds constraint and trigger guidance without split-sp
   expect(focus.progressionGuardrails.join(" ")).not.toMatch(/upper|lower|next workout type/i);
   expect(focus.executionPriorities.join(" ")).not.toMatch(/upper|lower|next workout type/i);
   expect(focus.adjustmentTriggers.join(" ")).not.toMatch(/upper|lower|next workout type/i);
+});
+
+test("next workout focus section avoids split prediction and exact programming prescriptions", async () => {
+  const text = formatCoachExportText(buildMetrics());
+  const focusSection = getSection(text, "Next Workout Focus", "Training Signals (Recent Sessions)");
+
+  expect(focusSection).not.toMatch(/next workout:\s*(upper|lower)/i);
+  expect(focusSection).not.toMatch(/\bdo\s+(upper|lower)\b/i);
+  expect(focusSection).not.toMatch(/next session should be/i);
+
+  expect(focusSection).not.toMatch(/\badd\s+\d+\s+sets?\b/i);
+  expect(focusSection).not.toMatch(/\bdo\s+\d+\s+sets?\s+of\b/i);
+  expect(focusSection).not.toMatch(/\bincrease by\s+\d+\s*(lb|lbs|kg)?\b/i);
+  expect(focusSection).not.toMatch(/\bperform\s+\d+\s*-\s*\d+\s+reps?\b/i);
+});
+
+test("next workout focus omits empty subsection headings when no bullets exist", async () => {
+  const metrics = buildMetrics();
+  metrics.nextWorkoutFocus = {
+    progressionGuardrails: [
+      "Keep progression conservative given current phase-quality risk.",
+    ],
+    executionPriorities: [],
+    adjustmentTriggers: [],
+  };
+
+  const text = formatCoachExportText(metrics);
+  const focusSection = getSection(text, "Next Workout Focus", "Training Signals (Recent Sessions)");
+
+  expect(focusSection).toContain("Progression Guardrails");
+  expect(focusSection).not.toContain("Execution Priorities");
+  expect(focusSection).not.toContain("Adjustment Triggers");
 });

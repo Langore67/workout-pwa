@@ -13,6 +13,182 @@
 import type { InformationRegistry } from "./informationTypes";
 
 export const informationRegistry = {
+    progress: {
+      coachExport: {
+        title: "Coach Export",
+        ownerPage: "ProgressPage",
+        ownerComponent: "Copy Coach Export action",
+        status: "reviewed",
+        lastReviewedBuild: "2026-04-28-INFO-COACH-01",
+        lastReviewedAt: "2026-04-28",
+
+        summary:
+          "Coach Export is a plain-text coaching handoff. It packages recent body, strength, timeline, and session-signal context into one copy/paste summary.",
+
+        whyItMatters:
+          "The export is meant to help a coaching model or human coach interpret what is happening now without digging through raw logs, charts, or sessions one by one.",
+
+        howItWorks:
+          "IronForge combines current body-composition trends, phase-quality context, hydration confidence, Strength Signal, anchor lifts, recent training signals, repeated patterns, and export confidence into a single structured text block.",
+
+        howToUseIt:
+          "Use Coach Export as structured context for Coach GPT or a real coach. It reports signals, constraints, permissions, and confidence. It does not decide the workout for you.",
+
+        interpretation: [
+          "Questions to answer frame the coaching problem, not the workout prescription.",
+          "Next Workout Focus reports guardrails, execution priorities, and adjustment triggers rather than exact programming.",
+          "Training Signals and Recent Patterns describe what happened recently and what is repeating.",
+        ],
+
+        technicalNotes: [
+          "The export is plain text by design so it can be pasted directly into a coaching chat or note.",
+          "Recent Patterns use the last 4 completed sessions when available.",
+          "Low export confidence means a coach should interpret the handoff more cautiously.",
+        ],
+
+        notes: [
+          "Coach Export is not a next-workout generator. IronForge reports the state of the system; Coach GPT makes workout decisions.",
+        ],
+      },
+      trainingSignals: {
+        title: "Training Signals",
+        ownerPage: "ProgressPage",
+        ownerComponent: "Coach Export training signals section",
+        status: "reviewed",
+        lastReviewedBuild: "2026-04-28-INFO-COACH-01",
+        lastReviewedAt: "2026-04-28",
+
+        summary:
+          "Training Signals describe what happened in recent completed sessions based on logged performance and session notes.",
+
+        whyItMatters:
+          "A coach needs to know more than bodyweight and charts. Training Signals preserve movement-quality observations, stimulus notes, fatigue notes, and discussion points from the sessions themselves.",
+
+        howItWorks:
+          "IronForge extracts lightweight rule-based signals from recent session notes and completed work. Those signals are grouped into movement quality, stimulus or coverage, fatigue or readiness, and discussion themes.",
+
+        howToUseIt:
+          "Use Training Signals as recent evidence. They are inputs to Recent Patterns and Next Workout Focus, but they are not a workout prescription by themselves.",
+
+        interpretation: [
+          "Exercise-specific bullets are usually more meaningful than generic session-wide bullets.",
+          "Repeated signals matter more than one-off notes.",
+        ],
+
+        notes: [
+          "Training Signals are descriptive only. They are not a split recommendation or program template.",
+        ],
+      },
+      recentPatterns: {
+        title: "Recent Patterns",
+        ownerPage: "ProgressPage",
+        ownerComponent: "Coach Export recent patterns section",
+        status: "reviewed",
+        lastReviewedBuild: "2026-04-28-INFO-COACH-01",
+        lastReviewedAt: "2026-04-28",
+
+        summary:
+          "Recent Patterns summarize what has repeated across the last 4 completed sessions.",
+
+        whyItMatters:
+          "One session can be noisy. Repeated patterns are more reliable for coaching interpretation and constraint-setting.",
+
+        howItWorks:
+          "IronForge looks for repeated movement-quality, stimulus, fatigue, constraint, and progression themes across the last 4 completed sessions. Frequency labels like 3/4 or 4/4 show how often a pattern appeared.",
+
+        howToUseIt:
+          "Use Recent Patterns to understand which themes look stable enough to trust. They describe what is repeating, not what the next workout must be.",
+
+        interpretation: [
+          "A higher frequency means the pattern is more reliable, not that it is automatically more severe.",
+          "Emerging constraints can appear before they become dominant patterns.",
+        ],
+
+        technicalNotes: [
+          "Patterns are rule-based and frequency-aware.",
+          "Recent Patterns use up to the last 4 completed sessions.",
+        ],
+      },
+      nextWorkoutFocus: {
+        title: "Next Workout Focus",
+        ownerPage: "ProgressPage",
+        ownerComponent: "Coach Export next workout focus section",
+        status: "reviewed",
+        lastReviewedBuild: "2026-04-28-INFO-COACH-01",
+        lastReviewedAt: "2026-04-28",
+
+        summary:
+          "Next Workout Focus gives constraint and permission guidance for the next coaching decision.",
+
+        whyItMatters:
+          "A useful coaching handoff should protect what is working, avoid pushing unstable areas, and define when a coach or athlete should modify the session.",
+
+        howItWorks:
+          "IronForge converts recent training signals, recent patterns, and phase-quality context into three practical buckets: progression guardrails, execution priorities, and adjustment triggers.",
+
+        howToUseIt:
+          "Guardrails describe what not to push. Execution priorities describe what to protect. Adjustment triggers describe when a movement or session should be modified in real time.",
+
+        interpretation: [
+          "This section does not decide the next workout.",
+          "It should read like constraints and permissions, not exercise prescriptions.",
+        ],
+
+        notes: [
+          "Coach GPT or a human coach still decides exercise choice, volume, and progression.",
+        ],
+      },
+      exportConfidence: {
+        title: "Export Confidence",
+        ownerPage: "ProgressPage",
+        ownerComponent: "Coach Export export confidence section",
+        status: "reviewed",
+        lastReviewedBuild: "2026-04-28-INFO-COACH-01",
+        lastReviewedAt: "2026-04-28",
+
+        summary:
+          "Export Confidence is the overall trust score for the current Coach Export.",
+
+        whyItMatters:
+          "A clean-looking export can still be weak if too much data is missing. Export Confidence helps a coach judge how hard to lean on the summary.",
+
+        howItWorks:
+          "IronForge scores available bodyweight, waist, strength, and coherence signals, then rolls them into one overall confidence label.",
+
+        howToUseIt:
+          "Higher confidence means enough data exists to interpret the export more directly. Lower confidence means a coach should stay more cautious and rely more on raw context and recent notes.",
+
+        interpretation: [
+          "Low confidence does not mean the export is useless. It means the evidence is thinner.",
+          "Confidence reflects data quality and completeness, not athlete quality.",
+        ],
+      },
+      anchorLifts: {
+        title: "Anchor Lifts",
+        ownerPage: "ProgressPage",
+        ownerComponent: "Coach Export anchor lifts section",
+        status: "reviewed",
+        lastReviewedBuild: "2026-04-28-INFO-COACH-01",
+        lastReviewedAt: "2026-04-28",
+
+        summary:
+          "Anchor Lifts are representative lifts used to summarize recent strength behavior by movement pattern.",
+
+        whyItMatters:
+          "A coach needs to see what is actually driving the strength summary. Anchor Lifts make the main contributors visible without dumping every set in the export.",
+
+        howItWorks:
+          "IronForge selects representative recent lifts for hinge, squat, push, and pull patterns, then reports the lift, effective load, reps, estimated strength, and date.",
+
+        howToUseIt:
+          "Use Anchor Lifts to understand which movements are currently representing each main pattern. They are examples of what is driving the strength summary, not the full program.",
+
+        interpretation: [
+          "Anchor Lifts are not necessarily the only important lifts in the block.",
+          "If an anchor is missing, confidence in that pattern is lower.",
+        ],
+      },
+    },
     strength: {
       strengthSignal: {
         title: "Strength Signal",
@@ -144,6 +320,67 @@ export const informationRegistry = {
             notes: [
               "Review this entry whenever normalized strength calculation logic, bodyweight normalization, pattern classification, lookback rules, or MPS interpretation logic changes.",
             ],
+    },
+  },
+  bodyComposition: {
+    phaseQuality: {
+      title: "Phase Quality",
+      ownerPage: "BodyCompositionPage",
+      ownerComponent: "Phase Quality section",
+      status: "reviewed",
+      lastReviewedBuild: "2026-04-28-INFO-BODY-01",
+      lastReviewedAt: "2026-04-28",
+
+      summary:
+        "Phase Quality reports whether the current phase is behaving the way it should based on body-composition and performance evidence.",
+
+      whyItMatters:
+        "A cut, maintain phase, or bulk can all look successful or risky for different reasons. Phase Quality gives one readout for how coherent the current phase looks.",
+
+      howItWorks:
+        "IronForge combines recent direction in weight, waist, lean mass, body-fat trend, and strength context into a single phase-quality status with supporting drivers.",
+
+      howToUseIt:
+        "Use Phase Quality as a high-level interpretation layer. It helps flag when the phase looks on track, too aggressive, or at risk of poor tradeoffs.",
+
+      interpretation: [
+        "On a cut, better outcomes usually mean waist and weight are moving while lean mass and strength stay relatively protected.",
+        "Phase Quality is an interpretation aid, not a replacement for reviewing the underlying trends.",
+      ],
+
+      technicalNotes: [
+        "Phase Quality is phase-aware, so the same weight or strength move can mean different things in a cut, maintain phase, or bulk.",
+      ],
+    },
+    hydrationConfidence: {
+      title: "Hydration Confidence",
+      ownerPage: "BodyCompositionPage",
+      ownerComponent: "Hydration Confidence section",
+      status: "reviewed",
+      lastReviewedBuild: "2026-04-28-INFO-BODY-01",
+      lastReviewedAt: "2026-04-28",
+
+      summary:
+        "Hydration Confidence estimates how much you should trust fluid-sensitive body-composition readings right now.",
+
+      whyItMatters:
+        "Water balance can distort lean mass, body-fat estimates, and related interpretations. A hydration-aware view helps prevent overreacting to false composition changes.",
+
+      howItWorks:
+        "IronForge compares recent body-water and fluid-balance markers against your recent baseline and highest-confidence readings, then assigns a confidence label and interpretation.",
+
+      howToUseIt:
+        "Use Hydration Confidence to decide how hard to trust body-composition shifts. It does not override waist or bodyweight trends, but it can explain why lean-mass or body-fat changes may look noisy.",
+
+      interpretation: [
+        "Lower confidence means fluid distortion is more likely.",
+        "Stable waist and weight trends can still matter even when hydration confidence is weaker.",
+      ],
+
+      improveConfidence: [
+        "Measure under similar conditions.",
+        "Do not over-interpret one outlier reading after unusual hydration, sodium, or recovery swings.",
+      ],
     },
   },
 } satisfies InformationRegistry;
