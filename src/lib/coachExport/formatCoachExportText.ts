@@ -64,13 +64,41 @@ function formatPhaseQuestions(phase: CurrentPhase) {
   }
 
   return [
-    "1. Is retatrutide working / is fat loss showing up?",
-    "2. Am I preserving muscle?",
-    "3. How is strength retention?",
+    "1. Is fat loss occurring (weight and waist aligned)?",
+    "2. Is muscle being preserved (lean mass and strength stable)?",
+    "3. Is training performance staying consistent?",
   ];
 }
 
 export function formatCoachExportText(metrics: CoachExportMetrics) {
+  const nextWorkoutFocusLines = [
+    "Next Workout Focus",
+    ...(metrics.nextWorkoutFocus.progressionGuardrails.length
+      ? [
+          "Progression Guardrails",
+          ...metrics.nextWorkoutFocus.progressionGuardrails.map((item) => `- ${item}`),
+          "",
+        ]
+      : []),
+    ...(metrics.nextWorkoutFocus.executionPriorities.length
+      ? [
+          "Execution Priorities",
+          ...metrics.nextWorkoutFocus.executionPriorities.map((item) => `- ${item}`),
+          "",
+        ]
+      : []),
+    ...(metrics.nextWorkoutFocus.adjustmentTriggers.length
+      ? [
+          "Adjustment Triggers",
+          ...metrics.nextWorkoutFocus.adjustmentTriggers.map((item) => `- ${item}`),
+          "",
+        ]
+      : []),
+  ];
+  if (nextWorkoutFocusLines[nextWorkoutFocusLines.length - 1] === "") {
+    nextWorkoutFocusLines.pop();
+  }
+
   const trainingSignalLines = [
     "Training Signals (Recent Sessions)",
     "Movement Quality",
@@ -87,11 +115,6 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     ...(metrics.trainingSignals.fatigueReadiness.length
       ? metrics.trainingSignals.fatigueReadiness.map((item) => `- ${item}`)
       : ["- No recent fatigue notes."]),
-    "",
-    "Next Workout Focus",
-    ...(metrics.trainingSignals.nextWorkoutFocus.length
-      ? metrics.trainingSignals.nextWorkoutFocus.map((item) => `- ${item}`)
-      : ["- No carry-forward focus set yet."]),
     "",
     "Discuss with Gaz",
     ...(metrics.trainingSignals.discussWithGaz.length
@@ -168,6 +191,8 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     "",
     "Anchor Lifts",
     ...metrics.anchorLifts.map(formatAnchorLift),
+    "",
+    ...nextWorkoutFocusLines,
     "",
     ...trainingSignalLines,
     "",

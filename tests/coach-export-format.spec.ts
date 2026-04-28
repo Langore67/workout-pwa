@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { buildNextWorkoutFocus } from "../src/lib/coachExport/buildNextWorkoutFocus";
 import { formatCoachExportText } from "../src/lib/coachExport/formatCoachExportText";
 import { buildPatternSummary, type CompletedSession } from "../src/lib/coachExport/buildPatternSummary";
 import type { CoachExportMetrics, CoachExportTrainingSignals } from "../src/lib/coachExport/types";
@@ -76,6 +77,20 @@ function buildMetrics(): CoachExportMetrics {
       constraints: ["Shoulder sensitivity linked to behind-head or overhead positions"],
       progression: ["Pulling movements show improving consistency"],
     },
+    nextWorkoutFocus: {
+      progressionGuardrails: [
+        "Keep progression conservative given current phase-quality risk.",
+        "Avoid pushing load on movements that already show joint feedback or shoulder sensitivity.",
+      ],
+      executionPriorities: [
+        "Maintain lat-dominant pulling and protect the setup that reduces early arm takeover.",
+        "Improve medial and lateral delt isolation quality before pushing shoulder-isolation progression.",
+      ],
+      adjustmentTriggers: [
+        "Reduce volume or progression pressure if later-set fatigue appears earlier than usual.",
+        "Stop or modify a movement if shoulder, elbow, or other joint feedback appears.",
+      ],
+    },
     exportConfidence: {
       score: 82,
       label: "Strong",
@@ -102,12 +117,17 @@ test("coach export includes recent training signals section", async () => {
   expect(text).toContain("Fatigue / Readiness");
   expect(text).toContain("- Shoulder sensitive in behind-head position");
   expect(text).toContain("Next Workout Focus");
-  expect(text).toContain("- Improve medial delt isolation");
+  expect(text).toContain("Progression Guardrails");
+  expect(text).toContain("Execution Priorities");
+  expect(text).toContain("Adjustment Triggers");
+  expect(text).toContain("- Maintain lat-dominant pulling and protect the setup that reduces early arm takeover.");
   expect(text).toContain("Discuss with Gaz");
   expect(text).toContain("- Review safe overhead pressing range");
   expect(text).toContain("Recent Patterns (Last 4 Sessions)");
   expect(text).toContain("- Lat engagement improving across recent pull work");
   expect(text).toContain("- Pulling movements show improving consistency");
+  expect(text).not.toContain("Upper A");
+  expect(text).not.toContain("Lower B");
 });
 
 test("pattern summary uses repeated recent signals and caps subsection bullets", async () => {
@@ -200,4 +220,72 @@ expect(summary.progression).toContain("Pulling movements show improving consiste
   expect(summary.fatigue.length).toBeLessThanOrEqual(4);
   expect(summary.constraints.length).toBeLessThanOrEqual(4);
   expect(summary.progression.length).toBeLessThanOrEqual(4);
+});
+
+test("next workout focus builds constraint and trigger guidance without split-specific language", async () => {
+  const focus = buildNextWorkoutFocus({
+    trainingSignals: {
+      movementQuality: [
+        "Lat Pulldown: improved stretch and contraction",
+        "Lateral Raise: medial delt isolation still not clean",
+      ],
+      stimulusCoverage: [
+        "Pull: strong lat stimulus",
+        "Shoulders: lateral delt isolation needs refinement",
+      ],
+      fatigueReadiness: [
+        "Fatigue mostly appeared at terminal reps",
+        "Shoulder sensitive in behind-head position",
+        "Elbow pain showed up late",
+      ],
+      nextWorkoutFocus: [
+        "Maintain lat-driven pulling before increasing load",
+        "Improve medial delt isolation",
+        "Avoid behind-the-neck pressing positions",
+      ],
+      discussWithGaz: [
+        "Review safe overhead pressing range",
+      ],
+    },
+    patternSummary: {
+      movementQuality: [
+        "Lat engagement improving across recent pull work",
+        "Shoulder sensitivity appears in overhead positions",
+      ],
+      stimulus: ["Pull stimulus consistently strong"],
+      fatigue: ["Fatigue consistently appears at terminal reps"],
+      constraints: ["Shoulder sensitivity linked to behind-head or overhead positions"],
+      progression: ["Pulling movements show improving consistency"],
+    },
+    phaseQuality: {
+      finalStatus: "Aggressive Cut",
+      confidence: "High",
+      drivers: ["Muscle-risk cut risk remains elevated."],
+    } as any,
+  });
+
+  expect(focus.progressionGuardrails).toContain(
+    "Keep progression conservative given current phase-quality risk."
+  );
+  expect(focus.progressionGuardrails).toContain(
+    "Avoid pushing load on movements that already show joint feedback or shoulder sensitivity."
+  );
+  expect(focus.executionPriorities).toContain(
+    "Maintain lat-dominant pulling and protect the setup that reduces early arm takeover."
+  );
+  expect(focus.executionPriorities).toContain(
+    "Improve medial and lateral delt isolation quality before pushing shoulder-isolation progression."
+  );
+  expect(focus.adjustmentTriggers).toContain(
+    "Reduce volume or progression pressure if later-set fatigue appears earlier than usual."
+  );
+  expect(focus.adjustmentTriggers).toContain(
+    "Stop or modify a movement if shoulder, elbow, or other joint feedback appears."
+  );
+  expect(focus.progressionGuardrails.length).toBeLessThanOrEqual(3);
+  expect(focus.executionPriorities.length).toBeLessThanOrEqual(3);
+  expect(focus.adjustmentTriggers.length).toBeLessThanOrEqual(3);
+  expect(focus.progressionGuardrails.join(" ")).not.toMatch(/upper|lower|next workout type/i);
+  expect(focus.executionPriorities.join(" ")).not.toMatch(/upper|lower|next workout type/i);
+  expect(focus.adjustmentTriggers.join(" ")).not.toMatch(/upper|lower|next workout type/i);
 });
