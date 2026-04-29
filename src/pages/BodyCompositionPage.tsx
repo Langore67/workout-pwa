@@ -74,7 +74,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
 import { db } from "../db";
 import { Page, Section } from "../components/Page.tsx";
-import TrendChartCard from "../components/charts/TrendChartCard";
+import VisxTrendChartCard from "../components/charts/VisxTrendChartCard";
 import PhaseQualityCard from "../components/phase/PhaseQualityCard";
 import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTypes";
 import { formatInches, formatLbs } from "../components/charts/chartFormatters";
@@ -1384,12 +1384,17 @@ export default function BodyCompositionPage() {
 
         <div style={{ display: "grid", gap: 12 }}>
           {chartConfigs.map((chart) => (
-            <TrendChartCard
+            <VisxTrendChartCard
               key={chart.title}
               title={chart.title}
               subtitle={chart.subtitle}
               data={chart.data}
               series={chart.series}
+              testIdBase={chart.title}
+              windowSize={5}
+              paneNavigationMode="movingPane"
+              dragScrollEnabled={true}
+              yAxisSide="right"
               yDomainMode={chart.yDomainMode}
               valueFormatter={chart.valueFormatter}
               tooltipLabelFormatter={(label, datum) => {
