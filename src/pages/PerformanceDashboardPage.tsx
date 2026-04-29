@@ -1280,10 +1280,23 @@ function ResolutionControl<T extends string>({
   resolutions: readonly T[];
   onChange: (resolution: T) => void;
 }) {
+  const labels = {
+    D: "D",
+    W: "W",
+    M: "M",
+  } as const;
+  const titles = {
+    D: "Daily",
+    W: "Weekly",
+    M: "Monthly",
+  } as const;
+
   return (
     <div className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
       {resolutions.map((resolution) => {
         const active = resolution === activeResolution;
+        const displayLabel = labels[resolution as keyof typeof labels] ?? resolution;
+        const title = titles[resolution as keyof typeof titles] ?? resolution;
         return (
           <button
             key={resolution}
@@ -1291,8 +1304,9 @@ function ResolutionControl<T extends string>({
             className={`btn small ${active ? "primary" : ""}`}
             onClick={() => onChange(resolution)}
             style={{ minWidth: 34, paddingInline: 10 }}
+            title={title}
           >
-            {resolution}
+            {displayLabel}
           </button>
         );
       })}
@@ -1879,7 +1893,7 @@ export default function PerformanceDashboardPage() {
             />
           </div>
 
-          <PerformanceInsightsSection insights={vm.insights} actions={vm.actions} />
+          <PerformanceInsightsSection insights={vm.insights} />
         </div>
       </Section>
     </Page>

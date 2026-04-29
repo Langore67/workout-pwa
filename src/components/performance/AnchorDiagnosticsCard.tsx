@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 
+import InfoStubButton from "../information/InfoStubButton";
 import type { AnchorDiagnosticsRow } from "./anchorDiagnosticsPresenter";
 
 type AnchorDiagnosticsCardProps = {
@@ -40,14 +41,17 @@ export default function AnchorDiagnosticsCard({
             </div>
           </div>
 
-          <button
-            type="button"
-            className="btn small"
-            onClick={() => setShowAnchorDiagnostics((value) => !value)}
-            aria-expanded={showAnchorDiagnostics}
-          >
-            {showAnchorDiagnostics ? "Hide" : "Show"}
-          </button>
+          <div className="row" style={{ alignItems: "center", gap: 8 }}>
+            <InfoStubButton pageKey="performance" infoKey="anchorDiagnostics" />
+            <button
+              type="button"
+              className="btn small"
+              onClick={() => setShowAnchorDiagnostics((value) => !value)}
+              aria-expanded={showAnchorDiagnostics}
+            >
+              {showAnchorDiagnostics ? "Hide" : "Show"}
+            </button>
+          </div>
         </div>
 
         <div

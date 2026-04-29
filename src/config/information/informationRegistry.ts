@@ -350,6 +350,113 @@ export const informationRegistry = {
     },
 
     performance: {
+      dashboardOverview: {
+        title: "Dashboard Overview",
+        ownerPage: "PerformanceDashboardPage",
+        ownerComponent: "PerformanceOverviewSection",
+        status: "reviewed",
+        lastReviewedBuild: "2026-04-29-INFO-PERF-01",
+        lastReviewedAt: "2026-04-29",
+
+        summary:
+          "Dashboard Overview is the high-level coaching summary for Performance.",
+
+        whyItMatters:
+          "It keeps the most important phase-aware signals in one place so you do not have to infer the big picture from separate charts first.",
+
+        howItWorks:
+          "IronForge combines the current flagship score, recent chart context, and coaching insights into one overview layer. The page uses phase as an interpretation lens, not as a hidden data override.",
+
+        howToUseIt:
+          "Start here for the broad read, then use the charts and insight cards to inspect why the dashboard is leaning positive, mixed, or watch.",
+
+        interpretation: [
+          "The overview is a synthesis layer, not a replacement for the underlying charts.",
+          "Current body metrics stay tied to logged data even when phase changes.",
+        ],
+      },
+      currentPhase: {
+        title: "Current Phase",
+        ownerPage: "PerformanceDashboardPage",
+        ownerComponent: "PerformanceOverviewSection phase selector",
+        status: "reviewed",
+        lastReviewedBuild: "2026-04-29-INFO-PERF-01",
+        lastReviewedAt: "2026-04-29",
+
+        summary:
+          "Current Phase tells Performance how to interpret the same body and training data.",
+
+        whyItMatters:
+          "The same weight, waist, and strength move can mean something different in a cut, maintain phase, or bulk.",
+
+        howItWorks:
+          "CUT favors fat-loss quality and strength retention. MAINTAIN favors stability and recomposition. BULK favors growth with controlled waist drift. Phase changes interpretation language and score expectations, but it does not rewrite your logged data.",
+
+        howToUseIt:
+          "Set the phase you are actually running right now, then read the score, insights, and charts through that lens.",
+
+        interpretation: [
+          "CUT expects weight and waist direction to support fat loss while strength stays protected.",
+          "MAINTAIN expects stable body composition and repeatable performance.",
+          "BULK expects growth signals without letting waist drift too fast.",
+        ],
+      },
+      cutQuality: {
+        title: "Cut Quality and flagship score",
+        ownerPage: "PerformanceDashboardPage",
+        ownerComponent: "PerformanceOverviewSection flagship score card",
+        status: "reviewed",
+        lastReviewedBuild: "2026-04-29-INFO-PERF-01",
+        lastReviewedAt: "2026-04-29",
+
+        summary:
+          "This score is the dashboard's headline phase-quality readout. In CUT it appears as Cut Quality. In other phases it shifts to the matching flagship interpretation.",
+
+        whyItMatters:
+          "It gives one fast read on whether the current phase looks coherent instead of forcing you to combine every chart manually.",
+
+        howItWorks:
+          "The score blends broad strength direction, bodyweight trend, waist trend, and phase-aware interpretation rules. In CUT it prefers fat-loss direction with strength preservation. In other phases it reweights the same broad levers toward stability or growth quality.",
+
+        howToUseIt:
+          "Use the score as a headline signal, then read the supporting bullets and charts to understand what is driving it.",
+
+        interpretation: [
+          "Higher is better, but the score is not a lab measurement or a prescription.",
+          "A mixed score usually means one or two levers are lagging even if others look fine.",
+        ],
+
+        technicalNotes: [
+          "The flagship score is displayed on a 0 to 100 scale for readability.",
+          "The exact interpretation changes with the selected phase.",
+        ],
+      },
+      anchorDiagnostics: {
+        title: "Anchor Diagnostics",
+        ownerPage: "PerformanceDashboardPage",
+        ownerComponent: "AnchorDiagnosticsCard",
+        status: "reviewed",
+        lastReviewedBuild: "2026-04-29-INFO-PERF-01",
+        lastReviewedAt: "2026-04-29",
+
+        summary:
+          "Anchor Diagnostics shows which shared Strength Signal v2 anchors Performance is currently using by pattern.",
+
+        whyItMatters:
+          "If a pattern anchor is missing, auto-selected, or unresolved, it changes how much confidence you should place in that pattern's strength context.",
+
+        howItWorks:
+          "The card lists the current pattern anchors, whether they were configured or automatically selected, and why a pattern may still be unresolved.",
+
+        howToUseIt:
+          "Use this when a strength summary looks surprising and you want to confirm which anchor lifts are driving the shared view.",
+
+        interpretation: [
+          "AUTO means the system selected the best available anchor from recent eligible data.",
+          "Configured means an explicit override exists.",
+          "Unresolved means the page does not have enough eligible recent data for that pattern.",
+        ],
+      },
       strengthSignalTrend: buildMovingPaneChartEntry({
         title: "Performance Strength Signal Trend",
         ownerPage: "PerformanceDashboardPage",

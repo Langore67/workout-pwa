@@ -88,6 +88,9 @@ export type TrendChartCardProps = {
   /* hide the top-right header badge entirely */
   hideHeaderBadge?: boolean;
 
+  /* hide the internal chart title/subtitle header block */
+  hideChartHeader?: boolean;
+
   /* optional shared Information Framework wiring */
   infoPageKey?: keyof typeof informationRegistry;
   infoKey?: string;
