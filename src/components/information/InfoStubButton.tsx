@@ -6,12 +6,12 @@
    FILE: src/components/information/InfoStubButton.tsx
 
    Purpose
-   - Lightweight shared info-button stub for Progress pages
-   - Establish a stable info-button contract before modal behavior is added
+   - Lightweight shared info-button for Progress pages
+   - Provide a small reusable trigger for the Information modal
 
    Notes
-   - No click behavior yet
-   - Carries optional infoKey for future wiring
+   - Carries an optional registry key and context payload
+   - Opens the shared Information modal when a matching entry exists
    ============================================================================ */
 
 import React, { useEffect, useMemo, useState } from "react";

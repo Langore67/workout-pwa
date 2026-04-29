@@ -8,3 +8,6 @@ dist
 .idea/
 src/seed/backup.exercises.seed.with_cues.json
 test-results/
+playwright-report/
+coverage/
+*.last-run.json

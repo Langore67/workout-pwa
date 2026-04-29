@@ -20,8 +20,6 @@
 /*  ✅ Preserve dashboard, pattern scores, and weekly trend table             */
 /*  ✅ Preserve mode toggle persistence and trend calculations                */
 /* ========================================================================== */
-// TEMP: force sync of read-only anchors UI
-
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { db, type Exercise } from "../db";
@@ -35,7 +33,6 @@ import {
 } from "../strength/Strength";
 import {
   computeStrengthSignalV2,
-  getStrengthSignalV2Debug,
   type StrengthSignalV2Pattern,
   type StrengthSignalV2Result,
 } from "../strength/v2/computeStrengthSignalV2";
@@ -422,25 +419,6 @@ export default function StrengthPage() {
   const [savingAnchorSlot, setSavingAnchorSlot] = useState<StrengthSignalV2Pattern | null>(null);
   const [patternScoresOpen, setPatternScoresOpen] = useState(false);
   const [trendTableOpen, setTrendTableOpen] = useState(false);
-
-  useEffect(() => {
-    if (!import.meta.env.DEV) return;
-
-    let alive = true;
-
-    (async () => {
-      try {
-        const debugText = await getStrengthSignalV2Debug();
-        if (alive) console.info("[StrengthSignalV2Debug]\n" + debugText);
-      } catch (e) {
-        if (alive) console.warn("[StrengthSignalV2Debug] Failed to compute debug output.", e);
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   useEffect(() => {
     let alive = true;
