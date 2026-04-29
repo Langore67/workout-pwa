@@ -2,8 +2,6 @@ import { test, expect } from "@playwright/test";
 
 test("Templates ActionMenu opens and closes (diagnostic)", async ({ page }) => {
   // 🔎 Sanity marker so we KNOW this file is the one being executed
-  console.log("AM_TEST_FILE_MARKER: 2026-02-20 v2");
-
   // 1) Stub prompt BEFORE the app code runs (so createTemplate() gets a name)
   await page.addInitScript(() => {
     const originalPrompt = window.prompt.bind(window);
