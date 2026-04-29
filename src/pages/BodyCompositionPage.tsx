@@ -78,7 +78,6 @@ import TrendChartCard from "../components/charts/TrendChartCard";
 import PhaseQualityCard from "../components/phase/PhaseQualityCard";
 import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTypes";
 import { formatInches, formatLbs } from "../components/charts/chartFormatters";
-import InfoStubButton from "../components/information/InfoStubButton";
 import SectionHeaderRow from "../components/layout/SectionHeaderRow";
 import ProgressPageHeader from "../components/layout/ProgressPageHeader";
 import {

@@ -7,6 +7,15 @@ async function goto(page: Page, path: string) {
   await page.goto(new URL(path, BASE_URL).toString(), { waitUntil: "domcontentloaded" });
 }
 
+function getSection(text: string, heading: string, nextHeading?: string) {
+  const start = text.indexOf(heading);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const fromStart = text.slice(start);
+  if (!nextHeading) return fromStart;
+  const end = fromStart.indexOf(nextHeading);
+  return end >= 0 ? fromStart.slice(0, end) : fromStart;
+}
+
 test.describe("history and ad hoc session workflows", () => {
   test("session detail copies the completed session snapshot", async ({ page }) => {
     await page.addInitScript(() => {
@@ -299,5 +308,185 @@ test.describe("history and ad hoc session workflows", () => {
     await goto(page, `/session/${seeded.sessionId}`);
     await expect(page.getByTestId("session-detail")).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId("session-total-lifted")).toContainText("2100 lb");
+  });
+
+  test("history to coach export copies the structured coaching loop without workout prediction", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      const clipboardState = { text: "" };
+      Object.defineProperty(window, "__copiedText", {
+        value: clipboardState,
+        configurable: true,
+      });
+      Object.defineProperty(navigator, "clipboard", {
+        value: {
+          writeText: async (text: string) => {
+            clipboardState.text = text;
+          },
+        },
+        configurable: true,
+      });
+    });
+
+    await goto(page, "/");
+    await resetDexieDb(page);
+
+    const seeded = await page.evaluate(async () => {
+      const db = (window as any).__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const now = Date.now();
+      const dayMs = 24 * 60 * 60 * 1000;
+      const uuid = () => crypto.randomUUID();
+
+      const exerciseRows = [
+        { name: "Lat Pulldown", category: "Machine", equipment: "Cable" },
+        { name: "3-Point DB Row", category: "Dumbbell", equipment: "Dumbbell" },
+        { name: "Bradford Press", category: "Barbell", equipment: "Barbell" },
+        { name: "Lateral Raise", category: "Dumbbell", equipment: "Dumbbell" },
+      ];
+
+      const tracks = [];
+      for (const [index, exercise] of exerciseRows.entries()) {
+        const exerciseId = uuid();
+        const trackId = uuid();
+
+        await db.exercises.add({
+          id: exerciseId,
+          name: exercise.name,
+          normalizedName: exercise.name.toLowerCase(),
+          category: exercise.category,
+          equipment: exercise.equipment,
+          equipmentTags: [exercise.category.toLowerCase()],
+          createdAt: now - (40 + index) * dayMs,
+        });
+
+        await db.tracks.add({
+          id: trackId,
+          exerciseId,
+          trackType: "strength",
+          displayName: exercise.name,
+          trackingMode: "weightedReps",
+          warmupSetsDefault: 0,
+          workingSetsDefault: 1,
+          repMin: 6,
+          repMax: 12,
+          restSecondsDefault: 120,
+          weightJumpDefault: 5,
+          createdAt: now - (40 + index) * dayMs,
+        });
+
+        tracks.push({ ...exercise, trackId });
+      }
+
+      await db.bodyMetrics.bulkAdd(
+        Array.from({ length: 18 }, (_, index) => {
+          const measuredAt = now - (17 - index) * 7 * dayMs;
+          return {
+            id: uuid(),
+            weightLb: 204 - index * 0.4,
+            waistIn: 36.8 - index * 0.05,
+            bodyFatPct: 18.2 - index * 0.08,
+            bodyWaterPct: 57 + ((index % 3) - 1) * 0.2,
+            measuredAt,
+            takenAt: measuredAt,
+            createdAt: measuredAt,
+          };
+        })
+      );
+
+      const sessionNotes = [
+        [
+          "Lat Pulldown: improved stretch and contraction; arms only at terminal reps.",
+          "3-Point DB Row: breakthrough; lat dominance with no biceps/trap takeover.",
+          "Bradford Press: stopped due to shoulder twinge.",
+          "Lateral Raise: medial delt isolation still not clean.",
+        ].join("\n"),
+        [
+          "Lat Pulldown: improved stretch and contraction.",
+          "Bradford Press: shoulder sensitive in behind-head position.",
+          "Lateral Raise: medial delt isolation still not clean.",
+        ].join("\n"),
+        [
+          "3-Point DB Row: breakthrough pattern still holds.",
+          "Bradford Press: shoulder twinge showed up again.",
+          "Lateral Raise: medial delt isolation still not clean.",
+          "Farmer's Carry: slight trap involvement noted but controlled.",
+        ].join("\n"),
+        [
+          "Lat Pulldown: improved stretch and contraction; arms only at terminal reps.",
+          "Bradford Press: stopped due to shoulder twinge.",
+          "Lateral Raise: medial delt isolation still not clean.",
+        ].join("\n"),
+      ];
+
+      let newestSessionId = "";
+
+      for (let sessionIndex = 0; sessionIndex < 4; sessionIndex += 1) {
+        const sessionId = uuid();
+        if (sessionIndex === 0) newestSessionId = sessionId;
+        const startedAt = now - (sessionIndex + 1) * 7 * dayMs;
+
+        await db.sessions.add({
+          id: sessionId,
+          templateName: `Upper ${String.fromCharCode(65 + sessionIndex)}`,
+          startedAt,
+          endedAt: startedAt + 45 * 60 * 1000,
+          notes: sessionNotes[sessionIndex],
+        });
+
+        for (const [trackIndex, track] of tracks.entries()) {
+          await db.sets.add({
+            id: uuid(),
+            sessionId,
+            trackId: track.trackId,
+            createdAt: startedAt + trackIndex * 60_000,
+            setType: "working",
+            weight: 100 + sessionIndex * 5 + trackIndex * 10,
+            reps: track.name === "Lat Pulldown" ? 10 : 8,
+            rir: 2,
+            completedAt: startedAt + trackIndex * 60_000 + 5_000,
+          });
+        }
+      }
+
+      return { newestSessionId };
+    });
+
+    await goto(page, "/history");
+    await expect(page.getByTestId("history-completed-count")).toContainText("4");
+    await expect(page.getByTestId(`history-completed-card:${seeded.newestSessionId}`)).toBeVisible({
+      timeout: 15000,
+    });
+
+    await goto(page, `/session/${seeded.newestSessionId}`);
+    await expect(page.getByTestId("session-detail")).toBeVisible({ timeout: 15000 });
+
+    await goto(page, "/progress");
+    await expect(page.getByRole("button", { name: /copy coach export/i })).toBeVisible({
+      timeout: 15000,
+    });
+    await page.getByRole("button", { name: /copy coach export/i }).click();
+
+    const copiedText = await page.evaluate(() => (window as any).__copiedText.text);
+    expect(copiedText).toContain("Questions to answer:");
+    expect(copiedText).toContain("Next Workout Focus");
+    expect(copiedText).toContain("Progression Guardrails");
+    expect(copiedText).toContain("Execution Priorities");
+    expect(copiedText).toContain("Adjustment Triggers");
+    expect(copiedText).toContain("Training Signals (Recent Sessions)");
+    expect(copiedText).toContain("Recent Patterns (Last 4 Sessions)");
+    expect(copiedText).toContain("Readiness / Confidence Notes");
+    expect(copiedText).toContain("Discuss with Gaz");
+
+    const focusSection = getSection(copiedText, "Next Workout Focus", "Training Signals (Recent Sessions)");
+    expect(focusSection).not.toMatch(/next workout:\s*(upper|lower)/i);
+    expect(focusSection).not.toMatch(/\bdo\s+(upper|lower)\b/i);
+    expect(focusSection).not.toMatch(/next session should be/i);
+    expect(focusSection).not.toMatch(/\badd\s+\d+\s+sets?\b/i);
+    expect(focusSection).not.toMatch(/\bdo\s+\d+\s+sets?\s+of\b/i);
+    expect(focusSection).not.toMatch(/\bincrease by\s+\d+\s*(lb|lbs|kg)?\b/i);
+    expect(focusSection).not.toMatch(/\bperform\s+\d+\s*-\s*\d+\s+reps?\b/i);
   });
 });
