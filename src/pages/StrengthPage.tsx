@@ -266,10 +266,21 @@ function ResolutionControl({
   resolutions: readonly StrengthResolution[];
   onChange: (resolution: StrengthResolution) => void;
 }) {
+  const labels = {
+    W: "W",
+    M: "M",
+  } as const;
+  const titles = {
+    W: "Weekly",
+    M: "Monthly",
+  } as const;
+
   return (
     <div className="row" style={{ gap: 6, flexWrap: "nowrap", marginBottom: 10 }}>
       {resolutions.map((resolution) => {
         const active = resolution === activeResolution;
+        const displayLabel = labels[resolution];
+        const title = titles[resolution];
         return (
           <button
             key={resolution}
@@ -277,8 +288,9 @@ function ResolutionControl({
             className={`btn small ${active ? "primary" : ""}`}
             onClick={() => onChange(resolution)}
             style={{ minWidth: 34, paddingInline: 10 }}
+            title={title}
           >
-            {resolution}
+            {displayLabel}
           </button>
         );
       })}
@@ -1175,23 +1187,6 @@ export default function StrengthPage() {
 
 
     {/* ===================== Relative strength chart ===================== */}
-                  <div
-                    className="muted"
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 800,
-                      textTransform: "uppercase",
-                      letterSpacing: 0.5,
-                      marginBottom: 6,
-                    }}
-                  >
-                    Relative Strength Trend
-              </div>
-              
-    <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-      Weekly snapshots of bodyweight-normalized strength across your recent training history.
-              </div>
-
               <VisxTrendChartCard
                 title="Relative Strength Trend"
                 subtitle="Weekly snapshots of bodyweight-normalized strength"
@@ -1222,37 +1217,48 @@ export default function StrengthPage() {
               <hr style={{ marginTop: 12 }} />
 
               {/* ===================== Trend table ===================== */}
-              <button
-                type="button"
+              <div
                 className="row"
-                onClick={() => setTrendTableOpen((open) => !open)}
-                aria-expanded={trendTableOpen}
                 style={{
-                  width: "100%",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  background: "transparent",
-                  border: 0,
-                  padding: 0,
-                  cursor: "pointer",
+                  gap: 8,
                   marginBottom: trendTableOpen ? 6 : 0,
                 }}
               >
-                <div
-                  className="muted"
+                <button
+                  type="button"
+                  className="row"
+                  onClick={() => setTrendTableOpen((open) => !open)}
+                  aria-expanded={trendTableOpen}
                   style={{
-                    fontSize: 12,
-                    fontWeight: 800,
-                    textTransform: "uppercase",
-                    letterSpacing: 0.5,
+                    flex: "1 1 auto",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    background: "transparent",
+                    border: 0,
+                    padding: 0,
+                    cursor: "pointer",
                   }}
                 >
-                  Trend (Last 12 Weeks)
-                </div>
-                <div className="muted" style={{ lineHeight: 1 }}>
-                  <CollapseChevron open={trendTableOpen} />
-                </div>
-              </button>
+                  <div
+                    className="muted"
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Trend (Last 12 Weeks)
+                  </div>
+                  <div className="muted" style={{ lineHeight: 1 }}>
+                    <CollapseChevron open={trendTableOpen} />
+                  </div>
+                </button>
+
+                <InfoStubButton pageKey="strength" infoKey="trendLast12Weeks" />
+              </div>
               {trendTableOpen ? (
                 <>
                   <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
@@ -1360,9 +1366,6 @@ export default function StrengthPage() {
                     </table>
                   </div>
 
-                  <div className="muted" style={{ marginTop: 10, fontSize: 12, lineHeight: 1.45 }}>
-                    Tip: Watch <b>Strength Signal</b> first for the primary blended trend. Use <b>Relative Strength</b> as a secondary comparison when bodyweight is changing quickly.
-                  </div>
                 </>
               ) : null}
             </>

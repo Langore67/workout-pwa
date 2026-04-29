@@ -7,7 +7,7 @@
 
 export const buildInfo = {
   version: "v0.1.0",
-  commit: "46d187b",
+  commit: "ac08fd8",
   branch: "feature/chart-standardization",
-  builtAt: "2026-04-29T15:24:22.982Z",
+  builtAt: "2026-04-29T15:39:28.358Z",
 } as const;

@@ -4,7 +4,7 @@ import type { PatternScore, StrengthSnapshot, StrengthTrendRow } from "../../str
 
 function fmt1(v: any): string {
   const n = Number(v);
-  if (!Number.isFinite(n)) return "—";
+  if (!Number.isFinite(n)) return "â€”";
   const s = n.toFixed(1);
   return s.endsWith(".0") ? String(Math.round(n)) : s;
 }
@@ -78,10 +78,10 @@ export function buildStrengthPageViewModel(
   const trendSorted = sortTrendRows(snapshot?.trend);
 
   const bwLabel = !result || !Number.isFinite(Number(result.bodyweight))
-    ? "—"
+    ? "â€”"
     : (() => {
         const n = Number(result.bodyweightDaysUsed);
-        const nLabel = Number.isFinite(n) && n > 0 ? ` • n=${n}` : "";
+        const nLabel = Number.isFinite(n) && n > 0 ? ` â€¢ n=${n}` : "";
         return `${fmt1(result.bodyweight)} (5-day avg${nLabel})`;
       })();
 

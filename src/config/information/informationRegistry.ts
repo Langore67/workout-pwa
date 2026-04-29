@@ -347,6 +347,36 @@ export const informationRegistry = {
           "Weekly or monthly labeling depends on the current timeline resolution.",
         ],
       }),
+      trendLast12Weeks: {
+        title: "Trend (Last 12 Weeks)",
+        ownerPage: "StrengthPage",
+        ownerComponent: "Trend table section",
+        status: "reviewed",
+        lastReviewedBuild: "2026-04-29-INFO-STRENGTH-02",
+        lastReviewedAt: "2026-04-29",
+
+        summary:
+          "This table shows the last 12 weekly Strength trend snapshots in one compact reference view.",
+
+        whyItMatters:
+          "It lets you compare recent weekly bodyweight, relative strength, and absolute strength without paging through the chart window.",
+
+        howItWorks:
+          "Each row is a weekly snapshot built from the same Strength trend data used elsewhere on the page. The chart window is the focused trend view; this table is the compact week-by-week summary.",
+
+        howToUseIt:
+          "Use the table to confirm what the chart is showing and to scan recent weekly changes quickly. Read the rows as trend context, not as isolated verdicts from one week alone.",
+
+        interpretation: [
+          "Relative strength is the primary comparison when bodyweight is changing.",
+          "Absolute strength is still useful as raw context, but it is not bodyweight-adjusted.",
+        ],
+
+        technicalNotes: [
+          "The chart and table both reflect recent weekly snapshots rather than single-workout readings.",
+          "Bodyweight values are shown as weekly average context when available.",
+        ],
+      },
     },
 
     performance: {
