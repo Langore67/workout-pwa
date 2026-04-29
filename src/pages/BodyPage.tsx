@@ -837,6 +837,8 @@ export default function BodyPage() {
               data={weightChartData}
               series={weightSeries}
               testIdBase="body-weight-trend"
+              infoPageKey="body"
+              infoKey="weightTrend"
               windowSize={5}
               paneNavigationMode="movingPane"
               dragScrollEnabled={true}
@@ -858,6 +860,8 @@ export default function BodyPage() {
               data={waistChartData}
               series={waistSeries}
               testIdBase="body-waist-trend"
+              infoPageKey="body"
+              infoKey="waistTrend"
               windowSize={5}
               paneNavigationMode="movingPane"
               dragScrollEnabled={true}

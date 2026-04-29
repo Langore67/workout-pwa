@@ -3,6 +3,7 @@ import React from "react";
 import TrendChartCard from "../charts/TrendChartCard";
 import VisxTrendChartCard from "../charts/VisxTrendChartCard";
 import type { ChartDatum, ChartSeriesConfig, YAxisSide } from "../charts/chartTypes";
+import type { informationRegistry } from "../../config/information/informationRegistry";
 
 type TrendDirection = "improving" | "stable" | "declining" | "watch";
 
@@ -341,6 +342,8 @@ type DashboardChartCardProps = {
   dragScrollEnabled?: boolean;
   yAxisSide?: YAxisSide;
   headerControls?: React.ReactNode;
+  infoPageKey?: keyof typeof informationRegistry;
+  infoKey?: string;
 };
 
 export default function DashboardChartCard({
@@ -358,6 +361,8 @@ export default function DashboardChartCard({
   dragScrollEnabled,
   yAxisSide,
   headerControls,
+  infoPageKey,
+  infoKey,
 }: DashboardChartCardProps) {
   const ChartComponent = chartRenderer === "visx" ? VisxTrendChartCard : TrendChartCard;
 
@@ -393,6 +398,8 @@ export default function DashboardChartCard({
         windowSize={windowSize}
         paneNavigationMode={paneNavigationMode}
         dragScrollEnabled={dragScrollEnabled}
+        infoPageKey={infoPageKey}
+        infoKey={infoKey}
         yDomainMode={yDomainMode}
         yAxisSide={yAxisSide}
         showTrendLine={true}

@@ -753,6 +753,7 @@ export default function BodyCompositionPage() {
     return [
       {
         title: "Weight Trend",
+        infoKey: "weightTrend",
         subtitle: "Recent bodyweight snapshots",
         data: weightData,
         series: [
@@ -769,6 +770,7 @@ export default function BodyCompositionPage() {
       },
       {
         title: "Waist Trend",
+        infoKey: "waistTrend",
         subtitle: "Recent waist snapshots",
         data: waistData,
         series: [
@@ -785,6 +787,7 @@ export default function BodyCompositionPage() {
       },
       {
         title: "Body Fat % Trend",
+        infoKey: "bodyFatTrend",
         subtitle: "Recent body fat percentage snapshots",
         data: bodyFatPctData,
         series: [
@@ -801,6 +804,7 @@ export default function BodyCompositionPage() {
       },
       {
         title: "Corrected Body Fat % Trend",
+        infoKey: "correctedBodyFatTrend",
         subtitle: "Fluid-aware body fat interpretation",
         data: correctedBodyFatPctData,
         series: [
@@ -817,6 +821,7 @@ export default function BodyCompositionPage() {
       },
       {
         title: "Fat Mass Trend",
+        infoKey: "fatMassTrend",
         subtitle: "Estimated fat mass from weight and body fat %",
         data: fatMassData,
         series: [
@@ -833,6 +838,7 @@ export default function BodyCompositionPage() {
       },
       {
         title: "Lean Mass Trend",
+        infoKey: "leanMassTrend",
         subtitle: "Estimated lean mass from weight and body fat %",
         data: leanMassData,
         series: [
@@ -849,6 +855,7 @@ export default function BodyCompositionPage() {
       },
       {
         title: "Corrected Lean Mass Trend",
+        infoKey: "correctedLeanMassTrend",
         subtitle: "Fluid-aware lean mass interpretation",
         data: correctedLeanMassData,
         series: [
@@ -866,6 +873,7 @@ export default function BodyCompositionPage() {
       },
       {
         title: "TBW Trend",
+        infoKey: "tbwTrend",
         subtitle: "Total body water from ECW + ICW",
         data: tbwData,
         series: [
@@ -882,6 +890,7 @@ export default function BodyCompositionPage() {
       },
       {
         title: "Fluid Ratio Trend",
+        infoKey: "fluidRatioTrend",
         subtitle: "ECW / TBW fluid balance",
         data: fluidRatioData,
         series: [
@@ -900,6 +909,7 @@ export default function BodyCompositionPage() {
       },
       {
         title: "Confidence Trend",
+        infoKey: "confidenceTrend",
         subtitle: "Body composition data completeness and coherence",
         data: confidenceData,
         series: [
@@ -1391,6 +1401,8 @@ export default function BodyCompositionPage() {
               data={chart.data}
               series={chart.series}
               testIdBase={chart.title}
+              infoPageKey="bodyComposition"
+              infoKey={chart.infoKey}
               windowSize={5}
               paneNavigationMode="movingPane"
               dragScrollEnabled={true}

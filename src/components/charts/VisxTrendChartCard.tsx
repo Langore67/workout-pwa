@@ -13,6 +13,7 @@ import { Group } from "@visx/group";
 import { scaleLinear, scalePoint } from "@visx/scale";
 import { LinePath } from "@visx/shape";
 
+import InfoStubButton from "../information/InfoStubButton";
 import ChartViewportSlider from "./ChartViewportSlider";
 import {
   getLatestPaneStartIndex,
@@ -251,6 +252,8 @@ export default function VisxTrendChartCard({
   readoutMode = "auto",
   headerBadgeText,
   hideHeaderBadge = false,
+  infoPageKey,
+  infoKey,
   hideWindowSummary = false,
   hideDeltaSummary = false,
   compactMetaLineText,
@@ -767,12 +770,23 @@ export default function VisxTrendChartCard({
             ) : null}
           </div>
 
-          {!hideHeaderBadge && series.length > 1 ? (
-            <div
-              className="shrink-0 rounded-full border border-[var(--line)] px-2.5 py-1 text-xs text-[var(--muted)]"
-              title="Visible chart window"
-            >
-              {resolvedHeaderBadgeText}
+          {(!hideHeaderBadge && series.length > 1) || infoKey ? (
+            <div className="flex shrink-0 items-center gap-2">
+              {!hideHeaderBadge && series.length > 1 ? (
+                <div
+                  className="shrink-0 rounded-full border border-[var(--line)] px-2.5 py-1 text-xs text-[var(--muted)]"
+                  title="Visible chart window"
+                >
+                  {resolvedHeaderBadgeText}
+                </div>
+              ) : null}
+
+              {infoKey ? (
+                <InfoStubButton
+                  pageKey={infoPageKey}
+                  infoKey={infoKey}
+                />
+              ) : null}
             </div>
           ) : null}
         </div>

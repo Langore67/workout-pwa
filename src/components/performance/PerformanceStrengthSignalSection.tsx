@@ -11,6 +11,7 @@ import type {
   PaneNavigationMode,
   YAxisSide,
 } from "../charts/chartTypes";
+import type { informationRegistry } from "../../config/information/informationRegistry";
 
 type TrendDirection = "improving" | "stable" | "declining" | "watch";
 
@@ -63,6 +64,8 @@ type PerformanceStrengthSignalSectionProps = {
   note: string;
   debugComposites: StrengthSignalDetailsComposite[];
   debugTopExercises: StrengthSignalDetailsExercise[];
+  infoPageKey?: keyof typeof informationRegistry;
+  infoKey?: string;
 };
 
 export default function PerformanceStrengthSignalSection({
@@ -85,6 +88,8 @@ export default function PerformanceStrengthSignalSection({
   note,
   debugComposites,
   debugTopExercises,
+  infoPageKey,
+  infoKey,
 }: PerformanceStrengthSignalSectionProps) {
   return (
     <>
@@ -99,6 +104,8 @@ export default function PerformanceStrengthSignalSection({
         dragScrollEnabled={dragScrollEnabled}
         yAxisSide={yAxisSide}
         headerControls={headerControls}
+        infoPageKey={infoPageKey}
+        infoKey={infoKey}
         yDomainMode="auto"
         valueFormatter={(value) =>
           value == null || !Number.isFinite(value) ? "—" : value.toFixed(2)

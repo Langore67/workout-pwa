@@ -12,6 +12,63 @@
 
 import type { InformationRegistry } from "./informationTypes";
 
+type ChartEntryConfig = {
+  title: string;
+  ownerPage: string;
+  ownerComponent: string;
+  lastReviewedBuild: string;
+  lastReviewedAt: string;
+  summary: string;
+  whyItMatters?: string;
+  howItWorks: string;
+  interpretation?: string[];
+  improveConfidence?: string[];
+  technicalNotes?: string[];
+  notes?: string[];
+};
+
+const SHARED_CHART_HOW_TO_USE =
+  "Read the chart as a trend view, not a single-point verdict. The visible window is a focused slice of the full timeline. Drag horizontally to move through older or newer data when more history exists. Use the chart together with the readout and surrounding summary stats.";
+
+const SHARED_CHART_TECHNICAL_NOTES = [
+  "The visible window shows a focused slice of the full timeline rather than every point at once.",
+  "Drag horizontally to move through older or newer data when more history exists.",
+  "The right-side axis shows the chart scale.",
+  "Sparse or missing data lowers confidence and can make short-term moves look noisier.",
+];
+
+function buildMovingPaneChartEntry({
+  title,
+  ownerPage,
+  ownerComponent,
+  lastReviewedBuild,
+  lastReviewedAt,
+  summary,
+  whyItMatters,
+  howItWorks,
+  interpretation = [],
+  improveConfidence = [],
+  technicalNotes = [],
+  notes = [],
+}: ChartEntryConfig) {
+  return {
+    title,
+    ownerPage,
+    ownerComponent,
+    status: "reviewed" as const,
+    lastReviewedBuild,
+    lastReviewedAt,
+    summary,
+    whyItMatters,
+    howItWorks,
+    howToUseIt: SHARED_CHART_HOW_TO_USE,
+    interpretation,
+    technicalNotes: [...SHARED_CHART_TECHNICAL_NOTES, ...technicalNotes],
+    improveConfidence,
+    notes,
+  };
+}
+
 export const informationRegistry = {
     progress: {
       coachExport: {
@@ -240,6 +297,152 @@ export const informationRegistry = {
           "Review this entry whenever Strength Signal formula details, normalization rules, rep caps, trend windows, or user-facing interpretation change.",
         ],
       },
+      strengthSignalTrend: buildMovingPaneChartEntry({
+        title: "Strength Signal Trend",
+        ownerPage: "StrengthPage",
+        ownerComponent: "Shared Visx trend chart card",
+        lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
+        lastReviewedAt: "2026-04-29",
+        summary:
+          "Strength Signal Trend shows the recent timeline of IronForge's primary blended strength metric.",
+        whyItMatters:
+          "This chart helps you see direction across weekly or monthly snapshots instead of reacting to one workout or one lift.",
+        howItWorks:
+          "Each point is a Strength Signal snapshot built from recent training data. The chart uses the shared moving-window trend view so you can focus on a small slice of the timeline at a time.",
+        interpretation: [
+          "Stable or rising values usually support a better strength reading than a repeated slide downward.",
+          "Short-term moves can be noisy because each point reflects recent training context rather than one isolated set.",
+        ],
+        improveConfidence: [
+          "Log enough completed working sets across squat, hinge, push, and pull patterns.",
+          "Log bodyweight consistently so normalization stays grounded.",
+        ],
+        technicalNotes: [
+          "Resolution controls switch the timeline between weekly and monthly views.",
+          "This chart is the primary chart view for Strength Signal.",
+        ],
+      }),
+      relativeStrengthTrend: buildMovingPaneChartEntry({
+        title: "Relative Strength Trend",
+        ownerPage: "StrengthPage",
+        ownerComponent: "Shared Visx trend chart card",
+        lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
+        lastReviewedAt: "2026-04-29",
+        summary:
+          "Relative Strength Trend shows bodyweight-normalized strength snapshots across your recent training history.",
+        whyItMatters:
+          "It gives a secondary comparison lens when bodyweight is changing, especially during a cut or bulk.",
+        howItWorks:
+          "The chart plots recent Relative Strength points over time using the shared moving-window chart pattern. It is a secondary chart beside Strength Signal rather than the main strength standard.",
+        interpretation: [
+          "Use this chart to compare strength direction against bodyweight change, not to replace Strength Signal.",
+          "A dip here can reflect bodyweight change, thinner training data, or real performance drift.",
+        ],
+        improveConfidence: [
+          "Log bodyweight consistently.",
+          "Keep enough recent strength history so the timeline is not built from sparse snapshots.",
+        ],
+        technicalNotes: [
+          "Relative Strength is a secondary comparison lens on this page.",
+          "Weekly or monthly labeling depends on the current timeline resolution.",
+        ],
+      }),
+    },
+
+    performance: {
+      strengthSignalTrend: buildMovingPaneChartEntry({
+        title: "Performance Strength Signal Trend",
+        ownerPage: "PerformanceDashboardPage",
+        ownerComponent: "DashboardChartCard shared Visx trend chart card",
+        lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
+        lastReviewedAt: "2026-04-29",
+        summary:
+          "This chart shows Strength Signal inside the Performance dashboard so you can read strength direction alongside body and training trends.",
+        whyItMatters:
+          "Performance is a synthesis page, so the chart helps anchor the broader coaching view to a concrete strength timeline.",
+        howItWorks:
+          "The chart uses the shared Strength Signal timeline with the same moving-window Visx behavior used elsewhere in the app.",
+        interpretation: [
+          "Read it as the dashboard's strength anchor rather than a standalone coaching decision-maker.",
+          "Compare it with bodyweight, waist, and training load for context.",
+        ],
+        improveConfidence: [
+          "Keep bodyweight and strength logs current.",
+          "Train enough core patterns to avoid a thin signal.",
+        ],
+        technicalNotes: [
+          "Resolution controls switch between weekly and monthly views.",
+        ],
+      }),
+      bodyWeightTrend: buildMovingPaneChartEntry({
+        title: "Performance Body Weight Trend",
+        ownerPage: "PerformanceDashboardPage",
+        ownerComponent: "DashboardChartCard shared Visx trend chart card",
+        lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
+        lastReviewedAt: "2026-04-29",
+        summary:
+          "This chart shows the recent bodyweight timeline used by the Performance dashboard.",
+        whyItMatters:
+          "Bodyweight gives context for interpreting Strength Signal, waist change, and phase direction.",
+        howItWorks:
+          "The chart plots bodyweight over time in the shared moving-window chart view so recent direction stays readable on both desktop and mobile.",
+        interpretation: [
+          "Look for direction and pace, not one-off day-to-day noise.",
+          "Use bodyweight together with waist and strength rather than alone.",
+        ],
+        improveConfidence: [
+          "Log bodyweight consistently under similar conditions.",
+        ],
+        technicalNotes: [
+          "Resolution controls can switch between daily, weekly, and monthly views.",
+        ],
+      }),
+      waistTrend: buildMovingPaneChartEntry({
+        title: "Performance Waist Trend",
+        ownerPage: "PerformanceDashboardPage",
+        ownerComponent: "DashboardChartCard shared Visx trend chart card",
+        lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
+        lastReviewedAt: "2026-04-29",
+        summary:
+          "This chart shows the recent waist timeline used by the Performance dashboard.",
+        whyItMatters:
+          "Waist often adds cleaner body-composition context than bodyweight alone.",
+        howItWorks:
+          "The chart plots recent waist entries over time using the shared moving-window chart pattern.",
+        interpretation: [
+          "Look for sustained direction rather than reacting to tiny measurement shifts.",
+          "Compare waist with bodyweight and strength before making a broader phase judgment.",
+        ],
+        improveConfidence: [
+          "Measure under similar conditions and keep entries reasonably consistent.",
+        ],
+        technicalNotes: [
+          "Resolution controls switch between weekly and monthly views.",
+        ],
+      }),
+      trainingLoadTrend: buildMovingPaneChartEntry({
+        title: "Performance Training Load Trend",
+        ownerPage: "PerformanceDashboardPage",
+        ownerComponent: "DashboardChartCard shared Visx trend chart card",
+        lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
+        lastReviewedAt: "2026-04-29",
+        summary:
+          "This chart shows recent training load direction in the Performance dashboard.",
+        whyItMatters:
+          "Training load helps explain whether strength or recovery changes may reflect a real workload shift.",
+        howItWorks:
+          "The chart summarizes recent completed training volume over time inside the shared moving-window chart view.",
+        interpretation: [
+          "Use it to spot broader workload direction, not to judge one session in isolation.",
+          "Compare training load with strength and body trends when interpreting fatigue or momentum.",
+        ],
+        improveConfidence: [
+          "Log completed sessions cleanly and consistently.",
+        ],
+        technicalNotes: [
+          "Resolution controls switch between weekly and monthly views.",
+        ],
+      }),
     },
 
     mps: {
@@ -322,7 +525,239 @@ export const informationRegistry = {
             ],
     },
   },
+  body: {
+    weightTrend: buildMovingPaneChartEntry({
+      title: "Weight Trend",
+      ownerPage: "BodyPage",
+      ownerComponent: "Shared Visx trend chart card",
+      lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
+      lastReviewedAt: "2026-04-29",
+      summary:
+        "Weight Trend shows recent bodyweight snapshots from the Body page.",
+      whyItMatters:
+        "It gives a quick direction check without leaving the entry page.",
+      howItWorks:
+        "The chart plots recent bodyweight entries over time using the shared moving-window chart pattern.",
+      interpretation: [
+        "Use it for trend direction, not one-off daily swings.",
+      ],
+      improveConfidence: [
+        "Log weight consistently under similar conditions.",
+      ],
+    }),
+    waistTrend: buildMovingPaneChartEntry({
+      title: "Waist Trend",
+      ownerPage: "BodyPage",
+      ownerComponent: "Shared Visx trend chart card",
+      lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
+      lastReviewedAt: "2026-04-29",
+      summary:
+        "Waist Trend shows recent waist snapshots from the Body page.",
+      whyItMatters:
+        "Waist can give a cleaner body-composition direction signal than scale weight alone.",
+      howItWorks:
+        "The chart plots recent waist entries over time using the shared moving-window chart pattern.",
+      interpretation: [
+        "Treat small moves cautiously and look for repeated direction.",
+      ],
+      improveConfidence: [
+        "Measure under similar conditions and use a consistent method.",
+      ],
+    }),
+  },
   bodyComposition: {
+    weightTrend: buildMovingPaneChartEntry({
+      title: "Weight Trend",
+      ownerPage: "BodyCompositionPage",
+      ownerComponent: "Shared Visx trend chart card",
+      lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
+      lastReviewedAt: "2026-04-29",
+      summary:
+        "Weight Trend shows recent bodyweight direction inside the Body Composition page.",
+      whyItMatters:
+        "Weight helps anchor interpretation of waist, body-fat, and lean-mass changes.",
+      howItWorks:
+        "The chart plots recent bodyweight entries over time using the shared moving-window chart pattern.",
+      interpretation: [
+        "Weight alone does not tell you whether the change is mostly fat, lean mass, or fluid.",
+      ],
+      improveConfidence: [
+        "Log weight consistently under similar conditions.",
+      ],
+    }),
+    waistTrend: buildMovingPaneChartEntry({
+      title: "Waist Trend",
+      ownerPage: "BodyCompositionPage",
+      ownerComponent: "Shared Visx trend chart card",
+      lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
+      lastReviewedAt: "2026-04-29",
+      summary:
+        "Waist Trend shows recent waist direction inside the Body Composition page.",
+      whyItMatters:
+        "Waist often helps separate useful body-composition direction from noisy scale-weight changes.",
+      howItWorks:
+        "The chart plots recent waist entries over time using the shared moving-window chart pattern.",
+      interpretation: [
+        "Waist is most useful when read together with weight and confidence signals.",
+      ],
+      improveConfidence: [
+        "Measure under similar conditions and with a consistent tape method.",
+      ],
+    }),
+    bodyFatTrend: buildMovingPaneChartEntry({
+      title: "Body Fat % Trend",
+      ownerPage: "BodyCompositionPage",
+      ownerComponent: "Shared Visx trend chart card",
+      lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
+      lastReviewedAt: "2026-04-29",
+      summary:
+        "Body Fat % Trend shows recent logged body-fat percentage snapshots.",
+      whyItMatters:
+        "It gives a direct body-composition signal, but it can be noisier than waist or weight.",
+      howItWorks:
+        "The chart plots recent body-fat percentage entries over time using the shared moving-window chart pattern.",
+      interpretation: [
+        "Treat small changes cautiously because body-fat readings can be noisy.",
+      ],
+      improveConfidence: [
+        "Use similar measurement conditions and devices.",
+      ],
+    }),
+    correctedBodyFatTrend: buildMovingPaneChartEntry({
+      title: "Corrected Body Fat % Trend",
+      ownerPage: "BodyCompositionPage",
+      ownerComponent: "Shared Visx trend chart card",
+      lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
+      lastReviewedAt: "2026-04-29",
+      summary:
+        "Corrected Body Fat % Trend shows a fluid-aware body-fat interpretation.",
+      whyItMatters:
+        "Hydration swings can distort raw body-fat readings, so this view helps reduce false alarms.",
+      howItWorks:
+        "The chart combines logged body data with fluid-aware interpretation and shows the result in the shared moving-window chart view.",
+      interpretation: [
+        "Use this chart when hydration may be distorting raw body-fat readings.",
+      ],
+      improveConfidence: [
+        "Log ECW and ICW when available.",
+        "Measure under similar hydration conditions when possible.",
+      ],
+    }),
+    fatMassTrend: buildMovingPaneChartEntry({
+      title: "Fat Mass Trend",
+      ownerPage: "BodyCompositionPage",
+      ownerComponent: "Shared Visx trend chart card",
+      lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
+      lastReviewedAt: "2026-04-29",
+      summary:
+        "Fat Mass Trend shows estimated fat mass derived from weight and body-fat data.",
+      whyItMatters:
+        "It translates percent-based body-fat readings into pounds for easier trend interpretation.",
+      howItWorks:
+        "The chart derives fat mass from recent body entries and shows the timeline in the shared moving-window chart view.",
+      interpretation: [
+        "This is derived from other body metrics, so bad source data makes the chart weaker.",
+      ],
+      improveConfidence: [
+        "Log both weight and body-fat percentage consistently.",
+      ],
+    }),
+    leanMassTrend: buildMovingPaneChartEntry({
+      title: "Lean Mass Trend",
+      ownerPage: "BodyCompositionPage",
+      ownerComponent: "Shared Visx trend chart card",
+      lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
+      lastReviewedAt: "2026-04-29",
+      summary:
+        "Lean Mass Trend shows estimated lean mass derived from weight and body-fat data.",
+      whyItMatters:
+        "It helps you monitor whether body-composition change appears to be preserving lean tissue.",
+      howItWorks:
+        "The chart derives lean mass from recent body entries and shows the timeline in the shared moving-window chart view.",
+      interpretation: [
+        "Treat abrupt changes cautiously because hydration can distort lean-mass estimates.",
+      ],
+      improveConfidence: [
+        "Log both weight and body-fat percentage consistently.",
+      ],
+    }),
+    correctedLeanMassTrend: buildMovingPaneChartEntry({
+      title: "Corrected Lean Mass Trend",
+      ownerPage: "BodyCompositionPage",
+      ownerComponent: "Shared Visx trend chart card",
+      lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
+      lastReviewedAt: "2026-04-29",
+      summary:
+        "Corrected Lean Mass Trend shows a fluid-aware lean-mass interpretation.",
+      whyItMatters:
+        "This view helps reduce false lean-mass alarms when hydration is shifting.",
+      howItWorks:
+        "The chart applies fluid-aware interpretation to recent body data and shows the result in the shared moving-window chart view.",
+      interpretation: [
+        "Use this view when raw lean-mass changes may be exaggerated by water balance noise.",
+      ],
+      improveConfidence: [
+        "Log ECW and ICW when available.",
+        "Check Hydration Confidence before over-interpreting changes.",
+      ],
+    }),
+    tbwTrend: buildMovingPaneChartEntry({
+      title: "TBW Trend",
+      ownerPage: "BodyCompositionPage",
+      ownerComponent: "Shared Visx trend chart card",
+      lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
+      lastReviewedAt: "2026-04-29",
+      summary:
+        "TBW Trend shows total body water from ECW plus ICW.",
+      whyItMatters:
+        "Water balance can explain why body-fat and lean-mass readings look unusually noisy.",
+      howItWorks:
+        "The chart plots total body water over time in the shared moving-window chart view.",
+      interpretation: [
+        "Use TBW as hydration context rather than a standalone body-composition verdict.",
+      ],
+      improveConfidence: [
+        "Log ECW and ICW consistently if you want hydration-aware charts to stay useful.",
+      ],
+    }),
+    fluidRatioTrend: buildMovingPaneChartEntry({
+      title: "Fluid Ratio Trend",
+      ownerPage: "BodyCompositionPage",
+      ownerComponent: "Shared Visx trend chart card",
+      lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
+      lastReviewedAt: "2026-04-29",
+      summary:
+        "Fluid Ratio Trend shows ECW divided by TBW over time.",
+      whyItMatters:
+        "Fluid ratio helps flag whether hydration shifts may be distorting body-composition interpretation.",
+      howItWorks:
+        "The chart plots recent ECW/TBW values in the shared moving-window chart view.",
+      interpretation: [
+        "Read this as context for hydration distortion, not as a body-fat or lean-mass result by itself.",
+      ],
+      improveConfidence: [
+        "Log ECW and ICW consistently.",
+      ],
+    }),
+    confidenceTrend: buildMovingPaneChartEntry({
+      title: "Confidence Trend",
+      ownerPage: "BodyCompositionPage",
+      ownerComponent: "Shared Visx trend chart card",
+      lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
+      lastReviewedAt: "2026-04-29",
+      summary:
+        "Confidence Trend shows how complete and coherent recent body-composition data has been over time.",
+      whyItMatters:
+        "A clean-looking trend can still be weak if the underlying body data is thin or inconsistent.",
+      howItWorks:
+        "The chart plots recent body-composition confidence values in the shared moving-window chart view.",
+      interpretation: [
+        "Higher confidence means the surrounding body-composition charts are easier to trust.",
+      ],
+      improveConfidence: [
+        "Log weight, waist, body-fat, and hydration markers more consistently.",
+      ],
+    }),
     phaseQuality: {
       title: "Phase Quality",
       ownerPage: "BodyCompositionPage",

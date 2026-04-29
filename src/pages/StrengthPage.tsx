@@ -713,6 +713,8 @@ export default function StrengthPage() {
                 data={strengthSignalTimelineChartData}
                 series={strengthSignalSeries}
                 testIdBase="strength-signal-trend"
+                infoPageKey="strength"
+                infoKey="strengthSignalTrend"
                 windowSize={5}
                 paneNavigationMode="movingPane"
                 dragScrollEnabled={true}
@@ -1196,6 +1198,8 @@ export default function StrengthPage() {
                 data={relativeChartData}
                 series={relativeStrengthSeries}
                 testIdBase="relative-strength-trend"
+                infoPageKey="strength"
+                infoKey="relativeStrengthTrend"
                 windowSize={5}
                 paneNavigationMode="movingPane"
                 dragScrollEnabled={true}

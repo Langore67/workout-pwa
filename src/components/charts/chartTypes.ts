@@ -11,6 +11,8 @@
    - Keep the shared chart shell flexible without overcomplicating the API
    ============================================================================ */
 
+import type { informationRegistry } from "../../config/information/informationRegistry";
+
 export type ChartDatum = {
   label: string;
   [key: string]: string | number | null | undefined;
@@ -85,6 +87,10 @@ export type TrendChartCardProps = {
 
   /* hide the top-right header badge entirely */
   hideHeaderBadge?: boolean;
+
+  /* optional shared Information Framework wiring */
+  infoPageKey?: keyof typeof informationRegistry;
+  infoKey?: string;
 
   /* hide the auto "Window: start -> end" summary row */
   hideWindowSummary?: boolean;
