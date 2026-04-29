@@ -24,6 +24,7 @@ import {
   YAxis,
 } from "recharts";
 
+import InfoStubButton from "../information/InfoStubButton";
 import ChartTooltipContent from "./ChartTooltipContent";
 import ChartViewportSlider from "./ChartViewportSlider";
 import {
@@ -217,6 +218,8 @@ export default function TrendChartCard({
   readoutMode = "auto",
   headerBadgeText,
   hideHeaderBadge = false,
+  infoPageKey,
+  infoKey,
   hideWindowSummary = false,
   hideDeltaSummary = false,
   compactMetaLineText,
@@ -514,12 +517,23 @@ export default function TrendChartCard({
             ) : null}
           </div>
   
-          {!hideHeaderBadge && series.length > 1 ? (
-            <div
-              className="shrink-0 rounded-full border border-[var(--line)] px-2.5 py-1 text-xs text-[var(--muted)]"
-              title="Visible chart window"
-            >
-              {resolvedHeaderBadgeText}
+          {(!hideHeaderBadge && series.length > 1) || infoKey ? (
+            <div className="flex shrink-0 items-center gap-2">
+              {!hideHeaderBadge && series.length > 1 ? (
+                <div
+                  className="shrink-0 rounded-full border border-[var(--line)] px-2.5 py-1 text-xs text-[var(--muted)]"
+                  title="Visible chart window"
+                >
+                  {resolvedHeaderBadgeText}
+                </div>
+              ) : null}
+
+              {infoKey ? (
+                <InfoStubButton
+                  pageKey={infoPageKey}
+                  infoKey={infoKey}
+                />
+              ) : null}
             </div>
           ) : null}
         </div>

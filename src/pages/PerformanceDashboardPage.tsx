@@ -1770,6 +1770,8 @@ export default function PerformanceDashboardPage() {
               chart={effectiveStrengthChart}
               chartData={sharedStrengthTimelineChartData}
               series={strengthSeries}
+              infoPageKey="performance"
+              infoKey="strengthSignalTrend"
               windowSize={5}
               paneNavigationMode="movingPane"
               dragScrollEnabled={true}
@@ -1807,6 +1809,8 @@ export default function PerformanceDashboardPage() {
               chart={vm.charts.bodyWeight}
               chartData={bodyWeightTimelineChartData}
               series={bodyWeightSeries}
+              infoPageKey="performance"
+              infoKey="bodyWeightTrend"
               chartRenderer="visx"
               chartTestIdBase="performance-bodyweight-trend"
               windowSize={5}
@@ -1829,6 +1833,8 @@ export default function PerformanceDashboardPage() {
               chart={vm.charts.waist}
               chartData={waistTimelineChartData}
               series={waistSeries}
+              infoPageKey="performance"
+              infoKey="waistTrend"
               chartRenderer="visx"
               chartTestIdBase="performance-waist-trend"
               windowSize={5}
@@ -1851,6 +1857,8 @@ export default function PerformanceDashboardPage() {
               chart={vm.charts.volume}
               chartData={volumeTimelineChartData}
               series={volumeSeries}
+              infoPageKey="performance"
+              infoKey="trainingLoadTrend"
               chartRenderer="visx"
               chartTestIdBase="performance-volume-trend"
               windowSize={5}

@@ -36,7 +36,6 @@ import {
   type StrengthSignalV2Pattern,
   type StrengthSignalV2Result,
 } from "../strength/v2/computeStrengthSignalV2";
-import TrendChartCard from "../components/charts/TrendChartCard";
 import VisxTrendChartCard from "../components/charts/VisxTrendChartCard";
 import { formatTwoDecimals } from "../components/charts/chartFormatters";
 import { formatTimelineLabel, monthKeyFromMs } from "../components/charts/timelineLabels";
@@ -714,6 +713,8 @@ export default function StrengthPage() {
                 data={strengthSignalTimelineChartData}
                 series={strengthSignalSeries}
                 testIdBase="strength-signal-trend"
+                infoPageKey="strength"
+                infoKey="strengthSignalTrend"
                 windowSize={5}
                 paneNavigationMode="movingPane"
                 dragScrollEnabled={true}
@@ -1197,8 +1198,12 @@ export default function StrengthPage() {
                 data={relativeChartData}
                 series={relativeStrengthSeries}
                 testIdBase="relative-strength-trend"
+                infoPageKey="strength"
+                infoKey="relativeStrengthTrend"
+                windowSize={5}
                 paneNavigationMode="movingPane"
-                windowSize={6}
+                dragScrollEnabled={true}
+                yAxisSide="right"
                 yDomainMode="auto"
                 showTrendLine={true}
                 readoutMode="statRow"

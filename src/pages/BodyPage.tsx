@@ -46,7 +46,7 @@ import { useNavigate } from "react-router-dom";
 import { db } from "../db";
 import { uuid } from "../utils";
 import { Page, Section } from "../components/Page.tsx";
-import TrendChartCard from "../components/charts/TrendChartCard";
+import VisxTrendChartCard from "../components/charts/VisxTrendChartCard";
 import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTypes";
 import { formatInches, formatLbs } from "../components/charts/chartFormatters";
 import {
@@ -831,12 +831,18 @@ export default function BodyPage() {
           </div>
 
           <div style={{ display: "grid", gap: 12 }}>
-            <TrendChartCard
+            <VisxTrendChartCard
               title="Weight Trend"
               subtitle="Recent bodyweight snapshots"
               data={weightChartData}
               series={weightSeries}
-              showBrush={weightChartData.length > 12}
+              testIdBase="body-weight-trend"
+              infoPageKey="body"
+              infoKey="weightTrend"
+              windowSize={5}
+              paneNavigationMode="movingPane"
+              dragScrollEnabled={true}
+              yAxisSide="right"
               yDomainMode="auto"
               valueFormatter={(value) => formatLbs(value)}
               tooltipLabelFormatter={(label, datum) => {
@@ -848,12 +854,18 @@ export default function BodyPage() {
               emptyMessage="Add a few weight entries to see the trend."
             />
 
-            <TrendChartCard
+            <VisxTrendChartCard
               title="Waist Trend"
               subtitle="Recent waist snapshots"
               data={waistChartData}
               series={waistSeries}
-              showBrush={waistChartData.length > 12}
+              testIdBase="body-waist-trend"
+              infoPageKey="body"
+              infoKey="waistTrend"
+              windowSize={5}
+              paneNavigationMode="movingPane"
+              dragScrollEnabled={true}
+              yAxisSide="right"
               yDomainMode="tight"
               valueFormatter={(value) => formatInches(value)}
               tooltipLabelFormatter={(label, datum) => {
