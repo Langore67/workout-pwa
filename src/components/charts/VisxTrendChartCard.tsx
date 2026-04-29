@@ -252,6 +252,7 @@ export default function VisxTrendChartCard({
   readoutMode = "auto",
   headerBadgeText,
   hideHeaderBadge = false,
+  hideChartHeader = false,
   infoPageKey,
   infoKey,
   hideWindowSummary = false,
@@ -479,10 +480,12 @@ export default function VisxTrendChartCard({
   if (!data.length) {
     return (
       <div className="min-w-0 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-sm">
-        <div className="mb-3">
-          <div className="text-base font-semibold text-[var(--text)]">{title}</div>
-          {subtitle ? <div className="mt-0.5 text-sm text-[var(--muted)]">{subtitle}</div> : null}
-        </div>
+        {!hideChartHeader ? (
+          <div className="mb-3">
+            <div className="text-base font-semibold text-[var(--text)]">{title}</div>
+            {subtitle ? <div className="mt-0.5 text-sm text-[var(--muted)]">{subtitle}</div> : null}
+          </div>
+        ) : null}
 
         <div
           className="flex items-center justify-center rounded-xl border border-dashed border-[var(--line)] bg-[var(--bg)]/40 px-4 text-center"
@@ -756,65 +759,71 @@ export default function VisxTrendChartCard({
       className="min-w-0 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-sm"
       data-testid={`${resolvedTestIdBase}:card`}
     >
-      <div className="mb-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div
-              className="text-[18px] font-black text-[var(--text)]"
-              style={{ letterSpacing: -0.2 }}
-            >
-              {title}
+      {!hideChartHeader ? (
+        <div className="mb-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div
+                className="text-[18px] font-black text-[var(--text)]"
+                style={{ letterSpacing: -0.2 }}
+              >
+                {title}
+              </div>
+              {subtitle ? (
+                <div className="mt-0.5 text-[13px] font-medium text-[var(--muted)]">{subtitle}</div>
+              ) : null}
             </div>
-            {subtitle ? (
-              <div className="mt-0.5 text-[13px] font-medium text-[var(--muted)]">{subtitle}</div>
+
+            {(!hideHeaderBadge && series.length > 1) || infoKey ? (
+              <div className="flex shrink-0 items-center gap-2">
+                {!hideHeaderBadge && series.length > 1 ? (
+                  <div
+                    className="shrink-0 rounded-full border border-[var(--line)] px-2.5 py-1 text-xs text-[var(--muted)]"
+                    title="Visible chart window"
+                  >
+                    {resolvedHeaderBadgeText}
+                  </div>
+                ) : null}
+
+                {infoKey ? (
+                  <InfoStubButton
+                    pageKey={infoPageKey}
+                    infoKey={infoKey}
+                  />
+                ) : null}
+              </div>
             ) : null}
           </div>
-
-          {(!hideHeaderBadge && series.length > 1) || infoKey ? (
-            <div className="flex shrink-0 items-center gap-2">
-              {!hideHeaderBadge && series.length > 1 ? (
-                <div
-                  className="shrink-0 rounded-full border border-[var(--line)] px-2.5 py-1 text-xs text-[var(--muted)]"
-                  title="Visible chart window"
-                >
-                  {resolvedHeaderBadgeText}
-                </div>
-              ) : null}
-
-              {infoKey ? (
-                <InfoStubButton
-                  pageKey={infoPageKey}
-                  infoKey={infoKey}
-                />
-              ) : null}
-            </div>
-          ) : null}
         </div>
-      </div>
+      ) : null}
 
       {resolvedReadoutMode === "statRow" ? (
         <div className="mb-3">
-          {compactMetaLineText ? (
-            <div className="mt-1 mb-2 text-[10px] text-[var(--muted)] opacity-80">
-              {compactMetaLineText}
+          <div className="grid gap-2">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <span
+                data-testid={`${resolvedTestIdBase}:readout-value`}
+                className="text-[26px] font-semibold text-[var(--text)] leading-none"
+                style={{ letterSpacing: -0.3 }}
+              >
+                {statFormatted}
+              </span>
+
+              {statLabel ? (
+                <span
+                  data-testid={`${resolvedTestIdBase}:readout-label`}
+                  className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[11px] font-medium text-[var(--muted)] leading-none"
+                >
+                  {statLabel}
+                </span>
+              ) : null}
             </div>
-          ) : null}
 
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span
-              data-testid={`${resolvedTestIdBase}:readout-value`}
-              className="text-[26px] font-semibold text-[var(--text)] leading-none"
-              style={{ letterSpacing: -0.3 }}
-            >
-              {statFormatted}
-            </span>
-
-            <span
-              data-testid={`${resolvedTestIdBase}:readout-label`}
-              className="min-w-0 text-[13px] text-[var(--muted)] opacity-75 leading-none"
-            >
-              {statLabel}
-            </span>
+            {compactMetaLineText ? (
+              <div className="text-[11px] text-[var(--muted)] opacity-85">
+                {compactMetaLineText}
+              </div>
+            ) : null}
           </div>
 
           {!hideWindowSummary || !hideDeltaSummary ? (

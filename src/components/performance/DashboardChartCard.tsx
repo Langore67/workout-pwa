@@ -4,6 +4,7 @@ import TrendChartCard from "../charts/TrendChartCard";
 import VisxTrendChartCard from "../charts/VisxTrendChartCard";
 import type { ChartDatum, ChartSeriesConfig, YAxisSide } from "../charts/chartTypes";
 import type { informationRegistry } from "../../config/information/informationRegistry";
+import InfoStubButton from "../information/InfoStubButton";
 
 type TrendDirection = "improving" | "stable" | "declining" | "watch";
 
@@ -386,7 +387,15 @@ export default function DashboardChartCard({
 
           {headerControls ? <div style={{ marginTop: 8 }}>{headerControls}</div> : null}
         </div>
-        <TrendBadge direction={chart.direction} />
+        <div className="row" style={{ alignItems: "center", gap: 8, flexWrap: "nowrap" }}>
+          {infoKey ? (
+            <InfoStubButton
+              pageKey={infoPageKey}
+              infoKey={infoKey}
+            />
+          ) : null}
+          <TrendBadge direction={chart.direction} />
+        </div>
       </div>
 
       <ChartComponent
@@ -398,6 +407,7 @@ export default function DashboardChartCard({
         windowSize={windowSize}
         paneNavigationMode={paneNavigationMode}
         dragScrollEnabled={dragScrollEnabled}
+        hideChartHeader={true}
         infoPageKey={infoPageKey}
         infoKey={infoKey}
         yDomainMode={yDomainMode}

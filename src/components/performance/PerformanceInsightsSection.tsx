@@ -12,12 +12,10 @@ type InsightViewModel = {
 
 type PerformanceInsightsSectionProps = {
   insights: InsightViewModel[];
-  actions: string[];
 };
 
 export default function PerformanceInsightsSection({
   insights,
-  actions,
 }: PerformanceInsightsSectionProps) {
   return (
     <div className="list">
@@ -74,17 +72,6 @@ export default function PerformanceInsightsSection({
           ) : null}
         </div>
       ))}
-
-      <div className="card">
-        <h3>Build Priorities</h3>
-        <div className="list">
-          {actions.map((action) => (
-            <div key={action} className="card dashboard-priority">
-              {action}
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

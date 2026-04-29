@@ -1,4 +1,5 @@
 import React from "react";
+import InfoStubButton from "../information/InfoStubButton";
 
 type DashboardPhase = "CUT" | "MAINTAIN" | "BULK";
 
@@ -88,19 +89,25 @@ export default function PerformanceOverviewSection({
               Overview
             </div>
 
-            <h2 style={{ marginTop: 6, marginBottom: 6 }}>Dashboard Overview</h2>
+            <div className="row" style={{ alignItems: "center", gap: 8, marginTop: 6 }}>
+              <h2 style={{ margin: 0 }}>Dashboard Overview</h2>
+              <InfoStubButton pageKey="performance" infoKey="dashboardOverview" />
+            </div>
 
             <div className="muted" style={{ fontSize: 14, lineHeight: 1.45 }}>
               Flagship signals, charts, and coaching insights.
             </div>
           </div>
 
-          <span className="badge">Preview</span>
+          <span className="badge">Live view</span>
         </div>
 
         <hr />
 
-        <label>Current Phase</label>
+        <div className="row" style={{ alignItems: "center", gap: 8 }}>
+          <label>Current Phase</label>
+          <InfoStubButton pageKey="performance" infoKey="currentPhase" />
+        </div>
 
         <div style={{ marginTop: 8 }}>
           <PhaseControl activePhase={activePhase} onChange={setActivePhase} />
@@ -174,7 +181,10 @@ export default function PerformanceOverviewSection({
                 </div>
               </div>
 
-              <h2 style={{ marginTop: 10, marginBottom: 0 }}>{flagshipTitle}</h2>
+              <div className="row" style={{ alignItems: "center", gap: 8, marginTop: 10 }}>
+                <h2 style={{ margin: 0 }}>{flagshipTitle}</h2>
+                <InfoStubButton pageKey="performance" infoKey="cutQuality" />
+              </div>
             </div>
 
             <span
@@ -197,7 +207,7 @@ export default function PerformanceOverviewSection({
             }}
           >
             <div>
-              <div className="dashboard-flagship-score">{flagshipScore}</div>
+              <div className="dashboard-flagship-score">{Math.round(flagshipScore)}</div>
               <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
                 out of 100
               </div>
