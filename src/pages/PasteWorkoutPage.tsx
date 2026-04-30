@@ -84,6 +84,7 @@ import {
   type ExerciseDuplicateCandidate,
 } from "../domain/exercises/exerciseDuplicateCandidates";
 import {
+  defaultTrackingModeForTrackIntent,
   inferTrackTypeFromParsedSetKinds,
   inferTrackingModeFromSetSignals,
   isNonStrengthTrackType,
@@ -338,8 +339,30 @@ function normalizeExerciseDisplayName(name: string): string {
 
 function inferBetterTrackingModeFromParsedSets(
   exerciseName: string,
-  sets: ParsedSet[]
+  sets: ParsedSet[],
+  trackType: TrackType
 ): TrackingMode {
+  if (trackType === "corrective" || trackType === "mobility") {
+    return defaultTrackingModeForTrackIntent(trackType);
+  }
+
+  if (trackType === "conditioning") {
+    const hasSeconds = sets.some(
+      (s) => s.seconds !== undefined && Number.isFinite(s.seconds) && s.seconds > 0
+    );
+    return hasSeconds
+      ? defaultTrackingModeForTrackIntent(trackType)
+      : inferTrackingModeFromSetSignals(
+          exerciseName,
+          {
+            hasWeightedLoad: false,
+            hasReps: false,
+            hasSeconds: true,
+          },
+          { treatHangAsTime: true }
+        );
+  }
+
   const hasWeightedLoad = sets.some(
     (s) => s.weight !== undefined && Number.isFinite(s.weight) && s.weight > 0
   );
@@ -1239,7 +1262,8 @@ export default function PasteWorkoutPage() {
 
       const desiredTrackingMode = inferBetterTrackingModeFromParsedSets(
         ex.exercise,
-        ex.sets
+        ex.sets,
+        desiredTrackType
       );
 
             if (existingTrack) {
