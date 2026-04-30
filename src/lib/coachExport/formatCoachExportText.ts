@@ -192,6 +192,15 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     "Anchor Lifts",
     ...metrics.anchorLifts.map(formatAnchorLift),
     "",
+    "Exercise Vocabulary",
+    "Use these IronForge exercise names exactly when recommending movements:",
+    ...(metrics.exerciseVocabulary.length
+      ? metrics.exerciseVocabulary.map((name) => `- ${name}`)
+      : ["- No recent canonical exercise names available."]),
+    "- Prefer exact names from this list.",
+    "- Do not create new exercise names unless necessary.",
+    "- If suggesting a variation, label it as a new exercise.",
+    "",
     ...nextWorkoutFocusLines,
     "",
     ...trainingSignalLines,

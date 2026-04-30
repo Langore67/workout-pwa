@@ -538,6 +538,85 @@ conditioning BWx30s`);
   ]);
 });
 
+test("Paste Workout keeps corrective entries on a corrective track even when a strength track already exists", async ({
+  page,
+}) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  await seedPasteWorkoutTrack(page, {
+    name: "Cable External Rotation",
+    normalizedName: "cable external rotation",
+    trackingMode: "weightedReps",
+  });
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Shoulder Reset
+Date: 2026-04-09
+Start: 08:00
+End: 08:30
+
+Cable External Rotation
+corrective 10x15`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+
+  await expect(
+    page.getByText(/Logged as corrective work\. Excluded from strength metrics\./i)
+  ).toBeVisible();
+  await expect(page.getByText(/corrective .* 10 x 15/i)).toBeVisible();
+
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const dbState = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const tracks = await db.tracks.toArray();
+    const sessions = await db.sessions.toArray();
+    const latestSession = sessions.sort((a: any, b: any) => (b.startedAt ?? 0) - (a.startedAt ?? 0))[0];
+    const importedSets = latestSession
+      ? await db.sets.where("sessionId").equals(latestSession.id).sortBy("createdAt")
+      : [];
+    const trackById = new Map(tracks.map((track: any) => [track.id, track]));
+
+    return {
+      tracks: tracks
+        .filter((track: any) => track.displayName === "Cable External Rotation")
+        .map((track: any) => ({
+          displayName: track.displayName,
+          trackType: track.trackType,
+          trackingMode: track.trackingMode,
+        }))
+        .sort((a: any, b: any) => a.trackType.localeCompare(b.trackType)),
+      sets: importedSets.map((set: any) => ({
+        trackType: trackById.get(set.trackId)?.trackType ?? null,
+        trackingMode: trackById.get(set.trackId)?.trackingMode ?? null,
+        setType: set.setType ?? null,
+        notes: set.notes ?? null,
+        weight: set.weight ?? null,
+        reps: set.reps ?? null,
+      })),
+    };
+  });
+
+  expect(dbState.tracks).toEqual([
+    { displayName: "Cable External Rotation", trackType: "corrective", trackingMode: "repsOnly" },
+    { displayName: "Cable External Rotation", trackType: "hypertrophy", trackingMode: "weightedReps" },
+  ]);
+
+  expect(dbState.sets).toEqual([
+    {
+      trackType: "corrective",
+      trackingMode: "repsOnly",
+      setType: "working",
+      notes: "corrective",
+      weight: 10,
+      reps: 15,
+    },
+  ]);
+});
+
 test("Paste Workout imports structured session note blocks onto the session record without breaking exercise parsing", async ({ page }) => {
   await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
   await resetDexieDb(page);

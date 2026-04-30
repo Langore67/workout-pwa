@@ -10,6 +10,7 @@ export type CoachExportMetric = {
 
 export type CoachExportAnchorLift = {
   pattern: StrengthPattern;
+  exerciseId?: string | null;
   exerciseName: string | null;
   trackDisplayName: string | null;
   effectiveWeightLb: number | null;
@@ -82,6 +83,7 @@ export type CoachExportMetrics = {
   strengthSignal: CoachExportStrengthSignal;
   phaseQuality: PhaseQualityResult | null;
   anchorLifts: CoachExportAnchorLift[];
+  exerciseVocabulary: string[];
   trainingSignals: CoachExportTrainingSignals;
   patternSummary: PatternSummary;
   nextWorkoutFocus: CoachExportNextWorkoutFocus;

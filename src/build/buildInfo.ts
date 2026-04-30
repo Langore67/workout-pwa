@@ -7,7 +7,7 @@
 
 export const buildInfo = {
   version: "v0.1.0",
-  commit: "69734ab",
-  branch: "feature/chart-card-layout-standard",
-  builtAt: "2026-04-30T15:08:41.843Z",
+  commit: "d3fe966",
+  branch: "feature/coach-export-exercise-vocabulary",
+  builtAt: "2026-04-30T17:57:24.935Z",
 } as const;

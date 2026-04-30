@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { buildNextWorkoutFocus } from "../src/lib/coachExport/buildNextWorkoutFocus";
 import { formatCoachExportText } from "../src/lib/coachExport/formatCoachExportText";
 import { buildPatternSummary, type CompletedSession } from "../src/lib/coachExport/buildPatternSummary";
+import { buildExerciseVocabulary } from "../src/lib/coachExport/exerciseVocabulary";
 import { informationRegistry } from "../src/config/information/informationRegistry";
 import type { CoachExportMetrics, CoachExportTrainingSignals } from "../src/lib/coachExport/types";
 
@@ -44,6 +45,7 @@ function buildMetrics(): CoachExportMetrics {
     anchorLifts: [
       {
         pattern: "push",
+        exerciseId: "bench",
         exerciseName: "Bench Press",
         trackDisplayName: "Bench Press",
         effectiveWeightLb: 225,
@@ -52,6 +54,7 @@ function buildMetrics(): CoachExportMetrics {
         performedAt: new Date("2026-04-24T09:00:00-04:00").getTime(),
       },
     ],
+    exerciseVocabulary: ["Bench Press", "Lat Pulldown", "Romanian Deadlift"],
     trainingSignals: {
       movementQuality: [
         "Lat Pulldown: improved stretch and contraction",
@@ -138,6 +141,18 @@ test("coach export includes recent training signals section", async () => {
   expect(text).toContain("- Pulling movements show improving consistency");
   expect(text).not.toContain("Upper A");
   expect(text).not.toContain("Lower B");
+});
+
+test("coach export includes exercise vocabulary section and rules", async () => {
+  const text = formatCoachExportText(buildMetrics());
+
+  const section = getSection(text, "Exercise Vocabulary", "Next Workout Focus");
+  expect(section).toContain("Use these IronForge exercise names exactly when recommending movements:");
+  expect(section).toContain("- Bench Press");
+  expect(section).toContain("- Lat Pulldown");
+  expect(section).toContain("- Prefer exact names from this list.");
+  expect(section).toContain("- Do not create new exercise names unless necessary.");
+  expect(section).toContain("- If suggesting a variation, label it as a new exercise.");
 });
 
 test("coach export preserves the structured coaching loop as plain text", async () => {
@@ -259,6 +274,98 @@ expect(summary.progression).toContain("Pulling movements show improving consiste
   expect(summary.fatigue.length).toBeLessThanOrEqual(4);
   expect(summary.constraints.length).toBeLessThanOrEqual(4);
   expect(summary.progression.length).toBeLessThanOrEqual(4);
+});
+
+test("exercise vocabulary uses active canonical names, dedupes, and caps the list", async () => {
+  const now = new Date("2026-04-27T09:00:00-04:00").getTime();
+  const recentSessions = Array.from({ length: 5 }, (_, index) => ({
+    id: `session-${index + 1}`,
+    startedAt: now - (index + 1) * 60_000,
+    endedAt: now - index * 86_400_000,
+  }));
+
+  const vocabulary = buildExerciseVocabulary({
+    sessions: recentSessions,
+    sets: [
+      ...Array.from({ length: 30 }, (_, index) => ({
+        id: `set-${index + 1}`,
+        sessionId: recentSessions[index < 25 ? 0 : 4].id,
+        trackId: `track-${index + 1}`,
+        createdAt: now,
+        setType: "working" as const,
+        completedAt: now,
+      })),
+      {
+        id: "set-duplicate",
+        sessionId: recentSessions[1].id,
+        trackId: "track-duplicate",
+        createdAt: now,
+        setType: "working" as const,
+        completedAt: now,
+      },
+    ],
+    tracks: [
+      ...Array.from({ length: 30 }, (_, index) => ({
+        id: `track-${index + 1}`,
+        exerciseId: `exercise-${index + 1}`,
+        trackType: "strength" as const,
+        displayName: `Alias ${index + 1}`,
+        trackingMode: "weightedReps" as const,
+        warmupSetsDefault: 0,
+        workingSetsDefault: 3,
+        repMin: 5,
+        repMax: 8,
+        restSecondsDefault: 120,
+        weightJumpDefault: 5,
+        createdAt: now,
+      })),
+      {
+        id: "track-duplicate",
+        exerciseId: "exercise-1",
+        trackType: "strength" as const,
+        displayName: "Bench Alias",
+        trackingMode: "weightedReps" as const,
+        warmupSetsDefault: 0,
+        workingSetsDefault: 3,
+        repMin: 5,
+        repMax: 8,
+        restSecondsDefault: 120,
+        weightJumpDefault: 5,
+        createdAt: now,
+      },
+    ],
+    exercises: [
+      ...Array.from({ length: 30 }, (_, index) => ({
+        id: `exercise-${index + 1}`,
+        name: index === 0 ? "Bench Press" : `Exercise ${index + 1}`,
+        normalizedName: index === 0 ? "bench press" : `exercise ${index + 1}`,
+        equipmentTags: [],
+        createdAt: now,
+        ...(index === 27 ? { archivedAt: now } : null),
+        ...(index === 28 ? { mergedIntoExerciseId: "exercise-1" } : null),
+      })),
+    ],
+    anchorLifts: [
+      {
+        pattern: "push",
+        exerciseId: "exercise-1",
+        exerciseName: "Bench Press",
+        trackDisplayName: "Bench Press",
+        effectiveWeightLb: 225,
+        reps: 5,
+        e1rm: 262,
+        performedAt: now,
+      },
+    ],
+    limit: 25,
+  });
+
+  expect(vocabulary[0]).toBe("Bench Press");
+  expect(vocabulary).not.toContain("Exercise 28");
+  expect(vocabulary).not.toContain("Exercise 29");
+  expect(vocabulary.length).toBe(25);
+  expect(vocabulary.filter((name) => name === "Bench Press")).toHaveLength(1);
+  expect(vocabulary).not.toContain("Exercise 30");
 });
 
 test("next workout focus builds constraint and trigger guidance without split-specific language", async () => {

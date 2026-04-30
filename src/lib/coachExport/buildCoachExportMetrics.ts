@@ -1,4 +1,11 @@
-import { db, type BodyMetricEntry, type Session, type SetEntry, type Track } from "../../db";
+import {
+  db,
+  type BodyMetricEntry,
+  type Exercise,
+  type Session,
+  type SetEntry,
+  type Track,
+} from "../../db";
 import {
   computeStrengthIndexAt,
   computeStrengthTrend,
@@ -28,6 +35,7 @@ import {
   type CompletedSession,
 } from "./buildPatternSummary";
 import { buildNextWorkoutFocus } from "./buildNextWorkoutFocus";
+import { buildExerciseVocabulary } from "./exerciseVocabulary";
 import type {
   CoachExportAnchorLift,
   CoachExportMetric,
@@ -177,6 +185,7 @@ async function buildAnchorLifts(): Promise<CoachExportAnchorLift[]> {
 
     return {
       pattern,
+      exerciseId: anchor?.exerciseId ?? null,
       exerciseName: anchor?.exerciseName ?? null,
       trackDisplayName: anchor?.exerciseName ?? null,
       effectiveWeightLb: anchor?.latestSet?.effectiveWeightLb ?? null,
@@ -566,10 +575,11 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
 
   const hydration = buildHydration(bodyRows);
   const strengthSignal = await buildStrengthSignal(generatedAt);
-  const [sessions, sets, tracks] = await Promise.all([
+  const [sessions, sets, tracks, exercises] = await Promise.all([
     db.sessions.toArray(),
     db.sets.toArray(),
     db.tracks.toArray(),
+    db.exercises.toArray(),
   ]);
   const sharedStrengthTrend = await computeStrengthTrend(12, 28);
   const computedStrength = computeStrengthDeltaFromStrengthTrend(sharedStrengthTrend, currentPhase);
@@ -582,6 +592,14 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
   const phaseQuality =
     (phaseQualityInputs.sampleCount ?? 0) > 0 ? evaluatePhaseQuality(currentPhase, phaseQualityInputs) : null;
   const anchorLifts = await buildAnchorLifts();
+  const exerciseVocabulary = buildExerciseVocabulary({
+    sessions: sessions ?? [],
+    sets: sets ?? [],
+    tracks: tracks ?? [],
+    exercises: exercises ?? [],
+    anchorLifts,
+    limit: 25,
+  });
   const trainingSignalBundle = buildTrainingSignalsFromRecentSessions({
     sessions: sessions ?? [],
     sets: sets ?? [],
@@ -627,6 +645,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
         strengthSignal,
         phaseQuality,
         anchorLifts,
+        exerciseVocabulary,
         trainingSignals: trainingSignalBundle.trainingSignals,
         patternSummary,
         nextWorkoutFocus,
