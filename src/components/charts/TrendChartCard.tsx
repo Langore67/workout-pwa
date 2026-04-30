@@ -480,7 +480,7 @@ export default function TrendChartCard({
       <div className="min-w-0 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-sm">
         {!hideChartHeader ? (
           <div className="mb-4 grid gap-2">
-            <div className="flex flex-nowrap items-start justify-between gap-3">
+            <div className="flex w-full flex-nowrap items-start justify-between gap-3">
               <h3
                 className="min-w-0 flex-1 text-[18px] font-black text-[var(--text)]"
                 style={{ letterSpacing: -0.2, margin: 0 }}
@@ -489,7 +489,7 @@ export default function TrendChartCard({
               </h3>
 
               {showHeaderRight ? (
-                <div className="flex shrink-0 items-center gap-2 self-start">
+                <div className="ml-auto flex shrink-0 items-center gap-2 self-start">
                   {infoKey ? (
                     <InfoStubButton
                       pageKey={infoPageKey}
@@ -549,7 +549,7 @@ export default function TrendChartCard({
     <div className="min-w-0 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-sm">
       {!hideChartHeader ? (
         <div className="mb-4 grid gap-2">
-          <div className="flex flex-nowrap items-start justify-between gap-3">
+          <div className="flex w-full flex-nowrap items-start justify-between gap-3">
             <h3
               className="min-w-0 flex-1 text-[18px] font-black text-[var(--text)]"
               style={{ letterSpacing: -0.2, margin: 0 }}
@@ -558,7 +558,7 @@ export default function TrendChartCard({
             </h3>
   
             {showHeaderRight ? (
-              <div className="flex shrink-0 items-center gap-2 self-start">
+              <div className="ml-auto flex shrink-0 items-center gap-2 self-start">
                 {infoKey ? (
                   <InfoStubButton
                     pageKey={infoPageKey}
