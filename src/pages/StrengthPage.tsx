@@ -257,6 +257,15 @@ function modeHint(mode: Mode) {
   return "Maintain: Look for stable-to-rising Strength Signal and consistency across squat, hinge, push, and pull patterns.";
 }
 
+function formatStrengthTrendBadgeLabel(value: string | null | undefined): string {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) return "-> unknown";
+  if (normalized.includes("up")) return "-> improving";
+  if (normalized.includes("down")) return "-> declining";
+  if (normalized.includes("stable")) return "-> stable";
+  return `-> ${normalized}`;
+}
+
 function ResolutionControl({
   activeResolution,
   resolutions,
@@ -731,6 +740,14 @@ export default function StrengthPage() {
                 paneNavigationMode="movingPane"
                 dragScrollEnabled={true}
                 yAxisSide="right"
+                headerStatus={
+                  <span
+                    data-testid="strength-signal-trend:status-pill"
+                    className="badge"
+                  >
+                    {formatStrengthTrendBadgeLabel(heroMeta?.trendLabel)}
+                  </span>
+                }
                 valueFormatter={formatTwoDecimals}
                 readoutMode="statRow"
                 compactMetaLineText={strengthSignalCompactMetaLine}
