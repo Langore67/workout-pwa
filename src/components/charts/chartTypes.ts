@@ -11,6 +11,7 @@
    - Keep the shared chart shell flexible without overcomplicating the API
    ============================================================================ */
 
+import type { ReactNode } from "react";
 import type { informationRegistry } from "../../config/information/informationRegistry";
 
 export type ChartDatum = {
@@ -84,6 +85,15 @@ export type TrendChartCardProps = {
 
   /* optional header badge override; defaults to visible window info */
   headerBadgeText?: string;
+
+  /* optional upper-right chart header content such as a status pill */
+  headerStatus?: ReactNode;
+
+  /* optional controls row rendered below the subtitle */
+  headerControls?: ReactNode;
+
+  /* optional muted support text rendered below the controls row */
+  headerMetaText?: string;
 
   /* hide the top-right header badge entirely */
   hideHeaderBadge?: boolean;

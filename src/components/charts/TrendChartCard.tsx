@@ -217,6 +217,9 @@ export default function TrendChartCard({
   showTrendLine = false,
   readoutMode = "auto",
   headerBadgeText,
+  headerStatus,
+  headerControls,
+  headerMetaText,
   hideHeaderBadge = false,
   hideChartHeader = false,
   infoPageKey,
@@ -417,6 +420,10 @@ export default function TrendChartCard({
       : `${visibleCount} pts`;
 
   const resolvedHeaderBadgeText = headerBadgeText ?? autoWindowBadgeText;
+  const showHeaderBadge = !hideHeaderBadge && series.length > 1;
+  const showHeaderRight = showHeaderBadge || infoKey || headerStatus;
+  const showHeaderControls = Boolean(headerControls);
+  const showHeaderMetaText = Boolean(headerMetaText?.trim());
 
   const compactMetaParts: string[] = [];
   if (visibleCount > 0) compactMetaParts.push(`${visibleCount} pts`);
@@ -472,10 +479,48 @@ export default function TrendChartCard({
     return (
       <div className="min-w-0 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-sm">
         {!hideChartHeader ? (
-          <div className="mb-3">
-            <div className="text-base font-semibold text-[var(--text)]">{title}</div>
+          <div className="mb-4 grid gap-2">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3
+                  className="text-[18px] font-black text-[var(--text)]"
+                  style={{ letterSpacing: -0.2, margin: 0 }}
+                >
+                  {title}
+                </h3>
+              </div>
+
+              {showHeaderRight ? (
+                <div className="flex shrink-0 items-center gap-2 self-start">
+                  {infoKey ? (
+                    <InfoStubButton
+                      pageKey={infoPageKey}
+                      infoKey={infoKey}
+                    />
+                  ) : null}
+
+                  {headerStatus}
+
+                  {showHeaderBadge ? (
+                    <div
+                      className="shrink-0 rounded-full border border-[var(--line)] px-2.5 py-1 text-xs text-[var(--muted)]"
+                      title="Visible chart window"
+                    >
+                      {resolvedHeaderBadgeText}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
             {subtitle ? (
-              <div className="mt-0.5 text-sm text-[var(--muted)]">{subtitle}</div>
+              <div className="text-[13px] font-medium leading-5 text-[var(--muted)]">{subtitle}</div>
+            ) : null}
+
+            {showHeaderControls ? <div>{headerControls}</div> : null}
+
+            {showHeaderMetaText ? (
+              <div className="text-[12px] leading-5 text-[var(--muted)]">{headerMetaText}</div>
             ) : null}
           </div>
         ) : null}
@@ -505,25 +550,29 @@ export default function TrendChartCard({
   return (
     <div className="min-w-0 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-sm">
       {!hideChartHeader ? (
-        <div className="mb-3">
+        <div className="mb-4 grid gap-2">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div
+              <h3
                 className="text-[18px] font-black text-[var(--text)]"
-                style={{ letterSpacing: -0.2 }}
+                style={{ letterSpacing: -0.2, margin: 0 }}
               >
                 {title}
-              </div>
-              {subtitle ? (
-                <div className="mt-0.5 text-[13px] font-medium text-[var(--muted)]">
-                  {subtitle}
-                </div>
-              ) : null}
+              </h3>
             </div>
   
-            {(!hideHeaderBadge && series.length > 1) || infoKey ? (
-              <div className="flex shrink-0 items-center gap-2">
-                {!hideHeaderBadge && series.length > 1 ? (
+            {showHeaderRight ? (
+              <div className="flex shrink-0 items-center gap-2 self-start">
+                {infoKey ? (
+                  <InfoStubButton
+                    pageKey={infoPageKey}
+                    infoKey={infoKey}
+                  />
+                ) : null}
+
+                {headerStatus}
+
+                {showHeaderBadge ? (
                   <div
                     className="shrink-0 rounded-full border border-[var(--line)] px-2.5 py-1 text-xs text-[var(--muted)]"
                     title="Visible chart window"
@@ -531,23 +580,32 @@ export default function TrendChartCard({
                     {resolvedHeaderBadgeText}
                   </div>
                 ) : null}
-
-                {infoKey ? (
-                  <InfoStubButton
-                    pageKey={infoPageKey}
-                    infoKey={infoKey}
-                  />
-                ) : null}
               </div>
             ) : null}
           </div>
+
+          {subtitle ? (
+            <div className="text-[13px] font-medium leading-5 text-[var(--muted)]">{subtitle}</div>
+          ) : null}
+
+          {showHeaderControls ? <div>{headerControls}</div> : null}
+
+          {showHeaderMetaText ? (
+            <div className="text-[12px] leading-5 text-[var(--muted)]">{headerMetaText}</div>
+          ) : null}
         </div>
       ) : null}
   
       {resolvedReadoutMode === "statRow" ? (
-        <div className="mb-3">
-          <div className="grid gap-2">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="mb-4 grid gap-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            {latestDisplayLabel ? (
+              <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
+                {latestDisplayLabel}
+              </span>
+            ) : null}
+
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 min-w-0">
               <span
                 className="text-[26px] font-semibold text-[var(--text)] leading-none"
                 style={{ letterSpacing: -0.3 }}
@@ -556,18 +614,18 @@ export default function TrendChartCard({
               </span>
 
               {statSecondary.trim() ? (
-                <span className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[11px] font-medium text-[var(--muted)] leading-none">
+                <span className="inline-flex items-center rounded-full border border-[var(--line)] px-2.5 py-1 text-[11px] font-medium text-[var(--muted)] leading-none whitespace-nowrap">
                   {statSecondary.trim()}
                 </span>
               ) : null}
             </div>
-
-            {compactMetaLine ? (
-              <div className="text-[11px] text-[var(--muted)] opacity-85">
-                {compactMetaLine}
-              </div>
-            ) : null}
           </div>
+
+          {compactMetaLine ? (
+            <div className="text-[12px] leading-5 text-[var(--muted)] opacity-85">
+              {compactMetaLine}
+            </div>
+          ) : null}
         </div>
     ) : null}
 

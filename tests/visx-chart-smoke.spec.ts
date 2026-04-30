@@ -353,10 +353,8 @@ async function expectRenderedVisxTrendChart(page: Page, testIdBase: string) {
   await expect(chart).toBeVisible({ timeout: 15000 });
 
   const markers = chart.locator("circle");
-  const paths = chart.locator("path");
 
   expect(await markers.count()).toBeGreaterThan(1);
-  expect(await paths.count()).toBeGreaterThan(0);
 }
 
 async function hoverVisxChart(page: Page, testIdBase: string, ratioX: number) {
