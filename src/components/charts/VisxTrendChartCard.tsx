@@ -473,7 +473,7 @@ export default function VisxTrendChartCard({
 
   const resolvedHeaderBadgeText = headerBadgeText ?? autoWindowBadgeText;
   const showHeaderBadge = !hideHeaderBadge && series.length > 1;
-  const showHeaderRight = showHeaderBadge || infoKey || headerStatus;
+  const showHeaderStatus = Boolean(showHeaderBadge || headerStatus);
   const showHeaderControls = Boolean(headerControls);
   const showHeaderMetaText = Boolean(headerMetaText?.trim());
 
@@ -483,6 +483,133 @@ export default function VisxTrendChartCard({
     valueFormatter?.(statNumeric, latestSeries?.key) ??
     (statNumeric == null ? "—" : `${statNumeric}`);
   const statLabel = hoverPoint?.label ?? latestLabel;
+  const hasRangeSummary = !hideWindowSummary && Boolean(firstVisibleLabel && lastVisibleLabel);
+  const hasDeltaSummary = !hideDeltaSummary && Boolean(deltaSummary);
+
+  const renderHeader = () => (
+    <div
+      data-testid={`${resolvedTestIdBase}:header`}
+      className="grid"
+      style={{ rowGap: 0, marginBottom: 4 }}
+    >
+      <div
+        data-testid={`${resolvedTestIdBase}:header-grid`}
+        className="w-full"
+        style={{
+          display: "flex",
+          width: "100%",
+          alignItems: "flex-start",
+          gap: 12,
+        }}
+      >
+        <div
+          className="min-w-0 flex-1"
+          style={{
+            minWidth: 0,
+            flex: "1 1 auto",
+          }}
+        >
+          <div
+            data-testid={`${resolvedTestIdBase}:title-row`}
+            className="min-w-0"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              minWidth: 0,
+            }}
+          >
+            <h3
+              data-testid={`${resolvedTestIdBase}:title`}
+              className="text-[18px] font-black leading-tight text-[var(--text)]"
+              style={{
+                letterSpacing: "-0.2px",
+                margin: 0,
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              title={title}
+            >
+              {title}
+            </h3>
+
+            {infoKey ? (
+              <div
+                data-testid={`${resolvedTestIdBase}:title-info`}
+                style={{
+                  display: "inline-flex",
+                  flexShrink: 0,
+                  alignItems: "center",
+                }}
+              >
+                <InfoStubButton
+                  pageKey={infoPageKey}
+                  infoKey={infoKey}
+                />
+              </div>
+            ) : null}
+          </div>
+
+          {subtitle ? (
+            <p
+              data-testid={`${resolvedTestIdBase}:subtitle`}
+              className="text-[13px] font-medium leading-5 text-[var(--muted)]"
+              style={{ marginTop: 2 }}
+            >
+              {subtitle}
+            </p>
+          ) : null}
+        </div>
+
+        {showHeaderStatus ? (
+          <div
+            data-testid={`${resolvedTestIdBase}:status-row`}
+            style={{
+              marginLeft: "auto",
+              display: "flex",
+              flexShrink: 0,
+              alignItems: "flex-start",
+              justifyContent: "flex-end",
+            }}
+          >
+            <div
+              data-testid={`${resolvedTestIdBase}:status-content`}
+              style={{
+                display: "flex",
+                flexShrink: 0,
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              {headerStatus}
+
+              {showHeaderBadge ? (
+                <div
+                  className="shrink-0 rounded-full border border-[var(--line)] px-2.5 py-1 text-xs text-[var(--muted)]"
+                  title="Visible chart window"
+                >
+                  {resolvedHeaderBadgeText}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {showHeaderControls ? <div style={{ marginTop: -1 }}>{headerControls}</div> : null}
+
+      {showHeaderMetaText ? (
+        <div
+          className="text-[12px] leading-5 text-[var(--muted)]"
+          style={{ marginTop: 4, fontSize: 11, opacity: 0.72 }}
+        >
+          {headerMetaText}
+        </div>
+      ) : null}
+    </div>
+  );
 
   if (!data.length) {
     return (
@@ -490,50 +617,7 @@ export default function VisxTrendChartCard({
         className="min-w-0 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-sm"
         data-testid={`${resolvedTestIdBase}:card`}
       >
-        {!hideChartHeader ? (
-          <div className="mb-4 grid gap-2">
-            <div className="flex flex-nowrap items-start justify-between gap-3">
-              <h3
-                className="min-w-0 flex-1 text-[18px] font-black text-[var(--text)]"
-                style={{ letterSpacing: -0.2, margin: 0 }}
-              >
-                {title}
-              </h3>
-
-              {showHeaderRight ? (
-                <div className="flex shrink-0 items-center gap-2 self-start">
-                  {infoKey ? (
-                    <InfoStubButton
-                      pageKey={infoPageKey}
-                      infoKey={infoKey}
-                    />
-                  ) : null}
-
-                  {headerStatus}
-
-                  {showHeaderBadge ? (
-                    <div
-                      className="shrink-0 rounded-full border border-[var(--line)] px-2.5 py-1 text-xs text-[var(--muted)]"
-                      title="Visible chart window"
-                    >
-                      {resolvedHeaderBadgeText}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-
-            {subtitle ? (
-              <div className="text-[13px] font-medium leading-5 text-[var(--muted)]">{subtitle}</div>
-            ) : null}
-
-            {showHeaderControls ? <div>{headerControls}</div> : null}
-
-            {showHeaderMetaText ? (
-              <div className="text-[12px] leading-5 text-[var(--muted)]">{headerMetaText}</div>
-            ) : null}
-          </div>
-        ) : null}
+        {!hideChartHeader ? renderHeader() : null}
 
         <div
           className="flex items-center justify-center rounded-xl border border-dashed border-[var(--line)] bg-[var(--bg)]/40 px-4 text-center"
@@ -807,61 +891,34 @@ export default function VisxTrendChartCard({
       className="min-w-0 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 shadow-sm"
       data-testid={`${resolvedTestIdBase}:card`}
     >
-      {!hideChartHeader ? (
-        <div className="mb-4 grid gap-2">
-          <div className="flex flex-nowrap items-start justify-between gap-3">
-            <h3
-              className="min-w-0 flex-1 text-[18px] font-black text-[var(--text)]"
-              style={{ letterSpacing: -0.2, margin: 0 }}
-            >
-              {title}
-            </h3>
-  
-            {showHeaderRight ? (
-              <div className="flex shrink-0 items-center gap-2 self-start">
-                {infoKey ? (
-                  <InfoStubButton
-                    pageKey={infoPageKey}
-                    infoKey={infoKey}
-                  />
-                ) : null}
-
-                {headerStatus}
-
-                {showHeaderBadge ? (
-                  <div
-                    className="shrink-0 rounded-full border border-[var(--line)] px-2.5 py-1 text-xs text-[var(--muted)]"
-                    title="Visible chart window"
-                  >
-                    {resolvedHeaderBadgeText}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-
-          {subtitle ? (
-            <div className="text-[13px] font-medium leading-5 text-[var(--muted)]">{subtitle}</div>
-          ) : null}
-
-          {showHeaderControls ? <div>{headerControls}</div> : null}
-
-          {showHeaderMetaText ? (
-            <div className="text-[12px] leading-5 text-[var(--muted)]">{headerMetaText}</div>
-          ) : null}
-        </div>
-      ) : null}
+      {!hideChartHeader ? renderHeader() : null}
 
       {resolvedReadoutMode === "statRow" ? (
-        <div className="mb-4 grid gap-3">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            {latestDisplayLabel ? (
-              <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
-                {latestDisplayLabel}
-              </span>
-            ) : null}
+        <div
+          data-testid={`${resolvedTestIdBase}:readout`}
+          className="mb-4 grid"
+          style={{ rowGap: 2 }}
+        >
+          {latestDisplayLabel ? (
+            <div
+              data-testid={`${resolvedTestIdBase}:readout-series`}
+              className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]"
+            >
+              {latestDisplayLabel}
+            </div>
+          ) : null}
 
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 min-w-0">
+          <div
+            data-testid={`${resolvedTestIdBase}:readout-value-row`}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              flexWrap: "wrap",
+              minWidth: 0,
+            }}
+          >
+            
               <span
                 data-testid={`${resolvedTestIdBase}:readout-value`}
                 className="text-[26px] font-semibold text-[var(--text)] leading-none"
@@ -873,28 +930,40 @@ export default function VisxTrendChartCard({
               {statLabel ? (
                 <span
                   data-testid={`${resolvedTestIdBase}:readout-label`}
-                  className="inline-flex items-center rounded-full border border-[var(--line)] px-2.5 py-1 text-[11px] font-medium text-[var(--muted)] leading-none whitespace-nowrap"
+                  className="inline-flex shrink-0 items-center rounded-full border border-[var(--line)] px-2.5 py-1 text-[11px] font-medium text-[var(--muted)] leading-none whitespace-nowrap"
                 >
                   {statLabel}
                 </span>
               ) : null}
-            </div>
+            
           </div>
 
           {compactMetaLineText ? (
-            <div className="text-[12px] leading-5 text-[var(--muted)] opacity-85">
+            <div
+              data-testid={`${resolvedTestIdBase}:readout-meta`}
+              className="text-[12px] leading-5 text-[var(--muted)] opacity-85"
+            >
               {compactMetaLineText}
             </div>
           ) : null}
 
-          {!hideWindowSummary || !hideDeltaSummary ? (
-            <div className="flex flex-wrap gap-2 text-[11px] text-[var(--muted)]">
-              {!hideWindowSummary && firstVisibleLabel && lastVisibleLabel ? (
+          {hasRangeSummary || hasDeltaSummary ? (
+            <div
+              data-testid={`${resolvedTestIdBase}:readout-summary-row`}
+              className="text-[11px] text-[var(--muted)]"
+              style={{
+                display: "flex",
+                gap: 6,
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
+              {hasRangeSummary ? (
                 <span className="rounded-full border border-[var(--line)] px-2 py-0.5">
                   {`${firstVisibleLabel} → ${lastVisibleLabel}`}
                 </span>
               ) : null}
-              {!hideDeltaSummary && deltaSummary ? (
+              {hasDeltaSummary ? (
                 <span className="rounded-full border border-[var(--line)] px-2 py-0.5">
                   {deltaSummary}
                 </span>

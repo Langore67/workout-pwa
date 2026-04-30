@@ -128,6 +128,10 @@ async function openInfoModal(page: Page, title: string) {
   await expect(dialog.getByText(title, { exact: true })).toBeVisible();
 }
 
+function centerY(box: { y: number; height: number }) {
+  return box.y + box.height / 2;
+}
+
 test.describe("Chart info buttons", () => {
   test.beforeEach(async ({ page }) => {
     await goto(page, "/");
@@ -152,10 +156,84 @@ test.describe("Chart info buttons", () => {
     await goto(page, "/strength");
 
     await expectInfoButtons(page, [
+      "Strength Signal Trend",
       "Relative Strength Trend",
     ]);
 
-    await openInfoModal(page, "Relative Strength Trend");
+    await openInfoModal(page, "Strength Signal Trend");
+  });
+
+  test("Shared chart header keeps title, info, and status in distinct rendered zones", async ({ page }) => {
+    await goto(page, "/performance");
+
+    const title = page.getByTestId("performance-strength-signal-trend:title");
+    const titleRow = page.getByTestId("performance-strength-signal-trend:title-row");
+    const info = page
+      .getByTestId("performance-strength-signal-trend:title-info")
+      .getByRole("button", { name: "More information about Performance Strength Signal Trend" });
+    const status = page.getByTestId("performance-strength-signal-trend:status-content");
+    const subtitle = page.getByTestId("performance-strength-signal-trend:subtitle");
+
+    await expect(title).toBeVisible();
+    await expect(titleRow).toBeVisible();
+    await expect(info).toBeVisible();
+    await expect(status).toBeVisible();
+    await expect(subtitle).toBeVisible();
+
+    const [titleBox, titleRowBox, infoBox, statusBox, subtitleBox] = await Promise.all([
+      title.boundingBox(),
+      titleRow.boundingBox(),
+      info.boundingBox(),
+      status.boundingBox(),
+      subtitle.boundingBox(),
+    ]);
+
+    expect(titleBox).not.toBeNull();
+    expect(titleRowBox).not.toBeNull();
+    expect(infoBox).not.toBeNull();
+    expect(statusBox).not.toBeNull();
+    expect(subtitleBox).not.toBeNull();
+
+    if (!titleBox || !titleRowBox || !infoBox || !statusBox || !subtitleBox) return;
+
+    expect(infoBox.y).toBeGreaterThanOrEqual(titleRowBox.y - 2);
+    expect(infoBox.y + infoBox.height).toBeLessThanOrEqual(titleRowBox.y + titleRowBox.height + 8);
+    expect(infoBox.x).toBeGreaterThanOrEqual(titleBox.x);
+    expect(infoBox.x - (titleBox.x + titleBox.width)).toBeLessThanOrEqual(48);
+    expect(statusBox.x).toBeGreaterThanOrEqual(infoBox.x);
+    expect(subtitleBox.y).toBeGreaterThan(titleRowBox.y + titleRowBox.height - 2);
+  });
+
+  test("Strength chart readout renders value, date, and summary as separate rows", async ({ page }) => {
+    await goto(page, "/strength");
+
+    const value = page.getByTestId("strength-signal-trend:readout-value");
+    const valueRow = page.getByTestId("strength-signal-trend:readout-value-row");
+    const datePill = page.getByTestId("strength-signal-trend:readout-label");
+    const summaryRow = page.getByTestId("strength-signal-trend:readout-summary-row");
+
+    await value.scrollIntoViewIfNeeded();
+    await expect(value).toBeVisible();
+    await expect(valueRow).toBeVisible();
+    await expect(datePill).toBeVisible();
+    await expect(summaryRow).toBeVisible();
+
+    const [valueBox, valueRowBox, dateBox, summaryBox] = await Promise.all([
+      value.boundingBox(),
+      valueRow.boundingBox(),
+      datePill.boundingBox(),
+      summaryRow.boundingBox(),
+    ]);
+
+    expect(valueBox).not.toBeNull();
+    expect(valueRowBox).not.toBeNull();
+    expect(dateBox).not.toBeNull();
+    expect(summaryBox).not.toBeNull();
+
+    if (!valueBox || !valueRowBox || !dateBox || !summaryBox) return;
+
+    expect(dateBox.y + dateBox.height).toBeLessThanOrEqual(valueRowBox.y + valueRowBox.height + 8);
+    expect(summaryBox.y).toBeGreaterThan(valueRowBox.y + valueRowBox.height - 2);
   });
 
   test("Body charts render info buttons and open chart info modal", async ({ page }) => {
