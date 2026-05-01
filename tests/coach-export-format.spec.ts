@@ -276,6 +276,158 @@ expect(summary.progression).toContain("Pulling movements show improving consiste
   expect(summary.progression.length).toBeLessThanOrEqual(4);
 });
 
+test("pattern summary can surface broader descriptive lower-body, bracing, stability, and tempo themes", async () => {
+  const repeatedSignals: CoachExportTrainingSignals = {
+    movementQuality: [
+      "Glute Bridge: glutes engaged better",
+      "Front Squat: lost brace on final reps",
+      "Reverse Lunge: balance limited the last reps",
+      "Tempo Squat: controlled descent stayed clean",
+    ],
+    stimulusCoverage: [
+      "Stimulus reached glutes",
+      "Quad burn showed up late",
+    ],
+    fatigueReadiness: [
+      "RDL: hamstrings took over",
+      "Split Squat: left side less stable",
+      "Leg Press: range shortened under fatigue",
+      "Press: ribs flared late",
+    ],
+    nextWorkoutFocus: [],
+    discussWithGaz: [],
+  };
+
+  const sessions: CompletedSession[] = [
+    {
+      id: "lb-1",
+      endedAt: new Date("2026-04-27T09:00:00-04:00").getTime(),
+      trainingSignals: repeatedSignals,
+    },
+    {
+      id: "lb-2",
+      endedAt: new Date("2026-04-24T09:00:00-04:00").getTime(),
+      trainingSignals: {
+        ...repeatedSignals,
+        movementQuality: [
+          "Glute Bridge: glutes engaged better",
+          "Front Squat: lost brace on final reps",
+          "Tempo Squat: controlled descent stayed clean",
+        ],
+        fatigueReadiness: [
+          "RDL: hamstrings took over",
+          "Split Squat: left side less stable",
+          "Leg Press: range shortened under fatigue",
+        ],
+      },
+    },
+    {
+      id: "lb-3",
+      endedAt: new Date("2026-04-20T09:00:00-04:00").getTime(),
+      trainingSignals: {
+        ...repeatedSignals,
+        movementQuality: [
+          "Reverse Lunge: balance limited the last reps",
+          "Tempo Squat: controlled descent stayed clean",
+        ],
+        stimulusCoverage: [
+          "Stimulus reached glutes",
+          "Quad burn showed up late",
+        ],
+        fatigueReadiness: [
+          "Press: ribs flared late",
+          "Leg Press: range shortened under fatigue",
+        ],
+      },
+    },
+    {
+      id: "lb-4",
+      endedAt: new Date("2026-04-16T09:00:00-04:00").getTime(),
+      trainingSignals: {
+        ...repeatedSignals,
+        movementQuality: [
+          "Glute Bridge: glutes engaged better",
+          "Reverse Lunge: balance limited the last reps",
+        ],
+        fatigueReadiness: [
+          "RDL: hamstrings took over",
+          "Split Squat: left side less stable",
+        ],
+      },
+    },
+  ];
+
+  const summary = buildPatternSummary({
+    sessions,
+    trainingSignals: repeatedSignals,
+  });
+
+  expect(summary.movementQuality.join(" ")).toContain("Glute engagement was noted across lower-body work");
+  expect(summary.movementQuality.join(" ")).toContain("Core bracing themes appeared across compound-lift notes");
+  expect(summary.movementQuality.join(" ")).toContain("Balance or stability limits appeared in recent unilateral work");
+  expect(summary.stimulus.join(" ")).toContain("Glute stimulus was noted across recent lower-body sessions");
+  expect(summary.stimulus.join(" ")).toContain("Quad stimulus was noted across recent lower-body sessions");
+
+  expect(summary.fatigue.join(" ")).toContain("Bracing quality changed under fatigue in recent notes");
+  expect(summary.fatigue.join(" ")).toContain("Range of motion changed under fatigue in recent notes");
+
+  expect(summary.constraints.join(" ")).toContain("Hamstring dominance appeared in repeated lower-body notes");
+  expect(summary.constraints.join(" ")).toContain("Unilateral stability differences appeared in recent notes");
+
+  const combined = [
+    ...summary.movementQuality,
+    ...summary.stimulus,
+    ...summary.fatigue,
+    ...summary.constraints,
+    ...summary.progression,
+  ].join(" ");
+
+  expect(combined).not.toMatch(/\bprioritize\b/i);
+  expect(combined).not.toMatch(/\bimprove\b/i);
+  expect(combined).not.toMatch(/\bprogress\b/i);
+  expect(combined).not.toMatch(/\breduce\b/i);
+  expect(combined).not.toMatch(/\badd\b/i);
+  expect(combined).not.toMatch(/\breplace\b/i);
+});
+
+test("pattern summary can surface descriptive tempo and descent-control themes", async () => {
+  const repeatedSignals: CoachExportTrainingSignals = {
+    movementQuality: [
+      "Tempo Squat: controlled descent stayed clean",
+      "Split Squat: controlled descent stayed clean",
+    ],
+    stimulusCoverage: [],
+    fatigueReadiness: [],
+    nextWorkoutFocus: [],
+    discussWithGaz: [],
+  };
+
+  const sessions: CompletedSession[] = [
+    {
+      id: "tempo-1",
+      endedAt: new Date("2026-04-27T09:00:00-04:00").getTime(),
+      trainingSignals: repeatedSignals,
+    },
+    {
+      id: "tempo-2",
+      endedAt: new Date("2026-04-24T09:00:00-04:00").getTime(),
+      trainingSignals: repeatedSignals,
+    },
+    {
+      id: "tempo-3",
+      endedAt: new Date("2026-04-20T09:00:00-04:00").getTime(),
+      trainingSignals: repeatedSignals,
+    },
+  ];
+
+  const summary = buildPatternSummary({
+    sessions,
+    trainingSignals: repeatedSignals,
+  });
+
+  expect(summary.movementQuality.join(" ")).toContain("Tempo or descent control was noted across recent sessions");
+});
+
 test("exercise vocabulary uses active canonical names, dedupes, and caps the list", async () => {
   const now = new Date("2026-04-27T09:00:00-04:00").getTime();
   const recentSessions = Array.from({ length: 5 }, (_, index) => ({
