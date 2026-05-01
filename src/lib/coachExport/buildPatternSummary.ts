@@ -95,6 +95,102 @@ function buildPatternCandidates(signal: string): PatternCandidate[] {
     });
   }
 
+  if (/glutes engaged better|good engagement in glutes|glute engagement/.test(text)) {
+    candidates.push({
+      category: "movementQuality",
+      key: "glute-engagement-noted",
+      text: "Glute engagement was noted across lower-body work",
+      score: 7,
+    });
+    candidates.push({
+      category: "stimulus",
+      key: "glute-stimulus-noted",
+      text: "Glute stimulus was noted across recent lower-body sessions",
+      score: 6,
+    });
+  }
+
+  if (/hamstrings took over|hamstring dominance|poor engagement in hamstrings/.test(text)) {
+    candidates.push({
+      category: "movementQuality",
+      key: "hamstring-takeover-repeated",
+      text: "Hamstring takeover appeared in recent lower-body notes",
+      score: 7,
+    });
+    candidates.push({
+      category: "constraints",
+      key: "hamstring-dominance-constraint",
+      text: "Hamstring dominance appeared in repeated lower-body notes",
+      score: 7,
+    });
+  }
+
+  if (/quad burn showed up late|good engagement in quads|poor engagement in quads|stimulus reached quads|stimulus missed quads/.test(text)) {
+    candidates.push({
+      category: "stimulus",
+      key: "quad-stimulus-repeated",
+      text: "Quad stimulus was noted across recent lower-body sessions",
+      score: 6,
+    });
+  }
+
+  if (/lost brace|core tension improved|ribs flared|brace on final reps|core bracing/.test(text)) {
+    candidates.push({
+      category: "movementQuality",
+      key: "core-bracing-inconsistency",
+      text: "Core bracing themes appeared across compound-lift notes",
+      score: 8,
+    });
+    candidates.push({
+      category: "fatigue",
+      key: "bracing-degrades-under-fatigue",
+      text: "Bracing quality changed under fatigue in recent notes",
+      score: 7,
+    });
+  }
+
+  if (/balance limited|less stable|unstable|instability|unilateral control/.test(text)) {
+    candidates.push({
+      category: "movementQuality",
+      key: "balance-stability-limits",
+      text: "Balance or stability limits appeared in recent unilateral work",
+      score: 7,
+    });
+    candidates.push({
+      category: "constraints",
+      key: "unilateral-stability-constraint",
+      text: "Unilateral stability differences appeared in recent notes",
+      score: 7,
+    });
+  }
+
+  if (/left side less stable|right side less stable|left side|right side/.test(text)) {
+    candidates.push({
+      category: "constraints",
+      key: "side-to-side-asymmetry",
+      text: "Side-to-side stability differences appeared in repeated notes",
+      score: 6,
+    });
+  }
+
+  if (/controlled descent|tempo|eccentric/.test(text)) {
+    candidates.push({
+      category: "movementQuality",
+      key: "tempo-control-repeated",
+      text: "Tempo or descent control was noted across recent sessions",
+      score: 6,
+    });
+  }
+
+  if (/range shortened under fatigue|shortened range|range of motion|reduced range|rom/.test(text)) {
+    candidates.push({
+      category: "fatigue",
+      key: "range-degrades-under-fatigue",
+      text: "Range of motion changed under fatigue in recent notes",
+      score: 7,
+    });
+  }
+
   if (/terminal reps|terminal-rep quality/.test(text)) {
     candidates.push({
       category: "fatigue",
