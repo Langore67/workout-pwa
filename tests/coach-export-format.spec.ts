@@ -96,8 +96,8 @@ function buildMetrics(): CoachExportMetrics {
         "Avoid pushing load on movements that already show joint feedback or shoulder sensitivity.",
       ],
       executionPriorities: [
-        "Maintain lat-dominant pulling and protect the setup that reduces early arm takeover.",
-        "Improve medial and lateral delt isolation quality before pushing shoulder-isolation progression.",
+        "Preserve known pulling setup constraints when selecting or progressing work.",
+        "Treat repeated isolation inconsistency as a movement-quality constraint.",
       ],
       adjustmentTriggers: [
         "Reduce volume or progression pressure if later-set fatigue appears earlier than usual.",
@@ -133,7 +133,7 @@ test("coach export includes recent training signals section", async () => {
   expect(text).toContain("Progression Guardrails");
   expect(text).toContain("Execution Priorities");
   expect(text).toContain("Adjustment Triggers");
-  expect(text).toContain("- Maintain lat-dominant pulling and protect the setup that reduces early arm takeover.");
+  expect(text).toContain("- Preserve known pulling setup constraints when selecting or progressing work.");
   expect(text).toContain("Discuss with Gaz");
   expect(text).toContain("- Review safe overhead pressing range");
   expect(text).toContain("Recent Patterns (Last 4 Sessions)");
@@ -569,10 +569,10 @@ test("next workout focus builds constraint and trigger guidance without split-sp
     /joint feedback|shoulder sensitivity/i
   );
   expect(focus.executionPriorities.join(" ")).toMatch(
-    /lat-dominant pulling|arm takeover/i
+    /pulling setup constraints|selecting or progressing work/i
   );
   expect(focus.executionPriorities.join(" ")).toMatch(
-    /medial|lateral delt isolation/i
+    /isolation inconsistency|movement-quality constraint/i
   );
   expect(focus.adjustmentTriggers.join(" ")).toMatch(
     /later-set fatigue|terminal-rep/i
@@ -586,6 +586,14 @@ test("next workout focus builds constraint and trigger guidance without split-sp
   expect(focus.progressionGuardrails.join(" ")).not.toMatch(/upper|lower|next workout type/i);
   expect(focus.executionPriorities.join(" ")).not.toMatch(/upper|lower|next workout type/i);
   expect(focus.adjustmentTriggers.join(" ")).not.toMatch(/upper|lower|next workout type/i);
+  expect(focus.executionPriorities.join(" ")).not.toMatch(/\bprioritize\b/i);
+  expect(focus.executionPriorities.join(" ")).not.toMatch(/\bimprove\b/i);
+  expect(focus.executionPriorities.join(" ")).not.toMatch(/\bprogress\b/i);
+  expect(focus.executionPriorities.join(" ")).not.toMatch(/\bbuild\b/i);
+  expect(focus.executionPriorities.join(" ")).not.toMatch(/\badd\b/i);
+  expect(focus.executionPriorities.join(" ")).not.toMatch(/\breplace\b/i);
+  expect(focus.executionPriorities.join(" ")).not.toMatch(/\bprescribe\b/i);
+  expect(focus.executionPriorities.join(" ")).not.toMatch(/\bdo\s+[a-z]/i);
 });
 
 test("next workout focus section avoids split prediction and exact programming prescriptions", async () => {
@@ -600,6 +608,11 @@ test("next workout focus section avoids split prediction and exact programming p
   expect(focusSection).not.toMatch(/\bdo\s+\d+\s+sets?\s+of\b/i);
   expect(focusSection).not.toMatch(/\bincrease by\s+\d+\s*(lb|lbs|kg)?\b/i);
   expect(focusSection).not.toMatch(/\bperform\s+\d+\s*-\s*\d+\s+reps?\b/i);
+  expect(focusSection).not.toMatch(/\bprioritize\b/i);
+  expect(focusSection).not.toMatch(/\bimprove\b/i);
+  expect(focusSection).not.toMatch(/\bbuild\b/i);
+  expect(focusSection).not.toMatch(/\breplace\b/i);
+  expect(focusSection).not.toMatch(/\bprescribe\b/i);
 });
 
 test("next workout focus omits empty subsection headings when no bullets exist", async () => {

@@ -98,7 +98,7 @@ export function buildNextWorkoutFocus(args: {
 
   if (/lat dominance|lat engagement improving|pulling movements show improving consistency|pull stimulus/i.test(signalText)) {
     executionPriorities.push(
-      "Maintain lat-dominant pulling and protect the setup that reduces early arm takeover."
+      "Preserve known pulling setup constraints when selecting or progressing work."
     );
   }
 
@@ -108,13 +108,13 @@ export function buildNextWorkoutFocus(args: {
     )
   ) {
     executionPriorities.push(
-      "Improve medial and lateral delt isolation quality before pushing shoulder-isolation progression."
+      "Treat repeated isolation inconsistency as a movement-quality constraint."
     );
   }
 
   if (/trap compensation|trap involvement/i.test(signalText)) {
     executionPriorities.push(
-      "Keep carry and upper-back execution clean so trap compensation stays controlled."
+      "Treat trap compensation as a carry or upper-back execution constraint."
     );
   }
 
