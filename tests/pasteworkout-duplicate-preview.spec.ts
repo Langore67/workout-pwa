@@ -3,11 +3,23 @@ import { resetDexieDb } from "./helpers/dbSeed";
 
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5173";
 
-async function seedBenchDuplicateCandidate(page: Parameters<typeof test>[0]["page"]) {
+async function seedCanonicalExerciseCandidate(
+  page: Parameters<typeof test>[0]["page"],
+  args: {
+    name: string;
+    normalizedName: string;
+    bodyPart?: string;
+    equipmentTags?: string[];
+    trackType?: "strength" | "hypertrophy";
+    trackingMode?: "weightedReps" | "repsOnly";
+    weight?: number;
+    reps?: number;
+  }
+) {
   await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
   await resetDexieDb(page);
 
-  await page.evaluate(async () => {
+  await page.evaluate(async (seed) => {
     // @ts-ignore
     const db = window.__db;
     if (!db) throw new Error("__db missing on window.");
@@ -19,11 +31,11 @@ async function seedBenchDuplicateCandidate(page: Parameters<typeof test>[0]["pag
 
     await db.exercises.add({
       id: exerciseId,
-      name: "DB Bench Press",
-      normalizedName: "db bench press",
+      name: seed.name,
+      normalizedName: seed.normalizedName,
       aliases: [],
-      equipmentTags: ["dumbbell"],
-      bodyPart: "Chest",
+      equipmentTags: seed.equipmentTags ?? [],
+      bodyPart: seed.bodyPart ?? "Other",
       createdAt: now,
       updatedAt: now,
     });
@@ -31,9 +43,9 @@ async function seedBenchDuplicateCandidate(page: Parameters<typeof test>[0]["pag
     await db.tracks.add({
       id: trackId,
       exerciseId,
-      displayName: "DB Bench Press",
-      trackType: "hypertrophy",
-      trackingMode: "weightedReps",
+      displayName: seed.name,
+      trackType: seed.trackType ?? "hypertrophy",
+      trackingMode: seed.trackingMode ?? "weightedReps",
       warmupSetsDefault: 2,
       workingSetsDefault: 3,
       repMin: 8,
@@ -56,10 +68,19 @@ async function seedBenchDuplicateCandidate(page: Parameters<typeof test>[0]["pag
       sessionId,
       trackId,
       setType: "working",
-      weight: 70,
-      reps: 9,
+      weight: seed.weight ?? 70,
+      reps: seed.reps ?? 9,
       createdAt: now,
     });
+  }, args);
+}
+
+async function seedBenchDuplicateCandidate(page: Parameters<typeof test>[0]["page"]) {
+  await seedCanonicalExerciseCandidate(page, {
+    name: "DB Bench Press",
+    normalizedName: "db bench press",
+    equipmentTags: ["dumbbell"],
+    bodyPart: "Chest",
   });
 }
 
@@ -308,6 +329,111 @@ work 65x10 @2`);
 
   await page.getByRole("button", { name: "Use existing" }).click();
   await expect(page.getByText(/Using existing: DB Machine Bench Press/i)).toBeVisible();
+});
+
+test("Paste Workout catches Lat Pull Down as a duplicate candidate for Lat Pulldown and can map to existing", async ({
+  page,
+}) => {
+  await seedCanonicalExerciseCandidate(page, {
+    name: "Lat Pulldown",
+    normalizedName: "lat pulldown",
+    equipmentTags: ["cable"],
+    bodyPart: "Back",
+  });
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Pull A
+Date: 2026-04-10
+Start: 08:00
+End: 09:00
+
+Lat Pull Down
+work 120x10 @2`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+
+  await expect(page.getByText("Review before create", { exact: true })).toBeVisible();
+  await expect(page.getByText("Lat Pull Down", { exact: true })).toBeVisible();
+  await expect(page.getByText("Lat Pulldown", { exact: true })).toBeVisible();
+  await expect(page.getByText("Possible duplicate", { exact: true })).toBeVisible();
+
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Import blocked: review possible duplicate exercises before continuing\./i)).toBeVisible();
+
+  await page.getByRole("button", { name: "Use existing" }).click();
+  await expect(page.getByText(/Using existing: Lat Pulldown/i)).toBeVisible();
+  await page.getByLabel(/Remember this as an alias for future imports/i).check();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+  await expect(page.getByText(/Aliases remembered: 1/i)).toBeVisible();
+
+  const dbState = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const exercises = await db.exercises.toArray();
+    const importedVariant = await db.exercises.where("normalizedName").equals("lat pull down").first();
+    const canonical = await db.exercises.where("normalizedName").equals("lat pulldown").first();
+    const importedTrack = await db.tracks.where("displayName").equals("Lat Pull Down").first();
+    return {
+      exerciseCount: exercises.length,
+      importedVariant: !!importedVariant,
+      canonicalExerciseId: canonical?.id ?? null,
+      aliases: canonical?.aliases ?? [],
+      importedTrackExerciseId: importedTrack?.exerciseId ?? null,
+    };
+  });
+
+  expect(dbState.exerciseCount).toBe(1);
+  expect(dbState.importedVariant).toBe(false);
+  expect(dbState.aliases).toContain("Lat Pull Down");
+  expect(dbState.importedTrackExerciseId).toBe(dbState.canonicalExerciseId);
+});
+
+test("Paste Workout auto-resolves DB Bench Press to canonical Dumbbell Bench Press without creating a duplicate", async ({
+  page,
+}) => {
+  await seedCanonicalExerciseCandidate(page, {
+    name: "Dumbbell Bench Press",
+    normalizedName: "dumbbell bench press",
+    equipmentTags: ["dumbbell"],
+    bodyPart: "Chest",
+  });
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Upper B
+Date: 2026-04-11
+Start: 08:00
+End: 09:00
+
+DB Bench Press
+work 65x10 @2`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+
+  await expect(page.getByText("Review before create", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Possible duplicate", { exact: true })).toHaveCount(0);
+
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const dbState = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const exercises = await db.exercises.toArray();
+    const importedVariant = await db.exercises.where("normalizedName").equals("db bench press").first();
+    const canonical = await db.exercises.where("normalizedName").equals("dumbbell bench press").first();
+    const importedTrack = await db.tracks.where("displayName").equals("DB Bench Press").first();
+    return {
+      exerciseCount: exercises.length,
+      importedVariant: !!importedVariant,
+      canonicalExerciseId: canonical?.id ?? null,
+      importedTrackExerciseId: importedTrack?.exerciseId ?? null,
+    };
+  });
+
+  expect(dbState.exerciseCount).toBe(1);
+  expect(dbState.importedVariant).toBe(false);
+  expect(dbState.importedTrackExerciseId).toBe(dbState.canonicalExerciseId);
 });
 
 test("Paste Workout preview and import preserve per-set weight semantics", async ({
