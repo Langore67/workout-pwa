@@ -66,6 +66,7 @@ export function exerciseDuplicateAuditKey(raw: string): string {
     .replace(/\bchinup\b/g, "chin up")
     .replace(/\bchin-ups\b/g, "chin up")
     .replace(/\bpulldowns\b/g, "pulldown")
+    .replace(/\bpull down\b/g, "pulldown")
     .replace(/\bpull downs\b/g, "pull down")
     .replace(/[()/.]/g, " ")
     .replace(/\s+/g, " ")
