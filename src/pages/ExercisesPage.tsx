@@ -3020,17 +3020,18 @@ export default function ExercisesPage() {
             {grouped.flatMap((g) =>
               g.items.map((e) => {
                 const focus = getFocusArea(e);
-                const meta = [e.bodyPart ?? "—", focus].filter(Boolean).join(" • ");
-
-                const cs = safeLen((e as any).cuesSetup);
-                const ce = safeLen((e as any).cuesExecution);
-                const hasCues = cs + ce > 0;
+                const meta = [e.bodyPart ?? "-", focus].filter(Boolean).join(" - ");
 
                 const metric = prettyMetricLabel(normalizeMetricMode((e as any).metricMode));
+                const rawSignalRole = String((e as any).strengthSignalRole ?? "").trim().toLowerCase();
+                let signalLabel = "Primary";
+                if (rawSignalRole === "secondary") signalLabel = "Secondary";
+                else if (rawSignalRole === "excluded") signalLabel = "Excluded";
+                else if (rawSignalRole === "included") signalLabel = "Primary";
 
                 return (
                   <div key={e.id} className="card" style={{ padding: 12 }}>
-                    <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+                    <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                       <div
                         role="button"
                         tabIndex={0}
@@ -3045,7 +3046,34 @@ export default function ExercisesPage() {
                         title="View details"
                         style={{ minWidth: 0, flex: 1, cursor: "pointer", borderRadius: 12, padding: 2 }}
                       >
-                        <div style={{ fontWeight: 900, wordBreak: "break-word" }}>{e.name}</div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            flexWrap: "wrap",
+                            minWidth: 0,
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontWeight: 900,
+                              wordBreak: "break-word",
+                            }}
+                          >
+                            {e.name}
+                          </div>
+                          <span
+                            className="badge"
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 700,
+                              padding: "2px 8px",
+                            }}
+                          >
+                            {signalLabel}
+                          </span>
+                        </div>
 
                         {(e.archivedAt || (e as any).mergedIntoExerciseId) ? (
                           <div className="muted" style={{ marginTop: 4, fontSize: 12, wordBreak: "break-word" }}>
@@ -3059,65 +3087,22 @@ export default function ExercisesPage() {
                         ) : null}
 
                         <div
-			  className="muted"
-			  style={{
-			    marginTop: 6,
-			    fontSize: 13,
-			    display: "flex",
-			    flexWrap: "wrap",
-			    gap: 8,
-			    alignItems: "center",
-			  }}
-			>
-			  <span>{meta || "—"}</span>
-			
-			  <span>• Metric {metric}</span>
-			
-			  {(e as any).movementPattern ? (
-			    <span
-			      className="badge"
-			      style={{
-			        fontSize: 11,
-			        fontWeight: 700,
-			        padding: "2px 8px",
-			      }}
-			    >
-			      Pattern: {String((e as any).movementPattern).replace(/^./, (c) => c.toUpperCase())}
-			    </span>
-			  ) : null}
-			
-			  			  {(() => {
-			  			    const raw = String((e as any).strengthSignalRole ?? "").trim().toLowerCase();
-			  
-			  			    let label = "Primary";
-			  			    if (raw === "secondary") label = "Secondary";
-			  			    else if (raw === "excluded") label = "Excluded";
-			  			    else if (raw === "included") label = "Primary";
-			  
-			  			    return (
-			  			      <span
-			  			        className="badge"
-			  			        style={{
-			  			          fontSize: 11,
-			  			          fontWeight: 700,
-			  			          padding: "2px 8px",
-			  			        }}
-			  			      >
-			  			        Signal: {label}
-			  			      </span>
-			  			    );
-                          })()}
-			
-			  <span>• Cues {hasCues ? `S${cs} • E${ce}` : "—"}</span>
-                       </div>
-                        {textOrUndef(String((e as any).summary ?? "")) ? (
-                          <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
-                            {String((e as any).summary ?? "")}
-                          </div>
-                        ) : null}
+                          className="muted"
+                          style={{
+                            marginTop: 4,
+                            fontSize: 13,
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: 6,
+                            alignItems: "center",
+                          }}
+                        >
+                          <span>{meta || "-"}</span>
+                          <span>- {metric}</span>
+                        </div>
                       </div>
 
-                      <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap", paddingTop: 2 }}>
                         {showMergeMode ? (
                           <button
                             type="button"
