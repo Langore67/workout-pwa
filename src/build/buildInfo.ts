@@ -7,7 +7,7 @@
 
 export const buildInfo = {
   version: "v0.1.0",
-  commit: "4b24a43",
+  commit: "442b6eb",
   branch: "fix/paste-corrective-intent",
-  builtAt: "2026-05-01T14:26:44.340Z",
+  builtAt: "2026-05-04T15:56:06.325Z",
 } as const;
