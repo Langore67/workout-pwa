@@ -7,7 +7,7 @@
 
 export const buildInfo = {
   version: "v0.1.0",
-  commit: "442b6eb",
-  branch: "fix/paste-corrective-intent",
-  builtAt: "2026-05-04T15:56:06.325Z",
+  commit: "516d82e",
+  branch: "feature/exercise-card-layout-tighten",
+  builtAt: "2026-05-05T16:06:01.297Z",
 } as const;
