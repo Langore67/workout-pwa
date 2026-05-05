@@ -3,6 +3,7 @@ import { buildNextWorkoutFocus } from "../src/lib/coachExport/buildNextWorkoutFo
 import { formatCoachExportText } from "../src/lib/coachExport/formatCoachExportText";
 import { buildPatternSummary, type CompletedSession } from "../src/lib/coachExport/buildPatternSummary";
 import { buildExerciseVocabulary } from "../src/lib/coachExport/exerciseVocabulary";
+import { isStrengthBuildingSession, selectRecentStrengthBuildingSessions } from "../src/lib/coachExport/strengthBuildingSessions";
 import { informationRegistry } from "../src/config/information/informationRegistry";
 import type { CoachExportMetrics, CoachExportTrainingSignals } from "../src/lib/coachExport/types";
 
@@ -518,6 +519,523 @@ test("exercise vocabulary uses active canonical names, dedupes, and caps the lis
   expect(vocabulary.length).toBe(25);
   expect(vocabulary.filter((name) => name === "Bench Press")).toHaveLength(1);
   expect(vocabulary).not.toContain("Exercise 30");
+});
+
+test("strength-building session windows exclude cardio-only and class-only sessions", async () => {
+  const now = new Date("2026-05-04T09:00:00-04:00").getTime();
+  const sessions = [
+    { id: "walk", templateName: "Walking", startedAt: now - 9 * 86_400_000, endedAt: now - 9 * 86_400_000 + 1 },
+    { id: "body-core", templateName: "Body Core", startedAt: now - 8 * 86_400_000, endedAt: now - 8 * 86_400_000 + 1 },
+    { id: "upper-a", templateName: "Upper A", startedAt: now - 7 * 86_400_000, endedAt: now - 7 * 86_400_000 + 1 },
+    { id: "lower-a", templateName: "Lower A", startedAt: now - 6 * 86_400_000, endedAt: now - 6 * 86_400_000 + 1 },
+    { id: "body-core-strength", templateName: "Body Core", startedAt: now - 5 * 86_400_000, endedAt: now - 5 * 86_400_000 + 1 },
+    { id: "upper-b", templateName: "Upper B", startedAt: now - 4 * 86_400_000, endedAt: now - 4 * 86_400_000 + 1 },
+    { id: "lower-b", templateName: "Lower B", startedAt: now - 3 * 86_400_000, endedAt: now - 3 * 86_400_000 + 1 },
+    { id: "upper-c", templateName: "Upper C", startedAt: now - 2 * 86_400_000, endedAt: now - 2 * 86_400_000 + 1 },
+    { id: "lower-c", templateName: "Lower C", startedAt: now - 1 * 86_400_000, endedAt: now - 1 * 86_400_000 + 1 },
+  ];
+
+  const tracks = [
+    {
+      id: "track-walk",
+      exerciseId: "exercise-walk",
+      trackType: "conditioning" as const,
+      displayName: "Walk",
+      trackingMode: "timeSeconds" as const,
+      warmupSetsDefault: 0,
+      workingSetsDefault: 1,
+      repMin: 1,
+      repMax: 1,
+      restSecondsDefault: 60,
+      weightJumpDefault: 0,
+      createdAt: now,
+    },
+    {
+      id: "track-body-core-only",
+      exerciseId: "exercise-body-core-only",
+      trackType: "mobility" as const,
+      displayName: "Box Breathing",
+      trackingMode: "repsOnly" as const,
+      warmupSetsDefault: 0,
+      workingSetsDefault: 1,
+      repMin: 1,
+      repMax: 1,
+      restSecondsDefault: 60,
+      weightJumpDefault: 0,
+      createdAt: now,
+    },
+    ...["upper-a", "lower-a", "body-core-strength", "upper-b", "lower-b", "upper-c", "lower-c"].map((id, index) => ({
+      id: `track-${id}`,
+      exerciseId: `exercise-${id}`,
+      trackType: index === 2 ? ("technique" as const) : ("strength" as const),
+      displayName: `Exercise ${id}`,
+      trackingMode: "weightedReps" as const,
+      warmupSetsDefault: 0,
+      workingSetsDefault: 3,
+      repMin: 5,
+      repMax: 8,
+      restSecondsDefault: 120,
+      weightJumpDefault: 5,
+      createdAt: now,
+    })),
+  ];
+
+  const sets = [
+    {
+      id: "set-walk",
+      sessionId: "walk",
+      trackId: "track-walk",
+      createdAt: now,
+      completedAt: now,
+      setType: "working" as const,
+      seconds: 1800,
+    },
+    {
+      id: "set-body-core-only",
+      sessionId: "body-core",
+      trackId: "track-body-core-only",
+      createdAt: now,
+      completedAt: now,
+      setType: "working" as const,
+      reps: 5,
+    },
+    ...["upper-a", "lower-a", "body-core-strength", "upper-b", "lower-b", "upper-c", "lower-c"].map((id) => ({
+      id: `set-${id}`,
+      sessionId: id,
+      trackId: `track-${id}`,
+      createdAt: now,
+      completedAt: now,
+      setType: "working" as const,
+      reps: 8,
+      weight: 100,
+    })),
+  ];
+
+  const signalSessions = selectRecentStrengthBuildingSessions({
+    sessions: sessions as any,
+    sets: sets as any,
+    tracks: tracks as any,
+    limit: 4,
+  });
+  const vocabularySessions = selectRecentStrengthBuildingSessions({
+    sessions: sessions as any,
+    sets: sets as any,
+    tracks: tracks as any,
+    limit: 8,
+  });
+
+  expect(signalSessions.map((session) => session.id)).toEqual([
+    "lower-c",
+    "upper-c",
+    "lower-b",
+    "upper-b",
+  ]);
+  expect(vocabularySessions.map((session) => session.id)).toEqual([
+    "lower-c",
+    "upper-c",
+    "lower-b",
+    "upper-b",
+    "body-core-strength",
+    "lower-a",
+    "upper-a",
+  ]);
+  expect(vocabularySessions.map((session) => session.id)).not.toContain("walk");
+  expect(vocabularySessions.map((session) => session.id)).not.toContain("body-core");
+});
+
+test("imported completed strength sessions still qualify without set.completedAt when meaningful work data exists", async () => {
+  const now = new Date("2026-05-04T09:00:00-04:00").getTime();
+  const session = {
+    id: "imported-strength",
+    templateName: "Imported Upper",
+    startedAt: now - 86_400_000,
+    endedAt: now - 86_300_000,
+  };
+  const tracksById = new Map([
+    [
+      "strength-track",
+      {
+        id: "strength-track",
+        exerciseId: "exercise-1",
+        trackType: "strength" as const,
+        displayName: "Bench Press",
+        trackingMode: "weightedReps" as const,
+        warmupSetsDefault: 0,
+        workingSetsDefault: 3,
+        repMin: 5,
+        repMax: 8,
+        restSecondsDefault: 120,
+        weightJumpDefault: 5,
+        createdAt: now,
+      },
+    ],
+    [
+      "conditioning-track",
+      {
+        id: "conditioning-track",
+        exerciseId: "exercise-2",
+        trackType: "conditioning" as const,
+        displayName: "Walking",
+        trackingMode: "timeSeconds" as const,
+        warmupSetsDefault: 0,
+        workingSetsDefault: 1,
+        repMin: 1,
+        repMax: 1,
+        restSecondsDefault: 60,
+        weightJumpDefault: 0,
+        createdAt: now,
+      },
+    ],
+  ]);
+
+  expect(
+    isStrengthBuildingSession({
+      session: session as any,
+      tracksById: new Map([["strength-track", tracksById.get("strength-track")!]]),
+      sets: [
+        {
+          id: "set-strength",
+          sessionId: "imported-strength",
+          trackId: "strength-track",
+          createdAt: now,
+          setType: "working" as const,
+          reps: 8,
+          weight: 135,
+        },
+      ] as any,
+    })
+  ).toBe(true);
+
+  expect(
+    isStrengthBuildingSession({
+      session: session as any,
+      tracksById: new Map([["conditioning-track", tracksById.get("conditioning-track")!]]),
+      sets: [
+        {
+          id: "set-conditioning",
+          sessionId: "imported-strength",
+          trackId: "conditioning-track",
+          createdAt: now,
+          setType: "working" as const,
+          seconds: 1800,
+        },
+      ] as any,
+    })
+  ).toBe(false);
+
+  expect(
+    isStrengthBuildingSession({
+      session: session as any,
+      tracksById: new Map([["strength-track", tracksById.get("strength-track")!]]),
+      sets: [
+        {
+          id: "set-empty",
+          sessionId: "imported-strength",
+          trackId: "strength-track",
+          createdAt: now,
+          setType: "working" as const,
+        },
+      ] as any,
+    })
+  ).toBe(false);
+});
+
+test("exercise vocabulary uses the last 8 strength-building sessions and preserves side-specific names", async () => {
+  const now = new Date("2026-05-04T09:00:00-04:00").getTime();
+  const sessions = Array.from({ length: 10 }, (_, index) => ({
+    id: `session-${index + 1}`,
+    templateName: index === 8 ? "Walking" : index === 9 ? "Body Core" : `Strength ${index + 1}`,
+    startedAt: now - (10 - index) * 10_000,
+    endedAt: now - (10 - index) * 10_000 + 1,
+  }));
+
+  const exercises = [
+    "Bench Press",
+    "Single-Leg DB RDL Left",
+    "Single-Leg DB RDL Right",
+    "Bulgarian Split Squat Left",
+    "Bulgarian Split Squat Right",
+    "Copenhagen Plank Left",
+    "Copenhagen Plank Right",
+    "90/90 Hip Lift",
+    "Walking",
+    "Box Breathing",
+  ].map((name, index) => ({
+    id: `exercise-${index + 1}`,
+    name,
+    normalizedName: name.toLowerCase(),
+    equipmentTags: [],
+    createdAt: now,
+  }));
+
+  const tracks = [
+    {
+      id: "track-1",
+      exerciseId: "exercise-1",
+      trackType: "strength" as const,
+      displayName: "Bench Press",
+      trackingMode: "weightedReps" as const,
+      warmupSetsDefault: 0,
+      workingSetsDefault: 3,
+      repMin: 5,
+      repMax: 8,
+      restSecondsDefault: 120,
+      weightJumpDefault: 5,
+      createdAt: now,
+    },
+    {
+      id: "track-2",
+      exerciseId: "exercise-2",
+      trackType: "strength" as const,
+      displayName: "Single-Leg DB RDL Left",
+      trackingMode: "weightedReps" as const,
+      warmupSetsDefault: 0,
+      workingSetsDefault: 3,
+      repMin: 5,
+      repMax: 8,
+      restSecondsDefault: 120,
+      weightJumpDefault: 5,
+      createdAt: now,
+    },
+    {
+      id: "track-3",
+      exerciseId: "exercise-3",
+      trackType: "strength" as const,
+      displayName: "Single-Leg DB RDL Right",
+      trackingMode: "weightedReps" as const,
+      warmupSetsDefault: 0,
+      workingSetsDefault: 3,
+      repMin: 5,
+      repMax: 8,
+      restSecondsDefault: 120,
+      weightJumpDefault: 5,
+      createdAt: now,
+    },
+    {
+      id: "track-4",
+      exerciseId: "exercise-4",
+      trackType: "strength" as const,
+      displayName: "Bulgarian Split Squat Left",
+      trackingMode: "weightedReps" as const,
+      warmupSetsDefault: 0,
+      workingSetsDefault: 3,
+      repMin: 5,
+      repMax: 8,
+      restSecondsDefault: 120,
+      weightJumpDefault: 5,
+      createdAt: now,
+    },
+    {
+      id: "track-5",
+      exerciseId: "exercise-5",
+      trackType: "strength" as const,
+      displayName: "Bulgarian Split Squat Right",
+      trackingMode: "weightedReps" as const,
+      warmupSetsDefault: 0,
+      workingSetsDefault: 3,
+      repMin: 5,
+      repMax: 8,
+      restSecondsDefault: 120,
+      weightJumpDefault: 5,
+      createdAt: now,
+    },
+    {
+      id: "track-6",
+      exerciseId: "exercise-6",
+      trackType: "corrective" as const,
+      displayName: "Copenhagen Plank Left",
+      trackingMode: "repsOnly" as const,
+      warmupSetsDefault: 0,
+      workingSetsDefault: 1,
+      repMin: 1,
+      repMax: 1,
+      restSecondsDefault: 60,
+      weightJumpDefault: 0,
+      createdAt: now,
+    },
+    {
+      id: "track-7",
+      exerciseId: "exercise-7",
+      trackType: "corrective" as const,
+      displayName: "Copenhagen Plank Right",
+      trackingMode: "repsOnly" as const,
+      warmupSetsDefault: 0,
+      workingSetsDefault: 1,
+      repMin: 1,
+      repMax: 1,
+      restSecondsDefault: 60,
+      weightJumpDefault: 0,
+      createdAt: now,
+    },
+    {
+      id: "track-8",
+      exerciseId: "exercise-8",
+      trackType: "mobility" as const,
+      displayName: "90/90 Hip Lift",
+      trackingMode: "repsOnly" as const,
+      warmupSetsDefault: 0,
+      workingSetsDefault: 1,
+      repMin: 1,
+      repMax: 1,
+      restSecondsDefault: 60,
+      weightJumpDefault: 0,
+      createdAt: now,
+    },
+    {
+      id: "track-9",
+      exerciseId: "exercise-9",
+      trackType: "conditioning" as const,
+      displayName: "Walking",
+      trackingMode: "timeSeconds" as const,
+      warmupSetsDefault: 0,
+      workingSetsDefault: 1,
+      repMin: 1,
+      repMax: 1,
+      restSecondsDefault: 60,
+      weightJumpDefault: 0,
+      createdAt: now,
+    },
+    {
+      id: "track-10",
+      exerciseId: "exercise-10",
+      trackType: "mobility" as const,
+      displayName: "Box Breathing",
+      trackingMode: "repsOnly" as const,
+      warmupSetsDefault: 0,
+      workingSetsDefault: 1,
+      repMin: 1,
+      repMax: 1,
+      restSecondsDefault: 60,
+      weightJumpDefault: 0,
+      createdAt: now,
+    },
+  ];
+
+  const sets = [
+    { id: "set-1", sessionId: "session-1", trackId: "track-1", createdAt: now, completedAt: now, setType: "working" as const, reps: 6, weight: 185 },
+    { id: "set-2", sessionId: "session-2", trackId: "track-2", createdAt: now, completedAt: now, setType: "working" as const, reps: 8, weight: 55 },
+    { id: "set-3", sessionId: "session-3", trackId: "track-3", createdAt: now, completedAt: now, setType: "working" as const, reps: 8, weight: 55 },
+    { id: "set-4", sessionId: "session-4", trackId: "track-4", createdAt: now, completedAt: now, setType: "working" as const, reps: 10, weight: 45 },
+    { id: "set-5", sessionId: "session-5", trackId: "track-5", createdAt: now, completedAt: now, setType: "working" as const, reps: 10, weight: 45 },
+    { id: "set-6", sessionId: "session-5", trackId: "track-6", createdAt: now, completedAt: now, setType: "working" as const, reps: 1 },
+    { id: "set-7", sessionId: "session-6", trackId: "track-1", createdAt: now, completedAt: now, setType: "working" as const, reps: 5, weight: 185 },
+    { id: "set-8", sessionId: "session-6", trackId: "track-7", createdAt: now, completedAt: now, setType: "working" as const, reps: 1 },
+    { id: "set-9", sessionId: "session-6", trackId: "track-8", createdAt: now, completedAt: now, setType: "warmup" as const, reps: 5 },
+    { id: "set-10", sessionId: "session-7", trackId: "track-1", createdAt: now, completedAt: now, setType: "working" as const, reps: 5, weight: 185 },
+    { id: "set-11", sessionId: "session-8", trackId: "track-1", createdAt: now, completedAt: now, setType: "working" as const, reps: 5, weight: 185 },
+    { id: "set-12", sessionId: "session-9", trackId: "track-9", createdAt: now, completedAt: now, setType: "working" as const, seconds: 1800 },
+    { id: "set-13", sessionId: "session-10", trackId: "track-10", createdAt: now, completedAt: now, setType: "working" as const, reps: 5 },
+  ];
+
+  const vocabulary = buildExerciseVocabulary({
+    sessions: sessions as any,
+    sets: sets as any,
+    tracks: tracks as any,
+    exercises: exercises as any,
+    anchorLifts: [],
+    limit: 25,
+  });
+
+  expect(vocabulary).toEqual(
+    expect.arrayContaining([
+      "Bench Press",
+      "Single-Leg DB RDL Left",
+      "Single-Leg DB RDL Right",
+      "Bulgarian Split Squat Left",
+      "Bulgarian Split Squat Right",
+      "Copenhagen Plank Left",
+      "Copenhagen Plank Right",
+      "90/90 Hip Lift",
+    ])
+  );
+  expect(vocabulary).not.toContain("Walking");
+  expect(vocabulary).not.toContain("Box Breathing");
+  expect(vocabulary.filter((name) => name.includes("Left")).length).toBeGreaterThan(0);
+  expect(vocabulary.filter((name) => name.includes("Right")).length).toBeGreaterThan(0);
+});
+
+test("exercise vocabulary cap keeps the most recent names inside the 8-session window", async () => {
+  const now = new Date("2026-05-04T09:00:00-04:00").getTime();
+  const sessions = Array.from({ length: 8 }, (_, index) => ({
+    id: `session-${index + 1}`,
+    templateName: `Strength ${index + 1}`,
+    startedAt: now - index * 10_000,
+    endedAt: now - index * 10_000 + 1,
+  }));
+
+  const namesBySession = [
+    ["Recent A1", "Recent A2", "Recent A3", "Recent A4"],
+    ["Recent B1", "Recent B2", "Recent B3", "Recent B4"],
+    ["Recent C1", "Recent C2", "Recent C3", "Recent C4"],
+    ["Recent D1", "Recent D2", "Recent D3", "Recent D4"],
+    ["Recent E1", "Recent E2", "Recent E3", "Recent E4"],
+    ["Recent F1", "Recent F2", "Recent F3", "Recent F4"],
+    ["Older G1", "Older G2", "Older G3", "Older G4"],
+    ["Older H1", "Older H2", "Older H3", "Older H4"],
+  ];
+
+  const exercises: any[] = [];
+  const tracks: any[] = [];
+  const sets: any[] = [];
+  let counter = 1;
+  for (const [sessionIndex, session] of sessions.entries()) {
+    for (const name of namesBySession[sessionIndex]) {
+      const exerciseId = `exercise-${counter}`;
+      const trackId = `track-${counter}`;
+      exercises.push({
+        id: exerciseId,
+        name,
+        normalizedName: name.toLowerCase(),
+        equipmentTags: [],
+        createdAt: now,
+      });
+      tracks.push({
+        id: trackId,
+        exerciseId,
+        trackType: "strength",
+        displayName: name,
+        trackingMode: "weightedReps",
+        warmupSetsDefault: 0,
+        workingSetsDefault: 3,
+        repMin: 5,
+        repMax: 8,
+        restSecondsDefault: 120,
+        weightJumpDefault: 5,
+        createdAt: now,
+      });
+      sets.push({
+        id: `set-${counter}`,
+        sessionId: session.id,
+        trackId,
+        createdAt: now + counter,
+        completedAt: now + counter,
+        setType: "working",
+        reps: 8,
+        weight: 100,
+      });
+      counter += 1;
+    }
+  }
+
+  const vocabulary = buildExerciseVocabulary({
+    sessions: sessions as any,
+    sets,
+    tracks,
+    exercises,
+    anchorLifts: [],
+    limit: 25,
+  });
+
+  expect(vocabulary).toHaveLength(25);
+  expect(vocabulary).toEqual(
+    expect.arrayContaining([
+      "Recent A1",
+      "Recent F4",
+      "Older G1",
+    ])
+  );
+  expect(vocabulary).not.toContain("Older H4");
+  expect(vocabulary.indexOf("Recent A1")).toBeLessThan(vocabulary.indexOf("Older G1"));
 });
 
 test("next workout focus builds constraint and trigger guidance without split-specific language", async () => {

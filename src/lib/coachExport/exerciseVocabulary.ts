@@ -1,5 +1,6 @@
 import type { Exercise, Session, SetEntry, Track } from "../../db";
 import type { CoachExportAnchorLift } from "./types";
+import { selectRecentStrengthBuildingSessions } from "./strengthBuildingSessions";
 
 function activeCanonicalExerciseName(exercise: Exercise | null | undefined): string | null {
   if (!exercise || exercise.archivedAt || exercise.mergedIntoExerciseId) return null;
@@ -22,13 +23,6 @@ function pushUniqueName(
   if (values.length > limit) values.length = limit;
 }
 
-function sortRecentCompletedSessions(sessions: Session[]) {
-  return (sessions ?? [])
-    .filter((session) => !session.deletedAt && Number.isFinite(session.endedAt))
-    .slice()
-    .sort((a, b) => Number(b.endedAt ?? 0) - Number(a.endedAt ?? 0));
-}
-
 export function buildExerciseVocabulary(args: {
   sessions: Session[];
   sets: SetEntry[];
@@ -42,29 +36,38 @@ export function buildExerciseVocabulary(args: {
   const seen = new Set<string>();
   const tracksById = new Map((args.tracks ?? []).map((track) => [track.id, track]));
   const exercisesById = new Map((args.exercises ?? []).map((exercise) => [exercise.id, exercise]));
-  const recentSessionIds = new Set(
-    sortRecentCompletedSessions(args.sessions)
-      .slice(0, 4)
-      .map((session) => session.id)
-  );
+  const recentSessions = selectRecentStrengthBuildingSessions({
+    sessions: args.sessions,
+    sets: args.sets,
+    tracks: args.tracks,
+    limit: 8,
+  });
+  const recentSessionIds = new Set(recentSessions.map((session) => session.id));
+  const setsBySessionId = new Map<string, SetEntry[]>();
 
   for (const set of args.sets ?? []) {
-    if (out.length >= limit) break;
-    if (set.deletedAt || !set.completedAt || !recentSessionIds.has(set.sessionId)) continue;
-    const track = tracksById.get(set.trackId);
-    if (!track?.exerciseId) continue;
-    const canonicalName = activeCanonicalExerciseName(exercisesById.get(track.exerciseId));
-    if (!canonicalName) continue;
-    pushUniqueName(out, seen, canonicalName, limit);
+    if (set.deletedAt || !recentSessionIds.has(set.sessionId)) continue;
+    const bucket = setsBySessionId.get(set.sessionId) ?? [];
+    bucket.push(set);
+    setsBySessionId.set(set.sessionId, bucket);
   }
 
-  for (const anchorLift of args.anchorLifts ?? []) {
+  for (const session of recentSessions) {
     if (out.length >= limit) break;
-    const canonicalName =
-      activeCanonicalExerciseName(
-        anchorLift.exerciseId ? exercisesById.get(anchorLift.exerciseId) : undefined
-      ) ?? anchorLift.exerciseName;
-    pushUniqueName(out, seen, canonicalName, limit);
+    const orderedSets = (setsBySessionId.get(session.id) ?? []).slice().sort((a, b) => {
+      const aTime = Number(a.createdAt ?? a.completedAt ?? 0);
+      const bTime = Number(b.createdAt ?? b.completedAt ?? 0);
+      return aTime - bTime;
+    });
+
+    for (const set of orderedSets) {
+      if (out.length >= limit) break;
+      const track = tracksById.get(set.trackId);
+      if (!track?.exerciseId) continue;
+      const canonicalName = activeCanonicalExerciseName(exercisesById.get(track.exerciseId));
+      if (!canonicalName) continue;
+      pushUniqueName(out, seen, canonicalName, limit);
+    }
   }
 
   return out.slice(0, limit);

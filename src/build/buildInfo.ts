@@ -7,7 +7,7 @@
 
 export const buildInfo = {
   version: "v0.1.0",
-  commit: "3e28c71",
+  commit: "516d82e",
   branch: "feature/exercise-card-layout-tighten",
-  builtAt: "2026-05-04T23:22:05.559Z",
+  builtAt: "2026-05-05T16:06:01.297Z",
 } as const;

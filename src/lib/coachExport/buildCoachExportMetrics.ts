@@ -36,6 +36,7 @@ import {
 } from "./buildPatternSummary";
 import { buildNextWorkoutFocus } from "./buildNextWorkoutFocus";
 import { buildExerciseVocabulary } from "./exerciseVocabulary";
+import { selectRecentStrengthBuildingSessions } from "./strengthBuildingSessions";
 import type {
   CoachExportAnchorLift,
   CoachExportMetric,
@@ -390,16 +391,6 @@ function rankRecentSignals(
     .map((entry) => entry.text);
 }
 
-function sortRecentSessions(sessions: Session[]) {
-  return (sessions ?? [])
-    .filter((session) => !session.deletedAt && Number.isFinite(session.endedAt ?? session.startedAt))
-    .slice()
-    .sort(
-      (a, b) =>
-        Number(b.endedAt ?? b.startedAt ?? 0) - Number(a.endedAt ?? a.startedAt ?? 0)
-    );
-}
-
 function buildSessionTrackSummariesForExport(args: {
   session: Session;
   sets: SetEntry[];
@@ -437,7 +428,12 @@ function buildTrainingSignalsFromRecentSessions(args: {
   tracks: Track[];
 }) {
   const tracksById = new Map((args.tracks ?? []).map((track) => [track.id, track]));
-  const recentSessions = sortRecentSessions(args.sessions).slice(0, 4);
+  const recentSessions = selectRecentStrengthBuildingSessions({
+    sessions: args.sessions,
+    sets: args.sets,
+    tracks: args.tracks,
+    limit: 4,
+  });
   const completedSessions: CompletedSession[] = [];
   const aggregated = {
     movementQuality: [] as string[],
