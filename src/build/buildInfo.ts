@@ -7,7 +7,7 @@
 
 export const buildInfo = {
   version: "v0.1.0",
-  commit: "c77238c",
-  branch: "fix/coach-export-strength-session-windows",
-  builtAt: "2026-05-05T17:27:03.154Z",
+  commit: "50a94ca",
+  branch: "feature/history-row-layout-compression",
+  builtAt: "2026-05-06T13:20:44.962Z",
 } as const;

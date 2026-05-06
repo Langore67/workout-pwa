@@ -37,6 +37,7 @@ export function ActionMenu({
   theme = "dark",
   ariaLabel = "Actions",
   minWidth = 240,
+  compact = false,
   align = "end",
   offsetX = 6,
   offsetY = 0,
@@ -46,6 +47,7 @@ export function ActionMenu({
   theme?: "dark" | "light";
   ariaLabel?: string;
   minWidth?: number;
+  compact?: boolean;
   align?: "start" | "end";
   offsetX?: number;
   offsetY?: number;
@@ -68,8 +70,8 @@ export function ActionMenu({
     return {
       kebab: {
         borderRadius: 999,
-        width: 44,
-        height: 34,
+        width: compact ? 38 : 44,
+        height: compact ? 32 : 34,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -89,9 +91,9 @@ export function ActionMenu({
         top: pos?.top ?? 0,
         left: pos?.left ?? 0,
         minWidth,
-        padding: 8,
+        padding: compact ? 6 : 8,
         zIndex: 2147483647,
-        borderRadius: 14,
+        borderRadius: compact ? 12 : 14,
         boxShadow: dark ? "0 18px 40px rgba(16,24,40,0.35)" : "0 16px 30px rgba(16,24,40,0.12)",
         background: dark ? "#1f2937" : "var(--card)",
         border: dark ? "1px solid rgba(255,255,255,0.10)" : "1px solid var(--line)",
@@ -111,14 +113,15 @@ export function ActionMenu({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        padding: "10px 10px",
+        padding: compact ? "8px 10px" : "10px 10px",
         border: 0,
         borderRadius: 12,
         background: "transparent",
-        fontWeight: 800,
+        fontWeight: compact ? 700 : 800,
         cursor: "pointer",
         WebkitTapHighlightColor: "transparent",
         touchAction: "manipulation",
+        fontSize: compact ? 13 : 14,
       } as React.CSSProperties,
 
       textColor: dark ? "#e5e7eb" : "var(--text)",

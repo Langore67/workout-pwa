@@ -20,13 +20,14 @@
                          ✅ Optional duration estimate from set timestamps (when endedAt missing)
    ============================================================================ */
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
 import { db, SetEntry, type Exercise, type Track, type BodyMetricEntry } from "../db";
 import { ActionMenu as SharedActionMenu, MenuIcons, MenuItem } from "../components/ActionMenu";
 import { safeParsePrsCount } from "../lib/safeParsePrsCount";
 import { computeSessionTotalLifted } from "../lib/sessionTotalLifted";
+import type { PRHit } from "../prs";
 
 /* =============================================================================
    Breadcrumb 0 — Types + helpers
@@ -39,6 +40,143 @@ type SessionRow = {
   endedAt?: number;
   prsJson?: string;
 };
+
+type HistorySessionKind = "workout" | "class" | "walk";
+type HistoryFilterKey = "all" | "workouts" | "classes" | "walks";
+
+type SessionActivityContext = {
+  name: string;
+  trackTypes: Set<Track["trackType"]>;
+  trackNames: string[];
+};
+
+const HISTORY_FILTER_OPTIONS: ReadonlyArray<{ key: HistoryFilterKey; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "workouts", label: "Workouts" },
+  { key: "classes", label: "Classes" },
+  { key: "walks", label: "Walks" },
+];
+
+const HISTORY_CLASS_NAME_PATTERNS = [
+  "body balance",
+  "body core",
+  "bodycombat",
+  "body combat",
+  "bodypump",
+  "body pump",
+  "pilates",
+  "yoga",
+  "zumba",
+  "spin class",
+  "boxing class",
+] as const;
+
+const HISTORY_WALK_NAME_PATTERNS = [
+  "walk",
+  "walking",
+  "treadmill walk",
+  "incline walk",
+] as const;
+
+const HISTORY_WORKOUT_NAME_PATTERNS = [
+  "upper",
+  "lower",
+  "push",
+  "pull",
+  "legs",
+  "hinge",
+  "squat",
+  "glutes",
+  "chest",
+  "back",
+  "shoulders",
+  "arms",
+  "full body",
+  "workout",
+] as const;
+
+function normalizeHistoryLabel(value?: string) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[-_]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function includesAnyPattern(value: string, patterns: readonly string[]) {
+  return patterns.some((pattern) => value.includes(pattern));
+}
+
+function classifyHistorySession(context: SessionActivityContext): HistorySessionKind {
+  const sessionName = normalizeHistoryLabel(context.name);
+  const activityNames = normalizeHistoryLabel(context.trackNames.join(" "));
+
+  if (sessionName && includesAnyPattern(sessionName, HISTORY_WALK_NAME_PATTERNS)) {
+    return "walk";
+  }
+
+  if (sessionName && includesAnyPattern(sessionName, HISTORY_CLASS_NAME_PATTERNS)) {
+    return "class";
+  }
+
+  if (
+    context.trackTypes.size > 0 &&
+    Array.from(context.trackTypes).every((trackType) => trackType === "conditioning") &&
+    activityNames &&
+    includesAnyPattern(activityNames, HISTORY_WALK_NAME_PATTERNS)
+  ) {
+    return "walk";
+  }
+
+  if (
+    context.trackTypes.has("strength") ||
+    context.trackTypes.has("hypertrophy") ||
+    context.trackTypes.has("technique")
+  ) {
+    return "workout";
+  }
+
+  if (sessionName && includesAnyPattern(sessionName, HISTORY_WORKOUT_NAME_PATTERNS)) {
+    return "workout";
+  }
+
+  return "workout";
+}
+
+function sessionMatchesHistoryFilter(kind: HistorySessionKind, filter: HistoryFilterKey) {
+  if (filter === "all") return true;
+  if (filter === "workouts") return kind === "workout";
+  if (filter === "classes") return kind === "class";
+  return kind === "walk";
+}
+
+function parseSessionPrHits(prsJson?: string): PRHit[] {
+  if (!prsJson) return [];
+  try {
+    const parsed = JSON.parse(prsJson);
+    return Array.isArray(parsed) ? (parsed as PRHit[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function formatPrBestSet(hit: PRHit): string {
+  const preferred =
+    hit.weight ??
+    hit.volume ??
+    hit.e1rm;
+
+  if (!preferred) return "";
+  return `${Math.round(preferred.weight)} x ${Math.round(preferred.reps)}`;
+}
+
+function MetaSeparator() {
+  return (
+    <span aria-hidden="true" style={{ whiteSpace: "nowrap", padding: "0 4px" }}>
+      {"\u00b7"}
+    </span>
+  );
+}
 
 function fmtDayShort(ms: number) {
   try {
@@ -87,6 +225,8 @@ function hasMeaningfulHistorySetData(se: SetEntry) {
 
 export default function HistoryPage() {
   const nav = useNavigate();
+  const [activeFilter, setActiveFilter] = useState<HistoryFilterKey>("all");
+  const [expandedPrSessionIds, setExpandedPrSessionIds] = useState<string[]>([]);
 
   const sessions = useLiveQuery(async () => {
     const all = (await db.sessions.toArray()) as any[];
@@ -115,6 +255,14 @@ export default function HistoryPage() {
     if (!table || typeof table.toArray !== "function") return [] as BodyMetricEntry[];
     return (await table.toArray()) as BodyMetricEntry[];
   }, []);
+
+  const trackById = useMemo(() => {
+    return new Map((tracks ?? []).map((track) => [track.id, track]));
+  }, [tracks]);
+
+  const exerciseById = useMemo(() => {
+    return new Map((exercises ?? []).map((exercise) => [exercise.id, exercise]));
+  }, [exercises]);
 
   const totalsBySession = useMemo(() => {
     const sessionById = new Map((sessions ?? []).map((s) => [s.id, s]));
@@ -159,6 +307,52 @@ export default function HistoryPage() {
     }
     return map;
   }, [setsAll]);
+
+  const historySessionKindById = useMemo(() => {
+    const contextBySession = new Map<string, SessionActivityContext>();
+
+    for (const session of sessions ?? []) {
+      contextBySession.set(session.id, {
+        name: session.templateName ?? "",
+        trackTypes: new Set<Track["trackType"]>(),
+        trackNames: [],
+      });
+    }
+
+    for (const se of setsAll ?? []) {
+      if (!se?.sessionId || !se.trackId) continue;
+      const context = contextBySession.get(se.sessionId);
+      const track = trackById.get(se.trackId);
+      if (!context || !track) continue;
+
+      context.trackTypes.add(track.trackType);
+
+      const trackName = normalizeHistoryLabel(track.displayName);
+      if (trackName && !context.trackNames.includes(trackName)) {
+        context.trackNames.push(trackName);
+      }
+
+      const exercise = exerciseById.get(track.exerciseId);
+      const exerciseName = normalizeHistoryLabel(exercise?.name);
+      if (exerciseName && !context.trackNames.includes(exerciseName)) {
+        context.trackNames.push(exerciseName);
+      }
+    }
+
+    const kindById = new Map<string, HistorySessionKind>();
+    for (const session of sessions ?? []) {
+      const context =
+        contextBySession.get(session.id) ??
+        ({
+          name: session.templateName ?? "",
+          trackTypes: new Set<Track["trackType"]>(),
+          trackNames: [],
+        } satisfies SessionActivityContext);
+      kindById.set(session.id, classifyHistorySession(context));
+    }
+
+    return kindById;
+  }, [sessions, setsAll, trackById, exerciseById]);
 
   /* =============================================================================
      Breadcrumb 2b — Import-tolerant completion + duration estimate
@@ -232,10 +426,14 @@ export default function HistoryPage() {
       if ((s.templateName ?? "").trim() !== "Ad-hoc") return true;
       return !!hasMeaningfulSetDataBySession.get(s.id);
     });
-    const inProgress = all.filter((s) => isSessionInProgress(s));
-    const completed = all.filter((s) => !isSessionInProgress(s));
+    const filtered = all.filter((session) => {
+      const kind = historySessionKindById.get(session.id) ?? "workout";
+      return sessionMatchesHistoryFilter(kind, activeFilter);
+    });
+    const inProgress = filtered.filter((s) => isSessionInProgress(s));
+    const completed = filtered.filter((s) => !isSessionInProgress(s));
     return { inProgress, completed };
-  }, [sessions, lastActivityBySession, hasMeaningfulSetDataBySession]);
+  }, [sessions, lastActivityBySession, hasMeaningfulSetDataBySession, historySessionKindById, activeFilter]);
 
   async function deleteSessionCascade(sessionId: string) {
     const ok = window.confirm("Delete this session? This cannot be undone.");
@@ -265,6 +463,12 @@ export default function HistoryPage() {
     nav(`/gym/${sessionId}`);
   }
 
+  function togglePrDetails(sessionId: string) {
+    setExpandedPrSessionIds((current) =>
+      current.includes(sessionId) ? current.filter((id) => id !== sessionId) : [...current, sessionId]
+    );
+  }
+
   // one menu open at a time
 
   /* =============================================================================
@@ -275,21 +479,20 @@ export default function HistoryPage() {
     const date = fmtDayShort(s.startedAt);
     const dur = getSessionDurationLabel(s, showInProgress);
     const total = totalsBySession.get(s.id) ?? 0;
-    const prs = safeParsePrsCount(s.prsJson);
+    const prHits = parseSessionPrHits(s.prsJson);
+    const prs = prHits.length || safeParsePrsCount(s.prsJson);
+    const hasPrDetails = prHits.length > 0;
+    const prsExpanded = expandedPrSessionIds.includes(s.id);
+    const metaParts = [
+      date,
+      !showInProgress && dur !== "—" ? dur : null,
+      `${fmtTotal(total)} lb`,
+    ].filter((value): value is string => !!value);
 
     return (
       <div style={{ minWidth: 0, flex: "1 1 auto" }}>
-        {/* Line 1: Title + Date */}
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "baseline",
-            minWidth: 0,
-            maxWidth: "100%",
-            flexWrap: "wrap",
-          }}
-        >
+        {/* Line 1: Title */}
+        <div style={{ display: "flex", minWidth: 0, maxWidth: "100%" }}>
           <div
             className="card-title"
             data-testid={`history-template:${s.id}`}
@@ -304,18 +507,15 @@ export default function HistoryPage() {
             {s.templateName ?? "Ad-hoc"}
           </div>
 
-          <div className="muted" style={{ whiteSpace: "nowrap", flexShrink: 0 }} data-testid={`history-date:${s.id}`}>
-            {date}
-          </div>
         </div>
 
-        {/* Line 2: Metrics (NO WRAP) */}
+        {/* Line 2: Metadata */}
         <div
           className="muted"
           style={{
             marginTop: 4,
             display: "flex",
-            gap: 8,
+            gap: 0,
             alignItems: "center",
             flexWrap: "wrap",
             fontSize: 13,
@@ -323,10 +523,106 @@ export default function HistoryPage() {
           }}
           data-testid={`history-metrics:${s.id}`}
         >
-          {!showInProgress && <span data-testid={`history-duration:${s.id}`}>⏱ {dur}</span>}
-          <span data-testid={`history-total:${s.id}`}>🏋️ {fmtTotal(total)} lb</span>
-          <span data-testid={`history-prs:${s.id}`}>🏆 {prs}</span>
+          {metaParts.map((part, index) => {
+            const testId =
+              index === 0
+                ? `history-date:${s.id}`
+                : part === dur
+                  ? `history-duration:${s.id}`
+                  : part.includes("lb")
+                    ? `history-total:${s.id}`
+                    : undefined;
+
+            return (
+              <span key={`${s.id}-${part}-${index}`} data-testid={testId} style={{ whiteSpace: "nowrap" }}>
+                {index > 0 ? <MetaSeparator /> : null}
+                {part}
+              </span>
+            );
+          })}
+          {metaParts.length > 0 ? <MetaSeparator /> : null}
+          {hasPrDetails ? (
+            <button
+              type="button"
+              className="muted"
+              data-testid={`history-prs-toggle:${s.id}`}
+              aria-expanded={prsExpanded}
+              onClick={(e) => {
+                e.stopPropagation();
+                togglePrDetails(s.id);
+              }}
+              style={{
+                border: "none",
+                background: "transparent",
+                padding: 0,
+                margin: 0,
+                cursor: "pointer",
+                fontSize: 13,
+                color: "inherit",
+                textDecoration: "underline",
+                textUnderlineOffset: 2,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {prs} PR{prs === 1 ? "" : "s"}
+            </button>
+          ) : (
+            <span data-testid={`history-prs:${s.id}`} style={{ whiteSpace: "nowrap" }}>
+              {prs} PR{prs === 1 ? "" : "s"}
+            </span>
+          )}
         </div>
+        {hasPrDetails && prsExpanded ? (
+          <div
+            data-testid={`history-prs-panel:${s.id}`}
+            style={{
+              marginTop: 7,
+              paddingTop: 7,
+              borderTop: "1px solid var(--line)",
+              minWidth: 0,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="muted"
+              style={{ fontSize: 11, letterSpacing: "0.03em", marginBottom: 3 }}
+            >
+              PRs
+            </div>
+            <div style={{ display: "grid", gap: 3 }} data-testid={`history-prs-list:${s.id}`}>
+              {prHits.map((hit) => (
+                <div
+                  key={`${s.id}-${hit.trackId}`}
+                  style={{
+                    minWidth: 0,
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0, 1fr) auto",
+                    alignItems: "baseline",
+                    columnGap: 8,
+                    lineHeight: 1.3,
+                    fontSize: 13,
+                  }}
+                >
+                  <span
+                    title={hit.trackName}
+                    style={{
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {hit.trackName}
+                  </span>
+                  <span className="muted" style={{ whiteSpace: "nowrap" }}>
+                    {formatPrBestSet(hit)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -340,6 +636,40 @@ export default function HistoryPage() {
       </div>
 
       <p className="muted">Review past sessions. Resume anything still in progress.</p>
+      <div
+        className="row"
+        style={{ gap: 8, flexWrap: "wrap", marginTop: 10, marginBottom: 2 }}
+        data-testid="history-filters"
+      >
+        {HISTORY_FILTER_OPTIONS.map((option) => {
+          const selected = activeFilter === option.key;
+          return (
+            <button
+              key={option.key}
+              type="button"
+              className="badge"
+              data-testid={`history-filter:${option.key}`}
+              aria-pressed={selected}
+              onClick={() => setActiveFilter(option.key)}
+              style={{
+                cursor: "pointer",
+                border: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: 28,
+                padding: "4px 10px",
+                background: selected ? "rgba(15,23,42,0.08)" : "#f3f4f6",
+                color: selected ? "#0f172a" : "var(--muted)",
+                boxShadow: selected ? "inset 0 0 0 1px rgba(15,23,42,0.12)" : "none",
+                opacity: 1,
+              }}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
       <hr />
 
       {sessions === undefined ? (
@@ -363,6 +693,7 @@ export default function HistoryPage() {
                   const menuItems: MenuItem[] = [
                     { label: "Resume", icon: MenuIcons.edit, onClick: () => resumeSession(s.id) },
                     { label: "View details", icon: MenuIcons.share, onClick: () => openSessionDetails(s.id) },
+                    { type: "sep" },
                     { label: "Delete", icon: MenuIcons.trash, danger: true, onClick: () => deleteSessionCascade(s.id) },
                   ];
 
@@ -396,16 +727,20 @@ export default function HistoryPage() {
                         {/* Breadcrumb 3b — Actions cluster (STOP CLICK BUBBLE HERE) */}
                         <div
                           className="row"
-                          style={{ gap: 6, alignItems: "center", flexShrink: 0, marginLeft: 6 }}
+                          style={{ gap: 4, alignItems: "center", flexShrink: 0, marginLeft: 4 }}
                           onClick={(e) => e.stopPropagation()}
                           onMouseDown={(e) => e.stopPropagation()}
                         >
-                          <span className="badge">In progress</span>
+                          <span className="badge" style={{ paddingInline: 8, minHeight: 24 }}>
+                            In progress
+                          </span>
                           <SharedActionMenu
-                            theme="dark"
+                            theme="light"
+                            compact
                             ariaLabel="Open session actions"
                             items={menuItems}
-                            offsetX={6}
+                            minWidth={196}
+                            offsetX={2}
                           />
                         </div>
                       </div>
@@ -434,6 +769,7 @@ export default function HistoryPage() {
                 completed.map((s) => {
                   const menuItems: MenuItem[] = [
                     { label: "View details", icon: MenuIcons.share, onClick: () => openSessionDetails(s.id) },
+                    { type: "sep" },
                     { label: "Delete", icon: MenuIcons.trash, danger: true, onClick: () => deleteSessionCascade(s.id) },
                   ];
 
@@ -467,16 +803,20 @@ export default function HistoryPage() {
                         {/* Breadcrumb 3c — Actions cluster (STOP CLICK BUBBLE HERE) */}
                         <div
                           className="row"
-                          style={{ gap: 6, alignItems: "center", flexShrink: 0, marginLeft: 6 }}
+                          style={{ gap: 4, alignItems: "center", flexShrink: 0, marginLeft: 4 }}
                           onClick={(e) => e.stopPropagation()}
                           onMouseDown={(e) => e.stopPropagation()}
                         >
-                          <span className="badge">Done</span>
+                          <span className="badge" style={{ paddingInline: 8, minHeight: 24 }}>
+                            Done
+                          </span>
                           <SharedActionMenu
-                            theme="dark"
+                            theme="light"
+                            compact
                             ariaLabel="Open session actions"
                             items={menuItems}
-                            offsetX={6}
+                            minWidth={196}
+                            offsetX={2}
                           />
                         </div>
                       </div>
@@ -495,3 +835,4 @@ export default function HistoryPage() {
     </div>
   );
 }
+
