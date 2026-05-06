@@ -278,9 +278,18 @@ export default function HistoryPage() {
     const prs = safeParsePrsCount(s.prsJson);
 
     return (
-      <div style={{ minWidth: 0 }}>
+      <div style={{ minWidth: 0, flex: "1 1 auto" }}>
         {/* Line 1: Title + Date */}
-        <div style={{ display: "flex", gap: 10, alignItems: "baseline", minWidth: 0 }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            alignItems: "baseline",
+            minWidth: 0,
+            maxWidth: "100%",
+            flexWrap: "wrap",
+          }}
+        >
           <div
             className="card-title"
             data-testid={`history-template:${s.id}`}
@@ -289,7 +298,7 @@ export default function HistoryPage() {
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
               minWidth: 0,
-              flex: 1,
+              flex: "1 1 180px",
             }}
           >
             {s.templateName ?? "Ad-hoc"}
@@ -308,9 +317,9 @@ export default function HistoryPage() {
             display: "flex",
             gap: 8,
             alignItems: "center",
-            flexWrap: "nowrap",
-            whiteSpace: "nowrap",
+            flexWrap: "wrap",
             fontSize: 13,
+            minWidth: 0,
           }}
           data-testid={`history-metrics:${s.id}`}
         >
@@ -370,13 +379,24 @@ export default function HistoryPage() {
                       }}
                       style={{ position: "relative", paddingTop: 10, paddingBottom: 10 }}
                     >
-                      <div className="card-head" style={{ alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                      <div
+                        className="card-head"
+                        style={{
+                          alignItems: "flex-start",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          width: "100%",
+                          maxWidth: "100%",
+                          minWidth: 0,
+                          boxSizing: "border-box",
+                        }}
+                      >
                         <RowMeta s={s} showInProgress={true} />
 
                         {/* Breadcrumb 3b — Actions cluster (STOP CLICK BUBBLE HERE) */}
                         <div
                           className="row"
-                          style={{ gap: 8, alignItems: "center", flexShrink: 0, marginLeft: 8 }}
+                          style={{ gap: 6, alignItems: "center", flexShrink: 0, marginLeft: 6 }}
                           onClick={(e) => e.stopPropagation()}
                           onMouseDown={(e) => e.stopPropagation()}
                         >
@@ -430,13 +450,24 @@ export default function HistoryPage() {
                       }}
                       style={{ position: "relative", paddingTop: 10, paddingBottom: 10 }}
                     >
-                      <div className="card-head" style={{ alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                      <div
+                        className="card-head"
+                        style={{
+                          alignItems: "flex-start",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          width: "100%",
+                          maxWidth: "100%",
+                          minWidth: 0,
+                          boxSizing: "border-box",
+                        }}
+                      >
                         <RowMeta s={s} showInProgress={false} />
 
                         {/* Breadcrumb 3c — Actions cluster (STOP CLICK BUBBLE HERE) */}
                         <div
                           className="row"
-                          style={{ gap: 8, alignItems: "center", flexShrink: 0, marginLeft: 8 }}
+                          style={{ gap: 6, alignItems: "center", flexShrink: 0, marginLeft: 6 }}
                           onClick={(e) => e.stopPropagation()}
                           onMouseDown={(e) => e.stopPropagation()}
                         >
