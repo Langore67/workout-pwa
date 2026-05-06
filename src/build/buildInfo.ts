@@ -7,7 +7,7 @@
 
 export const buildInfo = {
   version: "v0.1.0",
-  commit: "533cb33",
+  commit: "50a94ca",
   branch: "feature/history-row-layout-compression",
-  builtAt: "2026-05-06T13:09:03.952Z",
+  builtAt: "2026-05-06T13:20:44.962Z",
 } as const;

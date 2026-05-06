@@ -693,6 +693,7 @@ export default function HistoryPage() {
                   const menuItems: MenuItem[] = [
                     { label: "Resume", icon: MenuIcons.edit, onClick: () => resumeSession(s.id) },
                     { label: "View details", icon: MenuIcons.share, onClick: () => openSessionDetails(s.id) },
+                    { type: "sep" },
                     { label: "Delete", icon: MenuIcons.trash, danger: true, onClick: () => deleteSessionCascade(s.id) },
                   ];
 
@@ -726,16 +727,20 @@ export default function HistoryPage() {
                         {/* Breadcrumb 3b — Actions cluster (STOP CLICK BUBBLE HERE) */}
                         <div
                           className="row"
-                          style={{ gap: 6, alignItems: "center", flexShrink: 0, marginLeft: 6 }}
+                          style={{ gap: 4, alignItems: "center", flexShrink: 0, marginLeft: 4 }}
                           onClick={(e) => e.stopPropagation()}
                           onMouseDown={(e) => e.stopPropagation()}
                         >
-                          <span className="badge">In progress</span>
+                          <span className="badge" style={{ paddingInline: 8, minHeight: 24 }}>
+                            In progress
+                          </span>
                           <SharedActionMenu
-                            theme="dark"
+                            theme="light"
+                            compact
                             ariaLabel="Open session actions"
                             items={menuItems}
-                            offsetX={6}
+                            minWidth={196}
+                            offsetX={2}
                           />
                         </div>
                       </div>
@@ -764,6 +769,7 @@ export default function HistoryPage() {
                 completed.map((s) => {
                   const menuItems: MenuItem[] = [
                     { label: "View details", icon: MenuIcons.share, onClick: () => openSessionDetails(s.id) },
+                    { type: "sep" },
                     { label: "Delete", icon: MenuIcons.trash, danger: true, onClick: () => deleteSessionCascade(s.id) },
                   ];
 
@@ -797,16 +803,20 @@ export default function HistoryPage() {
                         {/* Breadcrumb 3c — Actions cluster (STOP CLICK BUBBLE HERE) */}
                         <div
                           className="row"
-                          style={{ gap: 6, alignItems: "center", flexShrink: 0, marginLeft: 6 }}
+                          style={{ gap: 4, alignItems: "center", flexShrink: 0, marginLeft: 4 }}
                           onClick={(e) => e.stopPropagation()}
                           onMouseDown={(e) => e.stopPropagation()}
                         >
-                          <span className="badge">Done</span>
+                          <span className="badge" style={{ paddingInline: 8, minHeight: 24 }}>
+                            Done
+                          </span>
                           <SharedActionMenu
-                            theme="dark"
+                            theme="light"
+                            compact
                             ariaLabel="Open session actions"
                             items={menuItems}
-                            offsetX={6}
+                            minWidth={196}
+                            offsetX={2}
                           />
                         </div>
                       </div>
