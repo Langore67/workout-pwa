@@ -20,7 +20,7 @@
                          ✅ Optional duration estimate from set timestamps (when endedAt missing)
    ============================================================================ */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
 import { db, SetEntry, type Exercise, type Track, type BodyMetricEntry } from "../db";
@@ -56,6 +56,8 @@ const HISTORY_FILTER_OPTIONS: ReadonlyArray<{ key: HistoryFilterKey; label: stri
   { key: "classes", label: "Classes" },
   { key: "walks", label: "Walks" },
 ];
+
+const HISTORY_COMPLETED_BATCH_SIZE = 15;
 
 const HISTORY_CLASS_NAME_PATTERNS = [
   "body balance",
@@ -227,6 +229,7 @@ export default function HistoryPage() {
   const nav = useNavigate();
   const [activeFilter, setActiveFilter] = useState<HistoryFilterKey>("all");
   const [expandedPrSessionIds, setExpandedPrSessionIds] = useState<string[]>([]);
+  const [visibleCompletedCount, setVisibleCompletedCount] = useState(HISTORY_COMPLETED_BATCH_SIZE);
 
   const sessions = useLiveQuery(async () => {
     const all = (await db.sessions.toArray()) as any[];
@@ -434,6 +437,16 @@ export default function HistoryPage() {
     const completed = filtered.filter((s) => !isSessionInProgress(s));
     return { inProgress, completed };
   }, [sessions, lastActivityBySession, hasMeaningfulSetDataBySession, historySessionKindById, activeFilter]);
+
+  useEffect(() => {
+    setVisibleCompletedCount(HISTORY_COMPLETED_BATCH_SIZE);
+  }, [activeFilter]);
+
+  const visibleCompleted = useMemo(() => {
+    return completed.slice(0, visibleCompletedCount);
+  }, [completed, visibleCompletedCount]);
+
+  const remainingCompletedCount = Math.max(0, completed.length - visibleCompleted.length);
 
   async function deleteSessionCascade(sessionId: string) {
     const ok = window.confirm("Delete this session? This cannot be undone.");
@@ -766,7 +779,7 @@ export default function HistoryPage() {
 
             <div className="list" style={{ marginTop: 12 }} data-testid="history-completed-list">
               {completed.length ? (
-                completed.map((s) => {
+                visibleCompleted.map((s) => {
                   const menuItems: MenuItem[] = [
                     { label: "View details", icon: MenuIcons.share, onClick: () => openSessionDetails(s.id) },
                     { type: "sep" },
@@ -829,6 +842,26 @@ export default function HistoryPage() {
                 </p>
               )}
             </div>
+            {remainingCompletedCount > 0 ? (
+              <div style={{ marginTop: 12, display: "grid", gap: 8, justifyItems: "start" }}>
+                <button
+                  type="button"
+                  className="btn"
+                  data-testid="history-load-more"
+                  onClick={() => setVisibleCompletedCount((count) => count + HISTORY_COMPLETED_BATCH_SIZE)}
+                  style={{ minHeight: 36, paddingInline: 14 }}
+                >
+                  Load {Math.min(HISTORY_COMPLETED_BATCH_SIZE, remainingCompletedCount)} more
+                </button>
+                <div className="muted" data-testid="history-load-more-status" style={{ fontSize: 12 }}>
+                  Showing {visibleCompleted.length} of {completed.length}
+                </div>
+              </div>
+            ) : completed.length > HISTORY_COMPLETED_BATCH_SIZE ? (
+              <div className="muted" data-testid="history-load-more-status" style={{ marginTop: 12, fontSize: 12 }}>
+                Showing {visibleCompleted.length} of {completed.length}
+              </div>
+            ) : null}
           </div>
         </div>
       )}
