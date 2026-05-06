@@ -27,6 +27,7 @@ import { db, SetEntry, type Exercise, type Track, type BodyMetricEntry } from ".
 import { ActionMenu as SharedActionMenu, MenuIcons, MenuItem } from "../components/ActionMenu";
 import { safeParsePrsCount } from "../lib/safeParsePrsCount";
 import { computeSessionTotalLifted } from "../lib/sessionTotalLifted";
+import type { PRHit } from "../prs";
 
 /* =============================================================================
    Breadcrumb 0 — Types + helpers
@@ -149,6 +150,34 @@ function sessionMatchesHistoryFilter(kind: HistorySessionKind, filter: HistoryFi
   return kind === "walk";
 }
 
+function parseSessionPrHits(prsJson?: string): PRHit[] {
+  if (!prsJson) return [];
+  try {
+    const parsed = JSON.parse(prsJson);
+    return Array.isArray(parsed) ? (parsed as PRHit[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function formatPrBestSet(hit: PRHit): string {
+  const preferred =
+    hit.weight ??
+    hit.volume ??
+    hit.e1rm;
+
+  if (!preferred) return "";
+  return `${Math.round(preferred.weight)} x ${Math.round(preferred.reps)}`;
+}
+
+function MetaSeparator() {
+  return (
+    <span aria-hidden="true" style={{ whiteSpace: "nowrap", padding: "0 4px" }}>
+      {"\u00b7"}
+    </span>
+  );
+}
+
 function fmtDayShort(ms: number) {
   try {
     const d = new Date(ms);
@@ -197,6 +226,7 @@ function hasMeaningfulHistorySetData(se: SetEntry) {
 export default function HistoryPage() {
   const nav = useNavigate();
   const [activeFilter, setActiveFilter] = useState<HistoryFilterKey>("all");
+  const [expandedPrSessionIds, setExpandedPrSessionIds] = useState<string[]>([]);
 
   const sessions = useLiveQuery(async () => {
     const all = (await db.sessions.toArray()) as any[];
@@ -433,6 +463,12 @@ export default function HistoryPage() {
     nav(`/gym/${sessionId}`);
   }
 
+  function togglePrDetails(sessionId: string) {
+    setExpandedPrSessionIds((current) =>
+      current.includes(sessionId) ? current.filter((id) => id !== sessionId) : [...current, sessionId]
+    );
+  }
+
   // one menu open at a time
 
   /* =============================================================================
@@ -443,12 +479,14 @@ export default function HistoryPage() {
     const date = fmtDayShort(s.startedAt);
     const dur = getSessionDurationLabel(s, showInProgress);
     const total = totalsBySession.get(s.id) ?? 0;
-    const prs = safeParsePrsCount(s.prsJson);
+    const prHits = parseSessionPrHits(s.prsJson);
+    const prs = prHits.length || safeParsePrsCount(s.prsJson);
+    const hasPrDetails = prHits.length > 0;
+    const prsExpanded = expandedPrSessionIds.includes(s.id);
     const metaParts = [
       date,
       !showInProgress && dur !== "—" ? dur : null,
       `${fmtTotal(total)} lb`,
-      `${prs} PR${prs === 1 ? "" : "s"}`,
     ].filter((value): value is string => !!value);
 
     return (
@@ -493,18 +531,98 @@ export default function HistoryPage() {
                   ? `history-duration:${s.id}`
                   : part.includes("lb")
                     ? `history-total:${s.id}`
-                    : part.includes("PR")
-                      ? `history-prs:${s.id}`
-                      : undefined;
+                    : undefined;
 
             return (
               <span key={`${s.id}-${part}-${index}`} data-testid={testId} style={{ whiteSpace: "nowrap" }}>
-                {index > 0 ? " \u00b7 " : ""}
+                {index > 0 ? <MetaSeparator /> : null}
                 {part}
               </span>
             );
           })}
+          {metaParts.length > 0 ? <MetaSeparator /> : null}
+          {hasPrDetails ? (
+            <button
+              type="button"
+              className="muted"
+              data-testid={`history-prs-toggle:${s.id}`}
+              aria-expanded={prsExpanded}
+              onClick={(e) => {
+                e.stopPropagation();
+                togglePrDetails(s.id);
+              }}
+              style={{
+                border: "none",
+                background: "transparent",
+                padding: 0,
+                margin: 0,
+                cursor: "pointer",
+                fontSize: 13,
+                color: "inherit",
+                textDecoration: "underline",
+                textUnderlineOffset: 2,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {prs} PR{prs === 1 ? "" : "s"}
+            </button>
+          ) : (
+            <span data-testid={`history-prs:${s.id}`} style={{ whiteSpace: "nowrap" }}>
+              {prs} PR{prs === 1 ? "" : "s"}
+            </span>
+          )}
         </div>
+        {hasPrDetails && prsExpanded ? (
+          <div
+            data-testid={`history-prs-panel:${s.id}`}
+            style={{
+              marginTop: 7,
+              paddingTop: 7,
+              borderTop: "1px solid var(--line)",
+              minWidth: 0,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="muted"
+              style={{ fontSize: 11, letterSpacing: "0.03em", marginBottom: 3 }}
+            >
+              PRs
+            </div>
+            <div style={{ display: "grid", gap: 3 }} data-testid={`history-prs-list:${s.id}`}>
+              {prHits.map((hit) => (
+                <div
+                  key={`${s.id}-${hit.trackId}`}
+                  style={{
+                    minWidth: 0,
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0, 1fr) auto",
+                    alignItems: "baseline",
+                    columnGap: 8,
+                    lineHeight: 1.3,
+                    fontSize: 13,
+                  }}
+                >
+                  <span
+                    title={hit.trackName}
+                    style={{
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {hit.trackName}
+                  </span>
+                  <span className="muted" style={{ whiteSpace: "nowrap" }}>
+                    {formatPrBestSet(hit)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     );
   }
