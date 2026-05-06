@@ -20,7 +20,7 @@
                          ✅ Optional duration estimate from set timestamps (when endedAt missing)
    ============================================================================ */
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
 import { db, SetEntry, type Exercise, type Track, type BodyMetricEntry } from "../db";
@@ -39,6 +39,115 @@ type SessionRow = {
   endedAt?: number;
   prsJson?: string;
 };
+
+type HistorySessionKind = "workout" | "class" | "walk";
+type HistoryFilterKey = "all" | "workouts" | "classes" | "walks";
+
+type SessionActivityContext = {
+  name: string;
+  trackTypes: Set<Track["trackType"]>;
+  trackNames: string[];
+};
+
+const HISTORY_FILTER_OPTIONS: ReadonlyArray<{ key: HistoryFilterKey; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "workouts", label: "Workouts" },
+  { key: "classes", label: "Classes" },
+  { key: "walks", label: "Walks" },
+];
+
+const HISTORY_CLASS_NAME_PATTERNS = [
+  "body balance",
+  "body core",
+  "bodycombat",
+  "body combat",
+  "bodypump",
+  "body pump",
+  "pilates",
+  "yoga",
+  "zumba",
+  "spin class",
+  "boxing class",
+] as const;
+
+const HISTORY_WALK_NAME_PATTERNS = [
+  "walk",
+  "walking",
+  "treadmill walk",
+  "incline walk",
+] as const;
+
+const HISTORY_WORKOUT_NAME_PATTERNS = [
+  "upper",
+  "lower",
+  "push",
+  "pull",
+  "legs",
+  "hinge",
+  "squat",
+  "glutes",
+  "chest",
+  "back",
+  "shoulders",
+  "arms",
+  "full body",
+  "workout",
+] as const;
+
+function normalizeHistoryLabel(value?: string) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[-_]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function includesAnyPattern(value: string, patterns: readonly string[]) {
+  return patterns.some((pattern) => value.includes(pattern));
+}
+
+function classifyHistorySession(context: SessionActivityContext): HistorySessionKind {
+  const sessionName = normalizeHistoryLabel(context.name);
+  const activityNames = normalizeHistoryLabel(context.trackNames.join(" "));
+
+  if (sessionName && includesAnyPattern(sessionName, HISTORY_WALK_NAME_PATTERNS)) {
+    return "walk";
+  }
+
+  if (sessionName && includesAnyPattern(sessionName, HISTORY_CLASS_NAME_PATTERNS)) {
+    return "class";
+  }
+
+  if (
+    context.trackTypes.size > 0 &&
+    Array.from(context.trackTypes).every((trackType) => trackType === "conditioning") &&
+    activityNames &&
+    includesAnyPattern(activityNames, HISTORY_WALK_NAME_PATTERNS)
+  ) {
+    return "walk";
+  }
+
+  if (
+    context.trackTypes.has("strength") ||
+    context.trackTypes.has("hypertrophy") ||
+    context.trackTypes.has("technique")
+  ) {
+    return "workout";
+  }
+
+  if (sessionName && includesAnyPattern(sessionName, HISTORY_WORKOUT_NAME_PATTERNS)) {
+    return "workout";
+  }
+
+  return "workout";
+}
+
+function sessionMatchesHistoryFilter(kind: HistorySessionKind, filter: HistoryFilterKey) {
+  if (filter === "all") return true;
+  if (filter === "workouts") return kind === "workout";
+  if (filter === "classes") return kind === "class";
+  return kind === "walk";
+}
 
 function fmtDayShort(ms: number) {
   try {
@@ -87,6 +196,7 @@ function hasMeaningfulHistorySetData(se: SetEntry) {
 
 export default function HistoryPage() {
   const nav = useNavigate();
+  const [activeFilter, setActiveFilter] = useState<HistoryFilterKey>("all");
 
   const sessions = useLiveQuery(async () => {
     const all = (await db.sessions.toArray()) as any[];
@@ -115,6 +225,14 @@ export default function HistoryPage() {
     if (!table || typeof table.toArray !== "function") return [] as BodyMetricEntry[];
     return (await table.toArray()) as BodyMetricEntry[];
   }, []);
+
+  const trackById = useMemo(() => {
+    return new Map((tracks ?? []).map((track) => [track.id, track]));
+  }, [tracks]);
+
+  const exerciseById = useMemo(() => {
+    return new Map((exercises ?? []).map((exercise) => [exercise.id, exercise]));
+  }, [exercises]);
 
   const totalsBySession = useMemo(() => {
     const sessionById = new Map((sessions ?? []).map((s) => [s.id, s]));
@@ -159,6 +277,52 @@ export default function HistoryPage() {
     }
     return map;
   }, [setsAll]);
+
+  const historySessionKindById = useMemo(() => {
+    const contextBySession = new Map<string, SessionActivityContext>();
+
+    for (const session of sessions ?? []) {
+      contextBySession.set(session.id, {
+        name: session.templateName ?? "",
+        trackTypes: new Set<Track["trackType"]>(),
+        trackNames: [],
+      });
+    }
+
+    for (const se of setsAll ?? []) {
+      if (!se?.sessionId || !se.trackId) continue;
+      const context = contextBySession.get(se.sessionId);
+      const track = trackById.get(se.trackId);
+      if (!context || !track) continue;
+
+      context.trackTypes.add(track.trackType);
+
+      const trackName = normalizeHistoryLabel(track.displayName);
+      if (trackName && !context.trackNames.includes(trackName)) {
+        context.trackNames.push(trackName);
+      }
+
+      const exercise = exerciseById.get(track.exerciseId);
+      const exerciseName = normalizeHistoryLabel(exercise?.name);
+      if (exerciseName && !context.trackNames.includes(exerciseName)) {
+        context.trackNames.push(exerciseName);
+      }
+    }
+
+    const kindById = new Map<string, HistorySessionKind>();
+    for (const session of sessions ?? []) {
+      const context =
+        contextBySession.get(session.id) ??
+        ({
+          name: session.templateName ?? "",
+          trackTypes: new Set<Track["trackType"]>(),
+          trackNames: [],
+        } satisfies SessionActivityContext);
+      kindById.set(session.id, classifyHistorySession(context));
+    }
+
+    return kindById;
+  }, [sessions, setsAll, trackById, exerciseById]);
 
   /* =============================================================================
      Breadcrumb 2b — Import-tolerant completion + duration estimate
@@ -232,10 +396,14 @@ export default function HistoryPage() {
       if ((s.templateName ?? "").trim() !== "Ad-hoc") return true;
       return !!hasMeaningfulSetDataBySession.get(s.id);
     });
-    const inProgress = all.filter((s) => isSessionInProgress(s));
-    const completed = all.filter((s) => !isSessionInProgress(s));
+    const filtered = all.filter((session) => {
+      const kind = historySessionKindById.get(session.id) ?? "workout";
+      return sessionMatchesHistoryFilter(kind, activeFilter);
+    });
+    const inProgress = filtered.filter((s) => isSessionInProgress(s));
+    const completed = filtered.filter((s) => !isSessionInProgress(s));
     return { inProgress, completed };
-  }, [sessions, lastActivityBySession, hasMeaningfulSetDataBySession]);
+  }, [sessions, lastActivityBySession, hasMeaningfulSetDataBySession, historySessionKindById, activeFilter]);
 
   async function deleteSessionCascade(sessionId: string) {
     const ok = window.confirm("Delete this session? This cannot be undone.");
@@ -331,7 +499,7 @@ export default function HistoryPage() {
 
             return (
               <span key={`${s.id}-${part}-${index}`} data-testid={testId} style={{ whiteSpace: "nowrap" }}>
-                {index > 0 ? " · " : ""}
+                {index > 0 ? " \u00b7 " : ""}
                 {part}
               </span>
             );
@@ -350,6 +518,40 @@ export default function HistoryPage() {
       </div>
 
       <p className="muted">Review past sessions. Resume anything still in progress.</p>
+      <div
+        className="row"
+        style={{ gap: 8, flexWrap: "wrap", marginTop: 10, marginBottom: 2 }}
+        data-testid="history-filters"
+      >
+        {HISTORY_FILTER_OPTIONS.map((option) => {
+          const selected = activeFilter === option.key;
+          return (
+            <button
+              key={option.key}
+              type="button"
+              className="badge"
+              data-testid={`history-filter:${option.key}`}
+              aria-pressed={selected}
+              onClick={() => setActiveFilter(option.key)}
+              style={{
+                cursor: "pointer",
+                border: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: 28,
+                padding: "4px 10px",
+                background: selected ? "rgba(15,23,42,0.08)" : "#f3f4f6",
+                color: selected ? "#0f172a" : "var(--muted)",
+                boxShadow: selected ? "inset 0 0 0 1px rgba(15,23,42,0.12)" : "none",
+                opacity: 1,
+              }}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
       <hr />
 
       {sessions === undefined ? (
@@ -505,3 +707,4 @@ export default function HistoryPage() {
     </div>
   );
 }
+
