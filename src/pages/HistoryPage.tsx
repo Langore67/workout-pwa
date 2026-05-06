@@ -20,7 +20,7 @@
                          ✅ Optional duration estimate from set timestamps (when endedAt missing)
    ============================================================================ */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
 import { db, SetEntry, type Exercise, type Track, type BodyMetricEntry } from "../db";
@@ -56,6 +56,8 @@ const HISTORY_FILTER_OPTIONS: ReadonlyArray<{ key: HistoryFilterKey; label: stri
   { key: "classes", label: "Classes" },
   { key: "walks", label: "Walks" },
 ];
+
+const HISTORY_COMPLETED_BATCH_SIZE = 15;
 
 const HISTORY_CLASS_NAME_PATTERNS = [
   "body balance",
@@ -187,6 +189,14 @@ function fmtDayShort(ms: number) {
   }
 }
 
+function formatHistoryMonthLabel(ms: number) {
+  try {
+    return new Date(ms).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  } catch {
+    return "Unknown";
+  }
+}
+
 function formatDurationShortFromMs(ms: number) {
   const mins = Math.max(0, Math.round(ms / 60000));
   if (mins < 60) return `${mins}m`;
@@ -227,6 +237,7 @@ export default function HistoryPage() {
   const nav = useNavigate();
   const [activeFilter, setActiveFilter] = useState<HistoryFilterKey>("all");
   const [expandedPrSessionIds, setExpandedPrSessionIds] = useState<string[]>([]);
+  const [visibleCompletedCount, setVisibleCompletedCount] = useState(HISTORY_COMPLETED_BATCH_SIZE);
 
   const sessions = useLiveQuery(async () => {
     const all = (await db.sessions.toArray()) as any[];
@@ -434,6 +445,34 @@ export default function HistoryPage() {
     const completed = filtered.filter((s) => !isSessionInProgress(s));
     return { inProgress, completed };
   }, [sessions, lastActivityBySession, hasMeaningfulSetDataBySession, historySessionKindById, activeFilter]);
+
+  useEffect(() => {
+    setVisibleCompletedCount(HISTORY_COMPLETED_BATCH_SIZE);
+  }, [activeFilter]);
+
+  const visibleCompleted = useMemo(() => {
+    return completed.slice(0, visibleCompletedCount);
+  }, [completed, visibleCompletedCount]);
+
+  const remainingCompletedCount = Math.max(0, completed.length - visibleCompleted.length);
+  const groupedVisibleCompleted = useMemo(() => {
+    const groups: Array<{ key: string; label: string; sessions: SessionRow[] }> = [];
+    const byKey = new Map<string, { key: string; label: string; sessions: SessionRow[] }>();
+
+    for (const session of visibleCompleted) {
+      const key = formatHistoryMonthLabel(session.startedAt);
+      const existing = byKey.get(key);
+      if (existing) {
+        existing.sessions.push(session);
+        continue;
+      }
+      const group = { key, label: key, sessions: [session] };
+      byKey.set(key, group);
+      groups.push(group);
+    }
+
+    return groups;
+  }, [visibleCompleted]);
 
   async function deleteSessionCascade(sessionId: string) {
     const ok = window.confirm("Delete this session? This cannot be undone.");
@@ -766,73 +805,107 @@ export default function HistoryPage() {
 
             <div className="list" style={{ marginTop: 12 }} data-testid="history-completed-list">
               {completed.length ? (
-                completed.map((s) => {
-                  const menuItems: MenuItem[] = [
-                    { label: "View details", icon: MenuIcons.share, onClick: () => openSessionDetails(s.id) },
-                    { type: "sep" },
-                    { label: "Delete", icon: MenuIcons.trash, danger: true, onClick: () => deleteSessionCascade(s.id) },
-                  ];
-
-                  return (
+                groupedVisibleCompleted.map((group) => (
+                  <div key={group.key} style={{ display: "grid", gap: 8 }} data-testid={`history-group:${group.key}`}>
                     <div
-                      key={s.id}
-                      className="card list-card clickable"
-                      role="button"
-                      tabIndex={0}
-                      data-testid={`history-completed-card:${s.id}`}
-                      onClick={() => openSessionDetails(s.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") openSessionDetails(s.id);
+                      className="muted"
+                      style={{
+                        fontSize: 12,
+                        letterSpacing: "0.04em",
+                        textTransform: "uppercase",
+                        marginTop: 4,
                       }}
-                      style={{ position: "relative", paddingTop: 10, paddingBottom: 10 }}
                     >
-                      <div
-                        className="card-head"
-                        style={{
-                          alignItems: "flex-start",
-                          justifyContent: "space-between",
-                          gap: 12,
-                          width: "100%",
-                          maxWidth: "100%",
-                          minWidth: 0,
-                          boxSizing: "border-box",
-                        }}
-                      >
-                        <RowMeta s={s} showInProgress={false} />
-
-                        {/* Breadcrumb 3c — Actions cluster (STOP CLICK BUBBLE HERE) */}
-                        <div
-                          className="row"
-                          style={{ gap: 4, alignItems: "center", flexShrink: 0, marginLeft: 4 }}
-                          onClick={(e) => e.stopPropagation()}
-                          onMouseDown={(e) => e.stopPropagation()}
-                        >
-                          <span className="badge" style={{ paddingInline: 8, minHeight: 24 }}>
-                            Done
-                          </span>
-                          <SharedActionMenu
-                            theme="light"
-                            compact
-                            ariaLabel="Open session actions"
-                            items={menuItems}
-                            minWidth={196}
-                            offsetX={2}
-                          />
-                        </div>
-                      </div>
+                      {group.label}
                     </div>
-                  );
-                })
-              ) : (
+                    {group.sessions.map((s) => {
+                      const menuItems: MenuItem[] = [
+                        { label: "View details", icon: MenuIcons.share, onClick: () => openSessionDetails(s.id) },
+                        { type: "sep" },
+                        { label: "Delete", icon: MenuIcons.trash, danger: true, onClick: () => deleteSessionCascade(s.id) },
+                      ];
+
+                      return (
+                        <div
+                          key={s.id}
+                          className="card list-card clickable"
+                          role="button"
+                          tabIndex={0}
+                          data-testid={`history-completed-card:${s.id}`}
+                          onClick={() => openSessionDetails(s.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") openSessionDetails(s.id);
+                          }}
+                          style={{ position: "relative", paddingTop: 10, paddingBottom: 10 }}
+                        >
+                          <div
+                            className="card-head"
+                            style={{
+                              alignItems: "flex-start",
+                              justifyContent: "space-between",
+                              gap: 12,
+                              width: "100%",
+                              maxWidth: "100%",
+                              minWidth: 0,
+                              boxSizing: "border-box",
+                            }}
+                          >
+                            <RowMeta s={s} showInProgress={false} />
+
+                            <div
+                              className="row"
+                              style={{ gap: 4, alignItems: "center", flexShrink: 0, marginLeft: 4 }}
+                              onClick={(e) => e.stopPropagation()}
+                              onMouseDown={(e) => e.stopPropagation()}
+                            >
+                              <span className="badge" style={{ paddingInline: 8, minHeight: 24 }}>
+                                Done
+                              </span>
+                              <SharedActionMenu
+                                theme="light"
+                                compact
+                                ariaLabel="Open session actions"
+                                items={menuItems}
+                                minWidth={196}
+                                offsetX={2}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))              ) : (
                 <p className="muted" style={{ marginTop: 10 }}>
                   No completed sessions yet.
                 </p>
               )}
             </div>
+            {remainingCompletedCount > 0 ? (
+              <div style={{ marginTop: 12, display: "grid", gap: 8, justifyItems: "start" }}>
+                <button
+                  type="button"
+                  className="btn"
+                  data-testid="history-load-more"
+                  onClick={() => setVisibleCompletedCount((count) => count + HISTORY_COMPLETED_BATCH_SIZE)}
+                  style={{ minHeight: 36, paddingInline: 14 }}
+                >
+                  Load {Math.min(HISTORY_COMPLETED_BATCH_SIZE, remainingCompletedCount)} more
+                </button>
+                <div className="muted" data-testid="history-load-more-status" style={{ fontSize: 12 }}>
+                  Showing {visibleCompleted.length} of {completed.length}
+                </div>
+              </div>
+            ) : completed.length > HISTORY_COMPLETED_BATCH_SIZE ? (
+              <div className="muted" data-testid="history-load-more-status" style={{ marginTop: 12, fontSize: 12 }}>
+                Showing {visibleCompleted.length} of {completed.length}
+              </div>
+            ) : null}
           </div>
         </div>
       )}
     </div>
   );
 }
+
 
