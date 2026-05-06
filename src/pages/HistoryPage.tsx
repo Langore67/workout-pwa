@@ -276,20 +276,17 @@ export default function HistoryPage() {
     const dur = getSessionDurationLabel(s, showInProgress);
     const total = totalsBySession.get(s.id) ?? 0;
     const prs = safeParsePrsCount(s.prsJson);
+    const metaParts = [
+      date,
+      !showInProgress && dur !== "—" ? dur : null,
+      `${fmtTotal(total)} lb`,
+      `${prs} PR${prs === 1 ? "" : "s"}`,
+    ].filter((value): value is string => !!value);
 
     return (
       <div style={{ minWidth: 0, flex: "1 1 auto" }}>
-        {/* Line 1: Title + Date */}
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "baseline",
-            minWidth: 0,
-            maxWidth: "100%",
-            flexWrap: "wrap",
-          }}
-        >
+        {/* Line 1: Title */}
+        <div style={{ display: "flex", minWidth: 0, maxWidth: "100%" }}>
           <div
             className="card-title"
             data-testid={`history-template:${s.id}`}
@@ -304,18 +301,15 @@ export default function HistoryPage() {
             {s.templateName ?? "Ad-hoc"}
           </div>
 
-          <div className="muted" style={{ whiteSpace: "nowrap", flexShrink: 0 }} data-testid={`history-date:${s.id}`}>
-            {date}
-          </div>
         </div>
 
-        {/* Line 2: Metrics (NO WRAP) */}
+        {/* Line 2: Metadata */}
         <div
           className="muted"
           style={{
             marginTop: 4,
             display: "flex",
-            gap: 8,
+            gap: 0,
             alignItems: "center",
             flexWrap: "wrap",
             fontSize: 13,
@@ -323,9 +317,25 @@ export default function HistoryPage() {
           }}
           data-testid={`history-metrics:${s.id}`}
         >
-          {!showInProgress && <span data-testid={`history-duration:${s.id}`}>⏱ {dur}</span>}
-          <span data-testid={`history-total:${s.id}`}>🏋️ {fmtTotal(total)} lb</span>
-          <span data-testid={`history-prs:${s.id}`}>🏆 {prs}</span>
+          {metaParts.map((part, index) => {
+            const testId =
+              index === 0
+                ? `history-date:${s.id}`
+                : part === dur
+                  ? `history-duration:${s.id}`
+                  : part.includes("lb")
+                    ? `history-total:${s.id}`
+                    : part.includes("PR")
+                      ? `history-prs:${s.id}`
+                      : undefined;
+
+            return (
+              <span key={`${s.id}-${part}-${index}`} data-testid={testId} style={{ whiteSpace: "nowrap" }}>
+                {index > 0 ? " · " : ""}
+                {part}
+              </span>
+            );
+          })}
         </div>
       </div>
     );
