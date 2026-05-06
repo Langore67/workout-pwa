@@ -189,6 +189,14 @@ function fmtDayShort(ms: number) {
   }
 }
 
+function formatHistoryMonthLabel(ms: number) {
+  try {
+    return new Date(ms).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  } catch {
+    return "Unknown";
+  }
+}
+
 function formatDurationShortFromMs(ms: number) {
   const mins = Math.max(0, Math.round(ms / 60000));
   if (mins < 60) return `${mins}m`;
@@ -447,6 +455,24 @@ export default function HistoryPage() {
   }, [completed, visibleCompletedCount]);
 
   const remainingCompletedCount = Math.max(0, completed.length - visibleCompleted.length);
+  const groupedVisibleCompleted = useMemo(() => {
+    const groups: Array<{ key: string; label: string; sessions: SessionRow[] }> = [];
+    const byKey = new Map<string, { key: string; label: string; sessions: SessionRow[] }>();
+
+    for (const session of visibleCompleted) {
+      const key = formatHistoryMonthLabel(session.startedAt);
+      const existing = byKey.get(key);
+      if (existing) {
+        existing.sessions.push(session);
+        continue;
+      }
+      const group = { key, label: key, sessions: [session] };
+      byKey.set(key, group);
+      groups.push(group);
+    }
+
+    return groups;
+  }, [visibleCompleted]);
 
   async function deleteSessionCascade(sessionId: string) {
     const ok = window.confirm("Delete this session? This cannot be undone.");
@@ -779,64 +805,77 @@ export default function HistoryPage() {
 
             <div className="list" style={{ marginTop: 12 }} data-testid="history-completed-list">
               {completed.length ? (
-                visibleCompleted.map((s) => {
-                  const menuItems: MenuItem[] = [
-                    { label: "View details", icon: MenuIcons.share, onClick: () => openSessionDetails(s.id) },
-                    { type: "sep" },
-                    { label: "Delete", icon: MenuIcons.trash, danger: true, onClick: () => deleteSessionCascade(s.id) },
-                  ];
-
-                  return (
+                groupedVisibleCompleted.map((group) => (
+                  <div key={group.key} style={{ display: "grid", gap: 8 }} data-testid={`history-group:${group.key}`}>
                     <div
-                      key={s.id}
-                      className="card list-card clickable"
-                      role="button"
-                      tabIndex={0}
-                      data-testid={`history-completed-card:${s.id}`}
-                      onClick={() => openSessionDetails(s.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") openSessionDetails(s.id);
+                      className="muted"
+                      style={{
+                        fontSize: 12,
+                        letterSpacing: "0.04em",
+                        textTransform: "uppercase",
+                        marginTop: 4,
                       }}
-                      style={{ position: "relative", paddingTop: 10, paddingBottom: 10 }}
                     >
-                      <div
-                        className="card-head"
-                        style={{
-                          alignItems: "flex-start",
-                          justifyContent: "space-between",
-                          gap: 12,
-                          width: "100%",
-                          maxWidth: "100%",
-                          minWidth: 0,
-                          boxSizing: "border-box",
-                        }}
-                      >
-                        <RowMeta s={s} showInProgress={false} />
-
-                        {/* Breadcrumb 3c — Actions cluster (STOP CLICK BUBBLE HERE) */}
-                        <div
-                          className="row"
-                          style={{ gap: 4, alignItems: "center", flexShrink: 0, marginLeft: 4 }}
-                          onClick={(e) => e.stopPropagation()}
-                          onMouseDown={(e) => e.stopPropagation()}
-                        >
-                          <span className="badge" style={{ paddingInline: 8, minHeight: 24 }}>
-                            Done
-                          </span>
-                          <SharedActionMenu
-                            theme="light"
-                            compact
-                            ariaLabel="Open session actions"
-                            items={menuItems}
-                            minWidth={196}
-                            offsetX={2}
-                          />
-                        </div>
-                      </div>
+                      {group.label}
                     </div>
-                  );
-                })
-              ) : (
+                    {group.sessions.map((s) => {
+                      const menuItems: MenuItem[] = [
+                        { label: "View details", icon: MenuIcons.share, onClick: () => openSessionDetails(s.id) },
+                        { type: "sep" },
+                        { label: "Delete", icon: MenuIcons.trash, danger: true, onClick: () => deleteSessionCascade(s.id) },
+                      ];
+
+                      return (
+                        <div
+                          key={s.id}
+                          className="card list-card clickable"
+                          role="button"
+                          tabIndex={0}
+                          data-testid={`history-completed-card:${s.id}`}
+                          onClick={() => openSessionDetails(s.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") openSessionDetails(s.id);
+                          }}
+                          style={{ position: "relative", paddingTop: 10, paddingBottom: 10 }}
+                        >
+                          <div
+                            className="card-head"
+                            style={{
+                              alignItems: "flex-start",
+                              justifyContent: "space-between",
+                              gap: 12,
+                              width: "100%",
+                              maxWidth: "100%",
+                              minWidth: 0,
+                              boxSizing: "border-box",
+                            }}
+                          >
+                            <RowMeta s={s} showInProgress={false} />
+
+                            <div
+                              className="row"
+                              style={{ gap: 4, alignItems: "center", flexShrink: 0, marginLeft: 4 }}
+                              onClick={(e) => e.stopPropagation()}
+                              onMouseDown={(e) => e.stopPropagation()}
+                            >
+                              <span className="badge" style={{ paddingInline: 8, minHeight: 24 }}>
+                                Done
+                              </span>
+                              <SharedActionMenu
+                                theme="light"
+                                compact
+                                ariaLabel="Open session actions"
+                                items={menuItems}
+                                minWidth={196}
+                                offsetX={2}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))              ) : (
                 <p className="muted" style={{ marginTop: 10 }}>
                   No completed sessions yet.
                 </p>
@@ -868,4 +907,5 @@ export default function HistoryPage() {
     </div>
   );
 }
+
 

@@ -7,7 +7,7 @@
 
 export const buildInfo = {
   version: "v0.1.0",
-  commit: "5b57b17",
+  commit: "1a31ede",
   branch: "feature/history-pagination",
-  builtAt: "2026-05-06T13:49:52.336Z",
+  builtAt: "2026-05-06T14:09:34.582Z",
 } as const;
