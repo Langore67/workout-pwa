@@ -109,6 +109,8 @@ type ParsedSet = {
   weight?: number;
   reps?: number;
   seconds?: number;
+  distance?: number;
+  distanceUnit?: "m" | "km" | "steps";
   rir?: number;
   isBodyweight?: boolean;
   isPerSide?: boolean;
@@ -350,17 +352,20 @@ function inferBetterTrackingModeFromParsedSets(
     const hasSeconds = sets.some(
       (s) => s.seconds !== undefined && Number.isFinite(s.seconds) && s.seconds > 0
     );
-    return hasSeconds
-      ? defaultTrackingModeForTrackIntent(trackType)
-      : inferTrackingModeFromSetSignals(
-          exerciseName,
-          {
-            hasWeightedLoad: false,
-            hasReps: false,
-            hasSeconds: true,
-          },
-          { treatHangAsTime: true }
-        );
+    const hasDistance = sets.some(
+      (s) => s.distance !== undefined && Number.isFinite(s.distance) && s.distance > 0
+    );
+    if (hasSeconds) return defaultTrackingModeForTrackIntent(trackType);
+    if (hasDistance) return "repsOnly";
+    return inferTrackingModeFromSetSignals(
+      exerciseName,
+      {
+        hasWeightedLoad: false,
+        hasReps: false,
+        hasSeconds: true,
+      },
+      { treatHangAsTime: true }
+    );
   }
 
   const hasWeightedLoad = sets.some(
@@ -448,6 +453,39 @@ function durationToSeconds(valueRaw: string, unitRaw: string): number | undefine
     return Math.round(value * 3600);
   }
 
+  return undefined;
+}
+
+function inferExerciseMetricModeFromParsedSets(sets: ParsedSet[]): MetricMode | undefined {
+  const hasDistance = sets.some((set) => set.distance !== undefined && Number.isFinite(set.distance) && set.distance > 0);
+  if (hasDistance) return "distance";
+
+  const hasSeconds = sets.some((set) => set.seconds !== undefined && Number.isFinite(set.seconds) && set.seconds > 0);
+  if (hasSeconds) return "time";
+
+  return undefined;
+}
+
+function syncExerciseMetricMode(
+  exercise: Exercise,
+  metricMode: MetricMode | undefined,
+  updatedAt: number
+): Exercise | null {
+  if (!metricMode || (exercise as any).metricMode === metricMode) return null;
+  return {
+    ...exercise,
+    metricMode,
+    updatedAt,
+  } as Exercise;
+}
+
+function distanceToMeters(valueRaw: string, unitRaw: string): number | undefined {
+  const value = Number(valueRaw);
+  if (!Number.isFinite(value) || value <= 0) return undefined;
+
+  const unit = unitRaw.toLowerCase();
+  if (["km", "kilometer", "kilometers"].includes(unit)) return value * 1000;
+  if (["m", "meter", "meters"].includes(unit)) return value;
   return undefined;
 }
 
@@ -551,7 +589,7 @@ function parseSetLine(line: string): ParsedSet | null {
      Breadcrumb — Distance sets
      --------------------------------------------------------------------- */
   const distanceMatch = trimmed.match(
-    /^(warmup|work|technique|mobility|corrective|diagnostic|rehab|conditioning|test)\s+(BW(?:\s*[+-]\s*\d+(?:\.\d+)?)?|Bar|-?\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(m|meter|meters|ft|yd)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+    /^(warmup|work|technique|mobility|corrective|diagnostic|rehab|conditioning|test)\s+(BW(?:\s*[+-]\s*\d+(?:\.\d+)?)?|Bar|-?\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(km|kilometer|kilometers|m|meter|meters)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
   );
 
   if (distanceMatch) {
@@ -567,20 +605,19 @@ function parseSetLine(line: string): ParsedSet | null {
     const parsedWeight = parseWeightToken(weightRaw);
     if (!parsedWeight) return null;
 
-    const distanceNum = Number(distanceRaw);
+    const distanceMeters = distanceToMeters(distanceRaw, unitRaw);
     const rir = rirRaw !== undefined ? Number(rirRaw) : undefined;
-
-    const noteText = joinImportNoteFragments([`${distanceRaw}${unitRaw}`, notesRaw]);
 
     return {
       rawLine: line,
       setKind: kindRaw,
       weight: parsedWeight.weight,
-      reps: Number.isFinite(distanceNum) ? distanceNum : undefined,
+      distance: distanceMeters,
+      distanceUnit: distanceMeters !== undefined ? "m" : undefined,
       rir: rir !== undefined && Number.isFinite(rir) ? rir : undefined,
       isBodyweight: !!parsedWeight.isBodyweight,
       isPerSide,
-      notes: noteText,
+      notes: notesRaw || undefined,
     };
   }
 
@@ -1179,6 +1216,7 @@ export default function PasteWorkoutPage() {
 
     const exerciseByImportedName = new Map<string, Exercise>();
     const newExercises: Exercise[] = [];
+    const exercisesToUpdate: Exercise[] = [];
     for (const ex of importableExercises) {
       const selectedExistingId = selectedExistingByName[ex.exercise];
       if (selectedExistingId) {
@@ -1210,7 +1248,14 @@ export default function PasteWorkoutPage() {
       ) {
         const resolvedExercise = resolution.exercise ?? resolution.canonicalExercise;
         if (resolvedExercise) {
-          exerciseByImportedName.set(ex.exercise, resolvedExercise);
+          const metricMode = inferExerciseMetricModeFromParsedSets(ex.sets);
+          const updatedExercise = syncExerciseMetricMode(resolvedExercise, metricMode, now);
+          if (updatedExercise) {
+            exercisesToUpdate.push(updatedExercise);
+            exerciseByImportedName.set(ex.exercise, updatedExercise);
+          } else {
+            exerciseByImportedName.set(ex.exercise, resolvedExercise);
+          }
           continue;
         }
       }
@@ -1239,12 +1284,14 @@ export default function PasteWorkoutPage() {
       }
 
       const norm = normalizeName(ex.exercise);
+      const metricMode = inferExerciseMetricModeFromParsedSets(ex.sets);
       const newEx: Exercise = {
         id: uuid(),
         name: ex.exercise,
         normalizedName: norm,
         aliases: [],
         equipmentTags: [],
+        metricMode,
         createdAt: now,
         updatedAt: now,
       };
@@ -1374,6 +1421,9 @@ export default function PasteWorkoutPage() {
         const parsedHasFiniteReps =
           set.reps !== undefined &&
           Number.isFinite(set.reps);
+        const parsedHasFiniteDistance =
+          set.distance !== undefined &&
+          Number.isFinite(set.distance);
         const persistedWeight = set.weight;
         // Preserve valid parsed weighted-rep lines even if the resolved track
         // mode is stale or mis-inferred during import.
@@ -1382,6 +1432,8 @@ export default function PasteWorkoutPage() {
 
         const seconds =
           track.trackingMode === "timeSeconds" ? set.seconds : undefined;
+        const distance = parsedHasFiniteDistance ? set.distance : undefined;
+        const distanceUnit = distance !== undefined ? set.distanceUnit ?? "m" : undefined;
 
         const mergedNotes =
           [buildSetNotes(set), set.isPerSide ? "per-side" : undefined]
@@ -1407,6 +1459,8 @@ export default function PasteWorkoutPage() {
               ? set.reps
               : undefined,
           seconds,
+          distance,
+          distanceUnit,
           rir: set.rir,
           notes: mergedNotes,
           updatedAt: createdAt,
@@ -1442,6 +1496,7 @@ export default function PasteWorkoutPage() {
     }
 
     if (newExercises.length) await db.exercises.bulkAdd(newExercises);
+    if (exercisesToUpdate.length) await db.exercises.bulkPut(exercisesToUpdate);
     if (newTracks.length) await db.tracks.bulkAdd(newTracks);
     if (tracksToUpdate.length) await db.tracks.bulkPut(tracksToUpdate);
     if (sessionsToAdd.length) await db.sessions.bulkAdd(sessionsToAdd);

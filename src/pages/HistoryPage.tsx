@@ -27,6 +27,7 @@ import { db, SetEntry, type Exercise, type Track, type BodyMetricEntry } from ".
 import { ActionMenu as SharedActionMenu, MenuIcons, MenuItem } from "../components/ActionMenu";
 import { safeParsePrsCount } from "../lib/safeParsePrsCount";
 import { computeSessionTotalLifted } from "../lib/sessionTotalLifted";
+import { summarizeSessionActivityMetrics } from "../lib/activityMetrics";
 import type { PRHit } from "../prs";
 
 /* =============================================================================
@@ -309,6 +310,29 @@ export default function HistoryPage() {
     return map;
   }, [setsAll, sessions, tracks, exercises, bodyMetrics]);
 
+  const activityMetricsBySession = useMemo(() => {
+    const groupedSets = new Map<string, SetEntry[]>();
+    for (const se of setsAll ?? []) {
+      if (!se?.sessionId) continue;
+      const bucket = groupedSets.get(se.sessionId) ?? [];
+      bucket.push(se);
+      groupedSets.set(se.sessionId, bucket);
+    }
+
+    const map = new Map<string, ReturnType<typeof summarizeSessionActivityMetrics>>();
+    for (const [sessionId, sessionSets] of groupedSets) {
+      map.set(
+        sessionId,
+        summarizeSessionActivityMetrics({
+          sets: sessionSets,
+          trackById,
+          exerciseById,
+        })
+      );
+    }
+    return map;
+  }, [setsAll, trackById, exerciseById]);
+
   const hasMeaningfulSetDataBySession = useMemo(() => {
     const map = new Map<string, boolean>();
     for (const se of setsAll ?? []) {
@@ -518,6 +542,12 @@ export default function HistoryPage() {
     const date = fmtDayShort(s.startedAt);
     const dur = getSessionDurationLabel(s, showInProgress);
     const total = totalsBySession.get(s.id) ?? 0;
+    const activityMetrics = activityMetricsBySession.get(s.id);
+    const activityPart = activityMetrics?.distanceLabel
+      ? activityMetrics.distanceLabel
+      : !showInProgress && activityMetrics?.durationLabel && activityMetrics.durationLabel !== dur
+        ? activityMetrics.durationLabel
+        : null;
     const prHits = parseSessionPrHits(s.prsJson);
     const prs = prHits.length || safeParsePrsCount(s.prsJson);
     const hasPrDetails = prHits.length > 0;
@@ -525,7 +555,7 @@ export default function HistoryPage() {
     const metaParts = [
       date,
       !showInProgress && dur !== "—" ? dur : null,
-      `${fmtTotal(total)} lb`,
+      activityPart ?? `${fmtTotal(total)} lb`,
     ].filter((value): value is string => !!value);
 
     return (

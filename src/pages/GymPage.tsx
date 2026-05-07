@@ -297,6 +297,19 @@ function formatCompletedSetForCoachSnapshot(
 ): string | null {
   if (!se.completedAt) return null;
 
+  if (metricMode === "distance") {
+    const distance = typeof se.distance === "number" && Number.isFinite(se.distance) ? se.distance : undefined;
+    if (distance === undefined) return "completed distance set";
+    const unit = ((se as any).distanceUnit as string | undefined) ?? "mi";
+    if (typeof se.weight === "number" && Number.isFinite(se.weight)) return `${se.weight} lbs - ${distance} ${unit}`;
+    return `${distance} ${unit}`;
+  }
+
+  if (metricMode === "time") {
+    const timeText = formatSecondsToMMSS(se.seconds);
+    return timeText ? `${timeText}` : "completed interval";
+  }
+
   if (track.trackingMode === "weightedReps") {
     return formatWeightedRepsSetDisplay({
       weight: se.weight,
@@ -317,19 +330,6 @@ function formatCompletedSetForCoachSnapshot(
 
   if (track.trackingMode === "checkbox") {
     return (se.reps ?? 0) === 1 ? "completed" : null;
-  }
-
-  if (metricMode === "time") {
-    const timeText = formatSecondsToMMSS(se.seconds);
-    return timeText ? `${timeText}` : "completed interval";
-  }
-
-  if (metricMode === "distance") {
-    const distance = typeof se.distance === "number" && Number.isFinite(se.distance) ? se.distance : undefined;
-    if (distance === undefined) return "completed distance set";
-    const unit = ((se as any).distanceUnit as string | undefined) ?? "mi";
-    if (typeof se.weight === "number" && Number.isFinite(se.weight)) return `${se.weight} lbs • ${distance} ${unit}`;
-    return `${distance} ${unit}`;
   }
 
   const reps = typeof se.reps === "number" && Number.isFinite(se.reps) ? se.reps : undefined;
@@ -1529,12 +1529,24 @@ function ExerciseCard({
   }, [(track as any).variantId]);
 
   /* ------------------------------------------------------------------------
-     Breadcrumb 06.6 — Metric mode
+     Breadcrumb 06.6 ??? Metric mode
      ------------------------------------------------------------------------ */
   const metricMode = useMemo<MetricModeX>(() => {
     const m = (exercise as any)?.metricMode;
-    return m === "distance" || m === "time" ? m : "reps";
-  }, [exercise]);
+    if (m === "distance" || m === "time") return m;
+
+    const hasDistanceData = sets.some(
+      (row) => row.trackId === track.id && typeof row.distance === "number" && Number.isFinite(row.distance) && row.distance > 0
+    );
+    if (hasDistanceData) return "distance";
+
+    const hasSecondsData = sets.some(
+      (row) => row.trackId === track.id && typeof row.seconds === "number" && Number.isFinite(row.seconds) && row.seconds > 0
+    );
+    if (hasSecondsData || track.trackingMode === "timeSeconds") return "time";
+
+    return "reps";
+  }, [exercise, sets, track.id, track.trackingMode]);
 
   /* ------------------------------------------------------------------------
      Breadcrumb 06.7 — Loaded reps inference
@@ -2710,22 +2722,6 @@ function SetRow({
                 onFocus={() => openPad("reps")}
                 onClick={() => openPad("reps")}
                 readOnly
-                disabled={locked}
-              />
-              <div className="muted">—</div>
-            </>
-          )}
-
-          {!loadedReps && track.trackingMode === "timeSeconds" && (
-            <>
-              <div className="muted">—</div>
-              <input
-                className="cell-input"
-                placeholder="mm:ss"
-                value={formatSecondsToMMSS((se as any).seconds)}
-                inputMode="numeric"
-                type="text"
-                onChange={(e) => onChange(se.id, { seconds: parseTimeToSeconds(e.target.value) } as any)}
                 disabled={locked}
               />
               <div className="muted">—</div>
