@@ -19,6 +19,8 @@ test("IF journal import supports conditioning distance and duration sessions", a
 
     const walkingText = `Session: Walking
 Date: 2026-05-01
+Start: 17:25
+End: 18:29
 Notes: outside loop
 Walk
 conditioning BWx1km easy pace
@@ -58,6 +60,8 @@ conditioning BWx5min reset between rounds`;
       walkingSession,
       bodyCoreSession,
       walkingSets: walkingSets.map((row: any) => ({
+        id: row.id,
+        trackId: row.trackId,
         distance: row.distance,
         distanceUnit: row.distanceUnit,
         seconds: row.seconds,
@@ -66,6 +70,8 @@ conditioning BWx5min reset between rounds`;
         trackingMode: tracksById.get(row.trackId)?.trackingMode,
       })),
       bodyCoreSets: bodyCoreSets.map((row: any) => ({
+        id: row.id,
+        trackId: row.trackId,
         distance: row.distance,
         seconds: row.seconds,
         notes: row.notes,
@@ -121,4 +127,35 @@ conditioning BWx5min reset between rounds`;
   await goto(page, "/history");
   await expect(page.getByText("Walking")).toBeVisible({ timeout: 15000 });
   await expect(page.getByText("Body Core")).toBeVisible({ timeout: 15000 });
+  await expect(page.getByTestId(`history-metrics:${imported.walkingSession.id}`)).toContainText("3 km");
+  await expect(page.getByTestId(`history-metrics:${imported.walkingSession.id}`)).not.toContainText("0 lb");
+
+  await goto(page, `/session/${imported.walkingSession.id}`);
+  await expect(page.getByTestId("session-activity-metric")).toContainText("Distance 3 km");
+  await expect(page.getByTestId(`exercise-activity-time:${imported.walkingSets[0].trackId}`)).toContainText("1h 4m");
+  await expect(page.getByTestId(`exercise-activity-distance:${imported.walkingSets[0].trackId}`)).toContainText("3 km");
+  await expect(page.getByTestId(`working-table:${imported.walkingSets[0].trackId}`)).toContainText("Distance");
+  await expect(page.getByTestId(`set-distance:${imported.walkingSets[0].id}`)).toContainText("1 km");
+
+  await goto(page, `/session/${imported.bodyCoreSession.id}`);
+  await expect(page.getByTestId("session-activity-metric")).toContainText("Time 5m");
+  await expect(page.getByTestId(`exercise-activity-time:${imported.bodyCoreSets[0].trackId}`)).toContainText("5m");
+  await expect(page.getByTestId(`working-table:${imported.bodyCoreSets[0].trackId}`)).toContainText("Time");
+  await expect(page.getByTestId(`set-seconds:${imported.bodyCoreSets[0].id}`)).toContainText("5m");
+
+  await page.evaluate(async ({ sessionId, setId }) => {
+    // @ts-ignore
+    const db = window.__db;
+    const session = await db.sessions.get(sessionId);
+    if (session) await db.sessions.update(sessionId, { endedAt: undefined });
+    await db.sets.update(setId, { completedAt: undefined });
+  }, { sessionId: imported.bodyCoreSession.id, setId: imported.bodyCoreSets[0].id });
+
+  await goto(page, `/gym/${imported.bodyCoreSession.id}`);
+  const timeInput = page.getByRole("textbox", { name: "time" }).first();
+  await expect(timeInput).toBeVisible();
+  await expect(timeInput).toHaveValue("05:00");
+  await timeInput.fill("06:30");
+  await timeInput.blur();
+  await expect(timeInput).toHaveValue("06:30");
 });

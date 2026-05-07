@@ -42,6 +42,11 @@ import {
 } from "../domain/coaching/sessionSnapshot";
 import { safeParsePrsCount } from "../lib/safeParsePrsCount";
 import { computeSessionTotalLifted } from "../lib/sessionTotalLifted";
+import {
+  formatDistanceLabel,
+  formatDurationShortFromSeconds,
+  summarizeSessionActivityMetrics,
+} from "../lib/activityMetrics";
 
 /* =============================================================================
    Breadcrumb 0 — Types
@@ -137,12 +142,19 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
    Breadcrumb 1b — trackingMode normalization (IMPORT-SAFE)
    ============================================================================= */
 
+type SessionDisplayMode = CanonTrackingMode | "distance";
+
 function inferDisplayMode(
   track: Track,
   rows: SetEntry[],
-  weightEntryContextName: string
-): CanonTrackingMode {
+  weightEntryContextName: string,
+  exerciseMetricMode?: "reps" | "distance" | "time"
+): SessionDisplayMode {
   const normalized = normalizeTrackingMode((track as any).trackingMode);
+
+  const hasDistance = rows.some(
+    (se) => typeof (se as any).distance === "number" && Number.isFinite((se as any).distance) && (se as any).distance > 0
+  );
 
   const hasSeconds = rows.some(
     (se) => se.seconds !== undefined && se.seconds !== null
@@ -172,9 +184,12 @@ function inferDisplayMode(
   );
 
   // Let actual row data win over stale track metadata.
+  if (exerciseMetricMode === "distance" || hasDistance) return "distance";
   if (hasSeconds) return "timeSeconds";
   if ((hasPositiveWeight || hasLoggedBodyweightWeight) && hasReps) return "weightedReps";
   if (hasReps) return "repsOnly";
+
+  if (exerciseMetricMode === "time") return "timeSeconds";
 
   return normalized;
 }
@@ -384,9 +399,14 @@ export default function SessionDetailPage() {
       exerciseById,
       bodyMetrics: bodyMetrics ?? [],
     });
+    const activity = summarizeSessionActivityMetrics({
+      sets: sets ?? [],
+      trackById,
+      exerciseById,
+    });
 
     const prs = safeParsePrsCount(session?.prsJson);
-    return { dur, total, prs };
+    return { dur, total, prs, activity };
   }, [session?.startedAt, session?.endedAt, session?.prsJson, sets, trackById, exerciseById, bodyMetrics]);
 
   const currentTrackId = useMemo(() => {
@@ -601,8 +621,19 @@ export default function SessionDetailPage() {
               <span className="muted" data-testid="session-duration">
                 ⏱ {summary.dur}
               </span>
-              <span className="muted" data-testid="session-total-lifted">
-                🏋️ {fmtTotal(summary.total)} lb
+              <span
+                className="muted"
+                data-testid={
+                  summary.activity.distanceLabel || summary.activity.durationLabel
+                    ? "session-activity-metric"
+                    : "session-total-lifted"
+                }
+              >
+                {summary.activity.distanceLabel
+                  ? `Distance ${summary.activity.distanceLabel}`
+                  : summary.activity.durationLabel
+                    ? `Time ${summary.activity.durationLabel}`
+                    : `🏋️ ${fmtTotal(summary.total)} lb`}
               </span>
               <span className="muted" data-testid="session-prs">
                 🏆 {summary.prs} PR{summary.prs === 1 ? "" : "s"}
@@ -704,6 +735,23 @@ export default function SessionDetailPage() {
 
         const bucket = setsByTrack.get(track.id) ?? { warmup: [], working: [], drop: [], failure: [] };
         const workingRows = [...bucket.working, ...bucket.drop, ...bucket.failure];
+        const exerciseMetricMode = (exerciseById.get(track.exerciseId) as any)?.metricMode as
+          | "reps"
+          | "distance"
+          | "time"
+          | undefined;
+        const activitySummary =
+          track.trackType === "conditioning"
+            ? summarizeSessionActivityMetrics({
+                sets: [...bucket.warmup, ...workingRows],
+                trackById,
+                exerciseById,
+              })
+            : null;
+        const activityTimeLabel =
+          activitySummary?.durationLabel || (activitySummary?.distanceLabel ? summary.dur : "");
+        const activityDistanceLabel = activitySummary?.distanceLabel || "";
+        const showActivityMetrics = !!activityTimeLabel || !!activityDistanceLabel;
 
         // Planned notes (if this track was in the plan)
         const planned = plannedItems.find((p) => p.trackId === track.id);
@@ -746,6 +794,35 @@ export default function SessionDetailPage() {
               </div>
             )}
 
+            {showActivityMetrics && (
+              <div
+                data-testid={`exercise-activity-metrics:${track.id}`}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(120px, max-content))",
+                  gap: 12,
+                  marginTop: 10,
+                }}
+              >
+                {activityTimeLabel ? (
+                  <div data-testid={`exercise-activity-time:${track.id}`}>
+                    <div className="muted" style={{ fontSize: 12, marginBottom: 2 }}>
+                      Time
+                    </div>
+                    <div>{activityTimeLabel}</div>
+                  </div>
+                ) : null}
+                {activityDistanceLabel ? (
+                  <div data-testid={`exercise-activity-distance:${track.id}`}>
+                    <div className="muted" style={{ fontSize: 12, marginBottom: 2 }}>
+                      Distance
+                    </div>
+                    <div>{activityDistanceLabel}</div>
+                  </div>
+                ) : null}
+              </div>
+            )}
+
             <hr />
 
             {/* ================================================================
@@ -770,6 +847,7 @@ export default function SessionDetailPage() {
                     <ReadOnlySetTable
                       track={track}
                       exerciseName={String(exerciseById.get(track.exerciseId)?.name ?? "")}
+                      exerciseMetricMode={exerciseMetricMode}
                       rows={bucket.warmup}
                       tableTestId={`warmup-table:${track.id}`}
                     />
@@ -785,6 +863,7 @@ export default function SessionDetailPage() {
 	                      <ReadOnlySetTable
 	                        track={track}
 	                        exerciseName={String(exerciseById.get(track.exerciseId)?.name ?? "")}
+	                        exerciseMetricMode={exerciseMetricMode}
 	                        rows={workingRows}
 	                        tableTestId={`working-table:${track.id}`}
 	                      />
@@ -814,16 +893,18 @@ export default function SessionDetailPage() {
 function ReadOnlySetTable({
   track,
   exerciseName,
+  exerciseMetricMode,
   rows,
   tableTestId,
 }: {
   track: Track;
   exerciseName: string;
+  exerciseMetricMode?: "reps" | "distance" | "time";
   rows: SetEntry[];
   tableTestId?: string;
 }) {
-    const weightEntryContextName = [exerciseName, track.displayName].filter(Boolean).join(" ").trim();
-    const mode = inferDisplayMode(track, rows, weightEntryContextName);
+  const weightEntryContextName = [exerciseName, track.displayName].filter(Boolean).join(" ").trim();
+  const mode = inferDisplayMode(track, rows, weightEntryContextName, exerciseMetricMode);
 
   const headers: string[] = (() => {
     switch (mode) {
@@ -831,20 +912,23 @@ function ReadOnlySetTable({
         return ["Weight", "Reps", "RIR"];
       case "repsOnly":
         return ["Reps"];
+      case "distance":
+        return ["Distance"];
       case "timeSeconds":
-        return ["Seconds"];
+        return ["Time"];
       case "breaths":
         return ["Breaths"];
       case "checkbox":
         return ["Done"];
       default:
-        // Safe fallback for unknown modes
         return ["Weight", "Reps", "RIR"];
     }
   })();
 
   function cellAlign(h: string) {
-    if (h === "Weight" || h === "Reps" || h === "RIR" || h === "Seconds" || h === "Breaths") return "right";
+    if (h === "Weight" || h === "Reps" || h === "RIR" || h === "Time" || h === "Breaths" || h === "Distance") {
+      return "right";
+    }
     return "left";
   }
 
@@ -852,98 +936,86 @@ function ReadOnlySetTable({
     const badge = se.setType === "drop" ? "DROP" : se.setType === "failure" ? "FAIL" : undefined;
 
     switch (mode) {
-            case "weightedReps": {
-	      const hasLoggedWeight =
-	        typeof se.weight === "number" &&
-	        Number.isFinite(se.weight);
-	    
-	      const w = hasLoggedWeight ? (se.weight === 0 ? "BW" : se.weight) : "BW";
-	    
-	      const r =
-	        se.reps !== undefined && se.reps !== null
-	          ? se.reps
-	          : "—";
-	    
-	      const rir =
-	        (se as any).rir !== undefined && (se as any).rir !== null
-	          ? (se as any).rir
-	          : "—";
-	    
-	      return (
-	        <>
-	          <td style={{ textAlign: "right" }} data-testid={`set-weight:${se.id}`}>
-	            {w}
-	          </td>
-	          <td style={{ textAlign: "right" }} data-testid={`set-reps:${se.id}`}>
-	            {r}
-	            {badge && (
-	              <span
-	                className="muted"
-	                style={{
-	                  marginLeft: 8,
-	                  fontSize: 12,
-	                  border: "1px solid var(--line)",
-	                  padding: "2px 6px",
-	                  borderRadius: 999,
-	                  verticalAlign: "middle",
-	                }}
-	                data-testid={`set-badge:${se.id}`}
-	              >
-	                {badge}
-	              </span>
-	            )}
-	          </td>
-	          <td style={{ textAlign: "right" }} data-testid={`set-rir:${se.id}`}>
-	            {rir}
-	          </td>
-	        </>
-	      );
-             }
+      case "weightedReps": {
+        const hasLoggedWeight = typeof se.weight === "number" && Number.isFinite(se.weight);
+        const w = hasLoggedWeight ? (se.weight === 0 ? "BW" : se.weight) : "BW";
+        const r = se.reps !== undefined && se.reps !== null ? se.reps : "?";
+        const rir = (se as any).rir !== undefined && (se as any).rir !== null ? (se as any).rir : "?";
+
+        return (
+          <>
+            <td style={{ textAlign: "right" }} data-testid={`set-weight:${se.id}`}>
+              {w}
+            </td>
+            <td style={{ textAlign: "right" }} data-testid={`set-reps:${se.id}`}>
+              {r}
+              {badge ? (
+                <span
+                  className="muted"
+                  style={{
+                    marginLeft: 8,
+                    fontSize: 12,
+                    border: "1px solid var(--line)",
+                    padding: "2px 6px",
+                    borderRadius: 999,
+                    verticalAlign: "middle",
+                  }}
+                  data-testid={`set-badge:${se.id}`}
+                >
+                  {badge}
+                </span>
+              ) : null}
+            </td>
+            <td style={{ textAlign: "right" }} data-testid={`set-rir:${se.id}`}>
+              {rir}
+            </td>
+          </>
+        );
+      }
 
       case "repsOnly":
         return (
           <td style={{ textAlign: "right" }} data-testid={`set-reps:${se.id}`}>
-            {se.reps ?? "—"}
+            {se.reps ?? "?"}
+          </td>
+        );
+
+      case "distance":
+        return (
+          <td style={{ textAlign: "right" }} data-testid={`set-distance:${se.id}`}>
+            {formatDistanceLabel((se as any).distance, ((se as any).distanceUnit as string | undefined) ?? "m") || "?"}
           </td>
         );
 
       case "timeSeconds":
         return (
           <td style={{ textAlign: "right" }} data-testid={`set-seconds:${se.id}`}>
-            {se.seconds ?? "—"}
+            {formatDurationShortFromSeconds(se.seconds) || "?"}
           </td>
         );
 
       case "breaths":
         return (
           <td style={{ textAlign: "right" }} data-testid={`set-breaths:${se.id}`}>
-            {se.reps ?? "—"}
+            {se.reps ?? "?"}
           </td>
         );
 
       case "checkbox":
         return <td data-testid={`set-done:${se.id}`}>{(se.reps ?? 0) === 1 ? "Yes" : "No"}</td>;
 
-            default:
-	      return (
-	        <>
-	          <td style={{ textAlign: "right" }}>
-	            {typeof se.weight === "number" &&
-	             Number.isFinite(se.weight) &&
-	             se.weight > 0
-	              ? se.weight
-	              : "BW"}
-	          </td>
-	          <td style={{ textAlign: "right" }}>
-	            {se.reps !== undefined && se.reps !== null ? se.reps : "—"}
-	          </td>
-	          <td style={{ textAlign: "right" }}>
-	            {(se as any).rir !== undefined && (se as any).rir !== null
-	              ? (se as any).rir
-	              : "—"}
-	          </td>
-	        </>
-              );
+      default:
+        return (
+          <>
+            <td style={{ textAlign: "right" }}>
+              {typeof se.weight === "number" && Number.isFinite(se.weight) && se.weight > 0 ? se.weight : "BW"}
+            </td>
+            <td style={{ textAlign: "right" }}>{se.reps !== undefined && se.reps !== null ? se.reps : "?"}</td>
+            <td style={{ textAlign: "right" }}>
+              {(se as any).rir !== undefined && (se as any).rir !== null ? (se as any).rir : "?"}
+            </td>
+          </>
+        );
     }
   }
 

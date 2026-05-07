@@ -664,6 +664,86 @@ conditioning BWx30s`);
   ]);
 });
 
+test("Paste Workout stores conditioning km entries as distance activity and shows them correctly across History, Session Detail, and Gym Mode", async ({
+  page,
+}) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Walking (Recovery / Conditioning)
+Date: 2026-05-05
+Start: 17:25
+End: 18:29
+
+  Walk
+conditioning BWx5.39km`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+
+  await expect(page.getByText(/Logged as conditioning work\. Excluded from strength metrics\./i)).toBeVisible();
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const imported = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const sessions = await db.sessions.toArray();
+    const session = sessions.find((row: any) => row.templateName === "Walking (Recovery / Conditioning)");
+    if (!session) throw new Error("Walking session not found");
+    const sets = await db.sets.where("sessionId").equals(session.id).toArray();
+    const tracks = await db.tracks.toArray();
+    const exercises = await db.exercises.toArray();
+    const set = sets[0];
+    const track = tracks.find((row: any) => row.id === set.trackId);
+    const exercise = exercises.find((row: any) => row.id === track.exerciseId);
+    return {
+      sessionId: session.id,
+      setId: set.id,
+      trackId: track.id,
+      trackType: track.trackType,
+      trackingMode: track.trackingMode,
+      metricMode: exercise.metricMode,
+      distance: set.distance,
+      distanceUnit: set.distanceUnit,
+      seconds: set.seconds,
+      reps: set.reps,
+    };
+  });
+
+  expect(imported).toMatchObject({
+    trackType: "conditioning",
+    trackingMode: "repsOnly",
+    metricMode: "distance",
+    distance: 5390,
+    distanceUnit: "m",
+    seconds: undefined,
+    reps: undefined,
+  });
+
+  await page.goto(new URL("/history", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId(`history-metrics:${imported.sessionId}`)).toContainText("5.39 km");
+  await expect(page.getByTestId(`history-metrics:${imported.sessionId}`)).not.toContainText("0 lb");
+
+  await page.goto(new URL(`/session/${imported.sessionId}`, BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("session-activity-metric")).toContainText("Distance 5.39 km");
+  await expect(page.getByTestId(`working-table:${imported.trackId}`)).toContainText("Distance");
+  await expect(page.getByTestId(`set-distance:${imported.setId}`)).toContainText("5.39 km");
+  await expect(page.getByTestId(`working-table:${imported.trackId}`)).not.toContainText("Seconds");
+
+  await page.evaluate(async ({ sessionId, setId }) => {
+    // @ts-ignore
+    const db = window.__db;
+    await db.sessions.update(sessionId, { endedAt: undefined });
+    await db.sets.update(setId, { completedAt: undefined });
+  }, { sessionId: imported.sessionId, setId: imported.setId });
+
+  await page.goto(new URL(`/gym/${imported.sessionId}`, BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("textbox", { name: "distance" }).first()).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "distance unit" }).first()).toHaveValue("m");
+  await expect(page.getByRole("textbox", { name: "time" })).toHaveCount(0);
+});
+
 test("Paste Workout keeps corrective entries on a corrective track even when a strength track already exists", async ({
   page,
 }) => {
