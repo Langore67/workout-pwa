@@ -802,8 +802,8 @@ export default function BodyPage() {
       <Section>
         <div style={{ fontWeight: 900, fontSize: 18 }}>Body metrics</div>
         <div className="muted" style={{ marginTop: 6 }}>
-          Quick entry. All fields optional. Hume handles detailed trends — we store snapshots for
-          coaching context.
+          Log weight, waist, and body measurements. All snapshot fields are optional.
+          Log weight, waist, and body measurements. All snapshot fields are optional.
         </div>
 
         {/* ------------------------------------------------------------------
@@ -1024,7 +1024,7 @@ export default function BodyPage() {
                 ))
               ) : (
                 <div className="muted" style={{ fontSize: 13 }}>
-                  No measurements yet for {selectedMeasurementDef.label.toLowerCase()}.
+                  No measurements yet for {selectedMeasurementDef.label.toLowerCase()} - add your first entry.
                 </div>
               )}
             </div>
@@ -1343,7 +1343,7 @@ export default function BodyPage() {
               ))
             ) : (
               <div className="muted" style={{ fontSize: 13 }}>
-                No entries yet.
+                No body entries yet - add your first weight or waist snapshot.
               </div>
             )}
           </div>

@@ -277,7 +277,7 @@ export default function ProgressPage() {
         <h2 style={{ marginTop: 0, marginBottom: 8 }}>Progress</h2>
 
         <div className="muted" style={{ lineHeight: 1.45 }}>
-          Strength trends, body metrics, walking volume, and muscle preservation.
+          Review strength, body, conditioning, and recovery-related trends in one place.
         </div>
 
         <div className="row" style={{ gap: 10, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
@@ -291,12 +291,12 @@ export default function ProgressPage() {
           <InfoStubButton pageKey="progress" infoKey="coachExport" />
           <div className="muted" style={{ fontSize: 13, flex: "1 1 220px", minWidth: 0 }}>
             {coachExportReadyState === "preparing"
-              ? "Preparing a copy/paste summary for ChatGPT."
+              ? "Preparing a copy/paste summary for ChatGPT or a coach."
               : copyState === "copied"
               ? "Coach export copied."
               : copyState === "error"
                 ? "Copy not available on this device. Tap and hold to copy manually."
-                : "Creates a copy/paste summary for ChatGPT analysis."}
+                : "Creates a copy/paste summary for ChatGPT or a coach."}
           </div>
         </div>
 
@@ -371,14 +371,21 @@ export default function ProgressPage() {
         <ProgressTile
           eyebrow="Performance"
           title="Strength"
-          subtitle="Estimated 1RM, trend snapshots, and lifting performance."
+          subtitle="Track long-term strength trends from completed working sets."
           onClick={() => nav("/strength")}
         />
 
         <ProgressTile
-          eyebrow="Body Composition"
+          eyebrow="Body Metrics"
           title="Body"
-          subtitle="Weight, body fat, lean mass, and body-composition tracking."
+          subtitle="Track weight, waist, and body measurements."
+          onClick={() => nav("/body")}
+        />
+
+        <ProgressTile
+          eyebrow="Body Composition"
+          title="Body Composition"
+          subtitle="Review body fat, lean mass, hydration, and phase-aware trends."
           onClick={() => nav("/body-composition")}
         />
 
