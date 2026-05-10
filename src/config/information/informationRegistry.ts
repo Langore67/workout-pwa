@@ -703,6 +703,44 @@ export const informationRegistry = {
     }),
   },
   bodyComposition: {
+    goal_targets: {
+      title: "Goal Targets",
+      ownerPage: "BodyCompositionPage",
+      ownerComponent: "Goal Targets section",
+      status: "reviewed",
+      lastReviewedBuild: "2026-05-10-INFO-BODYCOMP-01",
+      lastReviewedAt: "2026-05-10",
+      summary:
+        "Goal Targets shows your selected body-composition target for the current phase.",
+      whyItMatters:
+        "Targets make it easier to compare your latest body data with the direction you are trying to achieve.",
+      howItWorks:
+        "The section compares your latest body-composition snapshot against saved target values and shows how far each metric is from goal.",
+      howToUseIt:
+        "Use Goal Targets as orientation, not as a daily pass/fail score.",
+      interpretation: [
+        "The section is most useful when read together with Current Status and Phase Quality.",
+      ],
+    },
+    current_status: {
+      title: "Current Status",
+      ownerPage: "BodyCompositionPage",
+      ownerComponent: "Current Status section",
+      status: "reviewed",
+      lastReviewedBuild: "2026-05-10-INFO-BODYCOMP-01",
+      lastReviewedAt: "2026-05-10",
+      summary:
+        "Current Status shows your latest body-composition status compared with recent trend and goal context.",
+      whyItMatters:
+        "It gives a quick read on where weight, waist, body fat, and lean mass stand right now.",
+      howItWorks:
+        "The section uses the latest body snapshot and recent deltas to show current values and near-term direction.",
+      howToUseIt:
+        "Use Current Status as the first read before moving into deeper chart interpretation.",
+      interpretation: [
+        "Small short-term changes can be noisy, so read the section together with the trend charts and confidence signals.",
+      ],
+    },
     weightTrend: buildMovingPaneChartEntry({
       title: "Weight Trend",
       ownerPage: "BodyCompositionPage",

@@ -601,7 +601,7 @@ export default function StrengthPage() {
 	  <Section>
 	    <ProgressPageHeader
 	      breadcrumb="← Progress / Strength"
-	      description="Estimated 1RM, trend snapshots, and lifting performance."
+	      description="Track long-term strength trends from completed working sets."
 	      onBreadcrumbClick={() => navigate("/progress")}
 	    />
       </Section>
@@ -641,9 +641,7 @@ export default function StrengthPage() {
 	            </div>
 	  
 	            <div className="muted" style={{ marginTop: 8, fontSize: 13, lineHeight: 1.45 }}>
-	              Strength Signal is IronForge&apos;s primary strength trend metric. It blends
-	              squat, hinge, push, and pull performance, uses allometric normalization
-	              (BW^0.67), and keeps Relative Strength as a secondary comparison lens.
+	              A blended score based on your recent strength performance.
 	            </div>
 	  
           <hr style={{ marginTop: 12 }} />
@@ -671,8 +669,8 @@ export default function StrengthPage() {
                 </button>
               </div>
             </div>
-          ) : !result ? (
-            <div className="muted">No data yet (log some completed working sets).</div>
+	          ) : !result ? (
+	            <div className="muted">No strength data yet - finish a workout with completed working sets.</div>
           ) : (
             <>
               <div className="card" style={{ padding: 16, marginBottom: 12 }}>
@@ -696,8 +694,7 @@ export default function StrengthPage() {
                 </div>
 
                 <div className="muted" style={{ marginTop: 8, lineHeight: 1.45 }}>
-                  Primary blended strength trend using Epley-based e1RM scoring, allometric
-                  normalization (BW^0.67), and weekly snapshots from overlapping <b>{windowDays}</b>-day windows.
+                  A blended score based on recent working sets, estimated strength, and bodyweight context.
                 </div>
 
                 <div
