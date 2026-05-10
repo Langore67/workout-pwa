@@ -475,8 +475,18 @@ export default function StartPage() {
           <div>
             <div style={{ fontWeight: 900, fontSize: 22 }}>Start</div>
             <div className="muted" style={{ marginTop: 4 }}>
-              Resume a workout, start an ad-hoc session, or manage templates.
+              Start your first workout, resume an active session, or launch a saved template.
             </div>
+          </div>
+        </div>
+
+        <div className="card" style={{ marginTop: 12, padding: 12 }}>
+          <div className="muted" style={{ fontSize: 13, lineHeight: 1.5 }}>
+            IronForge is a training log for strength workouts, body metrics, and conditioning activity.
+          </div>
+          <div className="muted" style={{ fontSize: 13, lineHeight: 1.5, marginTop: 8 }}>
+            Use Start to log a workout, History to review sessions and PRs, Progress to review trends,
+            and Body to log weight, waist, and measurements.
           </div>
         </div>
 
@@ -500,7 +510,7 @@ export default function StartPage() {
 
           <StartActionCard
             title="Start Empty Workout"
-            subtitle="Build a workout on the fly"
+            subtitle="Build a workout on the fly and start logging sets"
             onClick={startEmptyWorkout}
           />
 

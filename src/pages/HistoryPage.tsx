@@ -704,7 +704,7 @@ export default function HistoryPage() {
         </h2>
       </div>
 
-      <p className="muted">Review past sessions. Resume anything still in progress.</p>
+      <p className="muted">Review past workouts and conditioning sessions. Resume anything still in progress.</p>
       <div
         className="row"
         style={{ gap: 8, flexWrap: "wrap", marginTop: 10, marginBottom: 2 }}
@@ -818,7 +818,7 @@ export default function HistoryPage() {
                 })
               ) : (
                 <p className="muted" style={{ marginTop: 10 }}>
-                  No in-progress sessions.
+                  No active sessions right now.
                 </p>
               )}
             </div>
@@ -907,7 +907,7 @@ export default function HistoryPage() {
                   </div>
                 ))              ) : (
                 <p className="muted" style={{ marginTop: 10 }}>
-                  No completed sessions yet.
+                  No completed sessions yet - start your first workout from Start.
                 </p>
               )}
             </div>

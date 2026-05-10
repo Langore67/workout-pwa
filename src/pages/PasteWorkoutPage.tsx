@@ -226,6 +226,38 @@ work 95x10 @5
 work 105x10 @4
 work 105x10 @4`;
 
+const CHATGPT_FORMAT_PROMPT = `Convert the following workout notes into IronForge format.
+
+Use exactly this structure:
+
+Session: <name>
+Date: YYYY-MM-DD
+Start: HH:mm
+End: HH:mm
+
+Exercise Name
+warmup 95x10
+work 135x8 @2
+
+Session Notes:
+- optional notes here
+
+Supported set types:
+warmup, work, technique, mobility, corrective, conditioning
+
+Formatting rules:
+- One exercise name per line.
+- One set per line under the exercise.
+- Use BW for bodyweight movements.
+- Use @RIR for work sets when RIR is known.
+- Use conditioning BWx5.39km for distance conditioning.
+- Use conditioning BWx60s for time conditioning.
+- Keep all notes under Session Notes.
+- Return only the IronForge-formatted workout.
+
+Workout notes:
+<paste notes here>`;
+
 /* ============================================================================
    Breadcrumb 3 — Local storage helpers
    ============================================================================ */
@@ -907,6 +939,7 @@ export default function PasteWorkoutPage() {
   const [reviewAcknowledged, setReviewAcknowledged] = useState<boolean>(false);
   const [selectedExistingByName, setSelectedExistingByName] = useState<Record<string, string>>({});
   const [rememberAliasByName, setRememberAliasByName] = useState<Record<string, boolean>>({});
+  const [promptCopyState, setPromptCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [lastImport, setLastImport] = useState<LastPasteImportRecord | null>(() =>
     loadLastImport()
   );
@@ -979,6 +1012,22 @@ export default function PasteWorkoutPage() {
   /* --------------------------------------------------------------------------
      Breadcrumb 6 — Preview parse + dry run summary
      ----------------------------------------------------------------------- */
+
+  async function copyChatGptPrompt() {
+    try {
+      if (!navigator?.clipboard?.writeText) throw new Error("clipboard unavailable");
+      await navigator.clipboard.writeText(CHATGPT_FORMAT_PROMPT);
+      setPromptCopyState("copied");
+      window.setTimeout(() => {
+        setPromptCopyState((current) => (current === "copied" ? "idle" : current));
+      }, 1800);
+    } catch {
+      setPromptCopyState("error");
+      window.setTimeout(() => {
+        setPromptCopyState((current) => (current === "error" ? "idle" : current));
+      }, 2200);
+    }
+  }
 
   async function buildPreview(parsedWorkout: ParsedWorkout): Promise<PreviewSummary> {
     const existingExercises = await db.exercises.toArray();
@@ -1551,6 +1600,61 @@ export default function PasteWorkoutPage() {
         directly into <b>Exercises</b> + <b>Tracks</b> + <b>Sessions</b> +{" "}
         <b>SessionItems</b> + <b>Sets</b>.
       </p>
+
+      <details
+        style={{
+          marginTop: 12,
+          border: "1px solid var(--border)",
+          borderRadius: 14,
+          padding: 12,
+          background: "var(--card)",
+        }}
+      >
+        <summary style={{ cursor: "pointer", fontWeight: 700 }}>
+          Need help formatting a workout?
+        </summary>
+
+        <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <div className="muted" style={{ fontSize: 13 }}>
+              Copy this full prompt into ChatGPT, then paste your notes at the bottom.
+            </div>
+            <button className="btn small" type="button" onClick={copyChatGptPrompt}>
+              {promptCopyState === "copied"
+                ? "Copied"
+                : promptCopyState === "error"
+                ? "Copy failed"
+                : "Copy"}
+            </button>
+          </div>
+
+          <pre
+            style={{
+              margin: 0,
+              padding: 12,
+              borderRadius: 12,
+              border: "1px solid var(--border)",
+              background: "var(--bg)",
+              color: "var(--text)",
+              fontSize: 13,
+              lineHeight: 1.45,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+            }}
+          >
+            {CHATGPT_FORMAT_PROMPT}
+          </pre>
+        </div>
+      </details>
 
       <hr />
 
