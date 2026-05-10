@@ -21,6 +21,7 @@
    - v15 Add appLogs table for import/export/restore/wipe/system events
    - v16 Add bodyMetrics.leanMassLb
    - v17 Add bodyMetrics.bodyFatMassLb, icwLb, ecwLb, mineralMassLb
+   - v18 Add bodyMeasurements table for dated body-part entries
    ============================================================================ */
 
 import Dexie, { Table } from "dexie";
@@ -314,6 +315,32 @@ export interface BodyMetricEntry {
   createdAt: number;
 }
 
+export type BodyMeasurementKey =
+  | "height"
+  | "neck"
+  | "shoulders"
+  | "chest"
+  | "rightBiceps"
+  | "rightForearm"
+  | "leftBiceps"
+  | "leftForearm"
+  | "hips"
+  | "rightQuad"
+  | "leftQuad"
+  | "rightCalf"
+  | "leftCalf";
+
+export interface BodyMeasurementEntry {
+  id: UUID;
+  measurementKey: BodyMeasurementKey;
+  valueIn: number;
+  measuredAt: number;
+  source?: string;
+  note?: string;
+  createdAt: number;
+  updatedAt?: number;
+}
+
 export interface WalkEntry {
   id: UUID;
   date: number;
@@ -380,6 +407,7 @@ export class WorkoutDB extends Dexie {
   walks!: Table<WalkEntry, UUID>;
   trackPrs!: Table<TrackPRs, UUID>;
   bodyMetrics!: Table<BodyMetricEntry, UUID>;
+  bodyMeasurements!: Table<BodyMeasurementEntry, UUID>;
   app_meta!: Table<AppMeta, string>;
   appLogs!: Table<AppLogEntry, UUID>;
 
@@ -1037,6 +1065,37 @@ export class WorkoutDB extends Dexie {
             });
           });
     // ===== END OF v17 =====
+        // v18
+        this.version(18)
+          .stores({
+            exercises:
+              "id, &normalizedName, name, bodyPart, category, equipment, archivedAt, mergedIntoExerciseId, createdAt",
+            exerciseVariants:
+              "id, exerciseId, [exerciseId+normalizedName], name, archivedAt, mergedIntoVariantId, createdAt",
+            tracks: "id, exerciseId, variantId, trackType, displayName, createdAt",
+            folders: "id, orderIndex, name, archivedAt, createdAt",
+            templates: "id, name, createdAt, folderId, archivedAt, orderIndex, lastPerformedAt",
+            templateItems: "id, templateId, orderIndex, trackId, groupId, createdAt",
+            sessions: "id, startedAt, endedAt, templateId, updatedAt, deletedAt",
+            sessionItems: "id, sessionId, orderIndex, trackId, createdAt",
+            sets: "id, sessionId, trackId, createdAt, setType, completedAt, updatedAt, deletedAt",
+            walks: "id, date, updatedAt, deletedAt",
+            trackPrs: "trackId, updatedAt",
+            bodyMetrics:
+              "id, measuredAt, takenAt, createdAt, weightLb, waistIn, bodyFatPct, bodyFatMassLb, leanMassLb, skeletalMuscleMassLb, visceralFatIndex, bodyWaterPct, icwLb, ecwLb, mineralMassLb",
+            bodyMeasurements:
+              "id, measurementKey, measuredAt, createdAt, updatedAt, [measurementKey+measuredAt]",
+            app_meta: "key, updatedAt",
+            appLogs: "id, createdAt, type, level",
+          })
+          .upgrade(async (tx) => {
+            await tx.table("bodyMeasurements").toCollection().modify((m: any) => {
+              if (m.source === null) m.source = undefined;
+              if (m.note === null) m.note = undefined;
+              if (m.updatedAt === null) m.updatedAt = undefined;
+            });
+          });
+    // ===== END OF v18 =====
   }
 }
 
