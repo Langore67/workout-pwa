@@ -43,7 +43,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
-import { db } from "../db";
+import { db, type BodyMeasurementEntry, type BodyMeasurementKey } from "../db";
 import { uuid } from "../utils";
 import { Page, Section } from "../components/Page.tsx";
 import VisxTrendChartCard from "../components/charts/VisxTrendChartCard";
@@ -86,8 +86,62 @@ type BodyMetricRow = {
   createdAt?: number;
 };
 
+type BodyMetricsView = "snapshots" | "measurements";
+type MeasurementComposerState = {
+  measurementKey: BodyMeasurementKey;
+  valueIn: string;
+  date: string;
+  time: string;
+};
+
 const HEIGHT_META_KEY = "profile.heightIn";
 const RECENT_ROWS_DEFAULT = 8;
+const MEASUREMENT_DEFS: Array<{
+  key: BodyMeasurementKey;
+  label: string;
+  group: "Torso / Frame" | "Arms" | "Legs";
+  placeholder: string;
+}> = [
+  { key: "height", label: "Height", group: "Torso / Frame", placeholder: "71.75" },
+  { key: "neck", label: "Neck", group: "Torso / Frame", placeholder: "14.5" },
+  { key: "shoulders", label: "Shoulders", group: "Torso / Frame", placeholder: "47.75" },
+  { key: "chest", label: "Chest", group: "Torso / Frame", placeholder: "41.0" },
+  { key: "hips", label: "Hips", group: "Torso / Frame", placeholder: "41.75" },
+  { key: "rightBiceps", label: "Right biceps", group: "Arms", placeholder: "15.0" },
+  { key: "rightForearm", label: "Right forearm", group: "Arms", placeholder: "11.25" },
+  { key: "leftBiceps", label: "Left biceps", group: "Arms", placeholder: "14.75" },
+  { key: "leftForearm", label: "Left forearm", group: "Arms", placeholder: "11.0" },
+  { key: "rightQuad", label: "Right quad", group: "Legs", placeholder: "23.5" },
+  { key: "leftQuad", label: "Left quad", group: "Legs", placeholder: "23.25" },
+  { key: "rightCalf", label: "Right calf", group: "Legs", placeholder: "16.0" },
+  { key: "leftCalf", label: "Left calf", group: "Legs", placeholder: "15.75" },
+];
+const MEASUREMENT_GROUPS: Array<{
+  title: "Torso / Frame" | "Arms" | "Legs";
+  keys: BodyMeasurementKey[];
+}> = [
+  {
+    title: "Torso / Frame",
+    keys: ["height", "neck", "shoulders", "chest", "hips"],
+  },
+  {
+    title: "Arms",
+    keys: ["rightBiceps", "rightForearm", "leftBiceps", "leftForearm"],
+  },
+  {
+    title: "Legs",
+    keys: ["rightQuad", "leftQuad", "rightCalf", "leftCalf"],
+  },
+];
+const EMPTY_MEASUREMENT_COMPOSER = (): MeasurementComposerState => {
+  const now = new Date();
+  return {
+    measurementKey: "neck",
+    valueIn: "",
+    date: formatDateInputValue(now),
+    time: formatTimeInputValue(now),
+  };
+};
 
 /* ----------------------------------------------------------------------------
    Breadcrumb 1 — Helpers
@@ -150,6 +204,66 @@ function show(v: number | undefined, digits = 1) {
   return f;
 }
 
+function formatDateInputValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatTimeInputValue(date: Date): string {
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+function parseMeasuredAt(dateText: string, timeText: string): number | undefined {
+  const stamp = `${String(dateText || "").trim()}T${String(timeText || "").trim() || "00:00"}`;
+  const ms = new Date(stamp).getTime();
+  return Number.isFinite(ms) ? ms : undefined;
+}
+
+function formatMeasurementValueInches(valueIn: number | undefined): string {
+  if (valueIn == null || !Number.isFinite(valueIn) || valueIn <= 0) return "-";
+  return `${show(valueIn, 2)} in`;
+}
+
+function formatHeightFeetInches(valueIn: number | undefined): string {
+  if (valueIn == null || !Number.isFinite(valueIn) || valueIn <= 0) return "-";
+  const feet = Math.floor(valueIn / 12);
+  const inches = valueIn - feet * 12;
+  return `${feet} ft ${show(inches, 2)} in`;
+}
+
+function formatMeasurementLatestValue(
+  measurementKey: BodyMeasurementKey,
+  entry?: BodyMeasurementEntry,
+  fallbackHeightIn?: number,
+): string {
+  const valueIn = entry?.valueIn ?? (measurementKey === "height" ? fallbackHeightIn : undefined);
+  if (measurementKey === "height") return formatHeightFeetInches(valueIn);
+  return formatMeasurementValueInches(valueIn);
+}
+
+function formatMeasurementHistoryValue(
+  measurementKey: BodyMeasurementKey,
+  valueIn: number | undefined,
+): string {
+  if (measurementKey === "height") return formatMeasurementValueInches(valueIn);
+  return formatMeasurementValueInches(valueIn);
+}
+
+function getMeasurementDef(key: BodyMeasurementKey) {
+  return (
+    MEASUREMENT_DEFS.find((item) => item.key === key) ?? {
+      key,
+      label: key,
+      group: "Torso / Frame" as const,
+      placeholder: "",
+    }
+  );
+}
+
 /* ----------------------------------------------------------------------------
    Breadcrumb 2 — Page
    ----------------------------------------------------------------------------
@@ -164,6 +278,8 @@ function show(v: number | undefined, digits = 1) {
 export default function BodyPage() {
   const navigate = useNavigate();
   const table = db.bodyMetrics;
+  const measurementsTable = db.bodyMeasurements;
+  const [activeMetricsView, setActiveMetricsView] = useState<BodyMetricsView>("snapshots");
 
   /* ------------------------------------------------------------------------
      Breadcrumb 2A — Profile state
@@ -174,9 +290,13 @@ export default function BodyPage() {
      Why this matters
      - Height is not a daily snapshot metric
      - It is a persistent profile metric used later for derived analysis
-     ------------------------------------------------------------------------ */
+  ------------------------------------------------------------------------ */
   const [heightIn, setHeightIn] = useState("");
-  const [heightLoaded, setHeightLoaded] = useState(false);
+  const [selectedMeasurementKey, setSelectedMeasurementKey] = useState<BodyMeasurementKey>("height");
+  const [isAddingMeasurement, setIsAddingMeasurement] = useState(false);
+  const [measurementComposer, setMeasurementComposer] = useState<MeasurementComposerState>(
+    EMPTY_MEASUREMENT_COMPOSER(),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -192,7 +312,7 @@ export default function BodyPage() {
       } catch {
         // ignore
       } finally {
-        if (!cancelled) setHeightLoaded(true);
+        // ignore
       }
     }
 
@@ -202,6 +322,51 @@ export default function BodyPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    setMeasurementComposer((current) => ({ ...current, measurementKey: selectedMeasurementKey }));
+  }, [selectedMeasurementKey]);
+
+  const bodyMeasurementRows = useLiveQuery(async () => {
+    const arr = ((await measurementsTable.orderBy("measuredAt").reverse().toArray()) ?? []) as BodyMeasurementEntry[];
+    return arr.filter(
+      (entry) =>
+        entry &&
+        typeof entry.measurementKey === "string" &&
+        typeof entry.measuredAt === "number" &&
+        Number.isFinite(entry.measuredAt) &&
+        typeof entry.valueIn === "number" &&
+        Number.isFinite(entry.valueIn) &&
+        entry.valueIn > 0,
+    );
+  }, []);
+
+  const parsedHeightIn = useMemo(() => {
+    const value = Number(heightIn);
+    return Number.isFinite(value) && value > 0 ? value : undefined;
+  }, [heightIn]);
+
+  const measurementEntriesByKey = useMemo(() => {
+    const map = new Map<BodyMeasurementKey, BodyMeasurementEntry[]>();
+    for (const def of MEASUREMENT_DEFS) map.set(def.key, []);
+    for (const entry of bodyMeasurementRows ?? []) {
+      const bucket = map.get(entry.measurementKey);
+      if (bucket) bucket.push(entry);
+    }
+    return map;
+  }, [bodyMeasurementRows]);
+
+  const latestMeasurementByKey = useMemo(() => {
+    const map = new Map<BodyMeasurementKey, BodyMeasurementEntry | undefined>();
+    for (const def of MEASUREMENT_DEFS) {
+      map.set(def.key, measurementEntriesByKey.get(def.key)?.[0]);
+    }
+    return map;
+  }, [measurementEntriesByKey]);
+
+  const selectedMeasurementDef = getMeasurementDef(selectedMeasurementKey);
+  const selectedMeasurementEntries = measurementEntriesByKey.get(selectedMeasurementKey) ?? [];
+  const selectedLatestMeasurement = latestMeasurementByKey.get(selectedMeasurementKey);
 
   /* ------------------------------------------------------------------------
      Breadcrumb 2B — Body form state
@@ -253,7 +418,6 @@ export default function BodyPage() {
     mineralMassLb,
   ]);
 
-  const hasHeightInput = !!heightIn.trim();
 
   /* ------------------------------------------------------------------------
      Breadcrumb 2C — History display state
@@ -420,28 +584,72 @@ export default function BodyPage() {
      Breadcrumb 3 — Actions
      ------------------------------------------------------------------------ */
 
-  async function saveHeight() {
-    const h = toNumOrUndef(heightIn);
+  function openMeasurementComposer(measurementKey: BodyMeasurementKey) {
+    const latest = latestMeasurementByKey.get(measurementKey);
+    const now = new Date();
+    setSelectedMeasurementKey(measurementKey);
+    setMeasurementComposer({
+      measurementKey,
+      valueIn:
+        latest?.valueIn != null && Number.isFinite(latest.valueIn)
+          ? String(latest.valueIn)
+          : measurementKey === "height" && parsedHeightIn != null
+            ? String(parsedHeightIn)
+            : "",
+      date: formatDateInputValue(now),
+      time: formatTimeInputValue(now),
+    });
+    setIsAddingMeasurement(true);
+  }
 
-    if (heightIn.trim() && h == null) {
-      window.alert("Height must be a valid number.");
+  function closeMeasurementComposer() {
+    setIsAddingMeasurement(false);
+    setMeasurementComposer((current) => ({
+      ...EMPTY_MEASUREMENT_COMPOSER(),
+      measurementKey: current.measurementKey,
+    }));
+  }
+
+  async function saveMeasurementEntry() {
+    const valueIn = toNumOrUndef(measurementComposer.valueIn);
+    if (measurementComposer.valueIn.trim() && valueIn == null) {
+      window.alert("Measurement value must be a valid number.");
+      return;
+    }
+    if (valueIn == null || valueIn <= 0) {
+      window.alert("Measurement value must be greater than zero.");
       return;
     }
 
-    if (h == null || h <= 0) return;
+    const measuredAt = parseMeasuredAt(measurementComposer.date, measurementComposer.time);
+    if (measuredAt == null) {
+      window.alert("Date and time must be valid.");
+      return;
+    }
 
-    await db.app_meta.put({
-      key: HEIGHT_META_KEY,
-      valueJson: JSON.stringify({ heightIn: h }),
-      updatedAt: Date.now(),
-    } as any);
-  }
+    const now = Date.now();
+    const entry: BodyMeasurementEntry = {
+      id: uuid(),
+      measurementKey: measurementComposer.measurementKey,
+      valueIn,
+      measuredAt,
+      source: "manual",
+      createdAt: now,
+      updatedAt: now,
+    };
 
-  async function clearHeight() {
-    const ok = window.confirm("Clear saved height?");
-    if (!ok) return;
-    await db.app_meta.delete(HEIGHT_META_KEY);
-    setHeightIn("");
+    await measurementsTable.add(entry as any);
+
+    if (measurementComposer.measurementKey === "height") {
+      await db.app_meta.put({
+        key: HEIGHT_META_KEY,
+        valueJson: JSON.stringify({ heightIn: valueIn }),
+        updatedAt: now,
+      } as any);
+      setHeightIn(String(valueIn));
+    }
+
+    closeMeasurementComposer();
   }
 
     async function addEntry() {
@@ -602,39 +810,230 @@ export default function BodyPage() {
             Breadcrumb 4C.1 — Profile metrics card
            ------------------------------------------------------------------ */}
         <div className="card" style={{ padding: 12, marginTop: 12 }}>
-          <div style={{ fontWeight: 900, marginBottom: 10 }}>Profile metrics</div>
-
-          <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
-            <div style={{ minWidth: 160, flex: 1 }}>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
-                Height (in)
-              </div>
-              <input
-                className="input"
-                value={heightIn}
-                onChange={(e) => setHeightIn(e.target.value)}
-                placeholder="72"
-                inputMode="decimal"
-                disabled={!heightLoaded}
-              />
-            </div>
-          </div>
-
-          <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap" }}>
-            <button className="btn primary" onClick={saveHeight} disabled={!hasHeightInput}>
-              Save Height
+          <div style={{ fontWeight: 900, marginBottom: 10 }}>Open Body Metrics</div>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <button
+              className={activeMetricsView === "snapshots" ? "btn primary" : "btn"}
+              onClick={() => setActiveMetricsView("snapshots")}
+            >
+              Snapshots
             </button>
-            <button className="btn" onClick={clearHeight} disabled={!hasHeightInput}>
-              Clear
+            <button
+              className={activeMetricsView === "measurements" ? "btn primary" : "btn"}
+              onClick={() => setActiveMetricsView("measurements")}
+            >
+              Measurements
             </button>
-          </div>
-
-          <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
-            Height is stored once and used later for waist-to-height ratio and other derived metrics.
           </div>
         </div>
 
-        {/* ------------------------------------------------------------------
+        <div style={{ display: activeMetricsView === "measurements" ? "block" : "none" }}>
+          <div className="card" style={{ padding: 12, marginTop: 12 }}>
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>Measurements</div>
+            <div className="muted" style={{ fontSize: 12, lineHeight: 1.45 }}>
+              Latest body-part measurements with dated entries. Waist stays on the snapshot side
+              because current body-composition and waist logic already depend on it there.
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+            {MEASUREMENT_GROUPS.map((group) => (
+              <div key={group.title} className="card" style={{ padding: 12 }}>
+                <div style={{ fontWeight: 900, marginBottom: 8 }}>{group.title}</div>
+                <div style={{ display: "grid" }}>
+                  {group.keys.map((key, index) => {
+                    const def = getMeasurementDef(key);
+                    const latest = latestMeasurementByKey.get(key);
+                    const latestValue = formatMeasurementLatestValue(key, latest, parsedHeightIn);
+                    const selected = selectedMeasurementKey === key;
+                    const inlineComposerOpen =
+                      isAddingMeasurement && measurementComposer.measurementKey === key;
+
+                    return (
+                      <div
+                        key={key}
+                        style={{
+                          paddingTop: index === 0 ? 0 : 10,
+                          paddingBottom: 10,
+                          borderTop: index === 0 ? "none" : "1px solid var(--line)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                          }}
+                        >
+                          <button
+                            className="btn"
+                            onClick={() => {
+                              setSelectedMeasurementKey(key);
+                              setIsAddingMeasurement(false);
+                            }}
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 10,
+                              padding: 0,
+                              background: "transparent",
+                              border: "none",
+                              textAlign: "left",
+                              color: "inherit",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontWeight: selected ? 900 : 700,
+                                minWidth: 0,
+                              }}
+                            >
+                              {def.label}
+                            </span>
+                            <span
+                              className="muted"
+                              style={{
+                                fontSize: 13,
+                                whiteSpace: "nowrap",
+                                marginLeft: 10,
+                              }}
+                            >
+                              {latestValue}
+                            </span>
+                          </button>
+
+                          <button
+                            className="btn small"
+                            onClick={() => openMeasurementComposer(key)}
+                            title={`Add ${def.label} measurement`}
+                            aria-label={`Add ${def.label} measurement`}
+                            style={{ flexShrink: 0 }}
+                          >
+                            +
+                          </button>
+                        </div>
+
+                        {inlineComposerOpen ? (
+                          <div className="card" style={{ padding: 10, marginTop: 10 }}>
+                            <div style={{ fontWeight: 900, marginBottom: 8 }}>Add {def.label}</div>
+                            <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+                              <div style={{ minWidth: 160, flex: 1 }}>
+                                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                                  Value (in)
+                                </div>
+                                <input
+                                  className="input"
+                                  value={measurementComposer.valueIn}
+                                  onChange={(e) =>
+                                    setMeasurementComposer((current) => ({
+                                      ...current,
+                                      valueIn: e.target.value,
+                                    }))
+                                  }
+                                  placeholder={def.placeholder}
+                                  inputMode="decimal"
+                                />
+                              </div>
+                              <div style={{ minWidth: 160, flex: 1 }}>
+                                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                                  Date
+                                </div>
+                                <input
+                                  className="input"
+                                  type="date"
+                                  value={measurementComposer.date}
+                                  onChange={(e) =>
+                                    setMeasurementComposer((current) => ({
+                                      ...current,
+                                      date: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div style={{ minWidth: 160, flex: 1 }}>
+                                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                                  Time
+                                </div>
+                                <input
+                                  className="input"
+                                  type="time"
+                                  value={measurementComposer.time}
+                                  onChange={(e) =>
+                                    setMeasurementComposer((current) => ({
+                                      ...current,
+                                      time: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                            </div>
+
+                            <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap" }}>
+                              <button className="btn primary" onClick={saveMeasurementEntry}>
+                                Save
+                              </button>
+                              <button className="btn" onClick={closeMeasurementComposer}>
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="card" style={{ padding: 12, marginTop: 12 }}>
+            <div
+              className="row"
+              style={{ justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}
+            >
+              <div>
+                <div style={{ fontWeight: 900 }}>{selectedMeasurementDef.label}</div>
+                <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  Latest {formatMeasurementLatestValue(selectedMeasurementKey, selectedLatestMeasurement, parsedHeightIn)}
+                </div>
+              </div>
+            </div>
+
+            <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+              Trend chart coming later.
+            </div>
+
+            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+              {selectedMeasurementEntries.length ? (
+                selectedMeasurementEntries.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="card"
+                    style={{ padding: 10, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}
+                  >
+                    <div style={{ fontWeight: 700 }}>
+                      {formatMeasurementHistoryValue(selectedMeasurementKey, entry.valueIn)}
+                    </div>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {fmtDate(entry.measuredAt)}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="muted" style={{ fontSize: 13 }}>
+                  No measurements yet for {selectedMeasurementDef.label.toLowerCase()}.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: activeMetricsView === "snapshots" ? "block" : "none" }}>
+
+{/* ------------------------------------------------------------------
             Breadcrumb 4C.2 — Add entry card
            ------------------------------------------------------------------ */}
         <div className="card" style={{ padding: 12, marginTop: 12 }}>
@@ -959,6 +1358,7 @@ export default function BodyPage() {
               </button>
             </div>
           ) : null}
+        </div>
         </div>
       </Section>
     </Page>
