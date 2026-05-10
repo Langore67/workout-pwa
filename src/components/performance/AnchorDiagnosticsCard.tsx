@@ -26,22 +26,21 @@ export default function AnchorDiagnosticsCard({
     <div className="card">
       <div style={{ display: "grid", gap: 12 }}>
         <div
+          className="row"
           style={{
-            display: "flex",
             justifyContent: "space-between",
-            gap: 12,
-            alignItems: "flex-start",
-            flexWrap: "wrap",
+            alignItems: "center",
+            marginBottom: 8,
           }}
         >
-          <div>
-            <h3 style={{ margin: 0, fontSize: 16 }}>Anchor Diagnostics</h3>
-            <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-              Current shared v2 anchor selections for Performance.
-            </div>
-          </div>
-
-          <div className="row" style={{ alignItems: "center", gap: 8 }}>
+          <h3 style={{ margin: 0, fontSize: 16 }}>Anchor Diagnostics</h3>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
             <InfoStubButton pageKey="performance" infoKey="anchorDiagnostics" />
             <button
               type="button"
@@ -52,6 +51,10 @@ export default function AnchorDiagnosticsCard({
               {showAnchorDiagnostics ? "Hide" : "Show"}
             </button>
           </div>
+        </div>
+
+        <div className="muted" style={{ fontSize: 13, marginTop: -4 }}>
+          Current shared v2 anchor selections for Performance.
         </div>
 
         <div

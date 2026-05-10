@@ -943,7 +943,7 @@ export default function BodyCompositionPage() {
     <Section>
 	<ProgressPageHeader
 	  breadcrumb="← Progress / Body Composition"
-	  description="Weight, waist, and body-composition trends across cut, maintain, and bulk phases."
+		  description="Review body fat, lean mass, hydration, and phase-aware body trends."
 	  actionLabel="Open Body Metrics →"
 	  onBreadcrumbClick={() => navigate("/progress")}
 	  onActionClick={() => navigate("/body")}
@@ -995,6 +995,7 @@ export default function BodyCompositionPage() {
         <div className="card" style={{ padding: 12, marginBottom: 12 }}>
              <SectionHeaderRow
 	         title="GOAL TARGETS"
+	         infoPageKey="bodyComposition"
 	         infoKey={BODY_COMP_INFO_KEYS.goalTargets}
           />
 
@@ -1074,6 +1075,7 @@ export default function BodyCompositionPage() {
         <div className="card" style={{ padding: 12, marginBottom: 12 }}>
 	      <SectionHeaderRow
 		title="CURRENT STATUS"
+		infoPageKey="bodyComposition"
 		infoKey={BODY_COMP_INFO_KEYS.currentStatus}
           />
 
@@ -1363,7 +1365,7 @@ export default function BodyCompositionPage() {
           />
         </div>
         <div className="muted" style={{ marginBottom: 6 }}>
-          Direction + composition + strength combined into a single quality signal.
+          How well your current phase - cut, maintain, or bulk - appears to be going.
         </div>
 
         {phaseQualityInputs.strengthLabel ? (
