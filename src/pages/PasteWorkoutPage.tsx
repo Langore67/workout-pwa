@@ -250,8 +250,8 @@ Formatting rules:
 - One set per line under the exercise.
 - Use BW for bodyweight movements.
 - Use @RIR for work sets when RIR is known.
-- Use conditioning BWx5.39km for distance conditioning.
-- Use conditioning BWx60s for time conditioning.
+- Use conditioning BWx3.12mi or conditioning BWx5.39km for distance conditioning.
+- Use conditioning BWx42min or conditioning BWx2520s for time conditioning.
 - Keep all notes under Session Notes.
 - Return only the IronForge-formatted workout.
 
@@ -516,6 +516,7 @@ function distanceToMeters(valueRaw: string, unitRaw: string): number | undefined
   if (!Number.isFinite(value) || value <= 0) return undefined;
 
   const unit = unitRaw.toLowerCase();
+  if (["mi", "mile", "miles"].includes(unit)) return value * 1609.344;
   if (["km", "kilometer", "kilometers"].includes(unit)) return value * 1000;
   if (["m", "meter", "meters"].includes(unit)) return value;
   return undefined;
@@ -621,7 +622,7 @@ function parseSetLine(line: string): ParsedSet | null {
      Breadcrumb — Distance sets
      --------------------------------------------------------------------- */
   const distanceMatch = trimmed.match(
-    /^(warmup|work|technique|mobility|corrective|diagnostic|rehab|conditioning|test)\s+(BW(?:\s*[+-]\s*\d+(?:\.\d+)?)?|Bar|-?\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(km|kilometer|kilometers|m|meter|meters)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+    /^(warmup|work|technique|mobility|corrective|diagnostic|rehab|conditioning|test)\s+(BW(?:\s*[+-]\s*\d+(?:\.\d+)?)?|Bar|-?\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(mi|mile|miles|km|kilometer|kilometers|m|meter|meters)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
   );
 
   if (distanceMatch) {
@@ -650,6 +651,38 @@ function parseSetLine(line: string): ParsedSet | null {
       isBodyweight: !!parsedWeight.isBodyweight,
       isPerSide,
       notes: notesRaw || undefined,
+    };
+  }
+
+  /* ------------------------------------------------------------------------
+     Breadcrumb — Load + duration sets
+     Examples
+     - conditioning BWx42min
+     - conditioning BWx2520s
+     --------------------------------------------------------------------- */
+  const loadDurationMatch = trimmed.match(
+    /^(warmup|work|technique|mobility|corrective|diagnostic|rehab|conditioning|test)\s+(BW(?:\s*[+-]\s*\d+(?:\.\d+)?)?|Bar|-?\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+  );
+
+  if (loadDurationMatch) {
+    const kindRaw = normalizeImportSetClass(loadDurationMatch[1]);
+    if (!kindRaw) return null;
+    const durationRaw = loadDurationMatch[3];
+    const unitRaw = loadDurationMatch[4];
+    const isPerSide = !!loadDurationMatch[5];
+    const rirRaw = loadDurationMatch[6];
+    const notesRaw = normalizeImportNoteText(loadDurationMatch[7]) || undefined;
+
+    const seconds = durationToSeconds(durationRaw, unitRaw);
+    const rir = rirRaw !== undefined ? Number(rirRaw) : undefined;
+
+    return {
+      rawLine: line,
+      setKind: kindRaw,
+      seconds,
+      rir: rir !== undefined && Number.isFinite(rir) ? rir : undefined,
+      isPerSide,
+      notes: notesRaw,
     };
   }
 

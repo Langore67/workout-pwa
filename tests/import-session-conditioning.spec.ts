@@ -159,3 +159,174 @@ conditioning BWx5min reset between rounds`;
   await timeInput.blur();
   await expect(timeInput).toHaveValue("06:30");
 });
+
+test("IF journal import supports MapMyWalk distance in miles", async ({ page }) => {
+  await goto(page, "/");
+  await resetDexieDb(page);
+
+  const imported = await page.evaluate(async () => {
+    const { importSessionFromJournal } = await import("/src/importers/importSession.ts");
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const result = await importSessionFromJournal({
+      text: `Session: Walk - MapMyWalk
+Date: 2026-05-13
+Start: 07:30
+End: 08:12
+
+Walk
+conditioning BWx3.12mi`,
+    });
+
+    const session = await db.sessions.get(result.sessionId);
+    const sets = await db.sets.where("sessionId").equals(result.sessionId).toArray();
+    const tracks = await db.tracks.toArray();
+    const exercises = await db.exercises.toArray();
+    const set = sets[0];
+    const track = tracks.find((row: any) => row.id === set.trackId);
+    const exercise = exercises.find((row: any) => row.id === track.exerciseId);
+
+    return {
+      session,
+      set,
+      track,
+      exercise,
+      setCount: sets.length,
+    };
+  });
+
+  expect(imported.session.templateName).toBe("Walk - MapMyWalk");
+  expect(imported.setCount).toBe(1);
+  expect(imported.exercise.name).toBe("Walk");
+  expect(imported.exercise.metricMode).toBe("distance");
+  expect(imported.track.displayName).toBe("Walk");
+  expect(imported.track.trackType).toBe("conditioning");
+  expect(imported.set.distance).toBeCloseTo(5021.15328, 4);
+  expect(imported.set.distanceUnit).toBe("m");
+  expect(imported.set.seconds).toBeUndefined();
+  expect(imported.set.reps).toBeUndefined();
+  expect(imported.set.weight).toBeUndefined();
+});
+
+test("IF journal import supports MapMyWalk duration in minutes", async ({ page }) => {
+  await goto(page, "/");
+  await resetDexieDb(page);
+
+  const imported = await page.evaluate(async () => {
+    const { importSessionFromJournal } = await import("/src/importers/importSession.ts");
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const result = await importSessionFromJournal({
+      text: `Session: Walk - MapMyWalk
+Date: 2026-05-13
+
+Walk
+conditioning BWx42min`,
+    });
+
+    const sets = await db.sets.where("sessionId").equals(result.sessionId).toArray();
+    const tracks = await db.tracks.toArray();
+    const set = sets[0];
+    const track = tracks.find((row: any) => row.id === set.trackId);
+
+    return { set, track, setCount: sets.length };
+  });
+
+  expect(imported.setCount).toBe(1);
+  expect(imported.track.trackType).toBe("conditioning");
+  expect(imported.track.trackingMode).toBe("timeSeconds");
+  expect(imported.set.seconds).toBe(2520);
+  expect(imported.set.distance).toBeUndefined();
+});
+
+test("IF journal import supports MapMyWalk distance, duration, notes, and session window", async ({ page }) => {
+  await goto(page, "/");
+  await resetDexieDb(page);
+
+  const imported = await page.evaluate(async () => {
+    const { importSessionFromJournal } = await import("/src/importers/importSession.ts");
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const result = await importSessionFromJournal({
+      text: `Session: Walk - MapMyWalk
+Date: 2026-05-13
+Start: 07:30
+End: 08:12
+
+Walk
+conditioning BWx3.12mi
+conditioning BWx42min
+
+Session Notes:
+Source: MapMyWalk screenshot
+Route: Neighborhood Loop
+Pace: 13:28/mi
+Elevation: 120 ft
+Avg HR: 112
+Max HR: 138`,
+    });
+
+    const session = await db.sessions.get(result.sessionId);
+    const sets = await db.sets.where("sessionId").equals(result.sessionId).sortBy("createdAt");
+
+    return {
+      session,
+      sets,
+      durationMs: session.endedAt - session.startedAt,
+    };
+  });
+
+  expect(imported.session.templateName).toBe("Walk - MapMyWalk");
+  expect(imported.durationMs).toBe(42 * 60 * 1000);
+  expect(imported.sets).toHaveLength(2);
+  expect(imported.sets.some((set: any) => Math.abs(set.distance - 5021.15328) < 0.001)).toBe(true);
+  expect(imported.sets.some((set: any) => set.seconds === 2520)).toBe(true);
+  expect(imported.session.notes).toContain("Source: MapMyWalk screenshot");
+  expect(imported.session.notes).toContain("Route: Neighborhood Loop");
+  expect(imported.session.notes).toContain("Pace: 13:28/mi");
+  expect(imported.session.notes).toContain("Elevation: 120 ft");
+  expect(imported.session.notes).toContain("Avg HR: 112");
+  expect(imported.session.notes).toContain("Max HR: 138");
+});
+
+test("IF journal import supports cardio unit spelling variants", async ({ page }) => {
+  await goto(page, "/");
+  await resetDexieDb(page);
+
+  const parsed = await page.evaluate(async () => {
+    const { parseIfJournalText } = await import("/src/importers/importSession.ts");
+    const units = ["miles", "mile", "mi", "km", "m", "minutes", "min", "seconds", "sec"];
+    return units.map((unit) => {
+      const parsed = parseIfJournalText(`Session: Walk - ${unit}
+Date: 2026-05-13
+
+Walk
+conditioning BWx1${unit}`);
+      const set = parsed.sets[0];
+      return {
+        unit,
+        distance: set.distance,
+        distanceUnit: set.distanceUnit,
+        seconds: set.seconds,
+      };
+    });
+  });
+
+  expect(parsed).toEqual([
+    expect.objectContaining({ unit: "miles", distance: 1609.344, distanceUnit: "m" }),
+    expect.objectContaining({ unit: "mile", distance: 1609.344, distanceUnit: "m" }),
+    expect.objectContaining({ unit: "mi", distance: 1609.344, distanceUnit: "m" }),
+    expect.objectContaining({ unit: "km", distance: 1000, distanceUnit: "m" }),
+    expect.objectContaining({ unit: "m", distance: 1, distanceUnit: "m" }),
+    expect.objectContaining({ unit: "minutes", seconds: 60 }),
+    expect.objectContaining({ unit: "min", seconds: 60 }),
+    expect.objectContaining({ unit: "seconds", seconds: 1 }),
+    expect.objectContaining({ unit: "sec", seconds: 1 }),
+  ]);
+});

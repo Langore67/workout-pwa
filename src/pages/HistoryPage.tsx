@@ -23,11 +23,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
-import { db, SetEntry, type Exercise, type Track, type BodyMetricEntry } from "../db";
+import { db, SetEntry, type Exercise, type Track, type BodyMetricEntry, type Session } from "../db";
 import { ActionMenu as SharedActionMenu, MenuIcons, MenuItem } from "../components/ActionMenu";
 import { safeParsePrsCount } from "../lib/safeParsePrsCount";
 import { computeSessionTotalLifted } from "../lib/sessionTotalLifted";
 import { summarizeSessionActivityMetrics } from "../lib/activityMetrics";
+import { buildCardioWalkSummary } from "../lib/cardio/buildCardioWalkSummary";
 import type { PRHit } from "../prs";
 
 /* =============================================================================
@@ -74,13 +75,6 @@ const HISTORY_CLASS_NAME_PATTERNS = [
   "boxing class",
 ] as const;
 
-const HISTORY_WALK_NAME_PATTERNS = [
-  "walk",
-  "walking",
-  "treadmill walk",
-  "incline walk",
-] as const;
-
 const HISTORY_WORKOUT_NAME_PATTERNS = [
   "upper",
   "lower",
@@ -110,25 +104,13 @@ function includesAnyPattern(value: string, patterns: readonly string[]) {
   return patterns.some((pattern) => value.includes(pattern));
 }
 
-function classifyHistorySession(context: SessionActivityContext): HistorySessionKind {
-  const sessionName = normalizeHistoryLabel(context.name);
-  const activityNames = normalizeHistoryLabel(context.trackNames.join(" "));
+function classifyHistorySession(context: SessionActivityContext, isCardioWalk: boolean): HistorySessionKind {
+  if (isCardioWalk) return "walk";
 
-  if (sessionName && includesAnyPattern(sessionName, HISTORY_WALK_NAME_PATTERNS)) {
-    return "walk";
-  }
+  const sessionName = normalizeHistoryLabel(context.name);
 
   if (sessionName && includesAnyPattern(sessionName, HISTORY_CLASS_NAME_PATTERNS)) {
     return "class";
-  }
-
-  if (
-    context.trackTypes.size > 0 &&
-    Array.from(context.trackTypes).every((trackType) => trackType === "conditioning") &&
-    activityNames &&
-    includesAnyPattern(activityNames, HISTORY_WALK_NAME_PATTERNS)
-  ) {
-    return "walk";
   }
 
   if (
@@ -344,6 +326,15 @@ export default function HistoryPage() {
   }, [setsAll]);
 
   const historySessionKindById = useMemo(() => {
+    const cardioWalkSessionIds = new Set(
+      buildCardioWalkSummary({
+        sessions: (sessions ?? []) as Session[],
+        sets: setsAll ?? [],
+        tracks: tracks ?? [],
+        exercises: exercises ?? [],
+        recentLimit: 0,
+      }).normalizedWalks.map((walk) => walk.sessionId)
+    );
     const contextBySession = new Map<string, SessionActivityContext>();
 
     for (const session of sessions ?? []) {
@@ -383,7 +374,7 @@ export default function HistoryPage() {
           trackTypes: new Set<Track["trackType"]>(),
           trackNames: [],
         } satisfies SessionActivityContext);
-      kindById.set(session.id, classifyHistorySession(context));
+      kindById.set(session.id, classifyHistorySession(context, cardioWalkSessionIds.has(session.id)));
     }
 
     return kindById;

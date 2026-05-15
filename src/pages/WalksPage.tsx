@@ -1,59 +1,146 @@
 // src/pages/WalksPage.tsx
 /* ============================================================================
-   WalksPage.tsx — Walking log and history
+   WalksPage.tsx - History-backed walking summary
    ----------------------------------------------------------------------------
-   BUILD_ID: 2026-03-14-WALKS-02
+   BUILD_ID: 2026-05-13-WALKS-HISTORY-01
    FILE: src/pages/WalksPage.tsx
 
    Purpose
-   - Track walking / conditioning volume inside the Progress system
-   - Support simple manual walk logging
-   - Keep history lightweight and easy to manage
-   - Leave room for future MapMyWalk or external integrations
-
-   Changes (WALKS-02)
-   ✅ Add Progress-system breadcrumb header
-   ✅ Add page title + subtitle for analytics-suite consistency
-   ✅ Preserve existing Add Walk modal flow
-   ✅ Preserve walk history table and delete actions
+   - Show walk signals from History session-based conditioning walks
+   - Keep /walks aligned with the Progress Walks tile
+   - Treat Paste Workout / MapMyWalk screenshot summaries as the primary input
+   - Leave legacy manual db.walks data untouched but unused here
    ============================================================================ */
 
-import React, { useState } from "react";
+import React, { useMemo } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db, WalkEntry } from "../db";
-import { uuid } from "../utils";
+import { useNavigate } from "react-router-dom";
 import { Page, Section } from "../components/Page.tsx";
+import { db } from "../db";
+import { buildCardioWalkSummary } from "../lib/cardio/buildCardioWalkSummary";
+import type { CardioWalkEvent, CardioWalkSummary } from "../lib/cardio/cardioTypes";
+import {
+  formatCardioDistanceMeters,
+  formatCardioDuration,
+  formatCardioPace,
+  formatCardioWalkDateTime,
+  pluralizeWalk,
+} from "../lib/cardio/formatCardioWalk";
 
-/* ============================================================================
-   Breadcrumb 1 — Page
-   ============================================================================ */
+function SummaryMetric({
+  label,
+  value,
+  testId,
+}: {
+  label: string;
+  value: string;
+  testId?: string;
+}) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div
+        className="muted"
+        style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}
+      >
+        {label}
+      </div>
+      <div data-testid={testId} style={{ marginTop: 2, fontSize: 16, fontWeight: 900 }}>
+        {value}
+      </div>
+    </div>
+  );
+}
 
-export default function WalksPage() {
-  const walks = useLiveQuery(() => db.walks.orderBy("date").reverse().toArray(), []);
-  const [show, setShow] = useState(false);
+function WalkListRow({ walk }: { walk: CardioWalkEvent }) {
+  const meta = [
+    formatCardioDuration(walk.durationSeconds),
+    formatCardioDistanceMeters(walk.distanceMeters),
+    formatCardioPace(walk.paceSecondsPerMile),
+    walk.route,
+  ].filter(Boolean);
 
   return (
-    <Page
-      title="Walks"
-      subtitle="Manual log for now. (MapMyWalk integration can come later.)"
-      right={
-        <button className="btn primary" onClick={() => setShow(true)}>
-          + Add walk
-        </button>
-      }
+    <div
+      data-testid={`walks-history-row:${walk.sessionId}`}
+      style={{
+        borderTop: "1px solid rgba(148,163,184,0.28)",
+        padding: "11px 0",
+        minWidth: 0,
+      }}
     >
-      {/* ======================================================================
-          Breadcrumb 1A — Progress-system page header
-         ==================================================================== */}
-      <Section>
-        <div className="card" style={{ marginBottom: 12, padding: 14 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 3 }}>
+        {formatCardioWalkDateTime(walk.startedAt)}
+      </div>
+      <div style={{ fontWeight: 900, lineHeight: 1.25 }}>{walk.name}</div>
+      {meta.length ? (
+        <div
+          data-testid={`walks-history-row-meta:${walk.sessionId}`}
+          className="muted"
+          style={{ marginTop: 4, fontSize: 13, lineHeight: 1.35 }}
+        >
+          {meta.join(" · ")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DataQualityNote({ summary }: { summary: CardioWalkSummary }) {
+  const notes: string[] = [];
+  if (summary.dataQuality.missingDistanceCount) {
+    notes.push(
+      `${summary.dataQuality.missingDistanceCount} ${summary.dataQuality.missingDistanceCount === 1 ? "walk is" : "walks are"} missing distance.`
+    );
+  }
+  if (summary.dataQuality.missingDurationCount) {
+    notes.push(
+      `${summary.dataQuality.missingDurationCount} ${summary.dataQuality.missingDurationCount === 1 ? "walk is" : "walks are"} missing duration.`
+    );
+  }
+
+  return (
+    <div data-testid="walks-data-quality" className="muted" style={{ fontSize: 13, lineHeight: 1.45 }}>
+      {notes.length ? `${notes.join(" ")} ` : ""}
+      Pace is shown only when both distance and duration are available. Route, HR, elevation, and zone trends are not
+      tracked yet.
+    </div>
+  );
+}
+
+export default function WalksPage() {
+  const navigate = useNavigate();
+  const cardioRows = useLiveQuery(
+    async () => {
+      const [sessions, sets, tracks, exercises] = await Promise.all([
+        db.sessions.toArray(),
+        db.sets.toArray(),
+        db.tracks.toArray(),
+        db.exercises.toArray(),
+      ]);
+      return { sessions, sets, tracks, exercises };
+    },
+    [],
+    undefined
+  );
+  const summary = useMemo(() => {
+    if (!cardioRows) return undefined;
+    return buildCardioWalkSummary({ ...cardioRows, recentLimit: 25 });
+  }, [cardioRows]);
+  const hasWalks = !!summary && summary.normalizedWalks.length > 0;
+
+  return (
+    <Page title="Walks" subtitle="History-based walking summary from imported conditioning sessions.">
+      <div className="card" style={{ marginBottom: 12, padding: 14 }}>
           <div
             className="muted"
             style={{
               fontSize: 12,
               fontWeight: 700,
               marginBottom: 8,
+              cursor: "pointer",
+              display: "inline-block",
             }}
+            onClick={() => navigate("/progress")}
           >
             Progress / Walks
           </div>
@@ -61,191 +148,90 @@ export default function WalksPage() {
           <h2 style={{ marginTop: 0, marginBottom: 8 }}>Walks</h2>
 
           <div className="muted" style={{ lineHeight: 1.45 }}>
-            Daily steps, distance, and conditioning volume.
+            Read-only walk totals from History. Paste MapMyWalk screenshot summaries into Paste Workout to add walks.
           </div>
-        </div>
-      </Section>
-
-      {/* ======================================================================
-          Breadcrumb 1B — Walks content
-         ==================================================================== */}
-      <div className="sections-two">
-        <Section
-          title="Log"
-          subtitle="Default: 30 min • Distance/steps optional • Notes optional"
-        >
-          <div className="kv">
-            <div>Duration</div>
-            <div>Required</div>
-          </div>
-          <div className="kv" style={{ marginTop: 6 }}>
-            <div>Distance (miles)</div>
-            <div>Optional</div>
-          </div>
-          <div className="kv" style={{ marginTop: 6 }}>
-            <div>Steps</div>
-            <div>Optional</div>
-          </div>
-          <div className="kv" style={{ marginTop: 6 }}>
-            <div>Notes</div>
-            <div>Optional</div>
-          </div>
-
-          <hr />
-          <p className="muted" style={{ margin: 0 }}>
-            Use the <b>+ Add walk</b> button above to log a new entry.
-          </p>
-        </Section>
-
-        <Section
-          title="History"
-          subtitle={walks && walks.length ? `${walks.length} walk(s)` : "No walks yet."}
-        >
-          {walks && walks.length ? (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Duration</th>
-                  <th>Distance</th>
-                  <th>Steps</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {walks.map((w) => (
-                  <tr key={w.id}>
-                    <td>{new Date(w.date).toLocaleString()}</td>
-                    <td>{Math.round(w.durationSeconds / 60)} min</td>
-                    <td>{w.distanceMiles ?? "—"}</td>
-                    <td>{w.steps ?? "—"}</td>
-                    <td>
-                      <button
-                        className="btn small danger"
-                        onClick={() => db.walks.delete(w.id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : null}
-        </Section>
       </div>
 
-      {show && <AddWalkModal onClose={() => setShow(false)} />}
+      {!summary ? (
+        <Section title="Summary" subtitle="Loading History walks">
+          <div className="muted">Loading walks...</div>
+        </Section>
+      ) : !hasWalks ? (
+        <Section title="Summary" subtitle="No imported walk sessions found yet.">
+          <div data-testid="walks-empty-state" style={{ display: "grid", gap: 8 }}>
+            <div style={{ fontWeight: 900 }}>No imported walk sessions found yet.</div>
+            <div className="muted" style={{ lineHeight: 1.45 }}>
+              Screenshot MapMyWalk, have Coach GPT convert it to IF cardio text, then paste it into Paste Workout.
+            </div>
+          </div>
+        </Section>
+      ) : (
+        <>
+          <Section title="Summary" subtitle={`${pluralizeWalk(summary.last28d.count)} in the last 28 days`}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))",
+                gap: 14,
+              }}
+            >
+              <SummaryMetric label="Last 7d" value={pluralizeWalk(summary.last7d.count)} testId="walks-last7-count" />
+              <SummaryMetric
+                label="7d Duration"
+                value={formatCardioDuration(summary.last7d.totalDurationSeconds) || "Unavailable"}
+                testId="walks-last7-duration"
+              />
+              {summary.last7d.totalDistanceMeters > 0 ? (
+                <SummaryMetric
+                  label="7d Distance"
+                  value={formatCardioDistanceMeters(summary.last7d.totalDistanceMeters)}
+                  testId="walks-last7-distance"
+                />
+              ) : null}
+              <SummaryMetric label="Last 28d" value={pluralizeWalk(summary.last28d.count)} testId="walks-last28-count" />
+              <SummaryMetric
+                label="28d Duration"
+                value={formatCardioDuration(summary.last28d.totalDurationSeconds) || "Unavailable"}
+                testId="walks-last28-duration"
+              />
+              {summary.last28d.totalDistanceMeters > 0 ? (
+                <SummaryMetric
+                  label="28d Distance"
+                  value={formatCardioDistanceMeters(summary.last28d.totalDistanceMeters)}
+                  testId="walks-last28-distance"
+                />
+              ) : null}
+              {summary.last7d.averageDurationSeconds != null ? (
+                <SummaryMetric
+                  label="Avg Duration"
+                  value={formatCardioDuration(summary.last7d.averageDurationSeconds)}
+                  testId="walks-average-duration"
+                />
+              ) : null}
+              {summary.last7d.averagePaceSecondsPerMile != null ? (
+                <SummaryMetric
+                  label="Avg Pace"
+                  value={formatCardioPace(summary.last7d.averagePaceSecondsPerMile)}
+                  testId="walks-average-pace"
+                />
+              ) : null}
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <DataQualityNote summary={summary} />
+            </div>
+          </Section>
+
+          <Section title="History Walks" subtitle="Each qualifying History session is listed separately.">
+            <div data-testid="walks-history-list">
+              {summary.normalizedWalks.map((walk) => (
+                <WalkListRow key={walk.sessionId} walk={walk} />
+              ))}
+            </div>
+          </Section>
+        </>
+      )}
     </Page>
-  );
-}
-
-/* ============================================================================
-   Breadcrumb 2 — Add Walk modal
-   ============================================================================ */
-
-function AddWalkModal({ onClose }: { onClose: () => void }) {
-  const [durationMin, setDurationMin] = useState(30);
-  const [hasDistance, setHasDistance] = useState(false);
-  const [distanceMiles, setDistanceMiles] = useState<number>(0);
-  const [hasSteps, setHasSteps] = useState(false);
-  const [steps, setSteps] = useState<number>(0);
-  const [notes, setNotes] = useState("");
-
-  async function save() {
-    const w: WalkEntry = {
-      id: uuid(),
-      date: Date.now(),
-      durationSeconds: Math.max(0, durationMin) * 60,
-      distanceMiles: hasDistance ? distanceMiles : undefined,
-      steps: hasSteps ? steps : undefined,
-      notes: notes.trim() || undefined,
-    };
-    await db.walks.add(w);
-    onClose();
-  }
-
-  return (
-    <div className="modal-overlay" role="dialog" aria-modal="true">
-      <div className="card modal-card">
-        <h2 style={{ margin: 0 }}>Add walk</h2>
-        <p className="muted" style={{ marginTop: 8 }}>
-          Enter duration; optionally add distance/steps/notes.
-        </p>
-
-        <hr />
-
-        <label>Minutes</label>
-        <input
-          className="input"
-          type="number"
-          inputMode="numeric"
-          value={durationMin}
-          onChange={(e) => setDurationMin(Number(e.target.value))}
-        />
-
-        <hr />
-
-        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input
-            type="checkbox"
-            checked={hasDistance}
-            onChange={(e) => setHasDistance(e.target.checked)}
-          />
-          Include distance (miles)
-        </label>
-        {hasDistance && (
-          <input
-            className="input"
-            type="number"
-            inputMode="decimal"
-            value={distanceMiles}
-            onChange={(e) => setDistanceMiles(Number(e.target.value))}
-          />
-        )}
-
-        <hr />
-
-        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input
-            type="checkbox"
-            checked={hasSteps}
-            onChange={(e) => setHasSteps(e.target.checked)}
-          />
-          Include steps
-        </label>
-        {hasSteps && (
-          <input
-            className="input"
-            type="number"
-            inputMode="numeric"
-            value={steps}
-            onChange={(e) => setSteps(Number(e.target.value))}
-          />
-        )}
-
-        <hr />
-
-        <label>Notes</label>
-        <textarea
-          className="input"
-          rows={3}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
-
-        <hr />
-
-        <div className="modal-actions">
-          <button className="btn" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn primary" onClick={save}>
-            Save
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
 
