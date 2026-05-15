@@ -163,10 +163,10 @@ test.describe("/walks History-backed summary", () => {
 
     await expect(page.getByTestId("walks-last7-count")).toHaveText("3 walks");
     await expect(page.getByTestId("walks-last7-duration")).toHaveText("2h 20m");
-    await expect(page.getByTestId("walks-last7-distance")).toHaveText("3.0 mi");
+    await expect(page.getByTestId("walks-last7-distance")).toHaveText("3.00 mi / 4.83 km");
     await expect(page.getByTestId("walks-last28-count")).toHaveText("3 walks");
     await expect(page.getByTestId("walks-last28-duration")).toHaveText("2h 20m");
-    await expect(page.getByTestId("walks-last28-distance")).toHaveText("3.0 mi");
+    await expect(page.getByTestId("walks-last28-distance")).toHaveText("3.00 mi / 4.83 km");
     await expect(page.getByTestId("walks-average-duration")).toHaveText("47 min");
     await expect(page.getByTestId("walks-average-pace")).toHaveText("20:00/mi");
 
@@ -175,7 +175,7 @@ test.describe("/walks History-backed summary", () => {
     await expect(page.getByTestId(`walks-history-row:${seeded.parkSessionId}`)).toBeVisible();
     await expect(page.getByTestId(`walks-history-row:${seeded.mapMyWalkSessionId}`)).toBeVisible();
     await expect(page.getByTestId(`walks-history-row-meta:${seeded.mapMyWalkSessionId}`)).toHaveText(
-      "60 min · 3.0 mi · 20:00/mi · Neighborhood Loop"
+      "60 min · 3.00 mi / 4.83 km · 20:00/mi · Neighborhood Loop"
     );
   });
 });

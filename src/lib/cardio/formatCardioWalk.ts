@@ -16,6 +16,11 @@ export function formatCardioDistanceMeters(meters?: number) {
   return `${(meters / 1609.344).toFixed(1)} mi`;
 }
 
+export function formatDistanceMiKm(meters?: number) {
+  if (meters == null || !Number.isFinite(meters) || meters <= 0) return "not available";
+  return `${(meters / 1609.344).toFixed(2)} mi / ${(meters / 1000).toFixed(2)} km`;
+}
+
 export function formatCardioPace(secondsPerMile?: number) {
   if (secondsPerMile == null || !Number.isFinite(secondsPerMile) || secondsPerMile <= 0) return "";
   const rounded = Math.round(secondsPerMile);

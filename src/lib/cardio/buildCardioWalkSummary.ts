@@ -12,6 +12,8 @@ import { parseCardioSessionNotes } from "./parseCardioSessionNotes";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const METERS_PER_MILE = 1609.344;
+const MIN_REASONABLE_WALK_PACE_SECONDS_PER_MILE = 10 * 60;
+const MAX_REASONABLE_WALK_PACE_SECONDS_PER_MILE = 35 * 60;
 
 const EXCLUDED_NAME_PATTERNS = [
   /\bfarmer'?s?\s+walk\b/i,
@@ -26,6 +28,17 @@ const EXCLUDED_NAME_PATTERNS = [
 ] as const;
 
 const STRENGTH_TRACK_TYPES = new Set(["strength", "hypertrophy", "technique"]);
+
+const STRENGTH_SESSION_NAME_PATTERNS = [
+  /\bupper\b/i,
+  /\blower\b/i,
+  /\bpush\b/i,
+  /\bpull\b/i,
+  /\bhinge\b/i,
+  /\bsquat\b/i,
+  /\bstrength\b/i,
+  /\bworkout\b/i,
+] as const;
 
 function normalizeLabel(value: unknown): string {
   return String(value ?? "")
@@ -58,6 +71,21 @@ function hasWalkLikeName(value: string): boolean {
   );
 }
 
+function hasStrengthSessionName(value: string): boolean {
+  const normalized = normalizeLabel(value);
+  if (!normalized) return false;
+  return STRENGTH_SESSION_NAME_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function isSuspiciousWalkingPace(secondsPerMile?: number): boolean {
+  return (
+    typeof secondsPerMile === "number" &&
+    Number.isFinite(secondsPerMile) &&
+    (secondsPerMile < MIN_REASONABLE_WALK_PACE_SECONDS_PER_MILE ||
+      secondsPerMile > MAX_REASONABLE_WALK_PACE_SECONDS_PER_MILE)
+  );
+}
+
 function convertDistanceToMeters(distance?: number, unit?: string): number | undefined {
   if (typeof distance !== "number" || !Number.isFinite(distance) || distance <= 0) return undefined;
   const normalizedUnit = String(unit ?? "m").trim().toLowerCase();
@@ -82,6 +110,7 @@ function classifyWalkSession(args: {
 }): CardioWalkConfidence | null {
   const sessionName = String(args.session.templateName ?? "");
   const sessionNameWalkLike = hasWalkLikeName(sessionName);
+  const sessionNameStrengthLike = hasStrengthSessionName(sessionName);
   if (hasExcludedWalkName(sessionName)) return null;
 
   let hasConditioningEvidence = false;
@@ -104,6 +133,7 @@ function classifyWalkSession(args: {
   }
 
   if (hasStrengthEvidence && !hasConditioningEvidence) return null;
+  if (hasStrengthEvidence && sessionNameStrengthLike && !sessionNameWalkLike) return null;
   if (sessionNameWalkLike && hasConditioningEvidence) return "high";
   if (hasWalkLikeConditioningName) return sessionNameWalkLike ? "high" : "medium";
   return null;
@@ -111,7 +141,9 @@ function classifyWalkSession(args: {
 
 function buildWindowSummary(walks: CardioWalkEvent[], now: number, days: number): CardioWalkWindowSummary {
   const start = now - days * DAY_MS;
-  const windowWalks = walks.filter((walk) => walk.startedAt >= start && walk.startedAt <= now);
+  const windowWalks = walks.filter(
+    (walk) => walk.startedAt >= start && walk.startedAt <= now && !isSuspiciousWalkingPace(walk.paceSecondsPerMile)
+  );
   const durationWalks = windowWalks.filter((walk) => typeof walk.durationSeconds === "number");
   const distanceWalks = windowWalks.filter((walk) => typeof walk.distanceMeters === "number");
   const paceWalks = windowWalks.filter(
@@ -140,6 +172,7 @@ function buildDailySummaries(walks: CardioWalkEvent[]): CardioDailyWalkSummary[]
   const byDate = new Map<string, CardioDailyWalkSummary>();
 
   for (const walk of walks) {
+    if (isSuspiciousWalkingPace(walk.paceSecondsPerMile)) continue;
     const current =
       byDate.get(walk.date) ??
       ({
@@ -184,6 +217,10 @@ function buildDataQuality(walks: CardioWalkEvent[]): CardioWalkDataQuality {
   return {
     missingDistanceCount: walks.filter((walk) => walk.distanceMeters == null).length,
     missingDurationCount: walks.filter((walk) => walk.durationSeconds == null).length,
+    suspiciousPaceCount: walks.filter((walk) => isSuspiciousWalkingPace(walk.paceSecondsPerMile)).length,
+    suspiciousPaceSessionIds: walks
+      .filter((walk) => isSuspiciousWalkingPace(walk.paceSecondsPerMile))
+      .map((walk) => walk.sessionId),
     notesFieldCoverage: coverage,
     unsupportedSignals: ["routeTrend", "zoneDistribution", "liftingInterference"],
   };

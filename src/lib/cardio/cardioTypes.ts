@@ -39,6 +39,8 @@ export type CardioWalkWindowSummary = {
 export type CardioWalkDataQuality = {
   missingDistanceCount: number;
   missingDurationCount: number;
+  suspiciousPaceCount: number;
+  suspiciousPaceSessionIds: string[];
   notesFieldCoverage: {
     source: number;
     route: number;
