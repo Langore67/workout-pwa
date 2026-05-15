@@ -235,6 +235,93 @@ test("false-positive walk-like strength, class, and generic conditioning session
   expect(summary.normalizedWalks).toHaveLength(0);
 });
 
+test("named strength workouts do not qualify as walks from walk-like conditioning rows", () => {
+  const benchExercise = exercise("ex-bench", "Bench Press");
+  const strengthTrack = track({
+    id: "track-bench",
+    exerciseId: benchExercise.id,
+    displayName: "Bench Press",
+    trackType: "strength",
+    trackingMode: "weightedReps",
+  });
+
+  const summary = buildCardioWalkSummary({
+    now: ms(2026, 5, 14, 0, 0),
+    sessions: [
+      session({
+        id: "lower-b",
+        name: "Lower B",
+        startedAt: ms(2026, 5, 13, 7, 30),
+        endedAt: ms(2026, 5, 13, 8, 45),
+      }),
+      session({
+        id: "strength-workout",
+        name: "Strength Workout",
+        startedAt: ms(2026, 5, 13, 9, 30),
+        endedAt: ms(2026, 5, 13, 10, 45),
+      }),
+    ],
+    sets: [
+      setEntry({ id: "set-lower-strength", sessionId: "lower-b", trackId: strengthTrack.id, weight: 185, reps: 5 }),
+      setEntry({ id: "set-lower-walk", sessionId: "lower-b", trackId: walkTimeTrack.id, seconds: 600 }),
+      setEntry({
+        id: "set-workout-strength",
+        sessionId: "strength-workout",
+        trackId: strengthTrack.id,
+        weight: 135,
+        reps: 8,
+      }),
+      setEntry({ id: "set-workout-walk", sessionId: "strength-workout", trackId: walkTimeTrack.id, seconds: 900 }),
+    ],
+    tracks: [strengthTrack, walkTimeTrack],
+    exercises: [benchExercise, walkExercise],
+  });
+
+  expect(summary.normalizedWalks).toHaveLength(0);
+});
+
+test("suspicious walking pace is flagged, remains visible, and is excluded from rollups", () => {
+  const summary = buildCardioWalkSummary({
+    now: ms(2026, 5, 14, 0, 0),
+    recentLimit: 10,
+    sessions: [
+      session({ id: "fast-walk", name: "Walk - Fast", startedAt: ms(2026, 5, 13, 7, 30) }),
+      session({ id: "slow-walk", name: "Walk - Slow", startedAt: ms(2026, 5, 13, 8, 30) }),
+      session({ id: "normal-walk", name: "Walk - Normal", startedAt: ms(2026, 5, 13, 9, 30) }),
+    ],
+    sets: [
+      setEntry({ id: "set-fast-distance", sessionId: "fast-walk", trackId: walkDistanceTrack.id, distance: 2 * 1609.344, distanceUnit: "m" }),
+      setEntry({ id: "set-fast-duration", sessionId: "fast-walk", trackId: walkTimeTrack.id, seconds: 18 * 60 }),
+      setEntry({ id: "set-slow-distance", sessionId: "slow-walk", trackId: walkDistanceTrack.id, distance: 1 * 1609.344, distanceUnit: "m" }),
+      setEntry({ id: "set-slow-duration", sessionId: "slow-walk", trackId: walkTimeTrack.id, seconds: 36 * 60 }),
+      setEntry({ id: "set-normal-distance", sessionId: "normal-walk", trackId: walkDistanceTrack.id, distance: 1 * 1609.344, distanceUnit: "m" }),
+      setEntry({ id: "set-normal-duration", sessionId: "normal-walk", trackId: walkTimeTrack.id, seconds: 20 * 60 }),
+    ],
+    tracks: [walkDistanceTrack, walkTimeTrack],
+    exercises: [walkExercise],
+  });
+
+  expect(summary.normalizedWalks).toHaveLength(3);
+  expect(summary.recentWalks.map((walk) => walk.sessionId)).toEqual(["normal-walk", "slow-walk", "fast-walk"]);
+  expect(summary.dataQuality.suspiciousPaceCount).toBe(2);
+  expect(summary.dataQuality.suspiciousPaceSessionIds).toEqual(["slow-walk", "fast-walk"]);
+  expect(summary.last7d.count).toBe(1);
+  expect(summary.last7d.totalDurationSeconds).toBe(20 * 60);
+  expect(summary.last7d.totalDistanceMeters).toBe(1609.344);
+  expect(summary.last7d.averageDurationSeconds).toBe(20 * 60);
+  expect(summary.last7d.averagePaceSecondsPerMile).toBe(20 * 60);
+  expect(summary.last28d.count).toBe(1);
+  expect(summary.last28d.totalDurationSeconds).toBe(20 * 60);
+
+  const day = summary.dailySummaries.find((row) => row.date === "2026-05-13");
+  expect(day).toMatchObject({
+    count: 1,
+    totalDurationSeconds: 20 * 60,
+    totalDistanceMeters: 1609.344,
+    sessionIds: ["normal-walk"],
+  });
+});
+
 test("multiple same-day walks remain separate events and roll up only in daily/window summaries", () => {
   const sessions = [
     session({

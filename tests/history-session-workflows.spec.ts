@@ -633,6 +633,21 @@ test.describe("history and ad hoc session workflows", () => {
         trackId: benchTrackId,
         strength: true,
       });
+      const lowerWorkoutId = await createSession({
+        name: "Lower B",
+        hour: 16,
+        minute: 0,
+        trackId: benchTrackId,
+        strength: true,
+      });
+      await db.sets.add({
+        id: uuid(),
+        sessionId: lowerWorkoutId,
+        trackId: walkTrackId,
+        createdAt: at(16, 1),
+        setType: "working",
+        seconds: 10 * 60,
+      });
 
       return {
         treadmillWalkId,
@@ -644,12 +659,13 @@ test.describe("history and ad hoc session workflows", () => {
         walkingLungeId,
         farmerWalkId,
         upperWorkoutId,
+        lowerWorkoutId,
       };
     });
 
     await goto(page, "/history");
     await expect(page.getByTestId("history-ready")).toBeVisible({ timeout: 15000 });
-    await expect(page.getByTestId("history-completed-count")).toHaveText("9");
+    await expect(page.getByTestId("history-completed-count")).toHaveText("10");
 
     await page.getByTestId("history-filter:walks").click();
     await expect(page.getByTestId("history-completed-count")).toHaveText("3");
@@ -661,20 +677,22 @@ test.describe("history and ad hoc session workflows", () => {
     await expect(page.getByTestId(`history-completed-card:${seeded.coreMobilityId}`)).toHaveCount(0);
     await expect(page.getByTestId(`history-completed-card:${seeded.walkingLungeId}`)).toHaveCount(0);
     await expect(page.getByTestId(`history-completed-card:${seeded.farmerWalkId}`)).toHaveCount(0);
+    await expect(page.getByTestId(`history-completed-card:${seeded.lowerWorkoutId}`)).toHaveCount(0);
 
     await page.getByTestId("history-filter:classes").click();
     await expect(page.getByTestId("history-completed-count")).toHaveText("1");
     await expect(page.getByTestId(`history-completed-card:${seeded.yogaId}`)).toBeVisible();
 
     await page.getByTestId("history-filter:workouts").click();
-    await expect(page.getByTestId("history-completed-count")).toHaveText("5");
+    await expect(page.getByTestId("history-completed-count")).toHaveText("6");
     await expect(page.getByTestId(`history-completed-card:${seeded.upperWorkoutId}`)).toBeVisible();
+    await expect(page.getByTestId(`history-completed-card:${seeded.lowerWorkoutId}`)).toBeVisible();
     await expect(page.getByTestId(`history-completed-card:${seeded.farmerWalkId}`)).toBeVisible();
     await expect(page.getByTestId(`history-completed-card:${seeded.walkingLungeId}`)).toBeVisible();
     await expect(page.getByTestId(`history-completed-card:${seeded.coreMobilityId}`)).toBeVisible();
     await expect(page.getByTestId(`history-completed-card:${seeded.bodyBalanceId}`)).toBeVisible();
 
     await page.getByTestId("history-filter:all").click();
-    await expect(page.getByTestId("history-completed-count")).toHaveText("9");
+    await expect(page.getByTestId("history-completed-count")).toHaveText("10");
   });
 });

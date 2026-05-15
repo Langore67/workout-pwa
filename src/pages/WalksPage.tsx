@@ -20,10 +20,10 @@ import { db } from "../db";
 import { buildCardioWalkSummary } from "../lib/cardio/buildCardioWalkSummary";
 import type { CardioWalkEvent, CardioWalkSummary } from "../lib/cardio/cardioTypes";
 import {
-  formatCardioDistanceMeters,
   formatCardioDuration,
   formatCardioPace,
   formatCardioWalkDateTime,
+  formatDistanceMiKm,
   pluralizeWalk,
 } from "../lib/cardio/formatCardioWalk";
 
@@ -51,11 +51,12 @@ function SummaryMetric({
   );
 }
 
-function WalkListRow({ walk }: { walk: CardioWalkEvent }) {
+function WalkListRow({ walk, suspiciousPace }: { walk: CardioWalkEvent; suspiciousPace?: boolean }) {
   const meta = [
     formatCardioDuration(walk.durationSeconds),
-    formatCardioDistanceMeters(walk.distanceMeters),
+    formatDistanceMiKm(walk.distanceMeters),
     formatCardioPace(walk.paceSecondsPerMile),
+    suspiciousPace ? "Suspicious pace" : undefined,
     walk.route,
   ].filter(Boolean);
 
@@ -97,12 +98,17 @@ function DataQualityNote({ summary }: { summary: CardioWalkSummary }) {
       `${summary.dataQuality.missingDurationCount} ${summary.dataQuality.missingDurationCount === 1 ? "walk is" : "walks are"} missing duration.`
     );
   }
+  if (summary.dataQuality.suspiciousPaceCount) {
+    notes.push(
+      `${summary.dataQuality.suspiciousPaceCount} ${summary.dataQuality.suspiciousPaceCount === 1 ? "walk has" : "walks have"} pace outside expected walking range.`
+    );
+  }
 
   return (
     <div data-testid="walks-data-quality" className="muted" style={{ fontSize: 13, lineHeight: 1.45 }}>
       {notes.length ? `${notes.join(" ")} ` : ""}
-      Pace is shown only when both distance and duration are available. Route, HR, elevation, and zone trends are not
-      tracked yet.
+      Pace is shown only when both distance and duration are available. Suspicious rows are shown in Recent Walks but
+      excluded from summary totals and averages. Route, HR, elevation, and zone trends are not tracked yet.
     </div>
   );
 }
@@ -127,6 +133,7 @@ export default function WalksPage() {
     return buildCardioWalkSummary({ ...cardioRows, recentLimit: 25 });
   }, [cardioRows]);
   const hasWalks = !!summary && summary.normalizedWalks.length > 0;
+  const suspiciousPaceSessionIds = new Set(summary?.dataQuality.suspiciousPaceSessionIds ?? []);
 
   return (
     <Page title="Walks" subtitle="History-based walking summary from imported conditioning sessions.">
@@ -184,7 +191,7 @@ export default function WalksPage() {
               {summary.last7d.totalDistanceMeters > 0 ? (
                 <SummaryMetric
                   label="7d Distance"
-                  value={formatCardioDistanceMeters(summary.last7d.totalDistanceMeters)}
+                  value={formatDistanceMiKm(summary.last7d.totalDistanceMeters)}
                   testId="walks-last7-distance"
                 />
               ) : null}
@@ -197,7 +204,7 @@ export default function WalksPage() {
               {summary.last28d.totalDistanceMeters > 0 ? (
                 <SummaryMetric
                   label="28d Distance"
-                  value={formatCardioDistanceMeters(summary.last28d.totalDistanceMeters)}
+                  value={formatDistanceMiKm(summary.last28d.totalDistanceMeters)}
                   testId="walks-last28-distance"
                 />
               ) : null}
@@ -225,7 +232,11 @@ export default function WalksPage() {
           <Section title="History Walks" subtitle="Each qualifying History session is listed separately.">
             <div data-testid="walks-history-list">
               {summary.normalizedWalks.map((walk) => (
-                <WalkListRow key={walk.sessionId} walk={walk} />
+                <WalkListRow
+                  key={walk.sessionId}
+                  walk={walk}
+                  suspiciousPace={suspiciousPaceSessionIds.has(walk.sessionId)}
+                />
               ))}
             </div>
           </Section>

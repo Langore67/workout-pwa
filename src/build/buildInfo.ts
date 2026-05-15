@@ -7,7 +7,7 @@
 
 export const buildInfo = {
   version: "v0.1.0",
-  commit: "2448b6b",
+  commit: "a0c56f4",
   branch: "feature/cardio-walks-history-signals",
-  builtAt: "2026-05-14T11:18:29.688Z",
+  builtAt: "2026-05-15T20:25:54.399Z",
 } as const;

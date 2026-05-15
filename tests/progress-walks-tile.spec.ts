@@ -170,10 +170,10 @@ test.describe("Progress Walks tile", () => {
 
     await expect(page.getByTestId("progress-walks-last7-count")).toHaveText("3 walks");
     await expect(page.getByTestId("progress-walks-last7-duration")).toHaveText("2h 20m");
-    await expect(page.getByTestId("progress-walks-last7-distance")).toHaveText("3.0 mi");
+    await expect(page.getByTestId("progress-walks-last7-distance")).toHaveText("3.00 mi / 4.83 km");
     await expect(page.getByTestId("progress-walks-last28-count")).toHaveText("3 walks");
     await expect(page.getByTestId("progress-walks-last28-duration")).toHaveText("2h 20m");
-    await expect(page.getByTestId("progress-walks-last28-distance")).toHaveText("3.0 mi");
+    await expect(page.getByTestId("progress-walks-last28-distance")).toHaveText("3.00 mi / 4.83 km");
     await expect(page.getByTestId("progress-walks-average-duration")).toHaveText("47 min");
     await expect(page.getByTestId("progress-walks-average-pace")).toHaveText("20:00/mi");
 
@@ -183,9 +183,9 @@ test.describe("Progress Walks tile", () => {
     await expect(page.getByTestId("progress-walks-tile").getByTestId(/^progress-walk-row:/)).toHaveCount(3);
 
     await expect(page.getByTestId(`progress-walk-row-meta:${seeded.mapMyWalkSessionId}`)).toHaveText(
-      "60 min · 3.0 mi · 20:00/mi · Neighborhood Loop"
+      "60 min · 3.00 mi / 4.83 km · 20:00/mi · Neighborhood Loop"
     );
-    await expect(page.getByTestId(`progress-walk-row-meta:${seeded.parkSessionId}`)).toHaveText("60 min");
+    await expect(page.getByTestId(`progress-walk-row-meta:${seeded.parkSessionId}`)).toHaveText("60 min · not available");
   });
 
   test("hides pace when distance or duration is missing and reports data quality", async ({ page }) => {
@@ -246,8 +246,137 @@ test.describe("Progress Walks tile", () => {
     await goto(page, "/progress");
 
     await expect(page.getByTestId(`progress-walk-row:${seeded.sessionId}`)).toBeVisible({ timeout: 15000 });
-    await expect(page.getByTestId(`progress-walk-row-meta:${seeded.sessionId}`)).toHaveText("1.0 mi");
-    await expect(page.getByTestId("progress-walks-tile")).not.toContainText("/mi");
+    await expect(page.getByTestId(`progress-walk-row-meta:${seeded.sessionId}`)).toHaveText("1.00 mi / 1.61 km");
+    await expect(page.getByTestId("progress-walks-tile")).not.toContainText(":00/mi");
     await expect(page.getByTestId("progress-walks-data-quality")).toContainText("1 walk is missing duration.");
+  });
+
+  test("shows suspicious walks but excludes them from Progress rollups", async ({ page }) => {
+    await resetDexieDb(page);
+
+    const seeded = await page.evaluate(async () => {
+      const db = (window as any).__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const uuid = () => crypto.randomUUID();
+      const now = Date.now();
+      const exerciseId = uuid();
+      const distanceTrackId = uuid();
+      const timeTrackId = uuid();
+      const normalSessionId = uuid();
+      const suspiciousSessionId = uuid();
+
+      await db.exercises.add({
+        id: exerciseId,
+        name: "Walk",
+        normalizedName: "walk",
+        category: "Cardio",
+        metricMode: "distance",
+        equipmentTags: ["bodyweight"],
+        createdAt: now - 10_000,
+      });
+      await db.tracks.bulkAdd([
+        {
+          id: distanceTrackId,
+          exerciseId,
+          trackType: "conditioning",
+          displayName: "Walk",
+          trackingMode: "repsOnly",
+          warmupSetsDefault: 0,
+          workingSetsDefault: 1,
+          repMin: 1,
+          repMax: 1,
+          restSecondsDefault: 0,
+          weightJumpDefault: 0,
+          createdAt: now - 9_000,
+        },
+        {
+          id: timeTrackId,
+          exerciseId,
+          trackType: "conditioning",
+          displayName: "Walk",
+          trackingMode: "timeSeconds",
+          warmupSetsDefault: 0,
+          workingSetsDefault: 1,
+          repMin: 1,
+          repMax: 1,
+          restSecondsDefault: 0,
+          weightJumpDefault: 0,
+          createdAt: now - 8_000,
+        },
+      ]);
+      await db.sessions.bulkAdd([
+        {
+          id: normalSessionId,
+          templateName: "Walk - Normal",
+          startedAt: now - 3 * 60 * 60 * 1000,
+          endedAt: now - 2 * 60 * 60 * 1000,
+          notes: "",
+        },
+        {
+          id: suspiciousSessionId,
+          templateName: "Walk - Suspicious",
+          startedAt: now - 2 * 60 * 60 * 1000,
+          endedAt: now + 3 * 60 * 60 * 1000 + 29 * 60 * 1000,
+          notes: "",
+        },
+      ]);
+      await db.sets.bulkAdd([
+        {
+          id: uuid(),
+          sessionId: normalSessionId,
+          trackId: distanceTrackId,
+          createdAt: now - 3 * 60 * 60 * 1000,
+          setType: "working",
+          distance: 3 * 1609.344,
+          distanceUnit: "m",
+        },
+        {
+          id: uuid(),
+          sessionId: normalSessionId,
+          trackId: timeTrackId,
+          createdAt: now - 3 * 60 * 60 * 1000,
+          setType: "working",
+          seconds: 60 * 60,
+        },
+        {
+          id: uuid(),
+          sessionId: suspiciousSessionId,
+          trackId: distanceTrackId,
+          createdAt: now - 2 * 60 * 60 * 1000,
+          setType: "working",
+          distance: 5.29 * 1609.344,
+          distanceUnit: "m",
+        },
+        {
+          id: uuid(),
+          sessionId: suspiciousSessionId,
+          trackId: timeTrackId,
+          createdAt: now - 2 * 60 * 60 * 1000,
+          setType: "working",
+          seconds: 5 * 60 * 60 + 29 * 60,
+        },
+      ]);
+
+      return { normalSessionId, suspiciousSessionId };
+    });
+
+    await goto(page, "/progress");
+
+    await expect(page.getByTestId("progress-walks-last7-count")).toHaveText("1 walk");
+    await expect(page.getByTestId("progress-walks-last7-duration")).toHaveText("60 min");
+    await expect(page.getByTestId("progress-walks-last7-distance")).toHaveText("3.00 mi / 4.83 km");
+    await expect(page.getByTestId("progress-walks-average-pace")).toHaveText("20:00/mi");
+    await expect(page.getByTestId(`progress-walk-row:${seeded.normalSessionId}`)).toBeVisible();
+    await expect(page.getByTestId(`progress-walk-row:${seeded.suspiciousSessionId}`)).toBeVisible();
+    await expect(page.getByTestId(`progress-walk-row-meta:${seeded.suspiciousSessionId}`)).toContainText(
+      "Suspicious pace"
+    );
+    await expect(page.getByTestId("progress-walks-data-quality")).toContainText(
+      "1 walk has pace outside expected walking range."
+    );
+    await expect(page.getByTestId("progress-walks-data-quality")).toContainText(
+      "excluded from summary totals and averages"
+    );
   });
 });

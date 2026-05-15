@@ -31,12 +31,13 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
 import InfoStubButton from "../components/information/InfoStubButton";
 import { db } from "../db";
+import { buildCardioExportText } from "../lib/cardio/buildCardioExportText";
 import { buildCardioWalkSummary } from "../lib/cardio/buildCardioWalkSummary";
 import {
-  formatCardioDistanceMeters,
   formatCardioDuration,
   formatCardioPace,
   formatCardioWalkDateTime,
+  formatDistanceMiKm,
   pluralizeWalk,
 } from "../lib/cardio/formatCardioWalk";
 import type { CardioWalkEvent, CardioWalkSummary } from "../lib/cardio/cardioTypes";
@@ -170,11 +171,12 @@ function WalkMetric({
   );
 }
 
-function WalkRow({ walk }: { walk: CardioWalkEvent }) {
+function WalkRow({ walk, suspiciousPace }: { walk: CardioWalkEvent; suspiciousPace?: boolean }) {
   const meta = [
     formatCardioDuration(walk.durationSeconds),
-    formatCardioDistanceMeters(walk.distanceMeters),
+    formatDistanceMiKm(walk.distanceMeters),
     formatCardioPace(walk.paceSecondsPerMile),
+    suspiciousPace ? "Suspicious pace" : undefined,
     walk.route,
   ].filter(Boolean);
 
@@ -225,6 +227,12 @@ function WalksSummaryTile({
       `${summary.dataQuality.missingDurationCount} ${summary.dataQuality.missingDurationCount === 1 ? "walk is" : "walks are"} missing duration.`
     );
   }
+  if (summary?.dataQuality.suspiciousPaceCount) {
+    dataQualityNotes.push(
+      `${summary.dataQuality.suspiciousPaceCount} ${summary.dataQuality.suspiciousPaceCount === 1 ? "walk has" : "walks have"} pace outside expected walking range.`
+    );
+  }
+  const suspiciousPaceSessionIds = new Set(summary?.dataQuality.suspiciousPaceSessionIds ?? []);
 
   return (
     <button
@@ -302,7 +310,7 @@ function WalksSummaryTile({
             {summary.last7d.totalDistanceMeters > 0 ? (
               <WalkMetric
                 label="7d Distance"
-                value={formatCardioDistanceMeters(summary.last7d.totalDistanceMeters)}
+                value={formatDistanceMiKm(summary.last7d.totalDistanceMeters)}
                 testId="progress-walks-last7-distance"
               />
             ) : null}
@@ -315,7 +323,7 @@ function WalksSummaryTile({
             {summary.last28d.totalDistanceMeters > 0 ? (
               <WalkMetric
                 label="28d Distance"
-                value={formatCardioDistanceMeters(summary.last28d.totalDistanceMeters)}
+                value={formatDistanceMiKm(summary.last28d.totalDistanceMeters)}
                 testId="progress-walks-last28-distance"
               />
             ) : null}
@@ -338,14 +346,18 @@ function WalksSummaryTile({
           <div style={{ display: "grid", gap: 9 }}>
             <div style={{ fontSize: 13, fontWeight: 900, color: "var(--text, #111827)" }}>Recent walks</div>
             {summary.recentWalks.map((walk) => (
-              <WalkRow key={walk.sessionId} walk={walk} />
+              <WalkRow
+                key={walk.sessionId}
+                walk={walk}
+                suspiciousPace={suspiciousPaceSessionIds.has(walk.sessionId)}
+              />
             ))}
           </div>
 
           <div data-testid="progress-walks-data-quality" className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
             {dataQualityNotes.length ? `${dataQualityNotes.join(" ")} ` : ""}
-            Pace shown only when both distance and duration are available. Route, HR, elevation, and zone trends are
-            not tracked yet.
+            Pace shown only when both distance and duration are available. Suspicious rows are shown in Recent Walks
+            but excluded from summary totals and averages. Route, HR, elevation, and zone trends are not tracked yet.
           </div>
         </>
       )}
@@ -411,7 +423,7 @@ async function copyTextToClipboard(text: string): Promise<CopyResult> {
 
 export default function ProgressPage() {
   const nav = useNavigate();
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [copyState, setCopyState] = useState<"idle" | "coach-copied" | "cardio-copied" | "error">("idle");
   const [coachExportText, setCoachExportText] = useState<string>("");
   const [coachExportReadyState, setCoachExportReadyState] = useState<"preparing" | "ready" | "error">("preparing");
   const [manualCopyText, setManualCopyText] = useState<string | null>(null);
@@ -432,6 +444,10 @@ export default function ProgressPage() {
   const cardioWalkSummary = useMemo(() => {
     if (!cardioRows) return undefined;
     return buildCardioWalkSummary({ ...cardioRows, recentLimit: 5 });
+  }, [cardioRows]);
+  const cardioExportSummary = useMemo(() => {
+    if (!cardioRows) return undefined;
+    return buildCardioWalkSummary({ ...cardioRows, recentLimit: 25 });
   }, [cardioRows]);
 
   useEffect(() => {
@@ -483,13 +499,38 @@ export default function ProgressPage() {
       if (!copied.ok) {
         throw new Error(copied.detail);
       }
-      setCopyState("copied");
+      setCopyState("coach-copied");
       window.setTimeout(() => {
-        setCopyState((current) => (current === "copied" ? "idle" : current));
+        setCopyState((current) => (current === "coach-copied" ? "idle" : current));
       }, 2000);
     } catch {
       setCopyState("error");
       setManualCopyText(text || "Could not generate coach export text.");
+    }
+  }
+
+  async function onCopyCardioExport() {
+    if (!cardioExportSummary) {
+      setCopyState("error");
+      setManualCopyText("Could not generate cardio export text.");
+      return;
+    }
+
+    const text = buildCardioExportText(cardioExportSummary);
+
+    try {
+      setManualCopyText(null);
+      const copied = await copyTextToClipboard(text);
+      if (!copied.ok) {
+        throw new Error(copied.detail);
+      }
+      setCopyState("cardio-copied");
+      window.setTimeout(() => {
+        setCopyState((current) => (current === "cardio-copied" ? "idle" : current));
+      }, 2000);
+    } catch {
+      setCopyState("error");
+      setManualCopyText(text);
     }
   }
 
@@ -526,12 +567,22 @@ export default function ProgressPage() {
           >
             {coachExportReadyState === "preparing" ? "Preparing Export…" : "Copy Coach Export"}
           </button>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => void onCopyCardioExport()}
+            disabled={!cardioRows}
+          >
+            Copy Cardio Export
+          </button>
           <InfoStubButton pageKey="progress" infoKey="coachExport" />
           <div className="muted" style={{ fontSize: 13, flex: "1 1 220px", minWidth: 0 }}>
             {coachExportReadyState === "preparing"
               ? "Preparing a copy/paste summary for ChatGPT or a coach."
-              : copyState === "copied"
+              : copyState === "coach-copied"
               ? "Coach export copied."
+              : copyState === "cardio-copied"
+                ? "Cardio export copied."
               : copyState === "error"
                 ? "Copy not available on this device. Tap and hold to copy manually."
                 : "Creates a copy/paste summary for ChatGPT or a coach."}
