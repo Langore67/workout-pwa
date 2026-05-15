@@ -67,7 +67,9 @@ function parseDistanceMeters(valueRaw: string, unitRaw: string): number | undefi
   const value = Number(valueRaw);
   if (!Number.isFinite(value) || value <= 0) return undefined;
   const unit = unitRaw.trim().toLowerCase();
-  if (unit === "km") return value * 1000;
+  if (unit === "mi" || unit === "mile" || unit === "miles") return value * 1609.344;
+  if (unit === "km" || unit === "kilometer" || unit === "kilometers") return value * 1000;
+  if (unit === "m" || unit === "meter" || unit === "meters") return value;
   return undefined;
 }
 
@@ -76,7 +78,7 @@ function parseIfSetLine(line: string): ImportedSet | null {
   if (!trimmed) return null;
 
   const match = trimmed.match(
-    /^(warmup|work|technique|mobility|corrective|diagnostic|rehab|conditioning|test)\s+(BW)x(\d+(?:\.\d+)?)(km|min|mins|minute|minutes|s|sec|secs|second|seconds)(?:\s+(.*))?$/i
+    /^(warmup|work|technique|mobility|corrective|diagnostic|rehab|conditioning|test)\s+(BW)x(\d+(?:\.\d+)?)(mi|mile|miles|km|kilometer|kilometers|m|meter|meters|min|mins|minute|minutes|s|sec|secs|second|seconds)(?:\s+(.*))?$/i
   );
   if (!match) return null;
 
@@ -182,7 +184,7 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
       continue;
     }
 
-    const notesInlineMatch = line.match(/^notes?\s*:\s*(.*)$/i);
+    const notesInlineMatch = line.match(/^(?:session\s+notes|notes?)\s*:\s*(.*)$/i);
     if (notesInlineMatch) {
       notes = notesInlineMatch[1].trim();
       if (!notes) inNotesBlock = true;

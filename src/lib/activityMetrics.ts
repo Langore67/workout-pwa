@@ -45,9 +45,6 @@ export function getActivityMetricMode(args: {
   exercise?: Exercise;
   set?: Pick<SetEntry, "seconds" | "distance">;
 }): ActivityMetricMode {
-  const explicitMetric = (args.exercise as any)?.metricMode;
-  if (explicitMetric === "distance" || explicitMetric === "time") return explicitMetric;
-
   if (typeof args.set?.distance === "number" && Number.isFinite(args.set.distance) && args.set.distance > 0) {
     return "distance";
   }
@@ -58,6 +55,9 @@ export function getActivityMetricMode(args: {
   ) {
     return "time";
   }
+
+  const explicitMetric = (args.exercise as any)?.metricMode;
+  if (explicitMetric === "distance" || explicitMetric === "time") return explicitMetric;
 
   return null;
 }

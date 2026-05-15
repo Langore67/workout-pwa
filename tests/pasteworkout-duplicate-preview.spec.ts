@@ -744,6 +744,79 @@ conditioning BWx5.39km`);
   await expect(page.getByRole("textbox", { name: "time" })).toHaveCount(0);
 });
 
+test("Paste Workout imports Coach GPT MapMyWalk screenshot text with miles, duration, and notes", async ({
+  page,
+}) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Walk - MapMyWalk
+Date: 2026-05-13
+Start: 07:30
+End: 08:12
+
+Walk
+conditioning BWx3.12mi
+conditioning BWx42min
+
+Session Notes:
+Source: MapMyWalk screenshot
+Route: Neighborhood Loop
+Pace: 13:28/mi
+Elevation: 120 ft
+Avg HR: 112
+Max HR: 138
+Notes: optional`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+
+  await expect(page.getByText(/Logged as conditioning work\. Excluded from strength metrics\./i)).toBeVisible();
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const imported = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const sessions = await db.sessions.toArray();
+    const session = sessions.find((row: any) => row.templateName === "Walk - MapMyWalk");
+    if (!session) throw new Error("Walk - MapMyWalk session not found");
+    const sets = await db.sets.where("sessionId").equals(session.id).sortBy("createdAt");
+    const tracks = await db.tracks.toArray();
+    const exercises = await db.exercises.toArray();
+    const trackIds = Array.from(new Set(sets.map((set: any) => set.trackId)));
+    return {
+      session,
+      sets,
+      durationMs: session.endedAt - session.startedAt,
+      tracks: trackIds.map((trackId: any) => tracks.find((track: any) => track.id === trackId)),
+      exercises,
+    };
+  });
+
+  expect(imported.durationMs).toBe(42 * 60 * 1000);
+  expect(imported.session.notes).toContain("Source: MapMyWalk screenshot");
+  expect(imported.session.notes).toContain("Route: Neighborhood Loop");
+  expect(imported.session.notes).toContain("Pace: 13:28/mi");
+  expect(imported.session.notes).toContain("Elevation: 120 ft");
+  expect(imported.session.notes).toContain("Avg HR: 112");
+  expect(imported.session.notes).toContain("Max HR: 138");
+  expect(imported.sets).toHaveLength(2);
+  expect(imported.sets.some((set: any) => Math.abs(set.distance - 5021.15328) < 0.001)).toBe(true);
+  expect(imported.sets.some((set: any) => set.distanceUnit === "m")).toBe(true);
+  expect(imported.sets.some((set: any) => set.seconds === 2520)).toBe(true);
+  expect(imported.sets.every((set: any) => set.reps === undefined && set.weight === undefined)).toBe(true);
+  expect(imported.tracks.every((track: any) => track.displayName === "Walk" && track.trackType === "conditioning")).toBe(true);
+
+  await page.goto(new URL("/history", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId(`history-metrics:${imported.session.id}`)).toContainText("5.02 km");
+  await expect(page.getByTestId(`history-metrics:${imported.session.id}`)).not.toContainText("0 lb");
+
+  await page.goto(new URL(`/session/${imported.session.id}`, BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("session-activity-metric")).toContainText("Distance 5.02 km");
+  await expect(page.getByText("Route: Neighborhood Loop")).toBeVisible();
+});
+
 test("Paste Workout keeps corrective entries on a corrective track even when a strength track already exists", async ({
   page,
 }) => {

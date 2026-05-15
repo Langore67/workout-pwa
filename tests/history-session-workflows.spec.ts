@@ -489,4 +489,192 @@ test.describe("history and ad hoc session workflows", () => {
     expect(focusSection).not.toMatch(/\bincrease by\s+\d+\s*(lb|lbs|kg)?\b/i);
     expect(focusSection).not.toMatch(/\bperform\s+\d+\s*-\s*\d+\s+reps?\b/i);
   });
+
+  test("History Walks filter uses the conservative Cardio walk classifier", async ({ page }) => {
+    await goto(page, "/");
+    await resetDexieDb(page);
+
+    const seeded = await page.evaluate(async () => {
+      const db = (window as any).__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const uuid = () => crypto.randomUUID();
+      const base = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const at = (hour: number, minute: number) =>
+        new Date(base.getFullYear(), base.getMonth(), base.getDate(), hour, minute).getTime();
+
+      async function createTrack(name: string, trackType: "conditioning" | "strength" = "conditioning") {
+        const exerciseId = uuid();
+        const trackId = uuid();
+        await db.exercises.add({
+          id: exerciseId,
+          name,
+          normalizedName: name.toLowerCase(),
+          category: trackType === "conditioning" ? "Cardio" : "Strength",
+          metricMode: trackType === "conditioning" ? "time" : "reps",
+          equipmentTags: trackType === "conditioning" ? ["bodyweight"] : ["barbell"],
+          createdAt: at(7, 0),
+        });
+        await db.tracks.add({
+          id: trackId,
+          exerciseId,
+          trackType,
+          displayName: name,
+          trackingMode: trackType === "conditioning" ? "timeSeconds" : "weightedReps",
+          warmupSetsDefault: 0,
+          workingSetsDefault: 1,
+          repMin: 1,
+          repMax: 1,
+          restSecondsDefault: 0,
+          weightJumpDefault: 0,
+          createdAt: at(7, 1),
+        });
+        return trackId;
+      }
+
+      async function createSession(args: {
+        name: string;
+        hour: number;
+        minute: number;
+        trackId: string;
+        seconds?: number;
+        distanceMeters?: number;
+        strength?: boolean;
+      }) {
+        const sessionId = uuid();
+        const startedAt = at(args.hour, args.minute);
+        await db.sessions.add({
+          id: sessionId,
+          templateName: args.name,
+          startedAt,
+          endedAt: startedAt + (args.seconds ?? 30 * 60) * 1000,
+          notes: args.name === "Walk - MapMyWalk" ? "Route: Neighborhood Loop\nPace: 20:00/mi" : "",
+        });
+        await db.sets.add({
+          id: uuid(),
+          sessionId,
+          trackId: args.trackId,
+          createdAt: startedAt + 60_000,
+          setType: "working",
+          seconds: args.strength ? undefined : args.seconds ?? 30 * 60,
+          distance: args.distanceMeters,
+          distanceUnit: args.distanceMeters ? "m" : undefined,
+          weight: args.strength ? 135 : undefined,
+          reps: args.strength ? 8 : undefined,
+        });
+        return sessionId;
+      }
+
+      const walkTrackId = await createTrack("Walk");
+      const bodyBalanceTrackId = await createTrack("BodyBalance");
+      const yogaTrackId = await createTrack("Yoga");
+      const coreMobilityTrackId = await createTrack("Core Mobility");
+      const walkingLungeTrackId = await createTrack("Walking Lunge");
+      const farmerTrackId = await createTrack("Farmer's Walk", "strength");
+      const benchTrackId = await createTrack("Bench Press", "strength");
+
+      const treadmillWalkId = await createSession({
+        name: "Walk - Treadmill",
+        hour: 9,
+        minute: 30,
+        trackId: walkTrackId,
+        seconds: 20 * 60,
+      });
+      const parkWalkId = await createSession({
+        name: "Walk - Park",
+        hour: 13,
+        minute: 0,
+        trackId: walkTrackId,
+        seconds: 60 * 60,
+      });
+      const mapMyWalkId = await createSession({
+        name: "Walk - MapMyWalk",
+        hour: 17,
+        minute: 30,
+        trackId: walkTrackId,
+        seconds: 60 * 60,
+        distanceMeters: 3 * 1609.344,
+      });
+      const bodyBalanceId = await createSession({
+        name: "BodyBalance",
+        hour: 8,
+        minute: 0,
+        trackId: bodyBalanceTrackId,
+      });
+      const yogaId = await createSession({
+        name: "Yoga",
+        hour: 8,
+        minute: 45,
+        trackId: yogaTrackId,
+      });
+      const coreMobilityId = await createSession({
+        name: "Core Mobility",
+        hour: 10,
+        minute: 30,
+        trackId: coreMobilityTrackId,
+      });
+      const walkingLungeId = await createSession({
+        name: "Walking Lunge",
+        hour: 11,
+        minute: 30,
+        trackId: walkingLungeTrackId,
+      });
+      const farmerWalkId = await createSession({
+        name: "Farmer's Walk",
+        hour: 12,
+        minute: 30,
+        trackId: farmerTrackId,
+        strength: true,
+      });
+      const upperWorkoutId = await createSession({
+        name: "Upper A",
+        hour: 15,
+        minute: 0,
+        trackId: benchTrackId,
+        strength: true,
+      });
+
+      return {
+        treadmillWalkId,
+        parkWalkId,
+        mapMyWalkId,
+        bodyBalanceId,
+        yogaId,
+        coreMobilityId,
+        walkingLungeId,
+        farmerWalkId,
+        upperWorkoutId,
+      };
+    });
+
+    await goto(page, "/history");
+    await expect(page.getByTestId("history-ready")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("history-completed-count")).toHaveText("9");
+
+    await page.getByTestId("history-filter:walks").click();
+    await expect(page.getByTestId("history-completed-count")).toHaveText("3");
+    await expect(page.getByTestId(`history-completed-card:${seeded.treadmillWalkId}`)).toBeVisible();
+    await expect(page.getByTestId(`history-completed-card:${seeded.parkWalkId}`)).toBeVisible();
+    await expect(page.getByTestId(`history-completed-card:${seeded.mapMyWalkId}`)).toBeVisible();
+    await expect(page.getByTestId(`history-completed-card:${seeded.bodyBalanceId}`)).toHaveCount(0);
+    await expect(page.getByTestId(`history-completed-card:${seeded.yogaId}`)).toHaveCount(0);
+    await expect(page.getByTestId(`history-completed-card:${seeded.coreMobilityId}`)).toHaveCount(0);
+    await expect(page.getByTestId(`history-completed-card:${seeded.walkingLungeId}`)).toHaveCount(0);
+    await expect(page.getByTestId(`history-completed-card:${seeded.farmerWalkId}`)).toHaveCount(0);
+
+    await page.getByTestId("history-filter:classes").click();
+    await expect(page.getByTestId("history-completed-count")).toHaveText("1");
+    await expect(page.getByTestId(`history-completed-card:${seeded.yogaId}`)).toBeVisible();
+
+    await page.getByTestId("history-filter:workouts").click();
+    await expect(page.getByTestId("history-completed-count")).toHaveText("5");
+    await expect(page.getByTestId(`history-completed-card:${seeded.upperWorkoutId}`)).toBeVisible();
+    await expect(page.getByTestId(`history-completed-card:${seeded.farmerWalkId}`)).toBeVisible();
+    await expect(page.getByTestId(`history-completed-card:${seeded.walkingLungeId}`)).toBeVisible();
+    await expect(page.getByTestId(`history-completed-card:${seeded.coreMobilityId}`)).toBeVisible();
+    await expect(page.getByTestId(`history-completed-card:${seeded.bodyBalanceId}`)).toBeVisible();
+
+    await page.getByTestId("history-filter:all").click();
+    await expect(page.getByTestId("history-completed-count")).toHaveText("9");
+  });
 });
