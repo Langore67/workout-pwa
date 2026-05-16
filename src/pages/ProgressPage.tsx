@@ -429,10 +429,20 @@ function CapabilityTestsTile({
         </div>
       ) : !summary.liveResultCount ? (
         <div data-testid="progress-capability-empty" style={{ display: "grid", gap: 6 }}>
-          <div style={{ fontWeight: 800, color: "var(--text, #111827)" }}>No capability tests logged yet.</div>
-          <div className="muted" style={{ fontSize: 13, lineHeight: 1.35 }}>
-            Start with Floor Get-Up, Single-Leg Balance, or Suitcase Carry.
+          <div data-testid="progress-capability-overall" style={{ fontWeight: 850 }}>
+            Overall: {summary.overallLabel}
           </div>
+          <div data-testid="progress-capability-explanation" className="muted" style={{ fontSize: 13 }}>
+            {summary.overallExplanation}
+          </div>
+          <div className="muted" style={{ fontSize: 13, lineHeight: 1.35 }}>
+            Start with:
+          </div>
+          <ul data-testid="progress-capability-suggested-starts" className="muted" style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
+            <li>Floor Get-Up</li>
+            <li>Single-Leg Balance</li>
+            <li>Suitcase Carry</li>
+          </ul>
         </div>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>

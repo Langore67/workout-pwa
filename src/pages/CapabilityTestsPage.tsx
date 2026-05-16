@@ -198,13 +198,27 @@ export default function CapabilityTestsPage() {
           <div className="muted">Loading capability summary...</div>
         ) : (
           <div data-testid="capability-summary-panel" style={{ display: "grid", gap: 12 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+            <div style={{ display: "grid", gap: 6 }}>
               <div data-testid="capability-summary-overall" style={{ fontWeight: 900 }}>
                 Overall: {summary.overallLabel}
               </div>
               <div data-testid="capability-summary-explanation" className="muted">
                 {summary.overallExplanation}
               </div>
+            </div>
+
+            {!summary.liveResultCount ? (
+              <div data-testid="capability-summary-suggested-starts" className="muted" style={{ display: "grid", gap: 4 }}>
+                <div>Start with:</div>
+                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  <li>Floor Get-Up</li>
+                  <li>Single-Leg Balance</li>
+                  <li>Suitcase Carry</li>
+                </ul>
+              </div>
+            ) : (
+              <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
               <div data-testid="capability-summary-status-mix" className="muted">
                 green {summary.statusCounts.green} | yellow {summary.statusCounts.yellow} | red{" "}
                 {summary.statusCounts.red} | not tested {summary.statusCounts.notTested}
@@ -229,6 +243,8 @@ export default function CapabilityTestsPage() {
                 </div>
               ))}
             </div>
+              </>
+            )}
           </div>
         )}
       </Section>
