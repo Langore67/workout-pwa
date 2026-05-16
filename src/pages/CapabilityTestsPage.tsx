@@ -18,6 +18,10 @@ import {
   parseCapabilityDateKey,
 } from "../lib/capabilityTests";
 import { buildCapabilityTestsSummary } from "../lib/capabilityTestsSummary";
+import {
+  deriveCarryCapabilityResultsFromHistory,
+  isHistoryDerivedCapabilityTestResult,
+} from "../lib/deriveCapabilityTestsFromHistory";
 import { uuid } from "../utils";
 
 type FormState = {
@@ -59,6 +63,7 @@ function rowText(row: FitnessTestResult) {
     row.side && row.side !== "none" ? `side ${row.side}` : "",
     row.status ? `status ${row.status}` : "",
     row.pain ? `pain ${row.pain}` : "",
+    isHistoryDerivedCapabilityTestResult(row) ? "source history" : "",
     row.notes ? row.notes : "",
   ].filter(Boolean);
   return parts.join(" | ");
@@ -81,12 +86,27 @@ export default function CapabilityTestsPage() {
   const [error, setError] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<"all" | FitnessTestCategory>("all");
 
-  const rows = useLiveQuery(async () => {
+  const capabilityData = useLiveQuery(async () => {
     const table = (db as any).fitnessTestResults;
-    if (!table?.toArray) return [] as FitnessTestResult[];
-    const all = (await table.toArray()) as FitnessTestResult[];
-    return all.filter((row) => !row.deletedAt).sort((a, b) => b.date - a.date || b.updatedAt - a.updatedAt);
+    const [all, sessions, sets, tracks, exercises] = await Promise.all([
+      table?.toArray ? (table.toArray() as Promise<FitnessTestResult[]>) : Promise.resolve([] as FitnessTestResult[]),
+      db.sessions.toArray(),
+      db.sets.toArray(),
+      db.tracks.toArray(),
+      db.exercises.toArray(),
+    ]);
+    const manualRows = all.filter((row) => !row.deletedAt);
+    const derivedRows = deriveCarryCapabilityResultsFromHistory({
+      sessions,
+      sets,
+      tracks,
+      exercises,
+      manualResults: all,
+    });
+    const rows = [...manualRows, ...derivedRows].sort((a, b) => b.date - a.date || b.updatedAt - a.updatedAt);
+    return { manualRows, derivedRows, rows };
   }, []);
+  const rows = capabilityData?.rows;
 
   const visibleRows = useMemo(() => {
     const liveRows = rows ?? [];
@@ -430,14 +450,16 @@ export default function CapabilityTestsPage() {
                 <div data-testid={`capability-result-text:${row.id}`} style={{ fontWeight: 850, lineHeight: 1.35 }}>
                   {rowText(row)}
                 </div>
-                <div className="row" style={{ gap: 8, marginTop: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                  <button className="btn small" type="button" onClick={() => startEdit(row)}>
-                    Edit
-                  </button>
-                  <button className="btn small" type="button" onClick={() => void deleteResult(row)}>
-                    Delete
-                  </button>
-                </div>
+                {!isHistoryDerivedCapabilityTestResult(row) ? (
+                  <div className="row" style={{ gap: 8, marginTop: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                    <button className="btn small" type="button" onClick={() => startEdit(row)}>
+                      Edit
+                    </button>
+                    <button className="btn small" type="button" onClick={() => void deleteResult(row)}>
+                      Delete
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

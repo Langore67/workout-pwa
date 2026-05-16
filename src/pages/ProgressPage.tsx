@@ -46,6 +46,7 @@ import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetr
 import { formatCoachExportText } from "../lib/coachExport/formatCoachExportText";
 import { formatCapabilityDate, labelForCapabilityCategory } from "../lib/capabilityTests";
 import { buildCapabilityTestsSummary } from "../lib/capabilityTestsSummary";
+import { deriveCarryCapabilityResultsFromHistory } from "../lib/deriveCapabilityTestsFromHistory";
 
 /* ============================================================================
    Breadcrumb 1 — Tile component
@@ -563,8 +564,22 @@ export default function ProgressPage() {
   );
   const capabilityRows = useLiveQuery(async () => {
     const table = (db as any).fitnessTestResults;
-    if (!table?.toArray) return [] as FitnessTestResult[];
-    return ((await table.toArray()) as FitnessTestResult[]).filter((row) => !row.deletedAt);
+    const [all, sessions, sets, tracks, exercises] = await Promise.all([
+      table?.toArray ? (table.toArray() as Promise<FitnessTestResult[]>) : Promise.resolve([] as FitnessTestResult[]),
+      db.sessions.toArray(),
+      db.sets.toArray(),
+      db.tracks.toArray(),
+      db.exercises.toArray(),
+    ]);
+    const manualRows = all.filter((row) => !row.deletedAt);
+    const derivedRows = deriveCarryCapabilityResultsFromHistory({
+      sessions,
+      sets,
+      tracks,
+      exercises,
+      manualResults: all,
+    });
+    return [...manualRows, ...derivedRows];
   }, []);
   const cardioWalkSummary = useMemo(() => {
     if (!cardioRows) return undefined;
