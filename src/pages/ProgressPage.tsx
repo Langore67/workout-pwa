@@ -442,6 +442,9 @@ function CapabilityTestsTile({
           <div data-testid="progress-capability-overall" className="muted" style={{ fontSize: 13 }}>
             Overall: {summary.overallLabel}
           </div>
+          <div data-testid="progress-capability-explanation" className="muted" style={{ fontSize: 13 }}>
+            {summary.overallExplanation}
+          </div>
           <div data-testid="progress-capability-latest" className="muted" style={{ fontSize: 13 }}>
             Latest: {latest ? formatCapabilityDate(latest.date) : "not available"}
           </div>

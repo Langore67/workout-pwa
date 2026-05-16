@@ -19,6 +19,7 @@ export type CapabilityTestsSummary = {
   };
   staleCategories: Record<CapabilityStaleWindow, FitnessTestCategory[]>;
   overallLabel: CapabilityOverallLabel;
+  overallExplanation: string;
   liveResultCount: number;
 };
 
@@ -103,6 +104,7 @@ export function buildCapabilityTestsSummary(
   };
 
   let overallLabel: CapabilityOverallLabel = "Not Tested";
+  let overallExplanation = "No capability tests logged yet.";
   if (liveRows.length > 0) {
     const hasRecentRed = latestRows.some((row) => row.status === "red" && row.date >= recentPainStart);
     const hasRecentModerateSeverePain = recentPainRows.some((row) => hasModerateOrSeverePain(row.pain));
@@ -113,12 +115,16 @@ export function buildCapabilityTestsSummary(
 
     if (hasRecentRed || hasRecentModerateSeverePain) {
       overallLabel = "Watch";
+      overallExplanation = "Recent red status or moderate/severe pain is present.";
     } else if (incompleteCategories || mostlyYellow(latestRows) || hasStaleCategory) {
       overallLabel = "Developing";
+      overallExplanation = "Some categories are missing, stale, or mostly yellow.";
     } else if (mostlyGreen) {
       overallLabel = "Solid";
+      overallExplanation = "Recent results are mostly green with no major pain flags.";
     } else {
       overallLabel = "Developing";
+      overallExplanation = "Some categories are missing, stale, or mostly yellow.";
     }
   }
 
@@ -128,6 +134,7 @@ export function buildCapabilityTestsSummary(
     recentPainCounts,
     staleCategories,
     overallLabel,
+    overallExplanation,
     liveResultCount: liveRows.length,
   };
 }

@@ -69,6 +69,13 @@ test.describe("Progress Capability Tests", () => {
     await goto(page, "/capability-tests");
 
     await expect(page.getByRole("heading", { name: "Capability Tests" })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("capability-summary-panel")).toBeVisible();
+    await expect(page.getByTestId("capability-summary-overall")).toHaveText("Overall: Not Tested");
+    await expect(page.getByTestId("capability-summary-explanation")).toHaveText("No capability tests logged yet.");
+    await expect(page.getByTestId("capability-summary-status-mix")).toContainText(
+      "green 0 | yellow 0 | red 0 | not tested 5"
+    );
+    await expect(page.getByTestId("capability-summary-latest-categories")).toContainText("Ground: Not tested");
     await expect(page.getByTestId("capability-empty-state")).toContainText("No capability tests logged yet.");
     await expect(page.getByTestId("capability-empty-state")).toContainText(
       "Start with Floor Get-Up, Single-Leg Balance, or Suitcase Carry."
@@ -101,11 +108,30 @@ test.describe("Progress Capability Tests", () => {
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(0)).toContainText("2026-05-16 | Suitcase Carry - Left | Carry | 45 lb | side left | status green | pain none | smooth left side");
     await expect(rows.nth(1)).toContainText("2026-05-15 | Floor Get-Up | Ground | status yellow | pain none | needed right hand support");
+    await expect(page.getByTestId("capability-summary-overall")).toHaveText("Overall: Developing");
+    await expect(page.getByTestId("capability-summary-explanation")).toHaveText(
+      "Some categories are missing, stale, or mostly yellow."
+    );
+    await expect(page.getByTestId("capability-summary-status-mix")).toContainText(
+      "green 1 | yellow 1 | red 0 | not tested 3"
+    );
+    await expect(page.getByTestId("capability-summary-latest-categories")).toContainText(
+      "Ground: Floor Get-Up | yellow | pain none | 2026-05-15"
+    );
+    await expect(page.getByTestId("capability-summary-latest-categories")).toContainText(
+      "Carry: Suitcase Carry - Left | green | pain none | 2026-05-16"
+    );
+    await expect(page.getByTestId("capability-summary-not-tested")).toContainText(
+      "Terrain, Single-Leg, Agility"
+    );
 
     await goto(page, "/progress");
     await expect(page.getByTestId("progress-capability-count")).toHaveText("2 logged tests");
     await expect(page.getByTestId("progress-capability-latest")).toHaveText("Latest: 2026-05-16");
     await expect(page.getByTestId("progress-capability-status-mix")).toContainText("green 1 | yellow 1 | red 0");
+    await expect(page.getByTestId("progress-capability-explanation")).toHaveText(
+      "Some categories are missing, stale, or mostly yellow."
+    );
   });
 
   test("user can edit and soft-delete a result", async ({ page }) => {
@@ -123,6 +149,10 @@ test.describe("Progress Capability Tests", () => {
     });
 
     await expect(page.getByTestId("capability-results-list")).toContainText("30 reps");
+    await expect(page.getByTestId("capability-summary-pain-flags")).toHaveText("pain flags 1");
+    await expect(page.getByTestId("capability-summary-latest-categories")).toContainText(
+      "Agility: Lateral Line Step-Over | yellow | pain mild | 2026-05-16"
+    );
     await page.getByRole("button", { name: "Edit" }).click();
     await page.getByLabel("Notes").fill("cleaner after warmup");
     await page.getByRole("button", { name: "Save Result" }).click();
@@ -131,6 +161,10 @@ test.describe("Progress Capability Tests", () => {
 
     await page.getByRole("button", { name: "Delete" }).click();
     await expect(page.getByTestId("capability-empty-state")).toBeVisible();
+    await expect(page.getByTestId("capability-summary-overall")).toHaveText("Overall: Not Tested");
+    await expect(page.getByTestId("capability-summary-explanation")).toHaveText("No capability tests logged yet.");
+    await expect(page.getByTestId("capability-summary-pain-flags")).toHaveText("pain flags 0");
+    await expect(page.getByTestId("capability-summary-latest-categories")).toContainText("Agility: Not tested");
 
     const liveCount = await page.evaluate(async () => {
       const db = (window as any).__db;
@@ -138,6 +172,64 @@ test.describe("Progress Capability Tests", () => {
       return rows.filter((row: any) => !row.deletedAt).length;
     });
     expect(liveCount).toBe(0);
+  });
+
+  test("summary panel uses newest result per category and shows pain flags", async ({ page }) => {
+    await resetDexieDb(page);
+    await page.evaluate(async () => {
+      const db = (window as any).__db;
+      if (!db) throw new Error("__db missing on window.");
+      const at = (dateKey: string) => new Date(`${dateKey}T12:00:00`).getTime();
+      const now = Date.now();
+      await db.fitnessTestResults.bulkAdd([
+        {
+          id: crypto.randomUUID(),
+          testName: "Floor Get-Up",
+          category: "ground",
+          date: at("2026-05-15"),
+          status: "red",
+          pain: "none",
+          notes: "older result",
+          updatedAt: now - 1000,
+        },
+        {
+          id: crypto.randomUUID(),
+          testName: "Floor Get-Up",
+          category: "ground",
+          date: at("2026-05-16"),
+          status: "yellow",
+          pain: "mild",
+          notes: "newer result",
+          updatedAt: now,
+        },
+        {
+          id: crypto.randomUUID(),
+          testName: "Suitcase Carry - Left",
+          category: "carry",
+          date: at("2026-05-16"),
+          status: "green",
+          pain: "none",
+          updatedAt: now,
+        },
+      ]);
+    });
+
+    await goto(page, "/capability-tests");
+
+    await expect(page.getByTestId("capability-summary-overall")).toHaveText("Overall: Developing");
+    await expect(page.getByTestId("capability-summary-explanation")).toHaveText(
+      "Some categories are missing, stale, or mostly yellow."
+    );
+    await expect(page.getByTestId("capability-summary-status-mix")).toContainText(
+      "green 1 | yellow 1 | red 0 | not tested 3"
+    );
+    await expect(page.getByTestId("capability-summary-pain-flags")).toHaveText("pain flags 1");
+    await expect(page.getByTestId("capability-summary-latest-categories")).toContainText(
+      "Ground: Floor Get-Up | yellow | pain mild | 2026-05-16"
+    );
+    await expect(page.getByTestId("capability-summary-latest-categories")).not.toContainText(
+      "Ground: Floor Get-Up | red"
+    );
   });
 
   test("capability data does not affect cardio summaries or coach/cardio exports", async ({ page }) => {

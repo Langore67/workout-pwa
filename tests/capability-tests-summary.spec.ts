@@ -44,6 +44,7 @@ test("no results returns Not Tested", () => {
   const summary = buildCapabilityTestsSummary([], { now: NOW });
 
   expect(summary.overallLabel).toBe("Not Tested");
+  expect(summary.overallExplanation).toBe("No capability tests logged yet.");
   expect(summary.liveResultCount).toBe(0);
   expect(summary.statusCounts).toEqual({ green: 0, yellow: 0, red: 0, notTested: 5 });
 });
@@ -84,6 +85,7 @@ test("red status returns Watch", () => {
   const summary = buildCapabilityTestsSummary(rows, { now: NOW });
 
   expect(summary.overallLabel).toBe("Watch");
+  expect(summary.overallExplanation).toBe("Recent red status or moderate/severe pain is present.");
   expect(summary.statusCounts.red).toBe(1);
 });
 
@@ -98,7 +100,9 @@ test("moderate or severe pain returns Watch", () => {
   );
 
   expect(moderate.overallLabel).toBe("Watch");
+  expect(moderate.overallExplanation).toBe("Recent red status or moderate/severe pain is present.");
   expect(severe.overallLabel).toBe("Watch");
+  expect(severe.overallExplanation).toBe("Recent red status or moderate/severe pain is present.");
 });
 
 test("incomplete categories returns Developing", () => {
@@ -111,6 +115,7 @@ test("incomplete categories returns Developing", () => {
   );
 
   expect(summary.overallLabel).toBe("Developing");
+  expect(summary.overallExplanation).toBe("Some categories are missing, stale, or mostly yellow.");
   expect(summary.statusCounts.notTested).toBe(3);
 });
 
@@ -118,6 +123,7 @@ test("mostly green recent results returns Solid", () => {
   const summary = buildCapabilityTestsSummary(completeGreenRows(), { now: NOW });
 
   expect(summary.overallLabel).toBe("Solid");
+  expect(summary.overallExplanation).toBe("Recent results are mostly green with no major pain flags.");
   expect(summary.statusCounts.green).toBe(4);
   expect(summary.statusCounts.yellow).toBe(1);
 });

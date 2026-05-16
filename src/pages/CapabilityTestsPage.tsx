@@ -17,6 +17,7 @@ import {
   labelForCapabilityCategory,
   parseCapabilityDateKey,
 } from "../lib/capabilityTests";
+import { buildCapabilityTestsSummary } from "../lib/capabilityTestsSummary";
 import { uuid } from "../utils";
 
 type FormState = {
@@ -63,6 +64,17 @@ function rowText(row: FitnessTestResult) {
   return parts.join(" | ");
 }
 
+function summaryCategoryText(row: FitnessTestResult | undefined) {
+  if (!row) return "Not tested";
+  const parts = [
+    row.testName,
+    row.status ?? "status not set",
+    row.pain ? `pain ${row.pain}` : "pain not set",
+    formatCapabilityDate(row.date),
+  ];
+  return parts.join(" | ");
+}
+
 export default function CapabilityTestsPage() {
   const navigate = useNavigate();
   const [form, setForm] = useState<FormState>(() => defaultForm());
@@ -81,6 +93,13 @@ export default function CapabilityTestsPage() {
     if (categoryFilter === "all") return liveRows;
     return liveRows.filter((row) => row.category === categoryFilter);
   }, [rows, categoryFilter]);
+  const summary = useMemo(() => buildCapabilityTestsSummary(rows ?? []), [rows]);
+  const painFlagCount =
+    summary.recentPainCounts.mild + summary.recentPainCounts.moderate + summary.recentPainCounts.severe;
+  const staleCategories = summary.staleCategories[90].map(labelForCapabilityCategory).join(", ");
+  const notTestedCategories = CAPABILITY_CATEGORIES.filter((category) => !summary.latestByCategory[category.value])
+    .map((category) => category.label)
+    .join(", ");
 
   function patchForm(patch: Partial<FormState>) {
     setForm((current) => ({ ...current, ...patch }));
@@ -171,6 +190,49 @@ export default function CapabilityTestsPage() {
         </button>
       }
     >
+      <Section
+        title="Capability Summary"
+        subtitle="Tracks whether strength, conditioning, and mobility are carrying over to real-world movement tasks."
+      >
+        {!rows ? (
+          <div className="muted">Loading capability summary...</div>
+        ) : (
+          <div data-testid="capability-summary-panel" style={{ display: "grid", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+              <div data-testid="capability-summary-overall" style={{ fontWeight: 900 }}>
+                Overall: {summary.overallLabel}
+              </div>
+              <div data-testid="capability-summary-explanation" className="muted">
+                {summary.overallExplanation}
+              </div>
+              <div data-testid="capability-summary-status-mix" className="muted">
+                green {summary.statusCounts.green} | yellow {summary.statusCounts.yellow} | red{" "}
+                {summary.statusCounts.red} | not tested {summary.statusCounts.notTested}
+              </div>
+              <div data-testid="capability-summary-pain-flags" className="muted">
+                pain flags {painFlagCount}
+              </div>
+            </div>
+
+            <div data-testid="capability-summary-stale" className="muted">
+              stale categories: {staleCategories || "none"}
+            </div>
+            <div data-testid="capability-summary-not-tested" className="muted">
+              not tested categories: {notTestedCategories || "none"}
+            </div>
+
+            <div data-testid="capability-summary-latest-categories" style={{ display: "grid", gap: 6 }}>
+              {CAPABILITY_CATEGORIES.map((category) => (
+                <div key={category.value}>
+                  <span style={{ fontWeight: 850 }}>{category.label}:</span>{" "}
+                  {summaryCategoryText(summary.latestByCategory[category.value])}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Section>
+
       <Section title={form.id ? "Edit Result" : "Log Capability Test"} subtitle="Foundation only. No scorecard calculation yet.">
         <form onSubmit={saveResult} style={{ display: "grid", gap: 12 }} data-testid="capability-form">
           {error ? (
