@@ -77,7 +77,7 @@ function withFooter(csv: string, filename: string): string {
  *  Breadcrumb 3 — Main ZIP Export
  *  ------------------------------------------------------------------------ */
 export async function exportCSVsZip(): Promise<Blob> {
-  const [exercises, tracks, templates, templateItems, sessions, sets, walks] =
+  const [exercises, tracks, templates, templateItems, sessions, sets, walks, fitnessTestResults] =
     await Promise.all([
       db.exercises.toArray(),
       db.tracks.toArray(),
@@ -86,6 +86,7 @@ export async function exportCSVsZip(): Promise<Blob> {
       db.sessions.toArray(),
       db.sets.toArray(),
       db.walks.toArray(),
+      db.fitnessTestResults.toArray(),
     ]);
 
   const zip = new JSZip();
@@ -115,6 +116,9 @@ export async function exportCSVsZip(): Promise<Blob> {
   const walksName = `${prefix}/walks.csv`;
   zip.file(walksName, withFooter(walksCSV(walks), walksName));
 
+  const capabilityTestsName = `${prefix}/capability_tests.csv`;
+  zip.file(capabilityTestsName, withFooter(capabilityTestsCSV(fitnessTestResults), capabilityTestsName));
+
   // Breadcrumb 3b — A small manifest for humans (handy when importing later)
   const manifestName = `${prefix}/_manifest.txt`;
   zip.file(
@@ -133,6 +137,7 @@ export async function exportCSVsZip(): Promise<Blob> {
       `- ${sessionsName}`,
       `- ${setsName}`,
       `- ${walksName}`,
+      `- ${capabilityTestsName}`,
       ``,
     ].join("\n")
   );
@@ -204,6 +209,17 @@ function walksCSV(rows: any[]): string {
   let out = "walkId,date,durationSeconds,distanceMiles,steps,notes\n";
   for (const w of rows.sort((a, b) => (a.date ?? 0) - (b.date ?? 0))) {
     out += `${w.id},${iso(w.date)},${w.durationSeconds},${w.distanceMiles ?? ""},${w.steps ?? ""},${q(w.notes)}\n`;
+  }
+  return out;
+}
+
+function capabilityTestsCSV(rows: any[]): string {
+  let out =
+    "id,testName,category,date,resultValue,resultUnit,side,status,pain,notes,updatedAt,deletedAt\n";
+  for (const row of rows.sort((a, b) => (a.date ?? 0) - (b.date ?? 0))) {
+    out +=
+      `${row.id},${q(row.testName)},${q(row.category)},${iso(row.date)},${row.resultValue ?? ""},${q(row.resultUnit)},` +
+      `${q(row.side)},${q(row.status)},${q(row.pain)},${q(row.notes)},${iso(row.updatedAt)},${row.deletedAt ? iso(row.deletedAt) : ""}\n`;
   }
   return out;
 }
