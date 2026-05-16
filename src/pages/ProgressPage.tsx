@@ -44,7 +44,8 @@ import {
 import type { CardioWalkEvent, CardioWalkSummary } from "../lib/cardio/cardioTypes";
 import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetrics";
 import { formatCoachExportText } from "../lib/coachExport/formatCoachExportText";
-import { formatCapabilityDate, summarizeCapabilityResults } from "../lib/capabilityTests";
+import { formatCapabilityDate, labelForCapabilityCategory } from "../lib/capabilityTests";
+import { buildCapabilityTestsSummary } from "../lib/capabilityTestsSummary";
 
 /* ============================================================================
    Breadcrumb 1 — Tile component
@@ -376,7 +377,15 @@ function CapabilityTestsTile({
   loading: boolean;
   onOpen: () => void;
 }) {
-  const summary = useMemo(() => summarizeCapabilityResults(rows ?? []), [rows]);
+  const summary = useMemo(() => buildCapabilityTestsSummary(rows ?? []), [rows]);
+  const latest = Object.values(summary.latestByCategory)
+    .filter((row): row is FitnessTestResult => !!row)
+    .sort((a, b) => b.date - a.date)[0];
+  const staleOrMissing = summary.staleCategories[90]
+    .map((category) => labelForCapabilityCategory(category))
+    .join(", ");
+  const painFlagCount =
+    summary.recentPainCounts.mild + summary.recentPainCounts.moderate + summary.recentPainCounts.severe;
 
   return (
     <div
@@ -418,7 +427,7 @@ function CapabilityTestsTile({
         <div className="muted" style={{ fontSize: 13 }}>
           Loading capability tests...
         </div>
-      ) : !summary.count ? (
+      ) : !summary.liveResultCount ? (
         <div data-testid="progress-capability-empty" style={{ display: "grid", gap: 6 }}>
           <div style={{ fontWeight: 800, color: "var(--text, #111827)" }}>No capability tests logged yet.</div>
           <div className="muted" style={{ fontSize: 13, lineHeight: 1.35 }}>
@@ -428,14 +437,26 @@ function CapabilityTestsTile({
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
           <div data-testid="progress-capability-count" style={{ fontWeight: 850 }}>
-            {summary.count} logged {summary.count === 1 ? "test" : "tests"}
+            {summary.liveResultCount} logged {summary.liveResultCount === 1 ? "test" : "tests"}
+          </div>
+          <div data-testid="progress-capability-overall" className="muted" style={{ fontSize: 13 }}>
+            Overall: {summary.overallLabel}
           </div>
           <div data-testid="progress-capability-latest" className="muted" style={{ fontSize: 13 }}>
-            Latest: {summary.latest ? formatCapabilityDate(summary.latest.date) : "not available"}
+            Latest: {latest ? formatCapabilityDate(latest.date) : "not available"}
           </div>
           <div data-testid="progress-capability-status-mix" className="muted" style={{ fontSize: 13 }}>
-            green {summary.green} | yellow {summary.yellow} | red {summary.red} | not tested {summary.notTested}
+            green {summary.statusCounts.green} | yellow {summary.statusCounts.yellow} | red {summary.statusCounts.red} | not tested{" "}
+            {summary.statusCounts.notTested}
           </div>
+          <div data-testid="progress-capability-pain-flags" className="muted" style={{ fontSize: 13 }}>
+            pain flags {painFlagCount}
+          </div>
+          {staleOrMissing ? (
+            <div data-testid="progress-capability-stale" className="muted" style={{ fontSize: 13 }}>
+              stale or not tested: {staleOrMissing}
+            </div>
+          ) : null}
         </div>
       )}
 
