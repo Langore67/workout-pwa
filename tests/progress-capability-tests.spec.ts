@@ -59,7 +59,13 @@ test.describe("Progress Capability Tests", () => {
 
     await expect(page.getByTestId("progress-capability-tests-card")).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId("progress-capability-tests-card")).toContainText("Capability Tests");
-    await expect(page.getByTestId("progress-capability-empty")).toContainText("No capability tests logged yet.");
+    await expect(page.getByTestId("progress-capability-overall")).toHaveText("Overall: Not Tested");
+    await expect(page.getByTestId("progress-capability-explanation")).toHaveText("No capability tests logged yet.");
+    await expect(page.getByTestId("progress-capability-suggested-starts")).toContainText("Floor Get-Up");
+    await expect(page.getByTestId("progress-capability-suggested-starts")).toContainText("Single-Leg Balance");
+    await expect(page.getByTestId("progress-capability-suggested-starts")).toContainText("Suitcase Carry");
+    await expect(page.getByTestId("progress-capability-status-mix")).toHaveCount(0);
+    await expect(page.getByTestId("progress-capability-stale")).toHaveCount(0);
     await page.getByRole("button", { name: "View Capability Tests" }).click();
     await expect(page).toHaveURL(/\/capability-tests$/);
   });
@@ -72,10 +78,13 @@ test.describe("Progress Capability Tests", () => {
     await expect(page.getByTestId("capability-summary-panel")).toBeVisible();
     await expect(page.getByTestId("capability-summary-overall")).toHaveText("Overall: Not Tested");
     await expect(page.getByTestId("capability-summary-explanation")).toHaveText("No capability tests logged yet.");
-    await expect(page.getByTestId("capability-summary-status-mix")).toContainText(
-      "green 0 | yellow 0 | red 0 | not tested 5"
-    );
-    await expect(page.getByTestId("capability-summary-latest-categories")).toContainText("Ground: Not tested");
+    await expect(page.getByTestId("capability-summary-suggested-starts")).toContainText("Floor Get-Up");
+    await expect(page.getByTestId("capability-summary-suggested-starts")).toContainText("Single-Leg Balance");
+    await expect(page.getByTestId("capability-summary-suggested-starts")).toContainText("Suitcase Carry");
+    await expect(page.getByTestId("capability-summary-status-mix")).toHaveCount(0);
+    await expect(page.getByTestId("capability-summary-stale")).toHaveCount(0);
+    await expect(page.getByTestId("capability-summary-not-tested")).toHaveCount(0);
+    await expect(page.getByTestId("capability-summary-latest-categories")).toHaveCount(0);
     await expect(page.getByTestId("capability-empty-state")).toContainText("No capability tests logged yet.");
     await expect(page.getByTestId("capability-empty-state")).toContainText(
       "Start with Floor Get-Up, Single-Leg Balance, or Suitcase Carry."
@@ -115,6 +124,7 @@ test.describe("Progress Capability Tests", () => {
     await expect(page.getByTestId("capability-summary-status-mix")).toContainText(
       "green 1 | yellow 1 | red 0 | not tested 3"
     );
+    await expect(page.getByTestId("capability-summary-stale")).toBeVisible();
     await expect(page.getByTestId("capability-summary-latest-categories")).toContainText(
       "Ground: Floor Get-Up | yellow | pain none | 2026-05-15"
     );
@@ -163,8 +173,8 @@ test.describe("Progress Capability Tests", () => {
     await expect(page.getByTestId("capability-empty-state")).toBeVisible();
     await expect(page.getByTestId("capability-summary-overall")).toHaveText("Overall: Not Tested");
     await expect(page.getByTestId("capability-summary-explanation")).toHaveText("No capability tests logged yet.");
-    await expect(page.getByTestId("capability-summary-pain-flags")).toHaveText("pain flags 0");
-    await expect(page.getByTestId("capability-summary-latest-categories")).toContainText("Agility: Not tested");
+    await expect(page.getByTestId("capability-summary-pain-flags")).toHaveCount(0);
+    await expect(page.getByTestId("capability-summary-latest-categories")).toHaveCount(0);
 
     const liveCount = await page.evaluate(async () => {
       const db = (window as any).__db;
@@ -230,6 +240,91 @@ test.describe("Progress Capability Tests", () => {
     await expect(page.getByTestId("capability-summary-latest-categories")).not.toContainText(
       "Ground: Floor Get-Up | red"
     );
+  });
+
+  test("history carry results appear read-only and matching manual rows prevent duplicates", async ({ page }) => {
+    await resetDexieDb(page);
+    await page.evaluate(async () => {
+      const db = (window as any).__db;
+      if (!db) throw new Error("__db missing on window.");
+      const date = new Date("2026-05-16T12:00:00").getTime();
+      await db.exercises.put({
+        id: "history-suitcase-exercise",
+        name: "Suitcase Carry",
+        normalizedName: "suitcase carry",
+        equipmentTags: [],
+        createdAt: date,
+      });
+      await db.tracks.put({
+        id: "history-suitcase-left-track",
+        exerciseId: "history-suitcase-exercise",
+        trackType: "strength",
+        displayName: "Suitcase Carry - Left",
+        trackingMode: "weightedReps",
+        warmupSetsDefault: 0,
+        workingSetsDefault: 1,
+        repMin: 1,
+        repMax: 1,
+        restSecondsDefault: 60,
+        weightJumpDefault: 5,
+        createdAt: date,
+      });
+      await db.sessions.put({
+        id: "history-carry-session",
+        templateName: "Lower B",
+        startedAt: date,
+        endedAt: date + 60 * 60 * 1000,
+        notes: "Pain: none",
+      });
+      await db.sets.put({
+        id: "history-suitcase-left-set",
+        sessionId: "history-carry-session",
+        trackId: "history-suitcase-left-track",
+        createdAt: date,
+        completedAt: date,
+        setType: "working",
+        weight: 55,
+        seconds: 60,
+      });
+    });
+
+    await goto(page, "/capability-tests");
+
+    const rows = page.getByTestId("capability-results-list").getByTestId(/^capability-result-text:/);
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText(
+      "2026-05-16 | Suitcase Carry - Left | Carry | 60 sec | side left | pain none | source history"
+    );
+    await expect(rows.first()).toContainText("load 55 lb");
+    await expect(page.getByTestId("capability-results-list").getByRole("button", { name: "Edit" })).toHaveCount(0);
+    await expect(page.getByTestId("capability-summary-status-mix")).toContainText(
+      "green 0 | yellow 0 | red 0 | not tested 4"
+    );
+
+    await page.evaluate(async () => {
+      const db = (window as any).__db;
+      const date = new Date("2026-05-16T00:00:00").getTime();
+      await db.fitnessTestResults.add({
+        id: "manual-suitcase-left",
+        testName: "Suitcase Carry - Left",
+        category: "carry",
+        date,
+        resultValue: 55,
+        resultUnit: "lb",
+        side: "left",
+        status: "green",
+        pain: "none",
+        notes: "manual carry result",
+        updatedAt: date,
+      });
+    });
+
+    await goto(page, "/capability-tests");
+    const dedupedRows = page.getByTestId("capability-results-list").getByTestId(/^capability-result-text:/);
+    await expect(dedupedRows).toHaveCount(1);
+    await expect(dedupedRows.first()).toContainText("manual carry result");
+    await expect(dedupedRows.first()).not.toContainText("source history");
+    await expect(page.getByTestId("capability-results-list").getByRole("button", { name: "Edit" })).toHaveCount(1);
   });
 
   test("capability data does not affect cardio summaries or coach/cardio exports", async ({ page }) => {

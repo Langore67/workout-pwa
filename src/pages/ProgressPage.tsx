@@ -46,6 +46,7 @@ import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetr
 import { formatCoachExportText } from "../lib/coachExport/formatCoachExportText";
 import { formatCapabilityDate, labelForCapabilityCategory } from "../lib/capabilityTests";
 import { buildCapabilityTestsSummary } from "../lib/capabilityTestsSummary";
+import { deriveCarryCapabilityResultsFromHistory } from "../lib/deriveCapabilityTestsFromHistory";
 
 /* ============================================================================
    Breadcrumb 1 — Tile component
@@ -429,10 +430,20 @@ function CapabilityTestsTile({
         </div>
       ) : !summary.liveResultCount ? (
         <div data-testid="progress-capability-empty" style={{ display: "grid", gap: 6 }}>
-          <div style={{ fontWeight: 800, color: "var(--text, #111827)" }}>No capability tests logged yet.</div>
-          <div className="muted" style={{ fontSize: 13, lineHeight: 1.35 }}>
-            Start with Floor Get-Up, Single-Leg Balance, or Suitcase Carry.
+          <div data-testid="progress-capability-overall" style={{ fontWeight: 850 }}>
+            Overall: {summary.overallLabel}
           </div>
+          <div data-testid="progress-capability-explanation" className="muted" style={{ fontSize: 13 }}>
+            {summary.overallExplanation}
+          </div>
+          <div className="muted" style={{ fontSize: 13, lineHeight: 1.35 }}>
+            Start with:
+          </div>
+          <ul data-testid="progress-capability-suggested-starts" className="muted" style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
+            <li>Floor Get-Up</li>
+            <li>Single-Leg Balance</li>
+            <li>Suitcase Carry</li>
+          </ul>
         </div>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
@@ -553,8 +564,22 @@ export default function ProgressPage() {
   );
   const capabilityRows = useLiveQuery(async () => {
     const table = (db as any).fitnessTestResults;
-    if (!table?.toArray) return [] as FitnessTestResult[];
-    return ((await table.toArray()) as FitnessTestResult[]).filter((row) => !row.deletedAt);
+    const [all, sessions, sets, tracks, exercises] = await Promise.all([
+      table?.toArray ? (table.toArray() as Promise<FitnessTestResult[]>) : Promise.resolve([] as FitnessTestResult[]),
+      db.sessions.toArray(),
+      db.sets.toArray(),
+      db.tracks.toArray(),
+      db.exercises.toArray(),
+    ]);
+    const manualRows = all.filter((row) => !row.deletedAt);
+    const derivedRows = deriveCarryCapabilityResultsFromHistory({
+      sessions,
+      sets,
+      tracks,
+      exercises,
+      manualResults: all,
+    });
+    return [...manualRows, ...derivedRows];
   }, []);
   const cardioWalkSummary = useMemo(() => {
     if (!cardioRows) return undefined;
