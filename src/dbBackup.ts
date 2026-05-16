@@ -41,6 +41,7 @@ const PREFERRED_RESTORE_ORDER = [
   "sets",
   "walks",
   "trackPrs",
+  "fitnessTestResults",
 ] as const;
 
 function isoStamp() {

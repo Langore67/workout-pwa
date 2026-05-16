@@ -31,6 +31,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
 import InfoStubButton from "../components/information/InfoStubButton";
 import { db } from "../db";
+import type { FitnessTestResult } from "../db";
 import { buildCardioExportText } from "../lib/cardio/buildCardioExportText";
 import { buildCardioWalkSummary } from "../lib/cardio/buildCardioWalkSummary";
 import {
@@ -43,6 +44,8 @@ import {
 import type { CardioWalkEvent, CardioWalkSummary } from "../lib/cardio/cardioTypes";
 import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetrics";
 import { formatCoachExportText } from "../lib/coachExport/formatCoachExportText";
+import { formatCapabilityDate, labelForCapabilityCategory } from "../lib/capabilityTests";
+import { buildCapabilityTestsSummary } from "../lib/capabilityTestsSummary";
 
 /* ============================================================================
    Breadcrumb 1 — Tile component
@@ -365,6 +368,113 @@ function WalksSummaryTile({
   );
 }
 
+function CapabilityTestsTile({
+  rows,
+  loading,
+  onOpen,
+}: {
+  rows?: FitnessTestResult[];
+  loading: boolean;
+  onOpen: () => void;
+}) {
+  const summary = useMemo(() => buildCapabilityTestsSummary(rows ?? []), [rows]);
+  const latest = Object.values(summary.latestByCategory)
+    .filter((row): row is FitnessTestResult => !!row)
+    .sort((a, b) => b.date - a.date)[0];
+  const staleOrMissing = summary.staleCategories[90]
+    .map((category) => labelForCapabilityCategory(category))
+    .join(", ");
+  const painFlagCount =
+    summary.recentPainCounts.mild + summary.recentPainCounts.moderate + summary.recentPainCounts.severe;
+
+  return (
+    <div
+      className="card"
+      data-testid="progress-capability-tests-card"
+      style={{
+        padding: 16,
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        background: "var(--card, white)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 800,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "var(--muted)",
+              marginBottom: 8,
+            }}
+          >
+            Capable / Athletic
+          </div>
+          <div style={{ fontWeight: 900, fontSize: 18, lineHeight: 1.15, color: "var(--text, #111827)" }}>
+            Capability Tests
+          </div>
+          <div className="muted" style={{ marginTop: 5, lineHeight: 1.35, fontSize: 14 }}>
+            Track simple real-world movement tests that show whether strength, conditioning, and mobility are carrying
+            over.
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="muted" style={{ fontSize: 13 }}>
+          Loading capability tests...
+        </div>
+      ) : !summary.liveResultCount ? (
+        <div data-testid="progress-capability-empty" style={{ display: "grid", gap: 6 }}>
+          <div style={{ fontWeight: 800, color: "var(--text, #111827)" }}>No capability tests logged yet.</div>
+          <div className="muted" style={{ fontSize: 13, lineHeight: 1.35 }}>
+            Start with Floor Get-Up, Single-Leg Balance, or Suitcase Carry.
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 8 }}>
+          <div data-testid="progress-capability-count" style={{ fontWeight: 850 }}>
+            {summary.liveResultCount} logged {summary.liveResultCount === 1 ? "test" : "tests"}
+          </div>
+          <div data-testid="progress-capability-overall" className="muted" style={{ fontSize: 13 }}>
+            Overall: {summary.overallLabel}
+          </div>
+          <div data-testid="progress-capability-explanation" className="muted" style={{ fontSize: 13 }}>
+            {summary.overallExplanation}
+          </div>
+          <div data-testid="progress-capability-latest" className="muted" style={{ fontSize: 13 }}>
+            Latest: {latest ? formatCapabilityDate(latest.date) : "not available"}
+          </div>
+          <div data-testid="progress-capability-status-mix" className="muted" style={{ fontSize: 13 }}>
+            green {summary.statusCounts.green} | yellow {summary.statusCounts.yellow} | red {summary.statusCounts.red} | not tested{" "}
+            {summary.statusCounts.notTested}
+          </div>
+          <div data-testid="progress-capability-pain-flags" className="muted" style={{ fontSize: 13 }}>
+            pain flags {painFlagCount}
+          </div>
+          {staleOrMissing ? (
+            <div data-testid="progress-capability-stale" className="muted" style={{ fontSize: 13 }}>
+              stale or not tested: {staleOrMissing}
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+        <button className="btn primary small" type="button" onClick={onOpen}>
+          Log Capability Test
+        </button>
+        <button className="btn small" type="button" onClick={onOpen}>
+          View Capability Tests
+        </button>
+      </div>
+    </div>
+  );
+}
+
 type FallbackCopyResult =
   | { ok: true; method: "execCommand" }
   | { ok: false; method: "execCommand"; detail: string };
@@ -441,6 +551,11 @@ export default function ProgressPage() {
     [],
     undefined
   );
+  const capabilityRows = useLiveQuery(async () => {
+    const table = (db as any).fitnessTestResults;
+    if (!table?.toArray) return [] as FitnessTestResult[];
+    return ((await table.toArray()) as FitnessTestResult[]).filter((row) => !row.deletedAt);
+  }, []);
   const cardioWalkSummary = useMemo(() => {
     if (!cardioRows) return undefined;
     return buildCardioWalkSummary({ ...cardioRows, recentLimit: 5 });
@@ -682,6 +797,12 @@ export default function ProgressPage() {
           summary={cardioWalkSummary}
           loading={!cardioRows}
           onClick={() => nav("/walks")}
+        />
+
+        <CapabilityTestsTile
+          rows={capabilityRows}
+          loading={!capabilityRows}
+          onOpen={() => nav("/capability-tests")}
         />
 
         <ProgressTile

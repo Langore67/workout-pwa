@@ -26,6 +26,7 @@ import StrengthPage from "./pages/StrengthPage";
 import GymPage from "./pages/GymPage";
 import GymPageLegacy from "./pages/GymPageLegacy";
 import WalksPage from "./pages/WalksPage";
+import CapabilityTestsPage from "./pages/CapabilityTestsPage";
 import HistoryPage from "./pages/HistoryPage";
 import ExportPage from "./pages/ExportPage";
 import SessionCompletePage from "./pages/SessionCompletePage";
@@ -383,6 +384,7 @@ export default function App() {
             <Route path="/body" element={<BodyPage />} />
             <Route path="/body-composition" element={<BodyCompositionPage />} />
             <Route path="/walks" element={<WalksPage />} />
+            <Route path="/capability-tests" element={<CapabilityTestsPage />} />
             <Route path="/mps" element={<MpsPage />} />
 
             {/* =================================================================

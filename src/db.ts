@@ -22,6 +22,7 @@
    - v16 Add bodyMetrics.leanMassLb
    - v17 Add bodyMetrics.bodyFatMassLb, icwLb, ecwLb, mineralMassLb
    - v18 Add bodyMeasurements table for dated body-part entries
+   - v19 Add fitnessTestResults table for Progress capability tests
    ============================================================================ */
 
 import Dexie, { Table } from "dexie";
@@ -341,6 +342,27 @@ export interface BodyMeasurementEntry {
   updatedAt?: number;
 }
 
+export type FitnessTestCategory = "ground" | "carry" | "terrain" | "single_leg" | "agility";
+export type FitnessTestResultUnit = "seconds" | "reps" | "feet" | "yards" | "meters" | "minutes" | "lb";
+export type FitnessTestSide = "left" | "right" | "both" | "none";
+export type FitnessTestStatus = "green" | "yellow" | "red";
+export type FitnessTestPain = "none" | "mild" | "moderate" | "severe";
+
+export interface FitnessTestResult {
+  id: UUID;
+  testName: string;
+  category: FitnessTestCategory;
+  date: number;
+  resultValue?: number;
+  resultUnit?: FitnessTestResultUnit;
+  side?: FitnessTestSide;
+  status?: FitnessTestStatus;
+  pain?: FitnessTestPain;
+  notes?: string;
+  updatedAt: number;
+  deletedAt?: number;
+}
+
 export interface WalkEntry {
   id: UUID;
   date: number;
@@ -408,6 +430,7 @@ export class WorkoutDB extends Dexie {
   trackPrs!: Table<TrackPRs, UUID>;
   bodyMetrics!: Table<BodyMetricEntry, UUID>;
   bodyMeasurements!: Table<BodyMeasurementEntry, UUID>;
+  fitnessTestResults!: Table<FitnessTestResult, UUID>;
   app_meta!: Table<AppMeta, string>;
   appLogs!: Table<AppLogEntry, UUID>;
 
@@ -1096,6 +1119,42 @@ export class WorkoutDB extends Dexie {
             });
           });
     // ===== END OF v18 =====
+        // v19
+        this.version(19)
+          .stores({
+            exercises:
+              "id, &normalizedName, name, bodyPart, category, equipment, archivedAt, mergedIntoExerciseId, createdAt",
+            exerciseVariants:
+              "id, exerciseId, [exerciseId+normalizedName], name, archivedAt, mergedIntoVariantId, createdAt",
+            tracks: "id, exerciseId, variantId, trackType, displayName, createdAt",
+            folders: "id, orderIndex, name, archivedAt, createdAt",
+            templates: "id, name, createdAt, folderId, archivedAt, orderIndex, lastPerformedAt",
+            templateItems: "id, templateId, orderIndex, trackId, groupId, createdAt",
+            sessions: "id, startedAt, endedAt, templateId, updatedAt, deletedAt",
+            sessionItems: "id, sessionId, orderIndex, trackId, createdAt",
+            sets: "id, sessionId, trackId, createdAt, setType, completedAt, updatedAt, deletedAt",
+            walks: "id, date, updatedAt, deletedAt",
+            trackPrs: "trackId, updatedAt",
+            bodyMetrics:
+              "id, measuredAt, takenAt, createdAt, weightLb, waistIn, bodyFatPct, bodyFatMassLb, leanMassLb, skeletalMuscleMassLb, visceralFatIndex, bodyWaterPct, icwLb, ecwLb, mineralMassLb",
+            bodyMeasurements:
+              "id, measurementKey, measuredAt, createdAt, updatedAt, [measurementKey+measuredAt]",
+            fitnessTestResults: "id, date, category, testName, status, updatedAt, deletedAt",
+            app_meta: "key, updatedAt",
+            appLogs: "id, createdAt, type, level",
+          })
+          .upgrade(async (tx) => {
+            await tx.table("fitnessTestResults").toCollection().modify((r: any) => {
+              if (r.resultValue === null) r.resultValue = undefined;
+              if (r.resultUnit === null) r.resultUnit = undefined;
+              if (r.side === null) r.side = undefined;
+              if (r.status === null) r.status = undefined;
+              if (r.pain === null) r.pain = undefined;
+              if (r.notes === null) r.notes = undefined;
+              if (r.deletedAt === null) r.deletedAt = undefined;
+            });
+          });
+    // ===== END OF v19 =====
   }
 }
 
