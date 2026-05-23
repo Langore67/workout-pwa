@@ -216,6 +216,13 @@ export default function StartPage() {
     return open.sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))[0] ?? null;
   }, [sessions]);
 
+  const lastCompletedSession = useMemo(() => {
+    const all = (sessions ?? []) as Session[];
+    return all
+      .filter((s: any) => !(s as any).deletedAt && typeof s.endedAt === "number" && Number.isFinite(s.endedAt))
+      .sort((a, b) => (b.endedAt ?? b.startedAt ?? 0) - (a.endedAt ?? a.startedAt ?? 0))[0] ?? null;
+  }, [sessions]);
+
   /* --------------------------------------------------------------------------
      Breadcrumb 8 — Build template previews + group into folders
      ----------------------------------------------------------------------- */
@@ -515,9 +522,32 @@ export default function StartPage() {
           />
 
           <StartActionCard
+            title="Paste Workout"
+            subtitle="Convert Coach GPT / IF text into a History session"
+            onClick={() => navigate("/paste-workout")}
+          />
+
+          <StartActionCard
+            title="Last Session"
+            subtitle={
+              lastCompletedSession
+                ? `${lastCompletedSession.templateName ?? "Completed session"} | ${fmtAgo(lastCompletedSession.endedAt ?? lastCompletedSession.startedAt)}`
+                : "No completed sessions yet"
+            }
+            onClick={() => navigate(lastCompletedSession ? `/session/${lastCompletedSession.id}` : "/history")}
+          />
+
+          <StartActionCard
+            title="Progress"
+            subtitle="Review trends and exports"
+            onClick={() => navigate("/progress")}
+          />
+
+          <StartActionCard
             title="Manage Templates"
             subtitle="Create, edit, archive, and organize"
             onClick={() => navigate("/templates")}
+            ariaLabel="Template settings"
           />
         </div>
       </Section>
@@ -685,16 +715,19 @@ function StartActionCard({
   subtitle,
   onClick,
   disabled,
+  ariaLabel,
 }: {
   title: string;
   subtitle: string;
   onClick: () => void;
   disabled?: boolean;
+  ariaLabel?: string;
 }) {
   return (
     <button
       type="button"
       className="card clickable"
+      aria-label={ariaLabel}
       onClick={onClick}
       disabled={disabled}
       style={{
@@ -867,7 +900,7 @@ function TemplateRow({
 
   return (
     <div
-      className={`card clickable ${isChild ? "template-row child" : ""}`}
+      className={`card clickable template-tile ${isChild ? "template-row child" : ""}`}
       data-testid={`start-template-${row.template.id}`}
       role="button"
       tabIndex={0}
