@@ -477,7 +477,7 @@ test.describe("App Regression (8) — refactored seed strategy", () => {
     await navLink(page, "Start").click();
     await expect(page).toHaveURL(/\/$/);
 
-    await expect(page.getByText("Start Workout", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Manage" })).toBeVisible();
 
     const upperBTile = page.locator(".template-tile", { hasText: /Upper B/i }).first();
