@@ -197,10 +197,10 @@ function sessionsCSV(rows: any[]): string {
   return out;
 }
 
-function setsCSV(rows: any[]): string {
-  let out = "setId,sessionId,trackId,createdAt,setType,weight,reps,seconds,rir,notes\n";
+export function setsCSV(rows: any[]): string {
+  let out = "setId,sessionId,trackId,createdAt,setType,weight,reps,seconds,rir,notes,distance,distanceUnit\n";
   for (const se of rows.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))) {
-    out += `${se.id},${se.sessionId},${se.trackId},${iso(se.createdAt)},${q(se.setType)},${se.weight ?? ""},${se.reps ?? ""},${se.seconds ?? ""},${se.rir ?? ""},${q(se.notes)}\n`;
+    out += `${se.id},${se.sessionId},${se.trackId},${iso(se.createdAt)},${q(se.setType)},${se.weight ?? ""},${se.reps ?? ""},${se.seconds ?? ""},${se.rir ?? ""},${q(se.notes)},${se.distance ?? ""},${se.distanceUnit ?? ""}\n`;
   }
   return out;
 }
