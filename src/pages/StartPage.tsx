@@ -543,8 +543,8 @@ export default function StartPage() {
 
           <StartActionCard
             title="Progress"
-            subtitle="Review trends and exports"
-            onClick={() => navigate("/progress")}
+            subtitle="Review trends and copy Coach Export"
+            onClick={() => navigate("/progress#exports")}
           />
 
           <StartActionCard
