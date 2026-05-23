@@ -495,12 +495,6 @@ export default function StartPage() {
           </div>
         </div>
 
-        <div className="card" style={{ marginTop: 12, padding: 12 }}>
-          <div className="muted" style={{ fontSize: 13, lineHeight: 1.5 }}>
-            Pick up where you left off, import a session, or review recent training.
-          </div>
-        </div>
-
         <div
           style={{
             marginTop: 14,
