@@ -77,6 +77,8 @@ test.describe("Start Today shortcuts", () => {
     await resetDexieDb(page);
     await gotoStart(page);
 
+    await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+    await expect(page.getByText("Start, continue, import, or review your latest training.")).toBeVisible();
     await expect(page.getByRole("button", { name: /Start Empty Workout/i })).toBeVisible();
     await expect(page.getByText("Manage Templates", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: /Paste Workout/i })).toBeVisible();

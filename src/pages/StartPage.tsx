@@ -483,25 +483,21 @@ export default function StartPage() {
      Breadcrumb 13 — Render
      ----------------------------------------------------------------------- */
   return (
-    <Page title="Start Workout">
+    <Page title="Today" subtitle="Start, continue, import, or review your latest training.">
       {/* Start Hub */}
       <Section>
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <div>
-            <div style={{ fontWeight: 900, fontSize: 22 }}>Start</div>
+            <div style={{ fontWeight: 900, fontSize: 22 }}>Today's Actions</div>
             <div className="muted" style={{ marginTop: 4 }}>
-              Start your first workout, resume an active session, or launch a saved template.
+              Choose your next training action.
             </div>
           </div>
         </div>
 
         <div className="card" style={{ marginTop: 12, padding: 12 }}>
           <div className="muted" style={{ fontSize: 13, lineHeight: 1.5 }}>
-            IronForge is a training log for strength workouts, body metrics, and conditioning activity.
-          </div>
-          <div className="muted" style={{ fontSize: 13, lineHeight: 1.5, marginTop: 8 }}>
-            Use Start to log a workout, History to review sessions and PRs, Progress to review trends,
-            and Body to log weight, waist, and measurements.
+            Pick up where you left off, import a session, or review recent training.
           </div>
         </div>
 
