@@ -9,6 +9,7 @@ async function seedSession(
   page: Page,
   args: {
     id: string;
+    templateId?: string;
     templateName: string;
     startedAt: number;
     endedAt?: number;
@@ -18,6 +19,56 @@ async function seedSession(
     const db = (window as any).__db;
     if (!db) throw new Error("__db missing on window.");
     await db.sessions.put(session);
+  }, args);
+}
+
+async function seedTemplate(
+  page: Page,
+  args: {
+    templateId: string;
+    templateName: string;
+    trackName?: string;
+  }
+) {
+  await page.evaluate(async ({ templateId, templateName, trackName }) => {
+    const db = (window as any).__db;
+    if (!db) throw new Error("__db missing on window.");
+    const now = Date.now();
+    const exerciseId = `${templateId}-exercise`;
+    const trackId = `${templateId}-track`;
+    await db.exercises.put({
+      id: exerciseId,
+      name: trackName ?? "Bench Press",
+      normalizedName: String(trackName ?? "Bench Press").toLowerCase(),
+      equipmentTags: [],
+      createdAt: now,
+    });
+    await db.tracks.put({
+      id: trackId,
+      exerciseId,
+      trackType: "strength",
+      displayName: trackName ?? "Bench Press",
+      trackingMode: "weightedReps",
+      warmupSetsDefault: 0,
+      workingSetsDefault: 1,
+      repMin: 5,
+      repMax: 10,
+      restSecondsDefault: 120,
+      weightJumpDefault: 5,
+      createdAt: now,
+    });
+    await db.templates.put({
+      id: templateId,
+      name: templateName,
+      createdAt: now,
+    });
+    await db.templateItems.put({
+      id: `${templateId}-item`,
+      templateId,
+      orderIndex: 0,
+      trackId,
+      createdAt: now,
+    });
   }, args);
 }
 
@@ -78,5 +129,64 @@ test.describe("Start Today shortcuts", () => {
     await expect(lastSession).toContainText("No completed sessions yet");
     await lastSession.click();
     await expect(page).toHaveURL(/\/history$/);
+  });
+
+  test("Recent Templates row is hidden when there is no template history", async ({ page }) => {
+    await resetDexieDb(page);
+    await seedTemplate(page, {
+      templateId: "unused-template",
+      templateName: "Unused Template",
+    });
+
+    await gotoStart(page);
+
+    await expect(page.getByTestId("start-recent-templates")).toHaveCount(0);
+    await expect(page.getByTestId("start-template-unused-template")).toBeVisible();
+  });
+
+  test("Recent Templates row opens the existing template preview and start flow", async ({ page }) => {
+    await resetDexieDb(page);
+    const now = Date.now();
+    await seedTemplate(page, {
+      templateId: "older-template",
+      templateName: "Older Template",
+      trackName: "Row",
+    });
+    await seedTemplate(page, {
+      templateId: "recent-template",
+      templateName: "Recent Template",
+      trackName: "Bench Press",
+    });
+    await seedSession(page, {
+      id: "older-template-session",
+      templateId: "older-template",
+      templateName: "Older Template",
+      startedAt: now - 5 * 86400 * 1000,
+      endedAt: now - 5 * 86400 * 1000 + 45 * 60 * 1000,
+    });
+    await seedSession(page, {
+      id: "recent-template-session",
+      templateId: "recent-template",
+      templateName: "Recent Template",
+      startedAt: now - 86400 * 1000,
+      endedAt: now - 86400 * 1000 + 45 * 60 * 1000,
+    });
+
+    await gotoStart(page);
+
+    const recentSection = page.getByTestId("start-recent-templates");
+    await expect(recentSection).toBeVisible();
+    const recentButtons = recentSection.getByRole("button");
+    await expect(recentButtons).toHaveCount(2);
+    await expect(recentButtons.nth(0)).toContainText("Recent Template");
+    await expect(recentButtons.nth(1)).toContainText("Older Template");
+
+    await page.getByTestId("start-recent-template-recent-template").click();
+    const modal = page.locator(".modal-overlay[role='dialog']").first();
+    await expect(modal).toBeVisible();
+    await expect(modal).toContainText("Recent Template");
+    await expect(modal).toContainText("Bench Press");
+    await modal.getByRole("button", { name: "Start Workout" }).click();
+    await expect(page).toHaveURL(/\/gym\//);
   });
 });

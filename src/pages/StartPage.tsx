@@ -255,6 +255,14 @@ export default function StartPage() {
     return arr;
   }, [visibleTemplates, itemsByTemplate, lastPerformedFromSessions, trackMap]);
 
+  const recentTemplates = useMemo(() => {
+    return previews
+      .filter((row) => typeof row.lastPerformedAt === "number" && Number.isFinite(row.lastPerformedAt))
+      .slice()
+      .sort((a, b) => (b.lastPerformedAt ?? 0) - (a.lastPerformedAt ?? 0))
+      .slice(0, 5);
+  }, [previews]);
+
   const grouped = useMemo(() => {
     const folderMap = new Map<string, TemplatePreviewRow[]>();
     const ungrouped: TemplatePreviewRow[] = [];
@@ -565,6 +573,46 @@ export default function StartPage() {
             Manage
           </button>
         </div>
+
+        {recentTemplates.length ? (
+          <div data-testid="start-recent-templates" style={{ marginTop: 12, display: "grid", gap: 8 }}>
+            <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              Recent Templates
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                gap: 8,
+              }}
+            >
+              {recentTemplates.map((row) => (
+                <button
+                  key={`recent-${row.template.id}`}
+                  type="button"
+                  className="card clickable"
+                  data-testid={`start-recent-template-${row.template.id}`}
+                  onClick={() => openTemplate(row.template.id)}
+                  style={{
+                    textAlign: "left",
+                    padding: "10px 12px",
+                    border: "none",
+                    background: "var(--card, white)",
+                    display: "grid",
+                    gap: 4,
+                  }}
+                >
+                  <div style={{ fontWeight: 900, lineHeight: 1.15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {row.template.name}
+                  </div>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    {fmtAgo(row.lastPerformedAt)} | {row.itemCount} exercise{row.itemCount === 1 ? "" : "s"}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
           {visibleFolders.map((f) => {
