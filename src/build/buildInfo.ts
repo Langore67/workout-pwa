@@ -7,7 +7,7 @@
 
 export const buildInfo = {
   version: "v0.1.0",
-  commit: "400ed4b",
-  branch: "feature/progress-capability-tests",
-  builtAt: "2026-05-16T21:53:03.244Z",
+  commit: "779e838",
+  branch: "feature/start-today-shortcuts",
+  builtAt: "2026-05-23T11:59:50.450Z",
 } as const;
