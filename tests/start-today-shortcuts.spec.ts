@@ -79,10 +79,13 @@ test.describe("Start Today shortcuts", () => {
 
     await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
     await expect(page.getByText("Start, continue, import, or review your latest training.")).toBeVisible();
-    await expect(page.getByRole("button", { name: /Start Empty Workout/i })).toBeVisible();
-    await expect(page.getByText("Manage Templates", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Paste Workout/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Progress/i })).toContainText("Review trends and copy Coach Export");
+    const todayActions = page.getByTestId("start-today-actions");
+    await expect(todayActions.getByRole("button", { name: /Start Empty Workout/i })).toBeVisible();
+    await expect(todayActions.getByRole("button", { name: /Paste Workout/i })).toBeVisible();
+    await expect(todayActions.getByRole("button", { name: /Last Session/i })).toBeVisible();
+    await expect(todayActions.getByRole("button", { name: /Progress/i })).toContainText("Review trends and copy Coach Export");
+    await expect(todayActions.getByRole("button", { name: /Manage Templates/i })).toHaveCount(0);
+    await expect(page.locator("#start-templates-section").getByRole("button", { name: "Manage" })).toBeVisible();
 
     await page.getByRole("button", { name: /Paste Workout/i }).click();
     await expect(page).toHaveURL(/\/paste-workout$/);

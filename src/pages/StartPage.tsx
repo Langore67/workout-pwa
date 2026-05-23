@@ -496,6 +496,7 @@ export default function StartPage() {
         </div>
 
         <div
+          data-testid="start-today-actions"
           style={{
             marginTop: 14,
             display: "grid",
@@ -539,13 +540,6 @@ export default function StartPage() {
             title="Progress"
             subtitle="Review trends and copy Coach Export"
             onClick={() => navigate("/progress#exports")}
-          />
-
-          <StartActionCard
-            title="Manage Templates"
-            subtitle="Create, edit, archive, and organize"
-            onClick={() => navigate("/templates")}
-            ariaLabel="Template settings"
           />
         </div>
       </Section>
