@@ -82,14 +82,14 @@ test.describe("Start Today shortcuts", () => {
     await expect(page.getByRole("button", { name: /Start Empty Workout/i })).toBeVisible();
     await expect(page.getByText("Manage Templates", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: /Paste Workout/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Progress/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Progress/i })).toContainText("Review trends and copy Coach Export");
 
     await page.getByRole("button", { name: /Paste Workout/i }).click();
     await expect(page).toHaveURL(/\/paste-workout$/);
 
     await gotoStart(page);
     await page.getByRole("button", { name: /Progress/i }).click();
-    await expect(page).toHaveURL(/\/progress$/);
+    await expect(page).toHaveURL(/\/progress#exports$/);
   });
 
   test("Last Session opens the most recent completed session detail", async ({ page }) => {
