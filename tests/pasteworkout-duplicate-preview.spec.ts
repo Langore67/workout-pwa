@@ -744,6 +744,104 @@ conditioning BWx5.39km`);
   await expect(page.getByRole("textbox", { name: "time" })).toHaveCount(0);
 });
 
+test("Paste Workout parses simple conditioning distance and clock duration as structured walk sets", async ({
+  page,
+}) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Walk - Peachtree Ridge Park
+Date: 2026-05-23
+Start: 19:04
+End: 20:09
+
+Walk
+conditioning 6.10km
+conditioning duration 1:05:31
+
+Session Notes:
+- Avg pace 10:43/km
+- Avg HR 115`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+
+  await expect(page.getByText(/Exercise has no parsed sets/i)).toHaveCount(0);
+  await expect(page.getByText(/Unsupported set format/i)).toHaveCount(0);
+
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const imported = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const session = (await db.sessions.toArray()).find((row: any) => row.templateName === "Walk - Peachtree Ridge Park");
+    if (!session) throw new Error("Walk session not found");
+    const sets = await db.sets.where("sessionId").equals(session.id).sortBy("createdAt");
+    const tracks = await db.tracks.toArray();
+    return {
+      sessionNotes: session.notes,
+      sets: sets.map((set: any) => {
+        const track = tracks.find((row: any) => row.id === set.trackId);
+        return {
+          distance: set.distance,
+          distanceUnit: set.distanceUnit,
+          seconds: set.seconds,
+          notes: set.notes,
+          trackType: track?.trackType,
+          trackingMode: track?.trackingMode,
+        };
+      }),
+      trackNames: Array.from(new Set(sets.map((set: any) => tracks.find((row: any) => row.id === set.trackId)?.displayName))).sort(),
+    };
+  });
+
+  expect(imported.trackNames).toEqual(["Walk"]);
+  expect(imported.sets).toEqual([
+    expect.objectContaining({ distance: 6100, distanceUnit: "m", seconds: undefined, trackType: "conditioning" }),
+    expect.objectContaining({ distance: undefined, seconds: 3931, trackType: "conditioning", trackingMode: "timeSeconds" }),
+  ]);
+  expect(imported.sessionNotes).toContain("Avg pace 10:43/km");
+  expect(imported.sessionNotes).toContain("Avg HR 115");
+});
+
+test("Paste Workout parses spaced mile distance and mm:ss conditioning duration", async ({
+  page,
+}) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Walk - Park Loop
+Date: 2026-05-24
+
+Walk
+conditioning 5.04 mi
+conditioning duration 55:58`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+
+  await expect(page.getByText(/Exercise has no parsed sets/i)).toHaveCount(0);
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const imported = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const session = (await db.sessions.toArray()).find((row: any) => row.templateName === "Walk - Park Loop");
+    const sets = await db.sets.where("sessionId").equals(session.id).sortBy("createdAt");
+    return sets.map((set: any) => ({
+      distance: set.distance,
+      distanceUnit: set.distanceUnit,
+      seconds: set.seconds,
+    }));
+  });
+
+  expect(imported[0].distance).toBeCloseTo(5.04 * 1609.344, 4);
+  expect(imported[0].distanceUnit).toBe("m");
+  expect(imported[1].seconds).toBe(3358);
+});
+
 test("Paste Workout imports Coach GPT MapMyWalk screenshot text with miles, duration, and notes", async ({
   page,
 }) => {

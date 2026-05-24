@@ -295,6 +295,93 @@ Max HR: 138`,
   expect(imported.session.notes).toContain("Max HR: 138");
 });
 
+test("IF journal import supports simple conditioning distance and clock duration syntax", async ({ page }) => {
+  await goto(page, "/");
+  await resetDexieDb(page);
+
+  const imported = await page.evaluate(async () => {
+    const { importSessionFromJournal, parseIfJournalText } = await import("/src/importers/importSession.ts");
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const text = `Session: Walk - Peachtree Ridge Park
+Date: 2026-05-23
+Start: 19:04
+End: 20:09
+
+Walk
+conditioning 6.10km
+conditioning duration 1:05:31
+
+Session Notes:
+- Avg pace 10:43/km
+- Avg HR 115`;
+
+    const parsed = parseIfJournalText(text);
+    const result = await importSessionFromJournal({ text });
+    const session = await db.sessions.get(result.sessionId);
+    const sets = await db.sets.where("sessionId").equals(result.sessionId).sortBy("createdAt");
+    const tracks = await db.tracks.toArray();
+
+    return {
+      parsedSets: parsed.sets.map((set: any) => ({
+        distance: set.distance,
+        distanceUnit: set.distanceUnit,
+        seconds: set.seconds,
+        notes: set.notes,
+      })),
+      sessionNotes: session.notes,
+      sets: sets.map((set: any) => {
+        const track = tracks.find((row: any) => row.id === set.trackId);
+        return {
+          distance: set.distance,
+          distanceUnit: set.distanceUnit,
+          seconds: set.seconds,
+          notes: set.notes,
+          trackType: track?.trackType,
+          trackingMode: track?.trackingMode,
+        };
+      }),
+    };
+  });
+
+  expect(imported.parsedSets).toEqual([
+    expect.objectContaining({ distance: 6100, distanceUnit: "m", seconds: undefined }),
+    expect.objectContaining({ distance: undefined, seconds: 3931 }),
+  ]);
+  expect(imported.sets).toEqual([
+    expect.objectContaining({ distance: 6100, distanceUnit: "m", seconds: undefined, trackType: "conditioning" }),
+    expect.objectContaining({ distance: undefined, seconds: 3931, trackType: "conditioning", trackingMode: "timeSeconds" }),
+  ]);
+  expect(imported.sessionNotes).toContain("Avg pace 10:43/km");
+  expect(imported.sessionNotes).toContain("Avg HR 115");
+});
+
+test("IF journal import supports simple conditioning duration minute variants", async ({ page }) => {
+  await goto(page, "/");
+
+  const parsed = await page.evaluate(async () => {
+    const { parseIfJournalText } = await import("/src/importers/importSession.ts");
+    const result = parseIfJournalText(`Session: Walk - Minute Variants
+Date: 2026-05-24
+
+Walk
+conditioning duration 42min
+conditioning duration 42 min`);
+    return result.sets.map((set: any) => ({
+      seconds: set.seconds,
+      metricType: set.metricType,
+      trackingMode: set.trackingMode,
+    }));
+  });
+
+  expect(parsed).toEqual([
+    expect.objectContaining({ seconds: 2520, metricType: "duration", trackingMode: "timeSeconds" }),
+    expect.objectContaining({ seconds: 2520, metricType: "duration", trackingMode: "timeSeconds" }),
+  ]);
+});
+
 test("IF journal import supports cardio unit spelling variants", async ({ page }) => {
   await goto(page, "/");
   await resetDexieDb(page);

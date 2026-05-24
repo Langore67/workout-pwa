@@ -472,4 +472,35 @@ test.describe("Progress Copy Cardio Export", () => {
     expect(text).not.toContain("Legacy manual walk should not export");
     expect(text).not.toContain("Lower B");
   });
+
+  test("exports distance and pace from simple conditioning distance and duration imports", async ({ page }) => {
+    await resetDexieDb(page);
+    await page.evaluate(async () => {
+      const { importSessionFromJournal } = await import("/src/importers/importSession.ts");
+      await importSessionFromJournal({
+        text: `Session: Walk - Peachtree Ridge Park
+Date: 2026-05-23
+Start: 19:04
+End: 20:09
+
+Walk
+conditioning 6.10km
+conditioning duration 1:05:31
+
+Session Notes:
+- Avg pace 10:43/km
+- Avg HR 115`,
+      });
+    });
+
+    await goto(page, "/progress");
+    await page.getByRole("button", { name: "Copy Cardio Export" }).click();
+    const text = await readCopiedText(page);
+
+    expect(text).toContain("Walk - Peachtree Ridge Park | 1 hr 6 min | 3.79 mi / 6.10 km | 17:17/mi");
+    expect(text).toContain("- Total distance: 3.79 mi / 6.10 km");
+    expect(text).toContain("- Average pace: 17:17/mi");
+    expect(text).toContain("- Missing distance: 0");
+    expect(text).not.toContain("Walk - Peachtree Ridge Park | 1 hr 6 min | not available");
+  });
 });
