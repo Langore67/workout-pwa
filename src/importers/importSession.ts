@@ -63,6 +63,32 @@ function parseDurationSeconds(valueRaw: string, unitRaw: string): number | undef
   return undefined;
 }
 
+function parseClockDurationSeconds(valueRaw: string): number | undefined {
+  const parts = String(valueRaw ?? "")
+    .trim()
+    .split(":")
+    .map((part) => Number(part));
+  if (parts.length !== 2 && parts.length !== 3) return undefined;
+  if (parts.some((part) => !Number.isFinite(part))) return undefined;
+
+  const [hours, minutes, seconds] = parts.length === 3 ? parts : [0, parts[0], parts[1]];
+  if (hours < 0 || minutes < 0 || seconds < 0 || minutes > 59 || seconds > 59) return undefined;
+  return Math.round(hours * 3600 + minutes * 60 + seconds);
+}
+
+function parseDurationTokenSeconds(valueRaw: string): number | undefined {
+  const text = String(valueRaw ?? "").trim();
+  if (!text) return undefined;
+
+  if (/^\d{1,2}:\d{2}(?::\d{2})?$/.test(text)) {
+    return parseClockDurationSeconds(text);
+  }
+
+  const match = text.match(/^(\d+(?:\.\d+)?)\s*(s|sec|secs|second|seconds|min|mins|minute|minutes)$/i);
+  if (!match) return undefined;
+  return parseDurationSeconds(match[1], match[2]);
+}
+
 function parseDistanceMeters(valueRaw: string, unitRaw: string): number | undefined {
   const value = Number(valueRaw);
   if (!Number.isFinite(value) || value <= 0) return undefined;
@@ -76,6 +102,43 @@ function parseDistanceMeters(valueRaw: string, unitRaw: string): number | undefi
 function parseIfSetLine(line: string): ImportedSet | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
+
+  const simpleDistanceMatch = trimmed.match(
+    /^(conditioning|cardio)\s+(\d+(?:\.\d+)?)\s*(mi|mile|miles|km|kilometer|kilometers|m|meter|meters)(?:\s+(.*))?$/i
+  );
+  if (simpleDistanceMatch) {
+    const distance = parseDistanceMeters(simpleDistanceMatch[2], simpleDistanceMatch[3]);
+    if (distance !== undefined) {
+      return {
+        setType: "working",
+        trackType: "conditioning",
+        trackingMode: "repsOnly",
+        metricType: "distance",
+        weight: undefined,
+        distance,
+        distanceUnit: "m",
+        notes: String(simpleDistanceMatch[4] ?? "").trim() || undefined,
+      };
+    }
+  }
+
+  const simpleDurationMatch = trimmed.match(
+    /^(conditioning|cardio)\s+duration\s+(\d{1,2}:\d{2}(?::\d{2})?|\d+(?:\.\d+)?\s*(?:min|mins|minute|minutes|s|sec|secs|second|seconds))(?:\s+(.*))?$/i
+  );
+  if (simpleDurationMatch) {
+    const seconds = parseDurationTokenSeconds(simpleDurationMatch[2]);
+    if (seconds !== undefined) {
+      return {
+        setType: "working",
+        trackType: "conditioning",
+        trackingMode: "timeSeconds",
+        metricType: "duration",
+        weight: undefined,
+        seconds,
+        notes: String(simpleDurationMatch[3] ?? "").trim() || undefined,
+      };
+    }
+  }
 
   const match = trimmed.match(
     /^(warmup|work|technique|mobility|corrective|diagnostic|rehab|conditioning|test)\s+(BW)x(\d+(?:\.\d+)?)(mi|mile|miles|km|kilometer|kilometers|m|meter|meters|min|mins|minute|minutes|s|sec|secs|second|seconds)(?:\s+(.*))?$/i

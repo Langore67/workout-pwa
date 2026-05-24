@@ -488,6 +488,33 @@ function durationToSeconds(valueRaw: string, unitRaw: string): number | undefine
   return undefined;
 }
 
+function clockDurationToSeconds(valueRaw: string): number | undefined {
+  const parts = String(valueRaw ?? "")
+    .trim()
+    .split(":")
+    .map((part) => Number(part));
+  if (parts.length !== 2 && parts.length !== 3) return undefined;
+  if (parts.some((part) => !Number.isFinite(part))) return undefined;
+
+  const [hours, minutes, seconds] = parts.length === 3 ? parts : [0, parts[0], parts[1]];
+  if (minutes < 0 || seconds < 0 || minutes > 59 || seconds > 59) return undefined;
+  if (hours < 0) return undefined;
+  return Math.round(hours * 3600 + minutes * 60 + seconds);
+}
+
+function durationTokenToSeconds(valueRaw: string): number | undefined {
+  const text = String(valueRaw ?? "").trim();
+  if (!text) return undefined;
+
+  if (/^\d{1,2}:\d{2}(?::\d{2})?$/.test(text)) {
+    return clockDurationToSeconds(text);
+  }
+
+  const match = text.match(/^(\d+(?:\.\d+)?)\s*(s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours)$/i);
+  if (!match) return undefined;
+  return durationToSeconds(match[1], match[2]);
+}
+
 function inferExerciseMetricModeFromParsedSets(sets: ParsedSet[]): MetricMode | undefined {
   const hasDistance = sets.some((set) => set.distance !== undefined && Number.isFinite(set.distance) && set.distance > 0);
   if (hasDistance) return "distance";
@@ -744,6 +771,35 @@ function parseSetLine(line: string): ParsedSet | null {
       rir: rir !== undefined && Number.isFinite(rir) ? rir : undefined,
       isPerSide,
       notes: notesRaw,
+    };
+  }
+
+  const simpleConditioningDistanceMatch = trimmed.match(
+    /^(conditioning|cardio)\s+(\d+(?:\.\d+)?)\s*(mi|mile|miles|km|kilometer|kilometers|m|meter|meters)(?:\s+(.*))?$/i
+  );
+  if (simpleConditioningDistanceMatch) {
+    const distanceMeters = distanceToMeters(simpleConditioningDistanceMatch[2], simpleConditioningDistanceMatch[3]);
+    const notesRaw = normalizeImportNoteText(simpleConditioningDistanceMatch[4]);
+    return {
+      rawLine: line,
+      setKind: "conditioning",
+      distance: distanceMeters,
+      distanceUnit: distanceMeters !== undefined ? "m" : undefined,
+      notes: notesRaw || undefined,
+    };
+  }
+
+  const simpleConditioningDurationMatch = trimmed.match(
+    /^(conditioning|cardio)\s+duration\s+(\d{1,2}:\d{2}(?::\d{2})?|\d+(?:\.\d+)?\s*(?:s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours))(?:\s+(.*))?$/i
+  );
+  if (simpleConditioningDurationMatch) {
+    const seconds = durationTokenToSeconds(simpleConditioningDurationMatch[2]);
+    const notesRaw = normalizeImportNoteText(simpleConditioningDurationMatch[3]);
+    return {
+      rawLine: line,
+      setKind: "conditioning",
+      seconds,
+      notes: notesRaw || undefined,
     };
   }
 
