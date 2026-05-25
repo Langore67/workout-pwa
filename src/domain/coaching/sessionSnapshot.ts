@@ -101,6 +101,55 @@ function cleanExerciseObservation(value: string): string {
     .replace(/\s*;\s*/g, "; ");
 }
 
+function normalizeSignalText(value: string): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[\u2019']/g, "'")
+    .replace(/\b(dont|doesnt|didnt|cant|cannot)\b/g, (match) => {
+      if (match === "dont") return "don't";
+      if (match === "doesnt") return "doesn't";
+      if (match === "didnt") return "didn't";
+      return "can't";
+    })
+    .replace(/[^a-z0-9'/-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isNegatedSignalMatch(textRaw: string, matchIndex: number, matchTextRaw: string): boolean {
+  const text = normalizeSignalText(textRaw);
+  const matchText = normalizeSignalText(matchTextRaw);
+  if (!text || !matchText) return false;
+
+  const index = text.indexOf(matchText, Math.max(0, matchIndex - 12));
+  const resolvedIndex = index >= 0 ? index : text.indexOf(matchText);
+  if (resolvedIndex < 0) return false;
+
+  const before = text.slice(Math.max(0, resolvedIndex - 48), resolvedIndex);
+  const beforeClause = before.split(/\b(?:but|however|though|except)\b/).pop() ?? before;
+  const after = text.slice(resolvedIndex + matchText.length, resolvedIndex + matchText.length + 32);
+  const surrounding = text.slice(Math.max(0, resolvedIndex - 24), resolvedIndex + matchText.length + 32);
+
+  if (/\b(no|not|without|zero)\s+(?:[a-z0-9'/-]+\s+){0,4}$/.test(beforeClause)) return true;
+  if (/\b(?:don't|doesn't|didn't|can't)\s+(?:[a-z0-9'/-]+\s+){0,3}$/.test(beforeClause)) return true;
+  if (/^(?:\s|-)*(?:free|resolved|quiet|clean|ok|okay|fine|normal|better)\b/.test(after)) return true;
+  if (/\bpain[-\s]?free\b/.test(surrounding)) return true;
+  if (/\b(?:stayed|was|were|felt|feels)\s+(?:quiet|clean|ok|okay|fine|normal|better)\b/.test(surrounding)) return true;
+  if (/\b(?:irritation|pinch|pinching|pain)\s+resolved\b/.test(surrounding)) return true;
+
+  return false;
+}
+
+function hasNonNegatedMatch(textRaw: string, regex: RegExp): boolean {
+  const source = regex.source;
+  const flags = regex.flags.includes("g") ? regex.flags : `${regex.flags}g`;
+  const globalRegex = new RegExp(source, flags);
+  for (const match of textRaw.matchAll(globalRegex)) {
+    if (!isNegatedSignalMatch(textRaw, match.index ?? 0, match[0])) return true;
+  }
+  return false;
+}
+
 function normalizeExerciseNameForMatch(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
@@ -134,9 +183,53 @@ function inferMovementFamily(exerciseName: string): "Pull" | "Push" | "Shoulders
   return "Other";
 }
 
+function normalizeJointLabel(raw: string): string {
+  const value = normalizeBulletText(raw).toLowerCase();
+  const singular = value.endsWith("s") && value !== "traps" ? value.slice(0, -1) : value;
+  if (singular === "lower back") return "low back";
+  return singular;
+}
+
+function formatJointIssue(jointRaw: string, feedbackRaw: string): string | null {
+  const joint = normalizeJointLabel(jointRaw);
+  const feedback = normalizeBulletText(feedbackRaw).toLowerCase();
+  const normalizedFeedback =
+    feedback === "hurts" || feedback === "hurt" ? "pain" :
+    feedback === "pinched" || feedback === "pinch" || feedback === "pinching" ? "pinch" :
+    feedback === "irritated" ? "irritation" :
+    feedback === "ached" || feedback === "ache" ? "ache" :
+    feedback;
+  if (!joint || !normalizedFeedback) return null;
+  return `${joint[0].toUpperCase()}${joint.slice(1)} ${normalizedFeedback}`;
+}
+
+function extractJointIssueSignals(textRaw: string): string[] {
+  const out: string[] = [];
+  const directRegex =
+    /\b(?:left|right)?\s*(knee|knees|elbow|elbows|shoulder|shoulders|hip|hips|wrist|wrists|ankle|ankles|low back|lower back|back)\s+(pain|feedback|tight|tightness|unstable|instability|irritated|irritation|fatigue|hurt|hurts|ache|ached|sore|pinch|pinched|pinching)\b/gi;
+  const feltRegex =
+    /\b(?:left|right)?\s*(knee|knees|elbow|elbows|shoulder|shoulders|hip|hips|wrist|wrists|ankle|ankles|low back|lower back|back)\s+(?:felt|feels)\s+(painful|tight|unstable|irritated|sore|pinchy|off|bad)\b/gi;
+
+  for (const match of textRaw.matchAll(directRegex)) {
+    if (isNegatedSignalMatch(textRaw, match.index ?? 0, match[0])) continue;
+    const signal = formatJointIssue(match[1], match[2]);
+    if (signal) out.push(signal);
+  }
+
+  for (const match of textRaw.matchAll(feltRegex)) {
+    if (isNegatedSignalMatch(textRaw, match.index ?? 0, match[0])) continue;
+    const feedback = String(match[2] ?? "").replace(/^painful$/i, "pain");
+    const signal = formatJointIssue(match[1], feedback);
+    if (signal) out.push(signal);
+  }
+
+  return uniqueCompact(out, 4);
+}
+
 function summarizeExerciseObservation(exercise: string, rawObservation: string): SessionExerciseSignal {
   const raw = cleanExerciseObservation(rawObservation);
   const text = raw.toLowerCase();
+  const jointIssues = extractJointIssueSignals(raw);
   const movementQuality: string[] = [];
   const stimulus: string[] = [];
   const fatigue: string[] = [];
@@ -167,12 +260,22 @@ function summarizeExerciseObservation(exercise: string, rawObservation: string):
     movementQuality.push(`${exercise}: slight trap involvement noted but controlled`);
     discuss.push("Discuss reducing trap compensation during carries");
   }
+  if (
+    hasNonNegatedMatch(
+      raw,
+      /\b(?:traps?\s+(?:taking over|takeover|compensation|involvement)|trap takeover|trap compensation)\b/i
+    )
+  ) {
+    movementQuality.push(`${exercise}: trap compensation noted`);
+    fatigue.push(`${exercise}: trap compensation`);
+    discuss.push("Discuss reducing trap compensation during carries");
+  }
   if (text.includes("stopped due to") || text.includes("stopped because of")) {
     movementQuality.push(`${exercise}: ${raw}`);
   }
-  if (text.includes("twinge") || text.includes("pain") || text.includes("sensitive")) {
-    fatigue.push(`${exercise}: ${raw}`);
-    if (text.includes("shoulder")) {
+  if (jointIssues.length || hasNonNegatedMatch(raw, /\b(twinge|sensitive|sharp pain)\b/i)) {
+    fatigue.push(...(jointIssues.length ? jointIssues.map((issue) => `${exercise}: ${issue}`) : [`${exercise}: ${raw}`]));
+    if (jointIssues.some((issue) => /^shoulder /i.test(issue)) || hasNonNegatedMatch(raw, /\bshoulder\s+(?:twinge|sensitive|sensitivity)\b/i)) {
       nextWorkout.push("Avoid behind-the-neck pressing positions");
       discuss.push("Review safe overhead pressing range");
       if (family === "Shoulders") {
@@ -274,9 +377,11 @@ function pushRegexMatches(
   target: string[],
   notesRaw: string,
   regex: RegExp,
-  formatter: (match: RegExpExecArray) => string | null
+  formatter: (match: RegExpExecArray) => string | null,
+  options?: { skipNegated?: boolean }
 ) {
   for (const match of notesRaw.matchAll(regex)) {
+    if (options?.skipNegated && isNegatedSignalMatch(notesRaw, match.index ?? 0, match[0])) continue;
     const next = formatter(match as RegExpExecArray);
     if (next) target.push(next);
   }
@@ -341,7 +446,8 @@ function deriveSessionNoteSignals(sessionNotes?: string): SessionNoteSignals {
     (match) => {
       const phrase = normalizeBulletText(match[1]).replace(/[.,;:!?]+$/, "");
       return phrase ? `${phrase[0].toUpperCase()}${phrase.slice(1)} showed up` : null;
-    }
+    },
+    { skipNegated: true }
   );
 
   pushRegexMatches(
@@ -357,42 +463,18 @@ function deriveSessionNoteSignals(sessionNotes?: string): SessionNoteSignals {
     () => "Load looked too heavy"
   );
 
-  pushRegexMatches(
-    jointSignals,
-    notesRaw,
-    /\b(knee|elbow|shoulder|hip|wrist|ankle|low back|back)\s+(pain|felt|feedback|tight|tightness|unstable|instability|irritated|fatigue)\b/gi,
-    (match) => {
-      const joint = normalizeBulletText(match[1]);
-      const feedback = normalizeBulletText(match[2]);
-      if (!joint || !feedback) return null;
-      return `${joint[0].toUpperCase()}${joint.slice(1)} ${feedback}`;
-    }
-  );
+  jointSignals.push(...extractJointIssueSignals(notesRaw));
 
   return {
     notes,
     explicitCarryForward,
-    hasFatigueOrReducedCapacity:
-      notes.includes("fatigue") ||
-      notes.includes("tired") ||
-      notes.includes("cut volume") ||
-      notes.includes("cut short") ||
-      notes.includes("reduced capacity"),
-    hasLowBackIssue:
-      notes.includes("low back") ||
-      notes.includes("back pain") ||
-      notes.includes("back fatigue") ||
-      notes.includes("back tight"),
-    hasKneeIssue:
-      notes.includes("knee pain") ||
-      notes.includes("knee felt") ||
-      notes.includes("knee unstable") ||
-      notes.includes("knee instability"),
-    hasJointPain:
-      notes.includes("elbow pain") ||
-      notes.includes("shoulder pain") ||
-      notes.includes("hip pain") ||
-      notes.includes("wrist pain"),
+    hasFatigueOrReducedCapacity: hasNonNegatedMatch(
+      notesRaw,
+      /\b(fatigue|fatigued|gassed|tired|exhausted|reduced capacity|cut volume|cut short)\b/i
+    ),
+    hasLowBackIssue: jointSignals.some((signal) => /^low back |^back /i.test(signal)),
+    hasKneeIssue: jointSignals.some((signal) => /^knee /i.test(signal)),
+    hasJointPain: jointSignals.some((signal) => /^(elbow|shoulder|hip|wrist|ankle) /i.test(signal)),
     hasCompensationOrBreakdown:
       notes.includes("compensation") ||
       notes.includes("shifted") ||

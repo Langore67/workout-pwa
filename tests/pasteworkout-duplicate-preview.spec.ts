@@ -158,6 +158,111 @@ work 65x10 @2`);
   await page.getByRole("button", { name: "Parse Preview" }).click();
 }
 
+async function seedExistingPasteSession(
+  page: Parameters<typeof test>[0]["page"],
+  args: {
+    title: string;
+    date: string;
+    start?: string;
+    end?: string;
+    exercises: {
+      name: string;
+      trackType?: "strength" | "conditioning";
+      trackingMode?: "weightedReps" | "timeSeconds" | "repsOnly";
+      sets: {
+        setType?: "warmup" | "working";
+        weight?: number;
+        reps?: number;
+        seconds?: number;
+        distance?: number;
+        distanceUnit?: "m";
+      }[];
+    }[];
+  }
+) {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  await page.evaluate(async (seed) => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const toMs = (date: string, time = "09:00") => {
+      const [y, m, d] = date.split("-").map(Number);
+      const [hh, mm] = time.split(":").map(Number);
+      return new Date(y, m - 1, d, hh, mm, 0, 0).getTime();
+    };
+
+    const now = Date.now();
+    const sessionId = crypto.randomUUID();
+    const startedAt = toMs(seed.date, seed.start);
+    const endedAt = toMs(seed.date, seed.end ?? seed.start ?? "10:00");
+    await db.sessions.add({
+      id: sessionId,
+      startedAt,
+      endedAt,
+      templateName: seed.title,
+      updatedAt: endedAt,
+    });
+
+    let orderIndex = 0;
+    let createdAt = startedAt + 1000;
+    for (const exercise of seed.exercises) {
+      const exerciseId = crypto.randomUUID();
+      const trackId = crypto.randomUUID();
+      await db.exercises.add({
+        id: exerciseId,
+        name: exercise.name,
+        normalizedName: exercise.name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(),
+        aliases: [],
+        equipmentTags: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.tracks.add({
+        id: trackId,
+        exerciseId,
+        displayName: exercise.name,
+        trackType: exercise.trackType ?? "strength",
+        trackingMode: exercise.trackingMode ?? "weightedReps",
+        warmupSetsDefault: 2,
+        workingSetsDefault: 3,
+        repMin: 1,
+        repMax: 12,
+        restSecondsDefault: 90,
+        weightJumpDefault: 5,
+        createdAt: now,
+      });
+      await db.sessionItems.add({
+        id: crypto.randomUUID(),
+        sessionId,
+        trackId,
+        orderIndex,
+        createdAt: startedAt + orderIndex,
+      });
+      orderIndex += 1;
+      for (const set of exercise.sets) {
+        await db.sets.add({
+          id: crypto.randomUUID(),
+          sessionId,
+          trackId,
+          setType: set.setType ?? "working",
+          weight: set.weight,
+          reps: set.reps,
+          seconds: set.seconds,
+          distance: set.distance,
+          distanceUnit: set.distanceUnit,
+          createdAt,
+          completedAt: createdAt,
+          updatedAt: createdAt,
+        });
+        createdAt += 1000;
+      }
+    }
+  }, args);
+}
+
 async function seedPasteWorkoutTrack(
   page: Parameters<typeof test>[0]["page"],
   {
@@ -205,6 +310,130 @@ async function seedPasteWorkoutTrack(
   );
 }
 
+test("Paste Workout blocks likely duplicate sessions with matching title date and sets", async ({ page }) => {
+  await seedExistingPasteSession(page, {
+    title: "Upper A",
+    date: "2026-05-01",
+    start: "08:00",
+    end: "09:00",
+    exercises: [
+      { name: "Bench Press", sets: [{ weight: 135, reps: 8 }] },
+      { name: "Squat", sets: [{ weight: 185, reps: 5 }] },
+    ],
+  });
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Upper A
+Date: 2026-05-01
+Start: 08:00
+End: 09:00
+
+Bench Press
+work 135x8
+
+Squat
+work 185x5`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+
+  await expect(page.getByText("Duplicate session found")).toBeVisible();
+  await expect(page.locator(".kv").filter({ hasText: "Duplicate session found" })).toContainText("Yes");
+  await expect(page.getByText(/Likely duplicate session already exists/i)).toBeVisible();
+
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Import blocked: likely duplicate session already exists/i)).toBeVisible();
+});
+
+test("Paste Workout allows same title and date when exercises differ", async ({ page }) => {
+  await seedExistingPasteSession(page, {
+    title: "Upper A",
+    date: "2026-05-02",
+    start: "08:00",
+    end: "09:00",
+    exercises: [{ name: "Bench Press", sets: [{ weight: 135, reps: 8 }] }],
+  });
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Upper A
+Date: 2026-05-02
+Start: 10:00
+End: 10:45
+
+Leg Press
+work 250x10`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+
+  await expect(page.locator(".kv").filter({ hasText: "Duplicate session found" })).toContainText("No");
+  await expect(page.getByText(/Likely duplicate session already exists/i)).toHaveCount(0);
+
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+});
+
+test("Paste Workout still warns on same session with slightly edited set content", async ({ page }) => {
+  await seedExistingPasteSession(page, {
+    title: "Upper A",
+    date: "2026-05-03",
+    start: "08:00",
+    end: "09:00",
+    exercises: [
+      { name: "Bench Press", sets: [{ weight: 95, reps: 8 }, { weight: 135, reps: 8 }, { weight: 145, reps: 6 }] },
+    ],
+  });
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Upper A
+Date: 2026-05-03
+Start: 08:04
+End: 09:02
+
+Bench Press
+warmup 95x8
+work 135x8
+work 150x5`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+
+  await expect(page.locator(".kv").filter({ hasText: "Duplicate session found" })).toContainText("Yes");
+  await expect(page.getByText(/Likely duplicate session already exists/i)).toBeVisible();
+});
+
+test("Paste Workout allows same-day cardio walks with different start times and content", async ({ page }) => {
+  await seedExistingPasteSession(page, {
+    title: "Walk",
+    date: "2026-05-04",
+    start: "07:00",
+    end: "07:30",
+    exercises: [
+      {
+        name: "Walk",
+        trackType: "conditioning",
+        trackingMode: "timeSeconds",
+        sets: [
+          { distance: 3000, distanceUnit: "m" },
+          { seconds: 1800 },
+        ],
+      },
+    ],
+  });
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Walk
+Date: 2026-05-04
+Start: 19:00
+End: 20:05
+
+Walk
+conditioning 6.10km
+conditioning duration 1:05:31`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+
+  await expect(page.locator(".kv").filter({ hasText: "Duplicate session found" })).toContainText("No");
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+});
+
 test("Paste Workout REVIEW use-existing path imports against the existing exercise", async ({ page }) => {
   await seedBenchDuplicateCandidate(page);
   await openPasteWorkoutReview(page);
@@ -225,8 +454,11 @@ test("Paste Workout REVIEW use-existing path imports against the existing exerci
     const exercises = await db.exercises.toArray();
     const importedVariant = await db.exercises.where("normalizedName").equals("dumbbell bench press").first();
     const importedTrack = await db.tracks.where("displayName").equals("Dumbbell Bench Press").first();
+    const relevantExercises = exercises.filter((row: any) =>
+      ["db bench press", "dumbbell bench press"].includes(row.normalizedName)
+    );
     return {
-      exerciseCount: exercises.length,
+      exerciseCount: relevantExercises.length,
       importedVariant: !!importedVariant,
       importedTrackExerciseId: importedTrack?.exerciseId ?? null,
       canonicalExerciseId: exercises.find((row: any) => row.normalizedName === "db bench press")?.id ?? null,
@@ -272,8 +504,11 @@ test("Paste Workout REVIEW requires acknowledgment before creating likely duplic
   let dbState = await page.evaluate(async () => {
     // @ts-ignore
     const db = window.__db;
+    const relevantExercises = (await db.exercises.toArray()).filter((row: any) =>
+      ["db bench press", "dumbbell bench press"].includes(row.normalizedName)
+    );
     return {
-      count: await db.exercises.count(),
+      count: relevantExercises.length,
       hasImportedVariant: !!(await db.exercises.where("normalizedName").equals("dumbbell bench press").first()),
     };
   });
@@ -293,8 +528,11 @@ test("Paste Workout REVIEW requires acknowledgment before creating likely duplic
   dbState = await page.evaluate(async () => {
     // @ts-ignore
     const db = window.__db;
+    const relevantExercises = (await db.exercises.toArray()).filter((row: any) =>
+      ["db bench press", "dumbbell bench press"].includes(row.normalizedName)
+    );
     return {
-      count: await db.exercises.count(),
+      count: relevantExercises.length,
       importedExercise: await db.exercises.where("normalizedName").equals("dumbbell bench press").first(),
     };
   });
@@ -374,8 +612,11 @@ work 120x10 @2`);
     const importedVariant = await db.exercises.where("normalizedName").equals("lat pull down").first();
     const canonical = await db.exercises.where("normalizedName").equals("lat pulldown").first();
     const importedTrack = await db.tracks.where("displayName").equals("Lat Pull Down").first();
+    const relevantExercises = exercises.filter((row: any) =>
+      ["lat pulldown", "lat pull down"].includes(row.normalizedName)
+    );
     return {
-      exerciseCount: exercises.length,
+      exerciseCount: relevantExercises.length,
       importedVariant: !!importedVariant,
       canonicalExerciseId: canonical?.id ?? null,
       aliases: canonical?.aliases ?? [],
@@ -423,8 +664,11 @@ work 65x10 @2`);
     const importedVariant = await db.exercises.where("normalizedName").equals("db bench press").first();
     const canonical = await db.exercises.where("normalizedName").equals("dumbbell bench press").first();
     const importedTrack = await db.tracks.where("displayName").equals("DB Bench Press").first();
+    const relevantExercises = exercises.filter((row: any) =>
+      ["db bench press", "dumbbell bench press"].includes(row.normalizedName)
+    );
     return {
-      exerciseCount: exercises.length,
+      exerciseCount: relevantExercises.length,
       importedVariant: !!importedVariant,
       canonicalExerciseId: canonical?.id ?? null,
       importedTrackExerciseId: importedTrack?.exerciseId ?? null,
