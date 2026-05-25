@@ -133,6 +133,48 @@ test.describe("session note pain and fatigue negation", () => {
 });
 
 test.describe("session snapshot export quality", () => {
+  test("mobility-only class snapshot keeps non-strength recommendation identity", async () => {
+    const snapshot = buildSessionSnapshotText({
+      sessionLabel: "BodyBalance",
+      startedAt: new Date("2026-05-18T09:00:00-04:00").getTime(),
+      sessionNotes: "Recovery mobility class.",
+      totalExercises: 1,
+      completedExercises: 1,
+      currentTrack: {
+        displayName: "BodyBalance",
+        trackType: "mobility",
+        trackingMode: "timeSeconds",
+      },
+      currentRecentBest: null,
+      currentRecommendation: {
+        action: "hold",
+        targetWeight: null,
+        targetReps: null,
+        confidence: "low",
+        rationale: "Non-strength track - no progression applied",
+      },
+      trackSummaries: [
+        {
+          displayName: "BodyBalance",
+          trackType: "mobility",
+          trackingMode: "timeSeconds",
+          completedSets: ["60:00"],
+        },
+      ],
+    });
+
+    expect(snapshot).toContain("Current Recommendation");
+    expect(snapshot).toContain("- Exercise: BodyBalance");
+    expect(snapshot).toContain("- Intent: mobility");
+    expect(snapshot).toContain("- Mode: timeSeconds");
+    expect(snapshot).toContain("- Action: hold");
+    expect(snapshot).toContain("BodyBalance [mobility");
+    expect(snapshot).not.toContain("- Intent: strength");
+    expect(snapshot).not.toContain("- Mode: weightedReps");
+    expect(snapshot).not.toContain("- Action: rebuild");
+    expect(snapshot).not.toContain("No recent completed weighted set found");
+  });
+
   test("explicit carry-forward lines are preferred over fallback heuristics", async () => {
     const snapshot = buildSessionSnapshotText({
       sessionLabel: "Recovery / Check-In",

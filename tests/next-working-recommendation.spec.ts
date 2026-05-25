@@ -3,6 +3,43 @@ import { test, expect } from "@playwright/test";
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5173/";
 
 test.describe("next working recommendation", () => {
+  test("mobility and corrective tracks do not receive weighted rebuild recommendations", async ({
+    page,
+  }) => {
+    await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
+
+    const result = await page.evaluate(async () => {
+      const recs = await import("/src/domain/coaching/nextWorkingRecommendation.ts");
+      return {
+        mobility: recs.getNextWorkingRecommendation({
+          trackId: "track-bodybalance",
+          trackType: "mobility",
+          trackingMode: "timeSeconds",
+          recentSets: [],
+        }),
+        corrective: recs.getNextWorkingRecommendation({
+          trackId: "track-knee",
+          trackType: "corrective",
+          trackingMode: "repsOnly",
+          recentSets: [],
+        }),
+      };
+    });
+
+    expect(result.mobility).toMatchObject({
+      action: "hold",
+      targetWeight: null,
+      targetReps: null,
+    });
+    expect(result.mobility.rationale).toContain("Non-strength track");
+    expect(result.corrective).toMatchObject({
+      action: "hold",
+      targetWeight: null,
+      targetReps: null,
+    });
+    expect(result.corrective.rationale).toContain("Non-strength track");
+  });
+
   test("assisted bodyweight history stays recommendation-eligible and increases by reducing assistance", async ({
     page,
   }) => {

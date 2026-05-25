@@ -908,6 +908,107 @@ conditioning BWx30s`);
   ]);
 });
 
+test("Paste Workout preserves mobility class duration as mobility time instead of strength fallback", async ({
+  page,
+}) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: BodyBalance
+Date: 2026-05-18
+Start: 09:00
+End: 10:00
+
+BodyBalance
+mobility BWx60min
+
+Scapular CARs
+mobility BWx10
+mobility BWx10
+
+Hip Flexor Stretch
+mobility 30 sec/side
+
+Knee-to-Wall Ankle Rocks
+mobility BWx10/side
+
+Quad Set / Terminal Knee Extension
+corrective BWx12/side`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+
+  await expect(page.getByText(/Exercise has no parsed sets/i)).toHaveCount(0);
+  await expect(page.getByText(/Logged as mobility work\. Excluded from strength metrics\./i)).toHaveCount(4);
+  await expect(page.getByText(/Logged as corrective work\. Excluded from strength metrics\./i)).toBeVisible();
+
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const imported = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const session = (await db.sessions.toArray()).find((row: any) => row.templateName === "BodyBalance");
+    const sets = await db.sets.where("sessionId").equals(session.id).sortBy("createdAt");
+    const tracks = await db.tracks.toArray();
+    return sets.map((set: any) => {
+      const track = tracks.find((row: any) => row.id === set.trackId);
+      return {
+        displayName: track?.displayName,
+        trackType: track?.trackType,
+        trackingMode: track?.trackingMode,
+        seconds: set.seconds,
+        reps: set.reps,
+        weight: set.weight,
+        notes: set.notes,
+      };
+    });
+  });
+
+  expect(imported).toEqual([
+    expect.objectContaining({
+      displayName: "BodyBalance",
+      trackType: "mobility",
+      trackingMode: "timeSeconds",
+      seconds: 3600,
+      weight: undefined,
+    }),
+    expect.objectContaining({
+      displayName: "Scapular CARs",
+      trackType: "mobility",
+      trackingMode: "repsOnly",
+      reps: 10,
+    }),
+    expect.objectContaining({
+      displayName: "Scapular CARs",
+      trackType: "mobility",
+      trackingMode: "repsOnly",
+      reps: 10,
+    }),
+    expect.objectContaining({
+      displayName: "Hip Flexor Stretch",
+      trackType: "mobility",
+      trackingMode: "timeSeconds",
+      seconds: 30,
+      notes: "mobility | per-side",
+    }),
+    expect.objectContaining({
+      displayName: "Knee-to-Wall Ankle Rocks",
+      trackType: "mobility",
+      trackingMode: "repsOnly",
+      reps: 10,
+      notes: "mobility | per-side",
+    }),
+    expect.objectContaining({
+      displayName: "Quad Set / Terminal Knee Extension",
+      trackType: "corrective",
+      trackingMode: "repsOnly",
+      reps: 12,
+      notes: "corrective | per-side",
+    }),
+  ]);
+});
+
 test("Paste Workout stores conditioning km entries as distance activity and shows them correctly across History, Session Detail, and Gym Mode", async ({
   page,
 }) => {
