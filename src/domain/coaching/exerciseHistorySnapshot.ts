@@ -25,8 +25,10 @@ export function formatExerciseHistorySetLabel(params: {
   set: any;
   metricMode: MetricMode;
   isBodyweightEffective: boolean;
+  useExternalNegativeLoad?: boolean;
 }): string | null {
   const { set, metricMode, isBodyweightEffective } = params;
+  const negativeBodyweightLoadFormat = params.useExternalNegativeLoad ? "external" : "bodyweight";
   const weight = Number(set?.weight);
   const reps = Number(set?.reps);
   const rir = Number(set?.rir);
@@ -37,6 +39,7 @@ export function formatExerciseHistorySetLabel(params: {
   const loadLabel = formatCoachSetLoadToken({
     weight,
     useSignedBodyweightLoad: isBodyweightEffective,
+    negativeBodyweightLoadFormat,
   });
 
   if (metricMode === "time") {
@@ -59,6 +62,7 @@ export function formatExerciseHistorySetLabel(params: {
     reps,
     rir,
     useSignedBodyweightLoad: isBodyweightEffective,
+    negativeBodyweightLoadFormat,
     requirePositiveReps: true,
   });
 }
