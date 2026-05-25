@@ -605,6 +605,20 @@ function appendSessionNotesBlock(
   return current ? `${current}\n${next}` : next;
 }
 
+function parseCardioMetadataLine(line: string): string | null {
+  const trimmed = String(line ?? "").trim().replace(/^[-*]\s*/, "");
+  if (!trimmed) return null;
+
+  const metadataMatch = trimmed.match(
+    /^(avg\s+hr|max\s+hr|hr|steps|calories|elevation\s+gain|elevation|avg\s+cadence|max\s+cadence|cadence|avg\s+pace|max\s+pace|pace|route|distance|duration)\s*:?\s+(.+)$/i
+  );
+  if (!metadataMatch) return null;
+
+  const value = String(metadataMatch[2] ?? "").trim();
+  if (!value) return null;
+  return trimmed;
+}
+
 function parseSetLine(line: string): ParsedSet | null {
   const trimmed = normalizeSetLineForParsing(line);
   if (!trimmed) return null;
@@ -961,6 +975,12 @@ function parseWorkoutText(text: string): ParsedWorkout {
 
     if (isSectionHeader(line) || line.startsWith("#")) {
       currentExercise = null;
+      continue;
+    }
+
+    const cardioMetadata = parseCardioMetadataLine(line);
+    if (cardioMetadata) {
+      sessionNotes = sessionNotes ? `${sessionNotes}\n${cardioMetadata}` : cardioMetadata;
       continue;
     }
 

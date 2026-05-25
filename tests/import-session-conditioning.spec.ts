@@ -382,6 +382,62 @@ conditioning duration 42 min`);
   ]);
 });
 
+test("IF journal import treats walk metadata outside Session Notes as notes, not exercises", async ({ page }) => {
+  await goto(page, "/");
+  await resetDexieDb(page);
+
+  const imported = await page.evaluate(async () => {
+    const { importSessionFromJournal, parseIfJournalText } = await import("/src/importers/importSession.ts");
+    // @ts-ignore
+    const db = window.__db;
+    const text = `Session: Walk Metadata Boundary
+Date: 2026-05-24
+
+Walk
+Avg HR 112
+Max HR 136
+Steps 6200
+Calories 398
+Elevation gain 43m
+Avg cadence 112 spm
+Pace 11:06/km
+Route Neighborhood Loop
+conditioning 6.10km
+conditioning duration 1:05:31`;
+
+    const parsed = parseIfJournalText(text);
+    const result = await importSessionFromJournal({ text });
+    const session = await db.sessions.get(result.sessionId);
+    const sets = await db.sets.where("sessionId").equals(result.sessionId).sortBy("createdAt");
+    const tracks = await db.tracks.toArray();
+
+    return {
+      parsedExerciseNames: Array.from(new Set(parsed.sets.map((set: any) => set.exerciseName))).sort(),
+      sessionNotes: session.notes,
+      trackNames: Array.from(new Set(sets.map((set: any) => tracks.find((track: any) => track.id === set.trackId)?.displayName))).sort(),
+      sets: sets.map((set: any) => ({
+        distance: set.distance,
+        distanceUnit: set.distanceUnit,
+        seconds: set.seconds,
+        weight: set.weight,
+        reps: set.reps,
+      })),
+    };
+  });
+
+  expect(imported.parsedExerciseNames).toEqual(["Walk"]);
+  expect(imported.trackNames).toEqual(["Walk"]);
+  expect(imported.sessionNotes).toContain("Avg HR 112");
+  expect(imported.sessionNotes).toContain("Calories 398");
+  expect(imported.sessionNotes).toContain("Avg cadence 112 spm");
+  expect(imported.sessionNotes).toContain("Pace 11:06/km");
+  expect(imported.sessionNotes).toContain("Elevation gain 43m");
+  expect(imported.sets).toEqual([
+    expect.objectContaining({ distance: 6100, distanceUnit: "m" }),
+    expect.objectContaining({ seconds: 3931 }),
+  ]);
+});
+
 test("IF journal import supports cardio unit spelling variants", async ({ page }) => {
   await goto(page, "/");
   await resetDexieDb(page);

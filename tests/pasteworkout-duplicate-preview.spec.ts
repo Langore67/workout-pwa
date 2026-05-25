@@ -842,6 +842,72 @@ conditioning duration 55:58`);
   expect(imported[1].seconds).toBe(3358);
 });
 
+test("Paste Workout treats walk metadata outside Session Notes as notes, not fake exercises", async ({
+  page,
+}) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Walk Metadata Boundary
+Date: 2026-05-24
+
+Walk
+Avg HR 112
+Max HR 136
+Steps 6200
+Calories 398
+Elevation gain 43m
+Avg cadence 112 spm
+Pace 11:06/km
+Route Neighborhood Loop
+conditioning 6.10km
+conditioning duration 1:05:31
+
+Bench Press
+work 135x8`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+
+  await expect(page.getByText(/Exercise has no parsed sets/i)).toHaveCount(0);
+  await expect(page.getByText(/Unsupported set format/i)).toHaveCount(0);
+
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const imported = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const session = (await db.sessions.toArray()).find((row: any) => row.templateName === "Walk Metadata Boundary");
+    if (!session) throw new Error("Walk Metadata Boundary session not found");
+    const sets = await db.sets.where("sessionId").equals(session.id).sortBy("createdAt");
+    const tracks = await db.tracks.toArray();
+    return {
+      sessionNotes: session.notes,
+      trackNames: Array.from(new Set(sets.map((set: any) => tracks.find((track: any) => track.id === set.trackId)?.displayName))).sort(),
+      sets: sets.map((set: any) => ({
+        distance: set.distance,
+        distanceUnit: set.distanceUnit,
+        seconds: set.seconds,
+        weight: set.weight,
+        reps: set.reps,
+      })),
+    };
+  });
+
+  expect(imported.trackNames).toEqual(["Bench Press", "Walk"]);
+  expect(imported.sessionNotes).toContain("Avg HR 112");
+  expect(imported.sessionNotes).toContain("Calories 398");
+  expect(imported.sessionNotes).toContain("Avg cadence 112 spm");
+  expect(imported.sessionNotes).toContain("Pace 11:06/km");
+  expect(imported.sessionNotes).toContain("Elevation gain 43m");
+  expect(imported.sets).toEqual([
+    expect.objectContaining({ distance: 6100, distanceUnit: "m" }),
+    expect.objectContaining({ seconds: 3931 }),
+    expect.objectContaining({ weight: 135, reps: 8 }),
+  ]);
+});
+
 test("Paste Workout imports Coach GPT MapMyWalk screenshot text with miles, duration, and notes", async ({
   page,
 }) => {

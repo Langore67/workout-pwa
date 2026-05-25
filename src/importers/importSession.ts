@@ -99,6 +99,20 @@ function parseDistanceMeters(valueRaw: string, unitRaw: string): number | undefi
   return undefined;
 }
 
+function parseCardioMetadataLine(line: string): string | null {
+  const trimmed = String(line ?? "").trim().replace(/^[-*]\s*/, "");
+  if (!trimmed) return null;
+
+  const metadataMatch = trimmed.match(
+    /^(avg\s+hr|max\s+hr|hr|steps|calories|elevation\s+gain|elevation|avg\s+cadence|max\s+cadence|cadence|avg\s+pace|max\s+pace|pace|route|distance|duration)\s*:?\s+(.+)$/i
+  );
+  if (!metadataMatch) return null;
+
+  const value = String(metadataMatch[2] ?? "").trim();
+  if (!value) return null;
+  return trimmed;
+}
+
 function parseIfSetLine(line: string): ImportedSet | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
@@ -257,6 +271,12 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
 
     if (/^exercises?\s*:?\s*$/i.test(line)) {
       currentExercise = "";
+      continue;
+    }
+
+    const cardioMetadata = parseCardioMetadataLine(line);
+    if (cardioMetadata) {
+      notes = notes ? `${notes}\n${cardioMetadata}` : cardioMetadata;
       continue;
     }
 
