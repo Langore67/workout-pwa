@@ -814,6 +814,7 @@ function useExercisePerformance(exerciseId?: string) {
             set: se,
             metricMode: normalizeMetricMode((exercise as any)?.metricMode),
             isBodyweightEffective,
+            useExternalNegativeLoad: isExplicitlyAssistedBodyweightExerciseName(weightEntryContextName),
           });
           if (setLabel) completedSetLabels.push(setLabel);
 

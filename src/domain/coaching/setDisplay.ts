@@ -14,9 +14,17 @@ export function formatSignedBodyweightToken(weightRaw: unknown): string {
 export function formatCoachSetLoadToken(params: {
   weight: unknown;
   useSignedBodyweightLoad?: boolean;
+  negativeBodyweightLoadFormat?: "bodyweight" | "external";
 }): string | null {
   const weight = toFiniteNumber(params.weight);
   if (weight == null) return null;
+  if (
+    params.useSignedBodyweightLoad &&
+    weight < 0 &&
+    params.negativeBodyweightLoadFormat === "external"
+  ) {
+    return `${weight}`;
+  }
   return params.useSignedBodyweightLoad ? formatSignedBodyweightToken(weight) : `${weight}`;
 }
 
@@ -25,6 +33,7 @@ export function formatWeightedRepsSetDisplay(params: {
   reps?: unknown;
   rir?: unknown;
   useSignedBodyweightLoad?: boolean;
+  negativeBodyweightLoadFormat?: "bodyweight" | "external";
   requirePositiveReps?: boolean;
   emptyLabel?: string | null;
 }): string | null {
@@ -32,6 +41,7 @@ export function formatWeightedRepsSetDisplay(params: {
   const loadLabel = formatCoachSetLoadToken({
     weight: params.weight,
     useSignedBodyweightLoad: params.useSignedBodyweightLoad,
+    negativeBodyweightLoadFormat: params.negativeBodyweightLoadFormat,
   });
   if (loadLabel) parts.push(loadLabel);
 
@@ -40,8 +50,17 @@ export function formatWeightedRepsSetDisplay(params: {
     ? reps != null && reps > 0
     : reps != null;
   if (hasReps) {
-    if (parts.length) parts.push(`x ${reps}`);
-    else parts.push(`${reps} reps`);
+    const shouldCompactExternalNegative =
+      params.negativeBodyweightLoadFormat === "external" &&
+      typeof loadLabel === "string" &&
+      loadLabel.startsWith("-");
+    if (parts.length && shouldCompactExternalNegative) {
+      parts[parts.length - 1] = `${parts[parts.length - 1]}x${reps}`;
+    } else if (parts.length) {
+      parts.push(`x ${reps}`);
+    } else {
+      parts.push(`${reps} reps`);
+    }
   }
 
   const rir = toFiniteNumber(params.rir);

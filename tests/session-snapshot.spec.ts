@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { formatWeightedRepsSetDisplay } from "../src/domain/coaching/setDisplay";
 import { buildSessionCoachingSignals, buildSessionSnapshotText } from "../src/domain/coaching/sessionSnapshot";
 
 function buildSignals(sessionNotes: string) {
@@ -133,6 +134,43 @@ test.describe("session note pain and fatigue negation", () => {
 });
 
 test.describe("session snapshot export quality", () => {
+  test("assisted bodyweight history export uses external negative loads without breaking BW formats", () => {
+    expect(
+      formatWeightedRepsSetDisplay({
+        weight: -45,
+        reps: 8,
+        rir: 2,
+        useSignedBodyweightLoad: true,
+        negativeBodyweightLoadFormat: "external",
+      })
+    ).toBe("-45x8 @2");
+
+    expect(
+      formatWeightedRepsSetDisplay({
+        weight: -60,
+        reps: 8,
+        useSignedBodyweightLoad: true,
+        negativeBodyweightLoadFormat: "external",
+      })
+    ).toBe("-60x8");
+
+    expect(
+      formatWeightedRepsSetDisplay({
+        weight: 0,
+        reps: 12,
+        useSignedBodyweightLoad: true,
+      })
+    ).toBe("BW x 12");
+
+    expect(
+      formatWeightedRepsSetDisplay({
+        weight: 25,
+        reps: 5,
+        useSignedBodyweightLoad: true,
+      })
+    ).toBe("BW+25 x 5");
+  });
+
   test("mobility-only class snapshot keeps non-strength recommendation identity", async () => {
     const snapshot = buildSessionSnapshotText({
       sessionLabel: "BodyBalance",
