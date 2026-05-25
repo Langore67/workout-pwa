@@ -385,6 +385,7 @@ test("appendExerciseAlias persists a remembered alias that shared resolver respe
 
     const appendResult = await appendExerciseAlias(exerciseId, "Dumbbell Bench Press");
     const exercises = await db.exercises.toArray();
+    const exercise = await db.exercises.get(exerciseId);
     const resolution = resolveExerciseFromIndex(
       { rawName: "Dumbbell Bench Press", allowAlias: true, followMerged: true },
       buildExerciseResolverIndex(exercises)
@@ -392,7 +393,7 @@ test("appendExerciseAlias persists a remembered alias that shared resolver respe
 
     return {
       appendResult,
-      aliases: exercises[0]?.aliases ?? [],
+      aliases: exercise?.aliases ?? [],
       resolution: {
         status: resolution.status,
         source: resolution.source,
@@ -523,6 +524,143 @@ test("shared alias map resolves high-confidence aliases to canonical exercises",
     canonical: "Dumbbell Bench Press",
     matchedAlias: "DB Bench Press",
   });
+});
+
+test("Gironda biceps aliases resolve separately from Gironde forearm wrist aliases", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  const result = await page.evaluate(async () => {
+    const { buildExerciseResolverIndex, resolveExerciseFromIndex } = await import(
+      "/src/domain/exercises/exerciseResolver.ts"
+    );
+    const { normalizeName } = await import("/src/db.ts");
+    const seedModule = await import("/src/seed/exercises.seed.with_cues.json");
+    const seedExercises = (seedModule.default as any[]).map((row, index) => ({
+      id: `seed-${index}`,
+      ...row,
+      normalizedName: normalizeName(row.normalizedName || row.name),
+    }));
+    const index = buildExerciseResolverIndex(seedExercises);
+
+    const cases = [
+      "Gironda Curl",
+      "Straight Bar Bicep Curl",
+      "Gironde Forearm Curl",
+      "Gironde Forearm Curl (Barbell)",
+      "Kneeling Barbell Wrist Curl",
+      "Barbell Wrist Curl",
+      "EZ-Bar Bicep Curl",
+    ].map((rawName) => {
+      const resolution = resolveExerciseFromIndex({ rawName, allowAlias: true }, index);
+      return {
+        rawName,
+        status: resolution.status,
+        name: resolution.exercise?.name ?? null,
+        bodyPart: (resolution.exercise as any)?.bodyPart ?? null,
+        equipment: (resolution.exercise as any)?.equipment ?? null,
+        matchedAlias: resolution.matchedAlias ?? null,
+      };
+    });
+
+    return { cases };
+  });
+
+  expect(result.cases).toEqual([
+    expect.objectContaining({ rawName: "Gironda Curl", status: "alias", name: "Barbell Curl", bodyPart: "Arms" }),
+    expect.objectContaining({ rawName: "Straight Bar Bicep Curl", status: "alias", name: "Barbell Curl", bodyPart: "Arms" }),
+    expect.objectContaining({ rawName: "Gironde Forearm Curl", status: "alias", name: "Wrist Curl", bodyPart: "Forearms" }),
+    expect.objectContaining({ rawName: "Gironde Forearm Curl (Barbell)", status: "alias", name: "Wrist Curl", bodyPart: "Forearms" }),
+    expect.objectContaining({ rawName: "Kneeling Barbell Wrist Curl", status: "alias", name: "Wrist Curl", bodyPart: "Forearms" }),
+    expect.objectContaining({ rawName: "Barbell Wrist Curl", status: "alias", name: "Wrist Curl", bodyPart: "Forearms" }),
+    expect.objectContaining({ rawName: "EZ-Bar Bicep Curl", status: "alias", name: "EZ Bar Curl", bodyPart: "Arms" }),
+  ]);
+
+  const gironda = result.cases.find((row) => row.rawName === "Gironda Curl");
+  const gironde = result.cases.find((row) => row.rawName === "Gironde Forearm Curl (Barbell)");
+  expect(gironda?.name).not.toBe(gironde?.name);
+});
+
+test("Gironda and Gironde aliases remain collision-protected across biceps and wrist canonicals", async ({
+  page,
+}) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  const result = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const { appendExerciseAlias } = await import("/src/domain/exercises/exerciseResolver.ts");
+    const { normalizeName } = await import("/src/db.ts");
+    const seedModule = await import("/src/seed/exercises.seed.with_cues.json");
+    const seedRows = (seedModule.default as any[])
+      .filter((row) => ["Barbell Curl", "Wrist Curl"].includes(row.name))
+      .map((row, index) => ({
+        id: `seed-curl-${index}`,
+        ...row,
+        normalizedName: normalizeName(row.normalizedName || row.name),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }));
+    await db.exercises.bulkAdd(seedRows);
+    const barbellCurl = await db.exercises.where("normalizedName").equals("barbell curl").first();
+    const wristCurl = await db.exercises.where("normalizedName").equals("wrist curl").first();
+    if (!barbellCurl || !wristCurl) throw new Error("Expected seed curl exercises missing.");
+
+    const girondaToWrist = await appendExerciseAlias(wristCurl.id, "Gironda Curl");
+    const girondeToBiceps = await appendExerciseAlias(barbellCurl.id, "Gironde Forearm Curl (Barbell)");
+    const nextBarbellCurl = await db.exercises.get(barbellCurl.id);
+    const nextWristCurl = await db.exercises.get(wristCurl.id);
+
+    return {
+      girondaToWrist,
+      girondeToBiceps,
+      barbellAliases: nextBarbellCurl?.aliases ?? [],
+      wristAliases: nextWristCurl?.aliases ?? [],
+    };
+  });
+
+  expect(result.girondaToWrist.added).toBe(false);
+  expect(result.girondeToBiceps.added).toBe(false);
+  expect(result.barbellAliases).toContain("Gironda Curl");
+  expect(result.barbellAliases).not.toContain("Gironde Forearm Curl (Barbell)");
+  expect(result.wristAliases).toContain("Gironde Forearm Curl (Barbell)");
+  expect(result.wristAliases).not.toContain("Gironda Curl");
+});
+
+test("exercise catalog audit stays clean for Gironda and Gironde alias hygiene", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  const result = await page.evaluate(async () => {
+    const { normalizeName } = await import("/src/db.ts");
+    const seedModule = await import("/src/seed/exercises.seed.with_cues.json");
+    const seedExercises = (seedModule.default as any[]).map((row, index) => ({
+      id: `seed-${index}`,
+      ...row,
+      normalizedName: normalizeName(row.normalizedName || row.name),
+    }));
+    const { buildExerciseCatalogIntegrityAudit } = await import(
+      "/src/domain/exercises/exerciseCatalogIntegrityAudit.ts"
+    );
+    const audit = buildExerciseCatalogIntegrityAudit({
+      exercises: seedExercises,
+      tracks: [],
+    });
+    return {
+      totalFindings: audit.totalFindings,
+      highFindings: audit.highFindings,
+      groups: audit.groups.map((group: any) => ({
+        type: group.type,
+        rows: group.rows.map((row: any) => row.relatedExerciseNames ?? [row.exerciseName]),
+      })),
+    };
+  });
+
+  expect(result.highFindings).toBe(0);
+  expect(JSON.stringify(result.groups)).not.toMatch(/Girond[ae]|Wrist Curl|Barbell Curl/);
 });
 
 test("guided canonical resolution marks a duplicate as redirect and adds its name to canonical aliases", async ({

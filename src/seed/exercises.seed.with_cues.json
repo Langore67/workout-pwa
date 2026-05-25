@@ -207,6 +207,11 @@
     "category": "Strength",
     "equipment": "Barbell",
     "strengthSignalRole": "excluded",
+    "aliases": [
+      "Straight Bar Bicep Curl",
+      "Straight Bar Biceps Curl",
+      "Gironda Curl"
+    ],
     "cuesSetup": [
       "Stand tall; ribs down",
       "Elbows pinned near sides",
@@ -872,6 +877,11 @@
     "category": "Strength",
     "equipment": "Barbell",
     "strengthSignalRole": "excluded",
+    "aliases": [
+      "EZ-Bar Bicep Curl",
+      "EZ Bar Bicep Curl",
+      "EZ-Bar Biceps Curl"
+    ],
     "cuesSetup": [
       "Stand tall; ribs down",
       "Elbows pinned near sides",
@@ -2603,18 +2613,24 @@
   },
   {
     "name": "Wrist Curl",
-    "bodyPart": "Arms",
+    "bodyPart": "Forearms",
     "category": "Strength",
-    "equipment": "Dumbbell",
+    "equipment": "Barbell",
     "strengthSignalRole": "excluded",
+    "aliases": [
+      "Gironde Forearm Curl (Barbell)",
+      "Gironde Forearm Curl",
+      "Kneeling Barbell Wrist Curl",
+      "Barbell Wrist Curl"
+    ],
     "cuesSetup": [
-      "Stand tall; ribs down",
-      "Elbows pinned near sides",
-      "Grip hard; wrists neutral"
+      "Set forearms on a bench or thighs",
+      "Keep elbows and forearms stable",
+      "Grip the bar without letting the wrists drift"
     ],
     "cuesExecution": [
-      "Curl without swinging",
-      "Squeeze at the top; slow lower",
+      "Curl through the wrist, not the elbow",
+      "Control the lower into a full wrist stretch",
       "Stop short of elbow pain"
     ]
   }
