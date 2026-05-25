@@ -502,6 +502,13 @@ function inferBetterTrackingModeFromParsedSets(
   trackType: TrackType
 ): TrackingMode {
   if (trackType === "corrective" || trackType === "mobility") {
+    const hasSeconds = sets.some(
+      (s) => s.seconds !== undefined && Number.isFinite(s.seconds) && s.seconds > 0
+    );
+    const hasReps = sets.some(
+      (s) => s.reps !== undefined && Number.isFinite(s.reps) && s.reps > 0
+    );
+    if (hasSeconds && !hasReps) return "timeSeconds";
     return defaultTrackingModeForTrackIntent(trackType);
   }
 
@@ -856,7 +863,7 @@ function parseSetLine(line: string): ParsedSet | null {
      Breadcrumb — Time-only sets
      --------------------------------------------------------------------- */
     const timeOnlyMatch = trimmed.match(
-      /^(warmup|work|technique|mobility|corrective|diagnostic|rehab|conditioning|test)\s+(\d+(?:\.\d+)?)(s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
+      /^(warmup|work|technique|mobility|corrective|diagnostic|rehab|conditioning|test)\s+(\d+(?:\.\d+)?)\s*(s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours)(?:\/(side))?(?:\s*@\s*(\d+(?:\.\d+)?))?(?:\s+(.*))?$/i
     );
   
     if (timeOnlyMatch) {
