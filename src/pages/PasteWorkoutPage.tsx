@@ -350,21 +350,146 @@ function sameCalendarDay(ms: number, dateStr: string): boolean {
   return d.getFullYear() === dt.y && d.getMonth() === dt.m - 1 && d.getDate() === dt.d;
 }
 
-async function findExistingSessionForProgramDay(
-  programDay: string,
-  dateStr: string
-): Promise<Session | null> {
-  const sessions = await db.sessions.toArray();
+function minutesFromTimeString(time?: string): number | undefined {
+  const safeTime = normalizeTimeString(time || "");
+  if (!safeTime) return undefined;
+  const [hh, mm] = safeTime.split(":").map(Number);
+  return hh * 60 + mm;
+}
 
-  const match =
+function minutesFromEpoch(ms?: number): number | undefined {
+  if (!Number.isFinite(ms ?? NaN)) return undefined;
+  const date = new Date(ms as number);
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+function similarMinutes(a?: number, b?: number, tolerance = 15): boolean {
+  if (a === undefined || b === undefined) return false;
+  return Math.abs(a - b) <= tolerance;
+}
+
+function parsedSetSignature(exerciseName: string, set: ParsedSet): string {
+  const setType = set.setKind === "warmup" ? "warmup" : "working";
+  const parts = [
+    normalizeName(exerciseName),
+    setType,
+    set.weight !== undefined && Number.isFinite(set.weight) ? `w${Math.round(set.weight * 100) / 100}` : "",
+    set.reps !== undefined && Number.isFinite(set.reps) ? `r${set.reps}` : "",
+    set.seconds !== undefined && Number.isFinite(set.seconds) ? `s${set.seconds}` : "",
+    set.distance !== undefined && Number.isFinite(set.distance) ? `d${Math.round(set.distance)}` : "",
+  ];
+  return parts.join("|");
+}
+
+function existingSetSignature(trackName: string, set: SetEntry): string {
+  const parts = [
+    normalizeName(trackName),
+    set.setType === "warmup" ? "warmup" : "working",
+    set.weight !== undefined && Number.isFinite(set.weight) ? `w${Math.round(set.weight * 100) / 100}` : "",
+    set.reps !== undefined && Number.isFinite(set.reps) ? `r${set.reps}` : "",
+    set.seconds !== undefined && Number.isFinite(set.seconds) ? `s${set.seconds}` : "",
+    set.distance !== undefined && Number.isFinite(set.distance) ? `d${Math.round(set.distance)}` : "",
+  ];
+  return parts.join("|");
+}
+
+function overlapRatio(a: Set<string>, b: Set<string>): number {
+  if (!a.size || !b.size) return 0;
+  let overlap = 0;
+  for (const item of a) {
+    if (b.has(item)) overlap += 1;
+  }
+  return overlap / Math.max(a.size, b.size);
+}
+
+function setCountsSimilar(a: number, b: number): boolean {
+  return Math.abs(a - b) <= Math.max(1, Math.ceil(Math.max(a, b) * 0.25));
+}
+
+function buildParsedSessionDuplicateFingerprint(parsed: ParsedWorkout) {
+  const importableExercises = parsed.exercises.filter((ex) => ex.sets.length > 0);
+  return {
+    startMinute: minutesFromTimeString(parsed.start),
+    endMinute: minutesFromTimeString(parsed.end),
+    exerciseKeys: new Set(importableExercises.map((ex) => normalizeName(ex.exercise))),
+    setSignatures: new Set(
+      importableExercises.flatMap((ex) => ex.sets.map((set) => parsedSetSignature(ex.exercise, set)))
+    ),
+    setCount: importableExercises.reduce((sum, ex) => sum + ex.sets.length, 0),
+  };
+}
+
+function buildExistingSessionDuplicateFingerprint(
+  session: Session,
+  tracksById: Map<string, Track>,
+  sessionItems: SessionItem[],
+  sets: SetEntry[]
+) {
+  const sessionTrackIds = new Set(
+    sessionItems.filter((item) => item.sessionId === session.id).map((item) => item.trackId)
+  );
+  for (const set of sets) {
+    if (set.sessionId === session.id) sessionTrackIds.add(set.trackId);
+  }
+  const trackNames = Array.from(sessionTrackIds)
+    .map((trackId) => tracksById.get(trackId)?.displayName)
+    .filter((name): name is string => !!name);
+  const sessionSets = sets.filter((set) => set.sessionId === session.id);
+  return {
+    startMinute: minutesFromEpoch(session.startedAt),
+    endMinute: minutesFromEpoch(session.endedAt),
+    exerciseKeys: new Set(trackNames.map((name) => normalizeName(name))),
+    setSignatures: new Set(
+      sessionSets.map((set) => existingSetSignature(tracksById.get(set.trackId)?.displayName ?? "", set))
+    ),
+    setCount: sessionSets.length,
+  };
+}
+
+function isLikelyDuplicateSession(
+  parsed: ReturnType<typeof buildParsedSessionDuplicateFingerprint>,
+  existing: ReturnType<typeof buildExistingSessionDuplicateFingerprint>
+): boolean {
+  const exerciseOverlap = overlapRatio(parsed.exerciseKeys, existing.exerciseKeys);
+  const setOverlap = overlapRatio(parsed.setSignatures, existing.setSignatures);
+  const countsSimilar = setCountsSimilar(parsed.setCount, existing.setCount);
+  const startComparable = parsed.startMinute !== undefined && existing.startMinute !== undefined;
+  const endComparable = parsed.endMinute !== undefined && existing.endMinute !== undefined;
+  const startSimilar = similarMinutes(parsed.startMinute, existing.startMinute);
+  const endSimilar = similarMinutes(parsed.endMinute, existing.endMinute);
+  const timeComparable = startComparable || endComparable;
+  const timeSimilar = !timeComparable || startSimilar || endSimilar;
+
+  if (!parsed.setCount || !existing.setCount) {
+    return exerciseOverlap >= 0.8 && timeSimilar;
+  }
+  if (setOverlap >= 0.7 && countsSimilar && timeSimilar) return true;
+  if (exerciseOverlap >= 0.8 && countsSimilar && timeSimilar) return true;
+  return false;
+}
+
+async function findLikelyDuplicateSession(parsedWorkout: ParsedWorkout): Promise<Session | null> {
+  if (!parsedWorkout.date || !parsedWorkout.programDay) return null;
+
+  const [sessions, tracks, sessionItems, sets] = await Promise.all([
+    db.sessions.toArray(),
+    db.tracks.toArray(),
+    db.sessionItems.toArray(),
+    db.sets.toArray(),
+  ]);
+  const tracksById = new Map(tracks.map((track) => [track.id, track]));
+  const parsedFingerprint = buildParsedSessionDuplicateFingerprint(parsedWorkout);
+
+  return (
     sessions.find((s) => {
       const sameName =
-        normalizeName(String(s.templateName || "")) === normalizeName(programDay);
-      const sameDay = sameCalendarDay(s.startedAt, dateStr);
-      return sameName && sameDay;
-    }) || null;
-
-  return match;
+        normalizeName(String(s.templateName || "")) === normalizeName(parsedWorkout.programDay);
+      const sameDay = sameCalendarDay(s.startedAt, parsedWorkout.date);
+      if (!sameName || !sameDay) return false;
+      const existingFingerprint = buildExistingSessionDuplicateFingerprint(s, tracksById, sessionItems, sets);
+      return isLikelyDuplicateSession(parsedFingerprint, existingFingerprint);
+    }) || null
+  );
 }
 
 function normalizeExerciseDisplayName(name: string): string {
@@ -603,6 +728,20 @@ function appendSessionNotesBlock(
   const next = nextLines.join("\n");
   if (!next) return current;
   return current ? `${current}\n${next}` : next;
+}
+
+function parseCardioMetadataLine(line: string): string | null {
+  const trimmed = String(line ?? "").trim().replace(/^[-*]\s*/, "");
+  if (!trimmed) return null;
+
+  const metadataMatch = trimmed.match(
+    /^(avg\s+hr|max\s+hr|hr|steps|calories|elevation\s+gain|elevation|avg\s+cadence|max\s+cadence|cadence|avg\s+pace|max\s+pace|pace|route|distance|duration)\s*:?\s+(.+)$/i
+  );
+  if (!metadataMatch) return null;
+
+  const value = String(metadataMatch[2] ?? "").trim();
+  if (!value) return null;
+  return trimmed;
 }
 
 function parseSetLine(line: string): ParsedSet | null {
@@ -964,6 +1103,12 @@ function parseWorkoutText(text: string): ParsedWorkout {
       continue;
     }
 
+    const cardioMetadata = parseCardioMetadataLine(line);
+    if (cardioMetadata) {
+      sessionNotes = sessionNotes ? `${sessionNotes}\n${cardioMetadata}` : cardioMetadata;
+      continue;
+    }
+
     const parsedSet = parseSetLine(line);
     if (parsedSet) {
       if (!currentExercise) {
@@ -1196,7 +1341,7 @@ export default function PasteWorkoutPage() {
 
     const existingSession =
       parsedWorkout.date && parsedWorkout.programDay
-        ? await findExistingSessionForProgramDay(parsedWorkout.programDay, parsedWorkout.date)
+        ? await findLikelyDuplicateSession(parsedWorkout)
         : null;
 
     return {
@@ -1224,7 +1369,7 @@ export default function PasteWorkoutPage() {
     const pv = await buildPreview(p);
 
     if (pv.duplicateSessionFound) {
-      p.warnings.push(`Session already exists for ${p.programDay} on ${p.date}`);
+      p.warnings.push(`Likely duplicate session already exists for ${p.programDay} on ${p.date}`);
     }
 
     setParsed(p);
@@ -1325,7 +1470,7 @@ export default function PasteWorkoutPage() {
 
     if (preview.duplicateSessionFound) {
       setStatus(
-        `Import blocked: Session already exists for ${parsed.programDay} on ${parsed.date}.`
+        `Import blocked: likely duplicate session already exists for ${parsed.programDay} on ${parsed.date}.`
       );
       return;
     }
@@ -2008,7 +2153,7 @@ export default function PasteWorkoutPage() {
             <>
               <hr />
               <div className="muted">
-                Import blocked until session name or date is changed.
+                Import blocked because an existing same-day session has matching title and similar content.
               </div>
             </>
           )}

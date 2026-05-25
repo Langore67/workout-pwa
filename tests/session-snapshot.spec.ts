@@ -1,5 +1,33 @@
 import { expect, test } from "@playwright/test";
-import { buildSessionSnapshotText } from "../src/domain/coaching/sessionSnapshot";
+import { buildSessionCoachingSignals, buildSessionSnapshotText } from "../src/domain/coaching/sessionSnapshot";
+
+function buildSignals(sessionNotes: string) {
+  return buildSessionCoachingSignals({
+    sessionNotes,
+    totalExercises: 1,
+    completedExercises: 1,
+    currentTrack: {
+      displayName: "Bench Press",
+      trackType: "strength",
+      trackingMode: "weightedReps",
+    },
+    currentRecommendation: null,
+    trackSummaries: [
+      {
+        displayName: "Bench Press",
+        trackType: "strength",
+        trackingMode: "weightedReps",
+        completedSets: ["135 x 8"],
+      },
+      {
+        displayName: "Farmer's Carry",
+        trackType: "conditioning",
+        trackingMode: "distanceAndLoad",
+        completedSets: ["80 lbs - 40 yd"],
+      },
+    ],
+  });
+}
 
 function extractFocusFlags(snapshot: string): string[] {
   const lines = snapshot.split("\n");
@@ -35,6 +63,74 @@ function expectSection(snapshot: string, heading: string) {
   expect(snapshot).toContain(heading);
   return extractBlock(snapshot, heading);
 }
+
+test.describe("session note pain and fatigue negation", () => {
+  test("negated joint feedback does not emit pain, fatigue, or carry-forward signals", () => {
+    const signals = buildSignals(
+      "No back pain. Knee felt clean. Shoulders don't hurt. Elbow stayed quiet. No traps. No irritation."
+    );
+    const combined = [
+      signals.readiness,
+      ...signals.focusFlags,
+      ...signals.fatigueReadiness,
+      ...signals.carryForward,
+      ...signals.nextWorkoutFocus,
+      ...signals.discussWithCoach,
+    ].join(" | ");
+
+    expect(combined).not.toMatch(/\b(Back|Knee|Elbow|Shoulder|Joint pain|Low back tolerance|Knee stability|pain|irritation|Fatigue or cut-volume)\b/i);
+    expect(signals.readiness).toContain("Readiness: steady");
+    expect(signals.fatigueReadiness).toEqual(["Readiness looked steady"]);
+    expect(signals.carryForward).toEqual([]);
+    expect(signals.discussWithCoach).toEqual([]);
+  });
+
+  test("positive joint feedback still emits caution signals", () => {
+    const signals = buildSignals("Back pain. Shoulder pinched on rep 8. Elbow irritation.");
+
+    expect(signals.readiness).toContain("Readiness: caution");
+    expect(signals.focusFlags).toEqual(expect.arrayContaining(["Low back tolerance", "Joint pain noted"]));
+    expect(signals.fatigueReadiness).toEqual(
+      expect.arrayContaining(["Back pain", "Shoulder pinch", "Elbow irritation"])
+    );
+    expect(signals.discussWithCoach).toEqual(
+      expect.arrayContaining(["Review joint feedback around Bench Press"])
+    );
+  });
+
+  test("mixed negated and positive notes preserve only the positive joint issue", () => {
+    const signals = buildSignals("No shoulder pain but elbow irritation on rep 12.");
+    const combined = signals.fatigueReadiness.join(" | ");
+
+    expect(combined).toContain("Elbow irritation");
+    expect(combined).not.toContain("Shoulder pain");
+    expect(signals.focusFlags).toEqual(expect.arrayContaining(["Joint pain noted"]));
+  });
+
+  test("trap negation stays quiet while positive trap takeover is preserved", () => {
+    const quiet = buildSignals("Farmer's Carry: no traps.");
+    expect(quiet.fatigueReadiness.join(" | ")).not.toMatch(/trap/i);
+    expect(quiet.discussWithCoach.join(" | ")).not.toMatch(/trap/i);
+
+    const positive = buildSignals("Farmer's Carry: traps taking over on rep 12.");
+    expect(positive.fatigueReadiness).toEqual(
+      expect.arrayContaining(["Farmer's Carry: trap compensation"])
+    );
+    expect(positive.discussWithCoach).toEqual(
+      expect.arrayContaining(["Discuss reducing trap compensation during carries"])
+    );
+  });
+
+  test("movement-quality and true fatigue signals still work", () => {
+    const signals = buildSignals(
+      "Chest stayed high. No shoulder roll. Lats dominant. Quads on rep 10. Grip slipped. Chest pump. Fatigue at rep 12."
+    );
+
+    expect(signals.fatigueReadiness).toEqual(expect.arrayContaining(["Fatigue showed up"]));
+    expect(signals.fatigueReadiness.join(" | ")).not.toContain("Shoulder pain");
+    expect(signals.readiness).toContain("Readiness: caution");
+  });
+});
 
 test.describe("session snapshot export quality", () => {
   test("explicit carry-forward lines are preferred over fallback heuristics", async () => {
