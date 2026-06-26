@@ -23,7 +23,7 @@
    ============================================================================ */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, TemplateItem, SessionItem, Track, SetEntry } from "../db";
 import {
@@ -208,12 +208,23 @@ const PAGE_VERSION = "4";
 const BUILD_ID = "2026-02-28-SESS-DETAIL-04";
 const FILE_FOOTER = "src/pages/SessionDetailPage.tsx";
 
+function getHistoryReturnTo(state: unknown): string | undefined {
+  const returnTo = (state as { returnTo?: unknown } | null)?.returnTo;
+  return typeof returnTo === "string" && returnTo.startsWith("/history") ? returnTo : undefined;
+}
+
 export default function SessionDetailPage() {
   /* ---------------------------------------------------------------------------
      Breadcrumb 2a — Routing + local UI state
      --------------------------------------------------------------------------- */
   const { sessionId } = useParams();
   const nav = useNavigate();
+  const location = useLocation();
+  const historyReturnTo = getHistoryReturnTo(location.state);
+
+  function backToHistory() {
+    nav(historyReturnTo ?? "/history");
+  }
 
   // Calm warmup toggle (default OFF)
   const [showWarmups, setShowWarmups] = useState<boolean>(false);
@@ -569,7 +580,7 @@ export default function SessionDetailPage() {
     return (
       <div className="card" data-testid="session-detail-missing">
         <p className="muted">Missing session id.</p>
-        <button className="btn" onClick={() => nav("/history")}>
+        <button className="btn" onClick={backToHistory}>
           Back to history
         </button>
       </div>
@@ -580,7 +591,7 @@ export default function SessionDetailPage() {
     return (
       <div className="card" data-testid="session-detail-loading">
         <p className="muted">Loading…</p>
-        <button className="btn" onClick={() => nav("/history")}>
+        <button className="btn" onClick={backToHistory}>
           Back to history
         </button>
       </div>
@@ -658,7 +669,7 @@ export default function SessionDetailPage() {
 
           {/* Actions + calm warmups toggle */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <button className="btn" onClick={() => nav("/history")} data-testid="back-to-history">
+            <button className="btn" onClick={backToHistory} data-testid="back-to-history">
               Back to history
             </button>
             <button className="btn" onClick={() => nav(`/gym/${sessionId}`)} data-testid="open-gym-mode">
