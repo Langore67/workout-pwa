@@ -10,6 +10,7 @@ import {
 import { findOrCreateReusableTrack } from "../lib/reusableTrackWorkflow";
 
 type ImportedMetricType = "reps" | "distance" | "duration";
+type ConditioningIntent = "fitness" | "recovery" | "adventure";
 
 type ImportedSet = Partial<SetEntry> &
   Record<string, any> & {
@@ -22,11 +23,20 @@ type ImportedSet = Partial<SetEntry> &
 export type ParsedIfWorkout = {
   dateISO: string;
   templateName: string;
+  conditioningIntent?: ConditioningIntent;
   start?: string;
   end?: string;
   notes?: string;
   sets: ImportedSet[];
 };
+
+function parseConditioningIntent(raw: string | undefined): ConditioningIntent | undefined {
+  const normalized = String(raw ?? "").trim().toLowerCase();
+  if (normalized === "fitness" || normalized === "recovery" || normalized === "adventure") {
+    return normalized;
+  }
+  return undefined;
+}
 
 function parseClockMs(dateISO: string, rawTime?: string): number | undefined {
   const time = String(rawTime ?? "").trim();
@@ -197,6 +207,7 @@ function parseIfSetLine(line: string): ImportedSet | null {
 export function parseIfJournalText(text: string): ParsedIfWorkout {
   const lines = String(text ?? "").replace(/\r/g, "").split("\n");
   let templateName = "";
+  let conditioningIntent: ConditioningIntent | undefined;
   let dateISO = "";
   let start = "";
   let end = "";
@@ -212,7 +223,11 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
 
     if (inNotesBlock) {
       const isMetaLine =
-        /^session\s*:/i.test(line) || /^date\s*:/i.test(line) || /^start\s*:/i.test(line) || /^end\s*:/i.test(line);
+        /^session\s*:/i.test(line) ||
+        /^intent\s*:/i.test(line) ||
+        /^date\s*:/i.test(line) ||
+        /^start\s*:/i.test(line) ||
+        /^end\s*:/i.test(line);
       if (isMetaLine) {
         inNotesBlock = false;
         i -= 1;
@@ -243,6 +258,13 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
     const dateMatch = line.match(/^date\s*:\s*(\d{4}-\d{2}-\d{2})$/i);
     if (dateMatch) {
       dateISO = dateMatch[1].trim();
+      currentExercise = "";
+      continue;
+    }
+
+    const intentMatch = line.match(/^intent\s*:\s*(.+)$/i);
+    if (intentMatch) {
+      conditioningIntent = parseConditioningIntent(intentMatch[1]);
       currentExercise = "";
       continue;
     }
@@ -299,6 +321,7 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
   return {
     dateISO,
     templateName,
+    conditioningIntent,
     start: start || undefined,
     end: end || undefined,
     notes: notes.trim() || undefined,
@@ -402,6 +425,7 @@ export async function importSessionFromJournal(
         dateISO: string;
         templateId?: string;
         templateName?: string;
+        conditioningIntent?: ConditioningIntent;
         start?: string;
         end?: string;
         notes?: string;
@@ -414,6 +438,7 @@ export async function importSessionFromJournal(
         dateISO: args.dateISO,
         templateId: args.templateId,
         templateName: args.templateName,
+        conditioningIntent: args.conditioningIntent,
         start: args.start,
         end: args.end,
         notes: args.notes,
@@ -444,6 +469,7 @@ export async function importSessionFromJournal(
       id: sessionId,
       templateId: "templateId" in parsed ? parsed.templateId : undefined,
       templateName: parsed.templateName,
+      conditioningIntent: parsed.conditioningIntent,
       startedAt,
       endedAt,
       notes: parsed.notes?.trim() || undefined,

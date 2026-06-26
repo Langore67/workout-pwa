@@ -382,6 +382,54 @@ conditioning duration 42 min`);
   ]);
 });
 
+test("IF journal import parses conditioning intent when valid and ignores invalid intent", async ({ page }) => {
+  await goto(page, "/");
+  await resetDexieDb(page);
+
+  const imported = await page.evaluate(async () => {
+    const { importSessionFromJournal, parseIfJournalText } = await import("/src/importers/importSession.ts");
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const validText = `Session: Walk - Recovery
+Intent: Recovery
+Date: 2026-05-24
+
+Walk
+conditioning duration 42min`;
+
+    const invalidText = `Session: Walk - Invalid
+Intent: expedition
+Date: 2026-05-25
+
+Walk
+conditioning duration 20min`;
+
+    const parsedValid = parseIfJournalText(validText);
+    const parsedInvalid = parseIfJournalText(invalidText);
+    const validResult = await importSessionFromJournal({ text: validText });
+    const invalidResult = await importSessionFromJournal({ text: invalidText });
+
+    const validSession = await db.sessions.get(validResult.sessionId);
+    const invalidSession = await db.sessions.get(invalidResult.sessionId);
+
+    return {
+      parsedValidIntent: parsedValid.conditioningIntent,
+      parsedInvalidIntent: parsedInvalid.conditioningIntent,
+      validSessionIntent: validSession?.conditioningIntent,
+      invalidSessionIntent: invalidSession?.conditioningIntent,
+    };
+  });
+
+  expect(imported).toEqual({
+    parsedValidIntent: "recovery",
+    parsedInvalidIntent: undefined,
+    validSessionIntent: "recovery",
+    invalidSessionIntent: undefined,
+  });
+});
+
 test("IF journal import treats walk metadata outside Session Notes as notes, not exercises", async ({ page }) => {
   await goto(page, "/");
   await resetDexieDb(page);

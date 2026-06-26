@@ -1,6 +1,7 @@
 import type { Exercise, Session, SetEntry, Track } from "../../db";
 
 export type CardioWalkConfidence = "high" | "medium";
+export type CardioWalkIntent = "fitness" | "recovery" | "adventure";
 
 export type CardioWalkEvent = {
   sessionId: string;
@@ -8,6 +9,7 @@ export type CardioWalkEvent = {
   endedAt?: number;
   date: string;
   name: string;
+  conditioningIntent?: CardioWalkIntent;
   source?: string;
   route?: string;
   durationSeconds?: number;
@@ -70,3 +72,15 @@ export type BuildCardioWalkSummaryInput = {
   now?: number;
   recentLimit?: number;
 };
+
+export function isFitnessWalk(event: Pick<CardioWalkEvent, "conditioningIntent">): boolean {
+  return event.conditioningIntent === "fitness";
+}
+
+export function isRecoveryWalk(event: Pick<CardioWalkEvent, "conditioningIntent">): boolean {
+  return event.conditioningIntent === "recovery";
+}
+
+export function isAdventureWalk(event: Pick<CardioWalkEvent, "conditioningIntent">): boolean {
+  return event.conditioningIntent === "adventure";
+}
