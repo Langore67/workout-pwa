@@ -289,6 +289,7 @@ export function buildCardioWalkSummary(input: BuildCardioWalkSummaryInput): Card
         endedAt: session.endedAt,
         date: localDateKey(session.startedAt),
         name: session.templateName ?? "Walk",
+        conditioningIntent: session.conditioningIntent,
         source: parsedNotes.source,
         route: parsedNotes.route,
         durationSeconds,

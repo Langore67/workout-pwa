@@ -124,6 +124,7 @@ type ParsedExerciseBlock = {
 
 type ParsedWorkout = {
   programDay: string;
+  conditioningIntent?: "fitness" | "recovery" | "adventure";
   date: string; // YYYY-MM-DD
   start?: string; // HH:mm
   end?: string; // HH:mm
@@ -306,6 +307,14 @@ function isSectionHeader(line: string): boolean {
     "finishers",
     "cooldown",
   ].includes(s);
+}
+
+function parseConditioningIntent(raw: string | undefined): ParsedWorkout["conditioningIntent"] {
+  const normalized = String(raw ?? "").trim().toLowerCase();
+  if (normalized === "fitness" || normalized === "recovery" || normalized === "adventure") {
+    return normalized;
+  }
+  return undefined;
 }
 
 function normalizeTimeString(s: string): string | undefined {
@@ -1009,6 +1018,7 @@ function parseWorkoutText(text: string): ParsedWorkout {
   const lines = text.replace(/\r/g, "").split("\n");
 
   let programDay = "";
+  let conditioningIntent: ParsedWorkout["conditioningIntent"];
   let date = "";
   let start = "";
   let end = "";
@@ -1029,6 +1039,7 @@ function parseWorkoutText(text: string): ParsedWorkout {
       const noteBlockHeader = parseSessionNoteBlockHeader(line);
       const isMetadataLine =
         /^session\s*:/i.test(line) ||
+        /^intent\s*:/i.test(line) ||
         /^date\s*:/i.test(line) ||
         /^start\s*:/i.test(line) ||
         /^end\s*:/i.test(line);
@@ -1079,6 +1090,13 @@ function parseWorkoutText(text: string): ParsedWorkout {
     const dateMatch = line.match(/^date\s*:\s*(.+)$/i);
     if (dateMatch) {
       date = dateMatch[1].trim();
+      currentExercise = null;
+      continue;
+    }
+
+    const intentMatch = line.match(/^intent\s*:\s*(.+)$/i);
+    if (intentMatch) {
+      conditioningIntent = parseConditioningIntent(intentMatch[1]);
       currentExercise = null;
       continue;
     }
@@ -1157,6 +1175,7 @@ function parseWorkoutText(text: string): ParsedWorkout {
 
   return {
     programDay: programDay || "Imported Session",
+    conditioningIntent,
     date,
     start: normalizeTimeString(start),
     end: normalizeTimeString(end),
@@ -1674,6 +1693,7 @@ export default function PasteWorkoutPage() {
         endedAt: safeEndedAt,
         templateId: undefined,
         templateName: parsed.programDay,
+        conditioningIntent: parsed.conditioningIntent,
         notes: parsed.sessionNotes?.trim() || undefined,
         updatedAt: safeEndedAt,
       },

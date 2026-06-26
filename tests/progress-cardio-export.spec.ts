@@ -78,6 +78,7 @@ function populatedSummary(): CardioWalkSummary {
       startedAt: evening,
       date: "2026-05-13",
       name: "Walk - MapMyWalk",
+      conditioningIntent: "adventure" as const,
       source: "MapMyWalk screenshot",
       route: "Neighborhood Loop",
       durationSeconds: 3600,
@@ -240,6 +241,7 @@ async function seedCardioExportWalks(page: Page) {
         {
           id: mapMyWalkSessionId,
           templateName: "Walk - MapMyWalk",
+          conditioningIntent: "adventure",
           startedAt: at(17, 30),
           endedAt: at(18, 30),
           notes: [
@@ -343,7 +345,7 @@ test.describe("buildCardioExportText", () => {
     expect(text).toContain("- Total distance: 3.12 mi / 5.02 km");
     expect(text).toContain("- Average duration: 51 min");
     expect(text).toContain("- Average pace: 19:14/mi");
-    expect(text).toContain("Walk - MapMyWalk | 1 hr | 3.12 mi / 5.02 km | 19:14/mi | Neighborhood Loop");
+    expect(text).toContain("Walk - MapMyWalk | Adventure | 1 hr | 3.12 mi / 5.02 km | 19:14/mi | Neighborhood Loop");
     expect(text).toContain("Source MapMyWalk screenshot");
     expect(text).toContain("Elevation 120 ft");
     expect(text).toContain("Avg HR 112");
@@ -377,6 +379,119 @@ test.describe("buildCardioExportText", () => {
     expect(text).toContain("- Suspicious rows are shown in Recent Walks but excluded from summary totals and averages.");
     expect(text).toContain("- Total distance: 3.12 mi / 5.02 km");
     expect(text).toContain("2026-05-13 | 2 walks | 1 hr 42 min | 3.12 mi / 5.02 km");
+  });
+
+  test("adds intent-specific export sections while preserving the all-walk summary", () => {
+    const day = new Date(2026, 4, 20);
+    const at = (hour: number) => new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0).getTime();
+    const walks = [
+      {
+        sessionId: "walk-undefined",
+        startedAt: at(11),
+        date: "2026-05-20",
+        name: "Walk - Untagged",
+        durationSeconds: 50 * 60,
+        distanceMeters: 4 * METERS_PER_MILE,
+        confidence: "high" as const,
+      },
+      {
+        sessionId: "walk-adventure",
+        startedAt: at(10),
+        date: "2026-05-20",
+        name: "Walk - Trail",
+        conditioningIntent: "adventure" as const,
+        durationSeconds: 40 * 60,
+        distanceMeters: 3 * METERS_PER_MILE,
+        confidence: "high" as const,
+      },
+      {
+        sessionId: "walk-recovery",
+        startedAt: at(9),
+        date: "2026-05-20",
+        name: "Walk - Easy",
+        conditioningIntent: "recovery" as const,
+        durationSeconds: 30 * 60,
+        distanceMeters: 2 * METERS_PER_MILE,
+        confidence: "high" as const,
+      },
+      {
+        sessionId: "walk-fitness",
+        startedAt: at(8),
+        date: "2026-05-20",
+        name: "Walk - Fitness",
+        conditioningIntent: "fitness" as const,
+        durationSeconds: 20 * 60,
+        distanceMeters: 1 * METERS_PER_MILE,
+        confidence: "high" as const,
+      },
+    ];
+    const summary: CardioWalkSummary = {
+      normalizedWalks: walks,
+      recentWalks: walks,
+      dailySummaries: [
+        {
+          date: "2026-05-20",
+          count: 4,
+          totalDurationSeconds: 140 * 60,
+          totalDistanceMeters: 10 * METERS_PER_MILE,
+          sessionIds: ["walk-undefined", "walk-adventure", "walk-recovery", "walk-fitness"],
+        },
+      ],
+      last7d: {
+        count: 4,
+        totalDurationSeconds: 140 * 60,
+        totalDistanceMeters: 10 * METERS_PER_MILE,
+        averageDurationSeconds: 35 * 60,
+        averagePaceSecondsPerMile: 14 * 60,
+      },
+      last28d: {
+        count: 4,
+        totalDurationSeconds: 140 * 60,
+        totalDistanceMeters: 10 * METERS_PER_MILE,
+        averageDurationSeconds: 35 * 60,
+        averagePaceSecondsPerMile: 14 * 60,
+      },
+      dataQuality: {
+        missingDistanceCount: 0,
+        missingDurationCount: 0,
+        suspiciousPaceCount: 0,
+        suspiciousPaceSessionIds: [],
+        notesFieldCoverage: {
+          source: 0,
+          route: 0,
+          pace: 4,
+          elevation: 0,
+          avgHr: 0,
+          maxHr: 0,
+          notes: 0,
+        },
+        unsupportedSignals: ["routeTrend", "zoneDistribution", "liftingInterference"],
+      },
+    };
+
+    const text = buildCardioExportText(summary, { generatedAt: new Date(2026, 4, 20, 12) });
+    const cardioSummary = text.slice(text.indexOf("Cardio Summary"), text.indexOf("Fitness Walk Summary"));
+    const fitnessSummary = text.slice(text.indexOf("Fitness Walk Summary"), text.indexOf("Recovery / Adventure Activity"));
+    const recoveryAdventure = text.slice(text.indexOf("Recovery / Adventure Activity"), text.indexOf("Data Quality"));
+
+    expect(cardioSummary).toContain("- Walks: 4");
+    expect(cardioSummary).toContain("- Total duration: 2 hr 20 min");
+    expect(cardioSummary).toContain("- Total distance: 10.00 mi / 16.09 km");
+    expect(cardioSummary).toContain("- Average duration: 35 min");
+    expect(cardioSummary).toContain("- Average pace: 14:00/mi");
+    expect(cardioSummary).toContain("2026-05-20 | 4 walks | 2 hr 20 min | 10.00 mi / 16.09 km");
+
+    expect(cardioSummary).toContain("Walk - Fitness | Fitness | 20 min | 1.00 mi / 1.61 km");
+    expect(cardioSummary).toContain("Walk - Easy | Recovery | 30 min | 2.00 mi / 3.22 km");
+    expect(cardioSummary).toContain("Walk - Trail | Adventure | 40 min | 3.00 mi / 4.83 km");
+    expect(cardioSummary).toContain("Walk - Untagged | 50 min | 4.00 mi / 6.44 km");
+
+    expect(fitnessSummary).toContain("- Fitness + untagged walks: 2 walks | 1 hr 10 min | 5.00 mi / 8.05 km");
+    expect(fitnessSummary).toContain("- Includes walks tagged Fitness plus walks with no intent set.");
+    expect(fitnessSummary).toContain("- Excludes Recovery and Adventure walks.");
+
+    expect(recoveryAdventure).toContain("- Recovery: 1 walk | 30 min | 2.00 mi / 3.22 km");
+    expect(recoveryAdventure).toContain("- Adventure: 1 walk | 40 min | 3.00 mi / 4.83 km");
   });
 });
 
@@ -449,7 +564,7 @@ test.describe("Progress Copy Cardio Export", () => {
     expect(text).toContain("- Average pace: 19:14/mi");
 
     const recentWalks = text.slice(text.indexOf("Recent Walks"), text.indexOf("Daily Totals"));
-    expect(recentWalks).toContain("Walk - MapMyWalk | 1 hr | 3.12 mi / 5.02 km | 19:14/mi | Neighborhood Loop");
+    expect(recentWalks).toContain("Walk - MapMyWalk | Adventure | 1 hr | 3.12 mi / 5.02 km | 19:14/mi | Neighborhood Loop");
     expect(recentWalks).toContain("Source MapMyWalk screenshot");
     expect(recentWalks).toContain("Elevation 120 ft");
     expect(recentWalks).toContain("Avg HR 112");
@@ -458,7 +573,7 @@ test.describe("Progress Copy Cardio Export", () => {
     expect(recentWalks).toContain("Walk - Treadmill | 42 min | not available | not available");
     expect((recentWalks.match(/^-/gm) ?? [])).toHaveLength(2);
 
-    const dailyTotals = text.slice(text.indexOf("Daily Totals"), text.indexOf("Data Quality"));
+    const dailyTotals = text.slice(text.indexOf("Daily Totals"), text.indexOf("Fitness Walk Summary"));
     expect(dailyTotals).toContain("| 2 walks | 1 hr 42 min | 3.12 mi / 5.02 km");
     expect((dailyTotals.match(/^-/gm) ?? [])).toHaveLength(1);
 
@@ -498,8 +613,8 @@ Session Notes:
     const text = await readCopiedText(page);
 
     expect(text).toContain("Walk - Peachtree Ridge Park | 1 hr 6 min | 3.79 mi / 6.10 km | 17:17/mi");
-    expect(text).toContain("- Total distance: 3.79 mi / 6.10 km");
-    expect(text).toContain("- Average pace: 17:17/mi");
+    expect(text).toContain("2026-05-23 | 1 walk | 1 hr 6 min | 3.79 mi / 6.10 km");
+    expect(text).toContain("- Fitness + untagged walks: 1 walk | 1 hr 6 min | 3.79 mi / 6.10 km");
     expect(text).toContain("- Missing distance: 0");
     expect(text).not.toContain("Walk - Peachtree Ridge Park | 1 hr 6 min | not available");
   });

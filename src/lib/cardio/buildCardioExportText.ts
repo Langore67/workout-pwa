@@ -4,6 +4,7 @@ import type {
   CardioWalkSummary,
   CardioWalkWindowSummary,
 } from "./cardioTypes";
+import { isAdventureWalk, isFitnessWalk, isRecoveryWalk } from "./cardioTypes";
 import { formatDistanceMiKm } from "./formatCardioWalk";
 
 export type BuildCardioExportTextOptions = {
@@ -78,6 +79,13 @@ function extractNotesText(notes: string | undefined): string | undefined {
   return undefined;
 }
 
+function formatWalkIntent(walk: CardioWalkEvent): string | undefined {
+  if (isFitnessWalk(walk)) return "Fitness";
+  if (isRecoveryWalk(walk)) return "Recovery";
+  if (isAdventureWalk(walk)) return "Adventure";
+  return undefined;
+}
+
 function formatWindow(title: string, window: CardioWalkWindowSummary): string[] {
   return [
     title,
@@ -93,6 +101,7 @@ function formatWalkRow(walk: CardioWalkEvent, suspiciousPaceSessionIds: Set<stri
   const fields = [
     formatDateTime(walk.startedAt),
     cleanInline(walk.name) ?? "Walk",
+    formatWalkIntent(walk),
     formatDuration(walk.durationSeconds),
     formatDistance(walk.distanceMeters),
     formatPace(walk.paceSecondsPerMile),
@@ -112,10 +121,33 @@ function formatDailyRow(day: CardioDailyWalkSummary): string {
   return `- ${day.date} | ${pluralizeWalkCount(day.count)} | ${formatDuration(day.totalDurationSeconds)} | ${formatDistance(day.totalDistanceMeters)}`;
 }
 
+function sumWalkActivity(walks: CardioWalkEvent[], suspiciousPaceSessionIds: Set<string>) {
+  const included = walks.filter((walk) => !suspiciousPaceSessionIds.has(walk.sessionId));
+  return {
+    count: included.length,
+    totalDurationSeconds: included.reduce((sum, walk) => sum + (walk.durationSeconds ?? 0), 0),
+    totalDistanceMeters: included.reduce((sum, walk) => sum + (walk.distanceMeters ?? 0), 0),
+  };
+}
+
+function formatActivityTotals(label: string, totals: ReturnType<typeof sumWalkActivity>): string {
+  return `- ${label}: ${pluralizeWalkCount(totals.count)} | ${formatDuration(totals.totalDurationSeconds)} | ${formatDistance(totals.totalDistanceMeters)}`;
+}
+
 export function buildCardioExportText(
   summary: CardioWalkSummary,
   options: BuildCardioExportTextOptions = {}
 ): string {
+  const suspiciousPaceSessionIds = new Set(summary.dataQuality.suspiciousPaceSessionIds);
+  const fitnessWalks = summary.normalizedWalks.filter(
+    (walk) => isFitnessWalk(walk) || (!isRecoveryWalk(walk) && !isAdventureWalk(walk))
+  );
+  const recoveryWalks = summary.normalizedWalks.filter(isRecoveryWalk);
+  const adventureWalks = summary.normalizedWalks.filter(isAdventureWalk);
+  const fitnessTotals = sumWalkActivity(fitnessWalks, suspiciousPaceSessionIds);
+  const recoveryTotals = sumWalkActivity(recoveryWalks, suspiciousPaceSessionIds);
+  const adventureTotals = sumWalkActivity(adventureWalks, suspiciousPaceSessionIds);
+
   const lines: string[] = [
     "IronForge Cardio Export",
     `Generated: ${formatDateKey(options.generatedAt)}`,
@@ -135,7 +167,6 @@ export function buildCardioExportText(
   ];
 
   if (summary.recentWalks.length) {
-    const suspiciousPaceSessionIds = new Set(summary.dataQuality.suspiciousPaceSessionIds);
     lines.push(...summary.recentWalks.map((walk) => formatWalkRow(walk, suspiciousPaceSessionIds)));
   } else {
     lines.push("- No imported walk sessions were found in History.");
@@ -147,6 +178,18 @@ export function buildCardioExportText(
   } else {
     lines.push("- No imported walk sessions were found in History.");
   }
+
+  lines.push(
+    "",
+    "Fitness Walk Summary",
+    formatActivityTotals("Fitness + untagged walks", fitnessTotals),
+    "- Includes walks tagged Fitness plus walks with no intent set.",
+    "- Excludes Recovery and Adventure walks.",
+    "",
+    "Recovery / Adventure Activity",
+    formatActivityTotals("Recovery", recoveryTotals),
+    formatActivityTotals("Adventure", adventureTotals)
+  );
 
   lines.push(
     "",

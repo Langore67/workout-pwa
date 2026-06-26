@@ -248,6 +248,7 @@ export interface Session {
   id: UUID;
   templateId?: UUID;
   templateName?: string;
+  conditioningIntent?: "fitness" | "recovery" | "adventure";
   startedAt: number;
   endedAt?: number;
   notes?: string;

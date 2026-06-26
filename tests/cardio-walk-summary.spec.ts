@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { buildCardioWalkSummary } from "../src/lib/cardio/buildCardioWalkSummary";
+import {
+  isAdventureWalk,
+  isFitnessWalk,
+  isRecoveryWalk,
+  type CardioWalkEvent,
+} from "../src/lib/cardio/cardioTypes";
 import type { Exercise, Session, SetEntry, Track } from "../src/db";
 
 function ms(year: number, month: number, day: number, hour: number, minute: number) {
@@ -9,6 +15,7 @@ function ms(year: number, month: number, day: number, hour: number, minute: numb
 function session(args: {
   id: string;
   name: string;
+  conditioningIntent?: Session["conditioningIntent"];
   startedAt?: number;
   endedAt?: number;
   notes?: string;
@@ -16,6 +23,7 @@ function session(args: {
   return {
     id: args.id,
     templateName: args.name,
+    conditioningIntent: args.conditioningIntent,
     startedAt: args.startedAt ?? ms(2026, 5, 13, 7, 30),
     endedAt: args.endedAt,
     notes: args.notes,
@@ -95,6 +103,17 @@ const walkTimeTrack = track({
   trackingMode: "timeSeconds",
 });
 
+function walkEvent(conditioningIntent?: CardioWalkEvent["conditioningIntent"]): CardioWalkEvent {
+  return {
+    sessionId: "walk-helper",
+    startedAt: ms(2026, 5, 13, 7, 30),
+    date: "2026-05-13",
+    name: "Walk",
+    conditioningIntent,
+    confidence: "high",
+  };
+}
+
 test("Walk - MapMyWalk with distance and duration is included", () => {
   const summary = buildCardioWalkSummary({
     now: ms(2026, 5, 14, 0, 0),
@@ -122,6 +141,77 @@ test("Walk - MapMyWalk with distance and duration is included", () => {
     durationSeconds: 2520,
     confidence: "high",
   });
+});
+
+test("undefined conditioning intent leaves summary calculations unchanged", () => {
+  const summary = buildCardioWalkSummary({
+    now: ms(2026, 5, 14, 0, 0),
+    recentLimit: 10,
+    sessions: [
+      session({
+        id: "walk-no-intent",
+        name: "Walk - No Intent",
+        startedAt: ms(2026, 5, 13, 7, 30),
+        endedAt: ms(2026, 5, 13, 8, 12),
+      }),
+    ],
+    sets: [
+      setEntry({ id: "set-distance", sessionId: "walk-no-intent", trackId: walkDistanceTrack.id, distance: 5021.15328, distanceUnit: "m" }),
+      setEntry({ id: "set-duration", sessionId: "walk-no-intent", trackId: walkTimeTrack.id, seconds: 2520 }),
+    ],
+    tracks: [walkDistanceTrack, walkTimeTrack],
+    exercises: [walkExercise],
+  });
+
+  const walk = summary.normalizedWalks[0];
+  expect(walk.conditioningIntent).toBeUndefined();
+  expect(isFitnessWalk(walk)).toBe(false);
+  expect(isRecoveryWalk(walk)).toBe(false);
+  expect(isAdventureWalk(walk)).toBe(false);
+  expect(summary.normalizedWalks).toHaveLength(1);
+  expect(summary.recentWalks.map((row) => row.sessionId)).toEqual(["walk-no-intent"]);
+  expect(summary.dailySummaries).toEqual([
+    {
+      date: "2026-05-13",
+      count: 1,
+      totalDurationSeconds: 2520,
+      totalDistanceMeters: 5021.15328,
+      sessionIds: ["walk-no-intent"],
+    },
+  ]);
+  expect(summary.last7d).toEqual({
+    count: 1,
+    totalDurationSeconds: 2520,
+    totalDistanceMeters: 5021.15328,
+    averageDurationSeconds: 2520,
+    averagePaceSecondsPerMile: 807.6923076923076,
+  });
+  expect(summary.last28d).toEqual(summary.last7d);
+  expect(summary.dataQuality).toEqual({
+    missingDistanceCount: 0,
+    missingDurationCount: 0,
+    suspiciousPaceCount: 0,
+    suspiciousPaceSessionIds: [],
+    notesFieldCoverage: {
+      source: 0,
+      route: 0,
+      pace: 1,
+      elevation: 0,
+      avgHr: 0,
+      maxHr: 0,
+      notes: 0,
+    },
+    unsupportedSignals: ["routeTrend", "zoneDistribution", "liftingInterference"],
+  });
+});
+
+test("conditioning intent helpers classify walk events", () => {
+  expect(isFitnessWalk(walkEvent("fitness"))).toBe(true);
+  expect(isFitnessWalk(walkEvent("recovery"))).toBe(false);
+  expect(isRecoveryWalk(walkEvent("recovery"))).toBe(true);
+  expect(isRecoveryWalk(walkEvent("adventure"))).toBe(false);
+  expect(isAdventureWalk(walkEvent("adventure"))).toBe(true);
+  expect(isAdventureWalk(walkEvent("fitness"))).toBe(false);
 });
 
 test("Route, pace, elevation, avg HR, and max HR are parsed from Session.notes", () => {

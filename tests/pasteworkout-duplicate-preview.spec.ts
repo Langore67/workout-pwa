@@ -1475,3 +1475,56 @@ work 155x6 @2`);
     { weight: 155, reps: 6, rir: 2 },
   ]);
 });
+
+test("Paste Workout parses valid intent and ignores invalid intent without crashing", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Walk - Adventure
+Intent: AdVenTure
+Date: 2026-05-26
+Start: 08:00
+End: 08:45
+
+Walk
+conditioning duration 45min`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+  await expect(page.getByText(/Unsupported set format/i)).toHaveCount(0);
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const validIntent = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const session = (await db.sessions.toArray()).find((row: any) => row.templateName === "Walk - Adventure");
+    return session?.conditioningIntent;
+  });
+
+  expect(validIntent).toBe("adventure");
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Walk - Invalid Intent
+Intent: expedition
+Date: 2026-05-27
+Start: 08:00
+End: 08:20
+
+Walk
+conditioning duration 20min`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+  await expect(page.getByText(/Unsupported set format/i)).toHaveCount(0);
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const invalidIntent = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const session = (await db.sessions.toArray()).find((row: any) => row.templateName === "Walk - Invalid Intent");
+    return session?.conditioningIntent;
+  });
+
+  expect(invalidIntent).toBeUndefined();
+});

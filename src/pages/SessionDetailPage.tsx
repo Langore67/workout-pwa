@@ -225,6 +225,16 @@ export default function SessionDetailPage() {
     typeof getNextWorkingRecommendation
   > | null>(null);
 
+  async function updateConditioningIntent(value: string) {
+    if (!sessionId) return;
+    const conditioningIntent =
+      value === "fitness" || value === "recovery" || value === "adventure" ? value : undefined;
+    await db.sessions.update(sessionId, {
+      conditioningIntent,
+      updatedAt: Date.now(),
+    } as any);
+  }
+
   /* ---------------------------------------------------------------------------
      Breadcrumb 2b — Data loading (Dexie)
      --------------------------------------------------------------------------- */
@@ -678,6 +688,22 @@ export default function SessionDetailPage() {
         </div>
 
         <hr />
+        <label htmlFor="session-conditioning-intent">Walk Intent</label>
+        <select
+          id="session-conditioning-intent"
+          className="input"
+          value={session.conditioningIntent ?? ""}
+          onChange={(e) => {
+            void updateConditioningIntent(e.target.value);
+          }}
+          data-testid="session-conditioning-intent"
+          style={{ marginBottom: 12 }}
+        >
+          <option value="">Not set</option>
+          <option value="fitness">Fitness</option>
+          <option value="recovery">Recovery</option>
+          <option value="adventure">Adventure</option>
+        </select>
         <label>Session notes</label>
         <div
           className="input"
