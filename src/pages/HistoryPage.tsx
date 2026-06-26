@@ -22,7 +22,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { db, SetEntry, type Exercise, type Track, type BodyMetricEntry, type Session } from "../db";
 import { ActionMenu as SharedActionMenu, MenuIcons, MenuItem } from "../components/ActionMenu";
 import { safeParsePrsCount } from "../lib/safeParsePrsCount";
@@ -223,6 +223,7 @@ function hasMeaningfulHistorySetData(se: SetEntry) {
 
 export default function HistoryPage() {
   const nav = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeFilter = parseHistoryFilterKey(searchParams.get("kind"));
   const [expandedPrSessionIds, setExpandedPrSessionIds] = useState<string[]>([]);
@@ -516,7 +517,9 @@ export default function HistoryPage() {
   }
 
   function openSessionDetails(sessionId: string) {
-    nav(`/session/${sessionId}`);
+    nav(`/session/${sessionId}`, {
+      state: { returnTo: `${location.pathname}${location.search}` },
+    });
   }
 
   function setActiveFilter(nextFilter: HistoryFilterKey) {
