@@ -668,6 +668,8 @@ test.describe("history and ad hoc session workflows", () => {
     await expect(page.getByTestId("history-completed-count")).toHaveText("10");
 
     await page.getByTestId("history-filter:walks").click();
+    await expect(page).toHaveURL(/\/history\?kind=walks$/);
+    await expect(page.getByTestId("history-filter:walks")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("history-completed-count")).toHaveText("3");
     await expect(page.getByTestId(`history-completed-card:${seeded.treadmillWalkId}`)).toBeVisible();
     await expect(page.getByTestId(`history-completed-card:${seeded.parkWalkId}`)).toBeVisible();
@@ -679,11 +681,23 @@ test.describe("history and ad hoc session workflows", () => {
     await expect(page.getByTestId(`history-completed-card:${seeded.farmerWalkId}`)).toHaveCount(0);
     await expect(page.getByTestId(`history-completed-card:${seeded.lowerWorkoutId}`)).toHaveCount(0);
 
+    await page.getByTestId(`history-completed-card:${seeded.mapMyWalkId}`).click();
+    await expect(page).toHaveURL(new RegExp(`/session/${seeded.mapMyWalkId}$`));
+    await expect(page.getByTestId("session-detail")).toBeVisible({ timeout: 15000 });
+    await page.goBack();
+    await expect(page).toHaveURL(/\/history\?kind=walks$/);
+    await expect(page.getByTestId("history-filter:walks")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("history-completed-count")).toHaveText("3");
+    await expect(page.getByTestId(`history-completed-card:${seeded.mapMyWalkId}`)).toBeVisible();
+    await expect(page.getByTestId(`history-completed-card:${seeded.lowerWorkoutId}`)).toHaveCount(0);
+
     await page.getByTestId("history-filter:classes").click();
+    await expect(page).toHaveURL(/\/history\?kind=classes$/);
     await expect(page.getByTestId("history-completed-count")).toHaveText("1");
     await expect(page.getByTestId(`history-completed-card:${seeded.yogaId}`)).toBeVisible();
 
     await page.getByTestId("history-filter:workouts").click();
+    await expect(page).toHaveURL(/\/history\?kind=workouts$/);
     await expect(page.getByTestId("history-completed-count")).toHaveText("6");
     await expect(page.getByTestId(`history-completed-card:${seeded.upperWorkoutId}`)).toBeVisible();
     await expect(page.getByTestId(`history-completed-card:${seeded.lowerWorkoutId}`)).toBeVisible();
@@ -693,6 +707,12 @@ test.describe("history and ad hoc session workflows", () => {
     await expect(page.getByTestId(`history-completed-card:${seeded.bodyBalanceId}`)).toBeVisible();
 
     await page.getByTestId("history-filter:all").click();
+    await expect(page).toHaveURL(/\/history\?kind=all$/);
+    await expect(page.getByTestId("history-completed-count")).toHaveText("10");
+
+    await goto(page, "/history?kind=bogus");
+    await expect(page.getByTestId("history-ready")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("history-filter:all")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("history-completed-count")).toHaveText("10");
   });
 });

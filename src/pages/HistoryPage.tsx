@@ -22,7 +22,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { db, SetEntry, type Exercise, type Track, type BodyMetricEntry, type Session } from "../db";
 import { ActionMenu as SharedActionMenu, MenuIcons, MenuItem } from "../components/ActionMenu";
 import { safeParsePrsCount } from "../lib/safeParsePrsCount";
@@ -135,6 +135,11 @@ function sessionMatchesHistoryFilter(kind: HistorySessionKind, filter: HistoryFi
   return kind === "walk";
 }
 
+function parseHistoryFilterKey(value: string | null): HistoryFilterKey {
+  if (value === "workouts" || value === "classes" || value === "walks") return value;
+  return "all";
+}
+
 function parseSessionPrHits(prsJson?: string): PRHit[] {
   if (!prsJson) return [];
   try {
@@ -218,7 +223,8 @@ function hasMeaningfulHistorySetData(se: SetEntry) {
 
 export default function HistoryPage() {
   const nav = useNavigate();
-  const [activeFilter, setActiveFilter] = useState<HistoryFilterKey>("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeFilter = parseHistoryFilterKey(searchParams.get("kind"));
   const [expandedPrSessionIds, setExpandedPrSessionIds] = useState<string[]>([]);
   const [visibleCompletedCount, setVisibleCompletedCount] = useState(HISTORY_COMPLETED_BATCH_SIZE);
 
@@ -511,6 +517,12 @@ export default function HistoryPage() {
 
   function openSessionDetails(sessionId: string) {
     nav(`/session/${sessionId}`);
+  }
+
+  function setActiveFilter(nextFilter: HistoryFilterKey) {
+    const next = new URLSearchParams(searchParams);
+    next.set("kind", nextFilter);
+    setSearchParams(next);
   }
 
   function resumeSession(sessionId: string) {
