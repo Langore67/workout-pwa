@@ -8,6 +8,7 @@ import {
   normalizeImportedSets as normalizeImportedSetTimestamps,
 } from "../data/normalizeTimestamps";
 import { findOrCreateReusableTrack } from "../lib/reusableTrackWorkflow";
+import { computeAndStorePRsForSession } from "../prs";
 
 type ImportedMetricType = "reps" | "distance" | "duration";
 type ConditioningIntent = "fitness" | "recovery" | "adventure";
@@ -482,6 +483,9 @@ export async function importSessionFromJournal(
 
     await db.sets.bulkAdd(toInsert as any);
   });
+
+  const prHits = await computeAndStorePRsForSession(sessionId);
+  await db.sessions.update(sessionId, { prsJson: JSON.stringify(prHits ?? []) });
 
   return {
     sessionId,

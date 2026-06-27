@@ -1,5 +1,6 @@
 import { db, SetEntry, TrackPRs, Track } from './db';
 import { computeE1RM, computeScoredE1RM } from "./strength/Strength";
+import { isStrengthTrackType } from "./domain/trackingMode";
 
 export type PRType = 'volume' | 'weight' | 'e1rm';
 
@@ -41,6 +42,7 @@ export async function computeAndStorePRsForSession(sessionId: string): Promise<P
   for (const trackId of trackIds) {
     const track = trackById.get(trackId);
     if (!track) continue;
+    if (!isStrengthTrackType(track.trackType)) continue;
     if (track.trackingMode !== 'weightedReps') continue;
 
     const rows = working.filter(s => s.trackId === trackId) as SetEntry[];
