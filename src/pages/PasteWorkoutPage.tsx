@@ -96,6 +96,7 @@ import {
   type ImportSetClass,
 } from "../domain/import/setClassParsing";
 import { joinImportNoteFragments, normalizeImportNoteText } from "../domain/import/noteParsing";
+import { computeAndStorePRsForSession } from "../prs";
 
 /* ============================================================================
    Breadcrumb 1 — Types
@@ -1812,6 +1813,10 @@ export default function PasteWorkoutPage() {
     if (sessionsToAdd.length) await db.sessions.bulkAdd(sessionsToAdd);
     if (sessionItemsToAdd.length) await db.sessionItems.bulkAdd(sessionItemsToAdd);
     if (setsToAdd.length) await db.sets.bulkAdd(setsToAdd);
+    for (const importedSessionId of createdSessionIds) {
+      const prHits = await computeAndStorePRsForSession(importedSessionId);
+      await db.sessions.update(importedSessionId, { prsJson: JSON.stringify(prHits ?? []) });
+    }
 
     const rec: LastPasteImportRecord = {
       importId,
