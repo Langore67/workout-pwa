@@ -36,6 +36,7 @@ import {
   type CompletedSession,
 } from "./buildPatternSummary";
 import { buildNextWorkoutFocus } from "./buildNextWorkoutFocus";
+import { buildCoachIntelligence } from "./coachIntelligence";
 import { buildExerciseVocabulary } from "./exerciseVocabulary";
 import { buildLeanPreservationComposite } from "./leanPreservationComposite";
 import { selectRecentStrengthBuildingSessions } from "./strengthBuildingSessions";
@@ -663,6 +664,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
         exportConfidence,
   };
 
+  metrics.coachIntelligence = buildCoachIntelligence(metrics);
   metrics.dataNotes = buildDataNotes(metrics);
   return metrics;
 }
