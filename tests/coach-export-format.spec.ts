@@ -1,11 +1,15 @@
 import { expect, test } from "@playwright/test";
+import { resetDexieDb } from "./helpers/dbSeed";
 import { buildNextWorkoutFocus } from "../src/lib/coachExport/buildNextWorkoutFocus";
 import { formatCoachExportText } from "../src/lib/coachExport/formatCoachExportText";
+import { buildLeanPreservationComposite } from "../src/lib/coachExport/leanPreservationComposite";
 import { buildPatternSummary, type CompletedSession } from "../src/lib/coachExport/buildPatternSummary";
 import { buildExerciseVocabulary } from "../src/lib/coachExport/exerciseVocabulary";
 import { isStrengthBuildingSession, selectRecentStrengthBuildingSessions } from "../src/lib/coachExport/strengthBuildingSessions";
 import { informationRegistry } from "../src/config/information/informationRegistry";
 import type { CoachExportMetrics, CoachExportTrainingSignals } from "../src/lib/coachExport/types";
+
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5173";
 
 function getSection(text: string, heading: string, nextHeading?: string) {
   const start = text.indexOf(heading);
@@ -14,6 +18,33 @@ function getSection(text: string, heading: string, nextHeading?: string) {
   if (!nextHeading) return fromStart;
   const end = fromStart.indexOf(nextHeading);
   return end >= 0 ? fromStart.slice(0, end) : fromStart;
+}
+
+async function buildCoachExportTextFromSeededBodyRows(
+  page: import("@playwright/test").Page,
+  rows: Array<Record<string, unknown>>
+) {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+  return page.evaluate(async (seedRows) => {
+    const { db } = await import("/src/db.ts");
+    const { buildCoachExportMetrics } = await import("/src/lib/coachExport/buildCoachExportMetrics.ts");
+    const { formatCoachExportText } = await import("/src/lib/coachExport/formatCoachExportText.ts");
+    const now = Date.now();
+
+    await db.bodyMetrics.bulkAdd(
+      seedRows.map((row, index) => ({
+        id: `body-row-${index}-${crypto.randomUUID()}`,
+        measuredAt: row.measuredAt ?? now - index * 14 * 24 * 60 * 60 * 1000,
+        takenAt: row.takenAt ?? row.measuredAt ?? now - index * 14 * 24 * 60 * 60 * 1000,
+        createdAt: row.createdAt ?? row.measuredAt ?? now - index * 14 * 24 * 60 * 60 * 1000,
+        ...row,
+      })) as any[]
+    );
+
+    const metrics = await buildCoachExportMetrics();
+    return formatCoachExportText(metrics);
+  }, rows);
 }
 
 function buildMetrics(): CoachExportMetrics {
@@ -142,6 +173,191 @@ test("coach export includes recent training signals section", async () => {
   expect(text).toContain("- Pulling movements show improving consistency");
   expect(text).not.toContain("Upper A");
   expect(text).not.toContain("Lower B");
+});
+
+test("coach export includes visceral fat section when estimate data exists", async () => {
+  const metrics = buildMetrics();
+  metrics.bodyComp.visceralFat = { latest: 7, baseline14d: 8, delta14d: -1 };
+
+  const text = formatCoachExportText(metrics);
+  const section = getSection(text, "Visceral Fat", "Cut / Phase Quality");
+
+  expect(section).toContain("- Latest estimate: 7");
+  expect(section).toContain("- 14d trend: -1");
+  expect(section).toContain("- Direction: Improving");
+  expect(section).toContain("- Confidence: Moderate");
+  expect(section).toContain(
+    "- Note: Hume visceral fat is an estimate. Use trend alongside waist circumference rather than as an absolute measurement."
+  );
+});
+
+test("coach export omits visceral fat section when estimate data is missing", async () => {
+  const metrics = buildMetrics();
+  metrics.bodyComp.visceralFat = { latest: null, baseline14d: null, delta14d: null };
+
+  const text = formatCoachExportText(metrics);
+
+  expect(text).not.toContain("Visceral Fat");
+});
+
+test("coach export visceral fat direction supports flat and worsening trends", async () => {
+  const flatMetrics = buildMetrics();
+  flatMetrics.bodyComp.visceralFat = { latest: 7, baseline14d: 7, delta14d: 0 };
+  const flatSection = getSection(formatCoachExportText(flatMetrics), "Visceral Fat", "Cut / Phase Quality");
+  expect(flatSection).toContain("- Direction: Flat");
+  expect(flatSection).toContain("- 14d trend: 0");
+
+  const worseningMetrics = buildMetrics();
+  worseningMetrics.bodyComp.visceralFat = { latest: 9, baseline14d: 7, delta14d: 2 };
+  const worseningSection = getSection(formatCoachExportText(worseningMetrics), "Visceral Fat", "Cut / Phase Quality");
+  expect(worseningSection).toContain("- Direction: Worsening");
+  expect(worseningSection).toContain("- 14d trend: +2");
+});
+
+test("coach export includes visceral fat when only visceralFatEstimate exists", async ({ page }) => {
+  const now = Date.now();
+  const text = await buildCoachExportTextFromSeededBodyRows(page, [
+    { measuredAt: now, visceralFatEstimate: 7, weightLb: 198, waistIn: 35.5 },
+    { measuredAt: now - 14 * 24 * 60 * 60 * 1000, visceralFatEstimate: 8, weightLb: 201, waistIn: 36.1 },
+  ]);
+  const section = getSection(text, "Visceral Fat", "Cut / Phase Quality");
+
+  expect(section).toContain("- Latest estimate: 7");
+  expect(section).toContain("- 14d trend: -1");
+  expect(section).toContain("- Direction: Improving");
+});
+
+test("coach export includes visceral fat when only legacy visceralFatIndex exists", async ({ page }) => {
+  const now = Date.now();
+  const text = await buildCoachExportTextFromSeededBodyRows(page, [
+    { measuredAt: now, visceralFatIndex: 9, weightLb: 198, waistIn: 35.5 },
+    { measuredAt: now - 14 * 24 * 60 * 60 * 1000, visceralFatIndex: 7, weightLb: 201, waistIn: 36.1 },
+  ]);
+  const section = getSection(text, "Visceral Fat", "Cut / Phase Quality");
+
+  expect(section).toContain("- Latest estimate: 9");
+  expect(section).toContain("- 14d trend: +2");
+  expect(section).toContain("- Direction: Worsening");
+});
+
+test("lean preservation composite is acceptable when lean mass is down but strength and waist improve", async () => {
+  const composite = buildLeanPreservationComposite({
+    leanMass: { latest: 146.7, baseline14d: 147.7, delta14d: -1 },
+    weight: { latest: 198, baseline14d: 201, delta14d: -3 },
+    waist: { latest: 35.5, baseline14d: 36.1, delta14d: -0.6 },
+    bodyFatPct: { latest: 16.2, baseline14d: 16.9, delta14d: -0.7 },
+    hydration: { latestWaterPct: 57, confidenceLabel: "High", confidenceScore: 82, note: "Stable" },
+    strengthSignal: { current: 1.92, delta14d: 0.04, vs90dBestPct: -1, currentBodyweight: 198, bodyweightDaysUsed: 5 },
+  });
+
+  expect(composite?.status).toBe("Acceptable");
+  expect(composite?.confidence).toBe("High");
+  expect(composite?.evidence.positive).toEqual(
+    expect.arrayContaining(["Strength improving", "Waist decreasing", "BF trend improving", "Hydration confidence high"])
+  );
+  expect(composite?.evidence.negative).toContain("Lean mass estimate down 1.0 lb");
+});
+
+test("lean preservation composite is poor only with lean decline plus performance decline and waist not improving", async () => {
+  const composite = buildLeanPreservationComposite({
+    leanMass: { latest: 145, baseline14d: 147, delta14d: -2 },
+    weight: { latest: 198, baseline14d: 200, delta14d: -2 },
+    waist: { latest: 36, baseline14d: 36, delta14d: 0 },
+    bodyFatPct: { latest: 17, baseline14d: 17, delta14d: 0 },
+    hydration: { latestWaterPct: 56, confidenceLabel: "High", confidenceScore: 80, note: "Stable" },
+    strengthSignal: { current: 1.8, delta14d: -0.1, vs90dBestPct: -8, currentBodyweight: 198, bodyweightDaysUsed: 5 },
+  });
+
+  expect(composite?.status).toBe("Poor");
+  expect(composite?.evidence.negative).toEqual(
+    expect.arrayContaining(["Lean mass estimate down 2.0 lb", "Strength declining"])
+  );
+});
+
+test("lean preservation composite is strong when lean mass is flat and strength improves", async () => {
+  const composite = buildLeanPreservationComposite({
+    leanMass: { latest: 148, baseline14d: 148.2, delta14d: -0.2 },
+    weight: { latest: 198, baseline14d: 199, delta14d: -1 },
+    waist: { latest: 35.8, baseline14d: 36, delta14d: -0.2 },
+    bodyFatPct: { latest: 16.5, baseline14d: 16.7, delta14d: -0.2 },
+    hydration: { latestWaterPct: 57, confidenceLabel: "High", confidenceScore: 82, note: "Stable" },
+    strengthSignal: { current: 1.95, delta14d: 0.05, vs90dBestPct: 0, currentBodyweight: 198, bodyweightDaysUsed: 5 },
+  });
+
+  expect(composite?.status).toBe("Strong");
+});
+
+test("lean preservation composite keeps classification but reduces confidence when hydration confidence is low", async () => {
+  const highHydration = buildLeanPreservationComposite({
+    leanMass: { latest: 146.7, baseline14d: 147.7, delta14d: -1 },
+    weight: { latest: 198, baseline14d: 201, delta14d: -3 },
+    waist: { latest: 35.5, baseline14d: 36.1, delta14d: -0.6 },
+    bodyFatPct: { latest: 16.2, baseline14d: 16.9, delta14d: -0.7 },
+    hydration: { latestWaterPct: 57, confidenceLabel: "High", confidenceScore: 82, note: "Stable" },
+    strengthSignal: { current: 1.92, delta14d: 0.04, vs90dBestPct: -1, currentBodyweight: 198, bodyweightDaysUsed: 5 },
+  });
+  const lowHydration = buildLeanPreservationComposite({
+    leanMass: { latest: 146.7, baseline14d: 147.7, delta14d: -1 },
+    weight: { latest: 198, baseline14d: 201, delta14d: -3 },
+    waist: { latest: 35.5, baseline14d: 36.1, delta14d: -0.6 },
+    bodyFatPct: { latest: 16.2, baseline14d: 16.9, delta14d: -0.7 },
+    hydration: { latestWaterPct: 50, confidenceLabel: "Low", confidenceScore: 30, note: "Distorted", distortionLikely: true },
+    strengthSignal: { current: 1.92, delta14d: 0.04, vs90dBestPct: -1, currentBodyweight: 198, bodyweightDaysUsed: 5 },
+  });
+
+  expect(lowHydration?.status).toBe(highHydration?.status);
+  expect(lowHydration?.confidence).toBe("Moderate");
+});
+
+test("coach export lean preservation composite replaces single-factor lean preservation driver and preserves muscle-risk status", async () => {
+  const metrics = buildMetrics();
+  metrics.bodyComp.leanMass = { latest: 146.7, baseline14d: 147.7, delta14d: -1 };
+  metrics.bodyComp.weight = { latest: 198, baseline14d: 202, delta14d: -4 };
+  metrics.bodyComp.waist = { latest: 35.5, baseline14d: 36.1, delta14d: -0.6 };
+  metrics.bodyComp.bodyFatPct = { latest: 16.2, baseline14d: 16.9, delta14d: -0.7 };
+  metrics.strengthSignal.delta14d = 0.04;
+  metrics.hydration.confidenceLabel = "High";
+  metrics.phaseQuality = {
+    title: "CUT QUALITY",
+    quadrant: "fast_loss",
+    quadrantLabel: "AGGRESSIVE / POSSIBLE",
+    quadrantNote: "Weight down / Waist flat or up over last 10 entries",
+    finalStatus: "Aggressive Cut / Muscle-Risk Cut",
+    confidence: "High",
+    tone: "watch",
+    cells: [],
+    metricCards: [],
+    drivers: [
+      "Weight down / Waist flat or up over last 10 entries",
+      "Lean Preservation: Poor",
+      "Strength Preservation: Improving",
+      "Status: Aggressive Cut / Muscle-Risk Cut",
+    ],
+  };
+  metrics.leanPreservation = buildLeanPreservationComposite({
+    leanMass: metrics.bodyComp.leanMass,
+    weight: metrics.bodyComp.weight,
+    waist: metrics.bodyComp.waist,
+    bodyFatPct: metrics.bodyComp.bodyFatPct,
+    hydration: metrics.hydration,
+    strengthSignal: metrics.strengthSignal,
+  });
+
+  const text = formatCoachExportText(metrics);
+  const section = getSection(text, "Lean Preservation", "Visceral Fat");
+
+  expect(section).toContain("Raw Metrics");
+  expect(section).toContain("- Lean Mass: 146.7 lb (14d -1.0 lb)");
+  expect(section).toContain("Composite");
+  expect(section).toContain("- Acceptable");
+  expect(section).toContain("- Confidence: High");
+  expect(section).toContain("✓ Strength improving");
+  expect(section).toContain("✓ Waist decreasing");
+  expect(section).toContain("• Lean mass estimate down 1.0 lb");
+  expect(section).toContain("• Aggressive rate of weight loss");
+  expect(section).toContain("Bioimpedance lean-mass estimates can fluctuate with hydration");
+  expect(text).toContain("- Status: Aggressive Cut / Muscle-Risk Cut");
+  expect(text).not.toContain("- Lean Preservation: Poor");
 });
 
 test("coach export includes exercise vocabulary section and rules", async () => {

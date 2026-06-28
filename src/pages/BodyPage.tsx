@@ -76,6 +76,7 @@ type BodyMetricRow = {
   bodyFatMassLb?: number;
   leanMassLb?: number;
   skeletalMuscleMassLb?: number;
+  visceralFatEstimate?: number;
   visceralFatIndex?: number;
   bodyWaterPct?: number;
 
@@ -168,6 +169,11 @@ function pickWeightLb(r: BodyMetricRow): number | undefined {
 function pickWaistIn(r: BodyMetricRow): number | undefined {
   const w = (r as any)?.waistIn ?? (r as any)?.waist;
   return typeof w === "number" && Number.isFinite(w) && w > 0 ? w : undefined;
+}
+
+function pickVisceralFatEstimate(r: BodyMetricRow): number | undefined {
+  const v = (r as any)?.visceralFatEstimate ?? (r as any)?.visceralFatIndex;
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : undefined;
 }
 
 function fmtDate(ms: number) {
@@ -710,6 +716,7 @@ export default function BodyPage() {
         bodyFatPct: bf,
         bodyFatMassLb: fatMass,
         leanMassLb: lm,
+        visceralFatEstimate: vfi,
         visceralFatIndex: vfi,
         skeletalMuscleMassLb: smm,
         bodyWaterPct: water,
@@ -1107,7 +1114,7 @@ export default function BodyPage() {
 
             <div style={{ minWidth: 160, flex: 1 }}>
               <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
-                Visceral Fat Index
+                Visceral Fat Estimate
               </div>
               <input
                 className="input"
@@ -1329,7 +1336,7 @@ export default function BodyPage() {
 		      {"  •  "}
 		      Lean Mass: <b>{show(getLeanMassLb(r as any), 1)}</b>
 		      <br />
-		      VFI: <b>{show(r.visceralFatIndex, 2)}</b>
+		      Visceral Fat: <b>{show(pickVisceralFatEstimate(r), 2)}</b>
 		      {"  •  "}
 		      SMM: <b>{show(r.skeletalMuscleMassLb, 1)}</b>
 		      {"  •  "}

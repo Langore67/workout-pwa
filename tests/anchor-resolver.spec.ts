@@ -420,6 +420,266 @@ test.describe("Strength Signal v2 anchor resolver", () => {
     });
   });
 
+  test("computeStrengthSignalV2 anchor payload uses best qualifying bench set instead of later fatigue set", async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      // @ts-ignore
+      const db = window.__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const { setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
+      const strengthV2 = await import("/src/strength/v2/computeStrengthSignalV2.ts");
+
+      const now = Date.now();
+      const sessionId = crypto.randomUUID();
+      const exerciseId = crypto.randomUUID();
+      const trackId = crypto.randomUUID();
+
+      await setCurrentPhase("cut");
+      await setStrengthSignalConfig({ activeVersion: "v2" });
+
+      await db.sessions.add({ id: sessionId, startedAt: now - 10_000, endedAt: now });
+      await db.exercises.add({
+        id: exerciseId,
+        name: "Barbell Bench Press",
+        normalizedName: "barbell bench press",
+        anchorEligibility: "primary",
+        anchorSubtypes: ["horizontalPush"],
+        equipmentTags: ["barbell"],
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.tracks.add({
+        id: trackId,
+        exerciseId,
+        displayName: "Barbell Bench Press",
+        trackType: "strength",
+        trackingMode: "weightedReps",
+        warmupSetsDefault: 0,
+        workingSetsDefault: 3,
+        repMin: 3,
+        repMax: 8,
+        restSecondsDefault: 180,
+        weightJumpDefault: 5,
+        createdAt: now,
+      });
+      await db.sets.bulkAdd([
+        {
+          id: crypto.randomUUID(),
+          sessionId,
+          trackId,
+          setType: "working",
+          weight: 145,
+          reps: 8,
+          createdAt: now - 5_000,
+          completedAt: now - 5_000,
+        },
+        {
+          id: crypto.randomUUID(),
+          sessionId,
+          trackId,
+          setType: "working",
+          weight: 145,
+          reps: 4,
+          notes: "fatigue",
+          createdAt: now - 1_000,
+          completedAt: now - 1_000,
+        },
+      ]);
+
+      const signal = await strengthV2.computeStrengthSignalV2({ now });
+      const anchor = signal.anchors.push ?? null;
+      return {
+        latestWeight: anchor?.latestSet?.weight ?? null,
+        latestReps: anchor?.latestSet?.reps ?? null,
+        bestSetText: anchor?.capacity.bestSetText ?? null,
+        dataPoints: anchor?.dataPoints ?? null,
+      };
+    });
+
+    expect(result).toEqual({
+      latestWeight: 145,
+      latestReps: 8,
+      bestSetText: "145 x 8",
+      dataPoints: 2,
+    });
+  });
+
+  test("computeStrengthSignalV2 ignores later Lat Pulldown technique probe when work set qualifies", async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      // @ts-ignore
+      const db = window.__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const { setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
+      const strengthV2 = await import("/src/strength/v2/computeStrengthSignalV2.ts");
+
+      const now = Date.now();
+      const sessionId = crypto.randomUUID();
+      const exerciseId = crypto.randomUUID();
+      const workTrackId = crypto.randomUUID();
+      const techniqueTrackId = crypto.randomUUID();
+
+      await setCurrentPhase("cut");
+      await setStrengthSignalConfig({ activeVersion: "v2" });
+
+      await db.sessions.add({ id: sessionId, startedAt: now - 10_000, endedAt: now });
+      await db.exercises.add({
+        id: exerciseId,
+        name: "Lat Pulldown",
+        normalizedName: "lat pulldown",
+        anchorEligibility: "primary",
+        anchorSubtypes: ["verticalPull"],
+        equipmentTags: ["machine"],
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.tracks.bulkAdd([
+        {
+          id: workTrackId,
+          exerciseId,
+          displayName: "Lat Pulldown",
+          trackType: "strength",
+          trackingMode: "weightedReps",
+          warmupSetsDefault: 0,
+          workingSetsDefault: 3,
+          repMin: 6,
+          repMax: 12,
+          restSecondsDefault: 120,
+          weightJumpDefault: 5,
+          createdAt: now,
+        },
+        {
+          id: techniqueTrackId,
+          exerciseId,
+          displayName: "Lat Pulldown - technique",
+          trackType: "technique",
+          trackingMode: "weightedReps",
+          warmupSetsDefault: 0,
+          workingSetsDefault: 2,
+          repMin: 6,
+          repMax: 12,
+          restSecondsDefault: 90,
+          weightJumpDefault: 0,
+          createdAt: now,
+        },
+      ]);
+      await db.sets.bulkAdd([
+        {
+          id: crypto.randomUUID(),
+          sessionId,
+          trackId: workTrackId,
+          setType: "working",
+          weight: 120,
+          reps: 12,
+          createdAt: now - 5_000,
+          completedAt: now - 5_000,
+        },
+        {
+          id: crypto.randomUUID(),
+          sessionId,
+          trackId: techniqueTrackId,
+          setType: "working",
+          weight: 85,
+          reps: 10,
+          notes: "technique probe",
+          createdAt: now - 1_000,
+          completedAt: now - 1_000,
+        },
+      ]);
+
+      const signal = await strengthV2.computeStrengthSignalV2({ now });
+      const anchor = signal.anchors.pull ?? null;
+      return {
+        latestWeight: anchor?.latestSet?.weight ?? null,
+        latestReps: anchor?.latestSet?.reps ?? null,
+        bestSetText: anchor?.capacity.bestSetText ?? null,
+        dataPoints: anchor?.dataPoints ?? null,
+      };
+    });
+
+    expect(result).toEqual({
+      latestWeight: 120,
+      latestReps: 12,
+      bestSetText: "120 x 12",
+      dataPoints: 1,
+    });
+  });
+
+  test("computeStrengthSignalV2 excludes warmup and non-strength track types from anchor candidates", async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      // @ts-ignore
+      const db = window.__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const { setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
+      const strengthV2 = await import("/src/strength/v2/computeStrengthSignalV2.ts");
+
+      const now = Date.now();
+      const sessionId = crypto.randomUUID();
+      const exerciseId = crypto.randomUUID();
+      const trackTypes = ["strength", "technique", "mobility", "corrective", "conditioning"];
+
+      await setCurrentPhase("cut");
+      await setStrengthSignalConfig({ activeVersion: "v2" });
+
+      await db.sessions.add({ id: sessionId, startedAt: now - 10_000, endedAt: now });
+      await db.exercises.add({
+        id: exerciseId,
+        name: "Back Squat",
+        normalizedName: "back squat",
+        anchorEligibility: "primary",
+        anchorSubtypes: ["squat"],
+        equipmentTags: ["barbell"],
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const tracks = trackTypes.map((trackType) => ({
+        id: crypto.randomUUID(),
+        exerciseId,
+        displayName: `Back Squat - ${trackType}`,
+        trackType,
+        trackingMode: "weightedReps",
+        warmupSetsDefault: 0,
+        workingSetsDefault: 1,
+        repMin: 1,
+        repMax: 12,
+        restSecondsDefault: 60,
+        weightJumpDefault: 5,
+        createdAt: now,
+      }));
+      await db.tracks.bulkAdd(tracks);
+      await db.sets.bulkAdd(
+        tracks.map((track, index) => ({
+          id: crypto.randomUUID(),
+          sessionId,
+          trackId: track.id,
+          setType: track.trackType === "strength" ? "warmup" : "working",
+          weight: 315,
+          reps: 5,
+          createdAt: now - (index + 1) * 1_000,
+          completedAt: now - (index + 1) * 1_000,
+        }))
+      );
+
+      const signal = await strengthV2.computeStrengthSignalV2({ now });
+      const anchor = signal.anchors.squat ?? null;
+      return {
+        exerciseId: anchor?.exerciseId ?? null,
+        latestSet: anchor?.latestSet ?? null,
+        dataPoints: anchor?.dataPoints ?? null,
+        bestSetText: anchor?.capacity.bestSetText ?? null,
+      };
+    });
+
+    expect(result).toEqual({
+      exerciseId: null,
+      latestSet: null,
+      dataPoints: 0,
+      bestSetText: null,
+    });
+  });
+
   test("computeStrengthSignalV2 selects the exact fallback-name anchor when configured id is unavailable", async ({ page }) => {
     const result = await page.evaluate(async () => {
       // @ts-ignore

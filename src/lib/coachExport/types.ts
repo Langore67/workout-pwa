@@ -1,6 +1,7 @@
 import type { StrengthPattern } from "../../strength/Strength";
 import type { PhaseQualityResult } from "../../body/phaseQualityModel";
 import type { CurrentPhase } from "../../config/appConfig";
+import type { LeanPreservationComposite } from "./leanPreservationComposite";
 
 export type CoachExportMetric = {
   latest: number | null;
@@ -76,10 +77,12 @@ export type CoachExportMetrics = {
     waist: CoachExportMetric;
     bodyFatPct: CoachExportMetric;
     leanMass: CoachExportMetric;
+    visceralFat?: CoachExportMetric;
     bodyweightDelta7d: number | null;
     bodyweightDelta14d: number | null;
   };
   hydration: CoachExportHydration;
+  leanPreservation?: LeanPreservationComposite | null;
   strengthSignal: CoachExportStrengthSignal;
   phaseQuality: PhaseQualityResult | null;
   anchorLifts: CoachExportAnchorLift[];

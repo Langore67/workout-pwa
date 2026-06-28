@@ -55,6 +55,11 @@ export function getBodyFatPctRaw(m: BodyMetricEntry): number | undefined {
   return undefined;
 }
 
+export function getVisceralFatEstimate(m: BodyMetricEntry): number | undefined {
+  const estimate = (m as any).visceralFatEstimate ?? (m as any).visceralFatIndex;
+  return isNum(estimate) && estimate >= 0 ? estimate : undefined;
+}
+
 /* ============================================================================
    Breadcrumb 3 — Core derived metrics
    ============================================================================ */
