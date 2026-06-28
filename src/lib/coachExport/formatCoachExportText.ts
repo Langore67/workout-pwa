@@ -133,7 +133,9 @@ function formatWaistToHeightSection(metrics: CoachExportMetrics): string[] {
   return [
     "Waist-to-Height Ratio",
     `- Current: ${whtr.latest.toFixed(3)}`,
-    `- 14d trend: ${formatSigned(whtr.delta14d, 3)}`,
+    ...(whtr.delta14d != null && Number.isFinite(whtr.delta14d)
+      ? [`- 14d trend: ${formatSigned(whtr.delta14d, 3)}`]
+      : []),
     `- Status: ${whtr.status}`,
     "- Healthy threshold: < 0.500",
     `- Waist needed for threshold: ${formatValue(whtr.healthyWaistTargetIn, 1, " in")}`,

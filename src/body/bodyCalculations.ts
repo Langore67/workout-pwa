@@ -48,6 +48,40 @@ export function getWaistIn(m: BodyMetricEntry): number | undefined {
   return undefined;
 }
 
+export type LatestWaistMetric = {
+  waistIn: number;
+  measuredAt: number | null;
+};
+
+function getMetricTime(m: Partial<BodyMetricEntry> & Record<string, any>): number | null {
+  const raw = m.measuredAt ?? m.takenAt ?? m.date ?? m.createdAt;
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+export function getLatestAvailableWaistIn(
+  rows: ReadonlyArray<Partial<BodyMetricEntry> & Record<string, any>>
+): LatestWaistMetric | undefined {
+  let latest: LatestWaistMetric | undefined;
+
+  for (const row of rows ?? []) {
+    const waistIn = getWaistIn(row as BodyMetricEntry);
+    if (waistIn == null || !Number.isFinite(waistIn)) continue;
+
+    const measuredAt = getMetricTime(row);
+    if (!latest) {
+      latest = { waistIn, measuredAt };
+      continue;
+    }
+
+    if (measuredAt != null && (latest.measuredAt == null || measuredAt > latest.measuredAt)) {
+      latest = { waistIn, measuredAt };
+    }
+  }
+
+  return latest;
+}
+
 export function getBodyFatPctRaw(m: BodyMetricEntry): number | undefined {
   if (isNum(m.bodyFatPct) && m.bodyFatPct >= 0 && m.bodyFatPct <= 100) {
     return m.bodyFatPct;
