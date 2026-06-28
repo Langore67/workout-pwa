@@ -132,3 +132,68 @@ test("BodyCompositionPage reads targets through profile goals helper", async ({ 
   await expect(goalTargets).toContainText("181.0 lb");
   await expect(goalTargets).toContainText("16.0%");
 });
+
+test("BodyCompositionPage uses latest available waist for waist-to-height ratio", async ({ page }) => {
+  await clearProfileState(page);
+  await page.evaluate(async () => {
+    const { db } = await import("/src/db.ts");
+    const now = Date.now();
+    await db.app_meta.put({
+      key: "profile.heightIn",
+      valueJson: JSON.stringify({ heightIn: 71.75 }),
+      updatedAt: now,
+    });
+    await db.bodyMetrics.bulkAdd([
+      {
+        id: crypto.randomUUID(),
+        measuredAt: now,
+        takenAt: now,
+        createdAt: now,
+        weightLb: 188.6,
+        bodyFatPct: 20.6,
+      },
+      {
+        id: crypto.randomUUID(),
+        measuredAt: now - 24 * 60 * 60 * 1000,
+        takenAt: now - 24 * 60 * 60 * 1000,
+        createdAt: now - 24 * 60 * 60 * 1000,
+        weightLb: 189.1,
+        waistIn: 36.5,
+        bodyFatPct: 20.7,
+      },
+    ]);
+  });
+
+  await page.goto(new URL("/body-composition", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+
+  const currentStatus = page.locator(".card").filter({ hasText: "CURRENT STATUS" }).first();
+  await expect(currentStatus).toContainText("Waist-to-Height Ratio");
+  await expect(currentStatus).toContainText("0.509");
+});
+
+test("BodyCompositionPage shows missing waist-to-height ratio when no waist exists", async ({ page }) => {
+  await clearProfileState(page);
+  await page.evaluate(async () => {
+    const { db } = await import("/src/db.ts");
+    const now = Date.now();
+    await db.app_meta.put({
+      key: "profile.heightIn",
+      valueJson: JSON.stringify({ heightIn: 71.75 }),
+      updatedAt: now,
+    });
+    await db.bodyMetrics.add({
+      id: crypto.randomUUID(),
+      measuredAt: now,
+      takenAt: now,
+      createdAt: now,
+      weightLb: 188.6,
+      bodyFatPct: 20.6,
+    });
+  });
+
+  await page.goto(new URL("/body-composition", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+
+  const currentStatus = page.locator(".card").filter({ hasText: "CURRENT STATUS" }).first();
+  await expect(currentStatus).toContainText("Waist-to-Height Ratio");
+  await expect(currentStatus).not.toContainText("0.509");
+});

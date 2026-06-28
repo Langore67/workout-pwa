@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { resetDexieDb } from "./helpers/dbSeed";
 import {
+  getLatestAvailableWaistIn,
   waistToHeightRatio,
   waistToHeightStatus,
 } from "../src/body/bodyCalculations";
@@ -238,6 +239,40 @@ test("waist-to-height helpers calculate ratio and classify status", async () => 
   expect(waistToHeightStatus(0.6)).toBe("High Risk");
 });
 
+test("latest available waist helper skips rows without waist", async () => {
+  const now = Date.now();
+  const latest = getLatestAvailableWaistIn([
+    { id: "latest", measuredAt: now, createdAt: now, weightLb: 188.6 },
+    {
+      id: "prior",
+      measuredAt: now - 24 * 60 * 60 * 1000,
+      createdAt: now - 24 * 60 * 60 * 1000,
+      waistIn: 36.5,
+    },
+  ]);
+
+  expect(latest).toEqual({
+    waistIn: 36.5,
+    measuredAt: now - 24 * 60 * 60 * 1000,
+  });
+});
+
+test("latest available waist helper returns undefined when no waist exists", async () => {
+  const now = Date.now();
+
+  expect(
+    getLatestAvailableWaistIn([
+      { id: "latest", measuredAt: now, createdAt: now, weightLb: 188.6 },
+      {
+        id: "prior",
+        measuredAt: now - 24 * 60 * 60 * 1000,
+        createdAt: now - 24 * 60 * 60 * 1000,
+        bodyFatPct: 20.6,
+      },
+    ])
+  ).toBeUndefined();
+});
+
 test("coach export omits waist-to-height ratio when height is missing", async ({ page }) => {
   const text = await buildCoachExportTextFromSeededBodyRows(page, [
     { measuredAt: Date.now(), weightLb: 188.6, waistIn: 36.5, bodyFatPct: 20.6 },
@@ -264,6 +299,52 @@ test("coach export includes waist-to-height ratio when height and waist exist", 
   expect(section).toContain("- Healthy threshold: < 0.500");
   expect(section).toContain("- Waist needed for threshold: 35.9 in");
   expect(section).toContain("- Distance to threshold: 0.6 in");
+});
+
+test("coach export uses prior available waist when latest body row has no waist", async ({ page }) => {
+  const now = Date.now();
+  const text = await buildCoachExportTextFromSeededBodyRows(
+    page,
+    [
+      { measuredAt: now, weightLb: 188.6, bodyFatPct: 20.6 },
+      { measuredAt: now - 24 * 60 * 60 * 1000, weightLb: 189.1, waistIn: 36.5, bodyFatPct: 20.7 },
+      { measuredAt: now - 15 * 24 * 60 * 60 * 1000, weightLb: 190.2, waistIn: 37.3, bodyFatPct: 21.1 },
+    ],
+    { heightIn: 71.75 }
+  );
+  const section = getSection(text, "Waist-to-Height Ratio", "Coach Summary");
+  const goals = getSection(text, "Goal Progress", "Lean Preservation");
+
+  expect(section).toContain("- Current: 0.509");
+  expect(section).toContain("- 14d trend: -0.011");
+  expect(section).toContain("- Status: Elevated");
+  expect(goals).toContain("- Waist-to-Height Ratio: 0.509 -> < 0.500 | 0.009 remaining");
+});
+
+test("coach export omits waist-to-height ratio when latest row lacks waist and no prior waist exists", async ({ page }) => {
+  const text = await buildCoachExportTextFromSeededBodyRows(
+    page,
+    [{ measuredAt: Date.now(), weightLb: 188.6, bodyFatPct: 20.6 }],
+    { heightIn: 71.75 }
+  );
+
+  expect(text).not.toContain("Waist-to-Height Ratio");
+});
+
+test("coach export omits waist-to-height trend when sparse waist baseline is unavailable", async ({ page }) => {
+  const now = Date.now();
+  const text = await buildCoachExportTextFromSeededBodyRows(
+    page,
+    [
+      { measuredAt: now, weightLb: 188.6, bodyFatPct: 20.6 },
+      { measuredAt: now - 24 * 60 * 60 * 1000, weightLb: 189.1, waistIn: 36.5, bodyFatPct: 20.7 },
+    ],
+    { heightIn: 71.75 }
+  );
+  const section = getSection(text, "Waist-to-Height Ratio", "Coach Summary");
+
+  expect(section).toContain("- Current: 0.509");
+  expect(section).not.toContain("- 14d trend:");
 });
 
 test("coach export includes visceral fat when only visceralFatEstimate exists", async ({ page }) => {

@@ -98,6 +98,7 @@ import {
   getBodyCompConfidence,
   getBodyCompConfidenceLabel,
   getFluidBalanceNote,
+  getLatestAvailableWaistIn,
   waistToHeightRatio,
   waistToHeightStatus,
 } from "../body/bodyCalculations";
@@ -521,7 +522,8 @@ export default function BodyCompositionPage() {
 
     const weight = latest ? sharedPickWeightLb(latest) : undefined;
     const waist = latest ? sharedPickWaistIn(latest) : undefined;
-    const currentWaistToHeightRatio = waistToHeightRatio(waist, heightIn);
+    const latestWaistMetric = getLatestAvailableWaistIn(source as any);
+    const currentWaistToHeightRatio = waistToHeightRatio(latestWaistMetric?.waistIn, heightIn);
     const bodyFatPct = latest ? sharedPickBodyFatPct(latest) : undefined;
     const correctedBodyFatPct = latest ? getCorrectedBodyFatPct(latest as any) : undefined;
     const leanMass = latest ? getLeanMassLb(latest as any) : undefined;
