@@ -261,7 +261,7 @@ test("coach export includes waist-to-height ratio when height and waist exist", 
   expect(section).toContain("- Current: 0.509");
   expect(section).toContain("- 14d trend: -0.011");
   expect(section).toContain("- Status: Elevated");
-  expect(section).toContain("- Healthy threshold: <0.500");
+  expect(section).toContain("- Healthy threshold: < 0.500");
   expect(section).toContain("- Waist needed for threshold: 35.9 in");
   expect(section).toContain("- Distance to threshold: 0.6 in");
 });
@@ -569,11 +569,11 @@ test("coach export includes goal progress when profile targets exist", async () 
 
   const section = getSection(formatCoachExportText(metrics), "Goal Progress", "Lean Preservation");
 
-  expect(section).toContain("- Weight: 188.6 lb → 180.0 lb | 8.6 lb remaining");
-  expect(section).toContain("- Body Fat: 20.6% → 18.0% | 2.6 pts remaining");
-  expect(section).toContain("- Waist: 36.5 in → 35.9 in | 0.6 in remaining");
-  expect(section).toContain("- Visceral Fat: 7 → 6 | 1 remaining");
-  expect(section).toContain("- Waist-to-Height Ratio: 0.509 → <0.500 | 0.009 remaining");
+  expect(section).toContain("- Weight: 188.6 lb -> 180.0 lb | 8.6 lb remaining");
+  expect(section).toContain("- Body Fat: 20.6% -> 18.0% | 2.6 pts remaining");
+  expect(section).toContain("- Waist: 36.5 in -> 35.9 in | 0.6 in remaining");
+  expect(section).toContain("- Visceral Fat: 7 -> 6 | 1 remaining");
+  expect(section).toContain("- Waist-to-Height Ratio: 0.509 -> < 0.500 | 0.009 remaining");
   expect(section).toContain("- Status: On Track");
 });
 
@@ -607,7 +607,7 @@ test("coach export omits missing goal targets cleanly", async () => {
 
   const section = getSection(formatCoachExportText(metrics), "Goal Progress", "Lean Preservation");
 
-  expect(section).toContain("- Weight: 188.6 lb → 180.0 lb | 8.6 lb remaining");
+  expect(section).toContain("- Weight: 188.6 lb -> 180.0 lb | 8.6 lb remaining");
   expect(section).not.toContain("Body Fat:");
   expect(section).not.toContain("Waist:");
   expect(section).not.toContain("Visceral Fat:");
@@ -691,9 +691,9 @@ test("coach export goal progress uses bodyMetrics current values, not profile cu
 
   const section = getSection(text, "Goal Progress", "Visceral Fat");
 
-  expect(section).toContain("- Weight: 188.6 lb → 180.0 lb | 8.6 lb remaining");
-  expect(section).toContain("- Body Fat: 20.6% → 18.0% | 2.6 pts remaining");
-  expect(section).toContain("- Waist-to-Height Ratio: 0.509 → <0.500 | 0.009 remaining");
+  expect(section).toContain("- Weight: 188.6 lb -> 180.0 lb | 8.6 lb remaining");
+  expect(section).toContain("- Body Fat: 20.6% -> 18.0% | 2.6 pts remaining");
+  expect(section).toContain("- Waist-to-Height Ratio: 0.509 -> < 0.500 | 0.009 remaining");
   expect(section).not.toContain("999");
   expect(section).not.toContain("99.0%");
 });
