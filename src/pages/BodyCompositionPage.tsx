@@ -194,7 +194,7 @@ function formatBodyFatPct(value: number | null | undefined): string {
 }
 
 function formatRatioValue(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "â€”";
+  if (value == null || !Number.isFinite(value)) return "-";
   return value.toFixed(3);
 }
 
@@ -1119,7 +1119,7 @@ export default function BodyCompositionPage() {
             <SnapshotRow
               label="Waist-to-Height Ratio"
               value={formatRatioValue(latestSnapshot.waistToHeightRatio)}
-              changeText={latestSnapshot.waistToHeightStatus ?? "â€”"}
+              changeText={latestSnapshot.waistToHeightStatus ?? "-"}
               changeColor={
                 latestSnapshot.waistToHeightStatus === "Very Lean" ||
                 latestSnapshot.waistToHeightStatus === "Healthy"

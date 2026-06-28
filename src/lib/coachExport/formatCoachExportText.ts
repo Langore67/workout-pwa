@@ -135,7 +135,7 @@ function formatWaistToHeightSection(metrics: CoachExportMetrics): string[] {
     `- Current: ${whtr.latest.toFixed(3)}`,
     `- 14d trend: ${formatSigned(whtr.delta14d, 3)}`,
     `- Status: ${whtr.status}`,
-    "- Healthy threshold: <0.500",
+    "- Healthy threshold: < 0.500",
     `- Waist needed for threshold: ${formatValue(whtr.healthyWaistTargetIn, 1, " in")}`,
     `- Distance to threshold: ${formatValue(whtr.distanceToThresholdIn, 1, " in")}`,
     "",
@@ -143,7 +143,7 @@ function formatWaistToHeightSection(metrics: CoachExportMetrics): string[] {
 }
 
 function formatGoalTarget(row: GoalProgressRow) {
-  if (row.label === "Waist-to-Height Ratio") return `<${row.target.toFixed(3)}`;
+  if (row.label === "Waist-to-Height Ratio") return `< ${row.target.toFixed(3)}`;
   return formatGoalValue(row, row.target);
 }
 
@@ -174,7 +174,7 @@ function formatGoalProgressSection(metrics: CoachExportMetrics): string[] {
     "Goal Progress",
     ...progress.rows.map(
       (row) =>
-        `- ${row.label}: ${formatGoalValue(row, row.current)} → ${formatGoalTarget(row)} | ${formatGoalRemaining(row)}`
+        `- ${row.label}: ${formatGoalValue(row, row.current)} -> ${formatGoalTarget(row)} | ${formatGoalRemaining(row)}`
     ),
     `- Status: ${progress.status}`,
     "",
