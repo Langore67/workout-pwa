@@ -98,6 +98,8 @@ import {
   getBodyCompConfidence,
   getBodyCompConfidenceLabel,
   getFluidBalanceNote,
+  waistToHeightRatio,
+  waistToHeightStatus,
 } from "../body/bodyCalculations";
 import { computeHydrationConfidenceFromBodyRows } from "../body/hydrationConfidence";
 import {
@@ -144,6 +146,7 @@ type BodyMetricRow = {
 };
 
 const MODE_KEY = "workout_pwa_bodycomp_mode_v1";
+const HEIGHT_META_KEY = "profile.heightIn";
 const BODY_COMP_INFO_KEYS = {
   goalTargets: "goal_targets",
   currentStatus: "current_status",
@@ -188,6 +191,11 @@ function fmtSnapshotDate(ms?: number) {
 function formatBodyFatPct(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return "—";
   return `${value.toFixed(1)}%`;
+}
+
+function formatRatioValue(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "â€”";
+  return value.toFixed(3);
 }
 
 function computePercentChange(current?: number, baseline?: number) {
@@ -488,6 +496,16 @@ export default function BodyCompositionPage() {
      ========================================================================== */
 
   const profileGoals = useLiveQuery(async () => getProfileGoals(), []);
+  const heightIn = useLiveQuery(async () => {
+    try {
+      const row = await db.app_meta.get(HEIGHT_META_KEY);
+      const parsed = row?.valueJson ? JSON.parse(row.valueJson) : undefined;
+      const value = Number(parsed?.heightIn);
+      return Number.isFinite(value) && value > 0 ? value : undefined;
+    } catch {
+      return undefined;
+    }
+  }, []);
 
   const chartRows = useMemo(() => {
     return (rows ?? [])
@@ -503,6 +521,7 @@ export default function BodyCompositionPage() {
 
     const weight = latest ? sharedPickWeightLb(latest) : undefined;
     const waist = latest ? sharedPickWaistIn(latest) : undefined;
+    const currentWaistToHeightRatio = waistToHeightRatio(waist, heightIn);
     const bodyFatPct = latest ? sharedPickBodyFatPct(latest) : undefined;
     const correctedBodyFatPct = latest ? getCorrectedBodyFatPct(latest as any) : undefined;
     const leanMass = latest ? getLeanMassLb(latest as any) : undefined;
@@ -545,6 +564,8 @@ export default function BodyCompositionPage() {
 
       waist,
       waistChange: computePercentChange(waist, prevWaistAvg),
+      waistToHeightRatio: currentWaistToHeightRatio,
+      waistToHeightStatus: waistToHeightStatus(currentWaistToHeightRatio),
 
       bodyFatPct,
       bfChange: computePercentChange(bodyFatPct, prevBodyFatPctAvg),
@@ -581,7 +602,7 @@ export default function BodyCompositionPage() {
       confidenceLabel,
       fluidNote,
     };
-  }, [rows, profileGoals]);
+  }, [rows, profileGoals, heightIn]);
   
   /* ============================================================================
      Breadcrumb 3A-HC — Hydration confidence model
@@ -1093,6 +1114,22 @@ export default function BodyCompositionPage() {
               value={formatInches(latestSnapshot.waist)}
               changeText={formatChange(latestSnapshot.waistChange)}
               changeColor={getChangeColor(latestSnapshot.waistChange, "lower-is-better")}
+            />
+
+            <SnapshotRow
+              label="Waist-to-Height Ratio"
+              value={formatRatioValue(latestSnapshot.waistToHeightRatio)}
+              changeText={latestSnapshot.waistToHeightStatus ?? "â€”"}
+              changeColor={
+                latestSnapshot.waistToHeightStatus === "Very Lean" ||
+                latestSnapshot.waistToHeightStatus === "Healthy"
+                  ? "var(--accent)"
+                  : latestSnapshot.waistToHeightStatus === "Elevated"
+                    ? "var(--warning)"
+                    : latestSnapshot.waistToHeightStatus === "High Risk"
+                      ? "var(--danger)"
+                      : "var(--muted)"
+              }
             />
 
             <SnapshotRow

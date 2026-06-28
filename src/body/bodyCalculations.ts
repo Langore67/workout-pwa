@@ -60,6 +60,29 @@ export function getVisceralFatEstimate(m: BodyMetricEntry): number | undefined {
   return isNum(estimate) && estimate >= 0 ? estimate : undefined;
 }
 
+export function waistToHeightRatio(
+  waistIn: number | null | undefined,
+  heightIn: number | null | undefined
+): number | undefined {
+  if (!isNum(waistIn) || !isNum(heightIn) || waistIn <= 0 || heightIn <= 0) return undefined;
+  return waistIn / heightIn;
+}
+
+export function waistToHeightStatus(
+  ratio: number | null | undefined
+): "Very Lean" | "Healthy" | "Elevated" | "High Risk" | undefined {
+  if (!isNum(ratio) || ratio < 0) return undefined;
+  if (ratio < 0.4) return "Very Lean";
+  if (ratio < 0.5) return "Healthy";
+  if (ratio < 0.6) return "Elevated";
+  return "High Risk";
+}
+
+export function waistToHeightHealthyWaistTarget(heightIn: number | null | undefined): number | undefined {
+  if (!isNum(heightIn) || heightIn <= 0) return undefined;
+  return heightIn * 0.5;
+}
+
 /* ============================================================================
    Breadcrumb 3 — Core derived metrics
    ============================================================================ */

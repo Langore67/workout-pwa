@@ -70,6 +70,7 @@ function classifyFatLoss(metrics: CoachExportMetrics): {
   const waist = direction(metrics.bodyComp.waist.delta14d, 0.25);
   const bf = direction(metrics.bodyComp.bodyFatPct.delta14d, 0.3);
   const visceral = direction(metrics.bodyComp.visceralFat?.delta14d, 0);
+  const whtr = direction(metrics.bodyComp.waistToHeight?.delta14d, 0.001);
   const positives: string[] = [];
   const watchItems: string[] = [];
 
@@ -77,11 +78,19 @@ function classifyFatLoss(metrics: CoachExportMetrics): {
   if (waist === "down") positives.push("Waist is decreasing");
   if (bf === "down") positives.push("Body-fat trend is improving");
   if (visceral === "down") positives.push("Visceral fat estimate is improving");
+  if (whtr === "down") positives.push("Waist-to-height ratio improving");
 
   if (weight === "up") watchItems.push("Body weight is rising");
   if (waist === "up") watchItems.push("Waist is increasing");
   if (bf === "up") watchItems.push("Body-fat trend is worsening");
   if (visceral === "up") watchItems.push("Visceral fat estimate is worsening");
+  if (
+    finite(metrics.bodyComp.waistToHeight?.latest) &&
+    metrics.bodyComp.waistToHeight.latest >= 0.5 &&
+    metrics.bodyComp.waistToHeight.latest < 0.52
+  ) {
+    watchItems.push("Waist-to-height ratio is near the healthy threshold");
+  }
 
   if (weight === "down" && waist === "down") {
     return {

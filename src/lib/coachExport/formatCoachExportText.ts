@@ -126,16 +126,39 @@ function formatCoachSummarySection(metrics: CoachExportMetrics): string[] {
   ];
 }
 
+function formatWaistToHeightSection(metrics: CoachExportMetrics): string[] {
+  const whtr = metrics.bodyComp.waistToHeight;
+  if (!whtr || whtr.latest == null || !Number.isFinite(whtr.latest)) return [];
+
+  return [
+    "Waist-to-Height Ratio",
+    `- Current: ${whtr.latest.toFixed(3)}`,
+    `- 14d trend: ${formatSigned(whtr.delta14d, 3)}`,
+    `- Status: ${whtr.status}`,
+    "- Healthy threshold: <0.500",
+    `- Waist needed for threshold: ${formatValue(whtr.healthyWaistTargetIn, 1, " in")}`,
+    `- Distance to threshold: ${formatValue(whtr.distanceToThresholdIn, 1, " in")}`,
+    "",
+  ];
+}
+
+function formatGoalTarget(row: GoalProgressRow) {
+  if (row.label === "Waist-to-Height Ratio") return `<${row.target.toFixed(3)}`;
+  return formatGoalValue(row, row.target);
+}
+
 function formatGoalValue(row: GoalProgressRow, value: number) {
   if (row.label === "Visceral Fat") {
     return Number.isInteger(value) ? String(value) : value.toFixed(1);
   }
+  if (row.unit === "ratio") return value.toFixed(3);
   if (row.unit === "pts") return `${value.toFixed(1)}%`;
   return `${value.toFixed(1)} ${row.unit}`;
 }
 
 function formatGoalRemaining(row: GoalProgressRow) {
   if (row.remaining <= 0) return "reached";
+  if (row.unit === "ratio") return `${row.remaining.toFixed(3)} remaining`;
   if (row.unit === "pts") return `${row.remaining.toFixed(1)} pts remaining`;
   if (row.unit === "") {
     return `${Number.isInteger(row.remaining) ? String(row.remaining) : row.remaining.toFixed(1)} remaining`;
@@ -151,7 +174,7 @@ function formatGoalProgressSection(metrics: CoachExportMetrics): string[] {
     "Goal Progress",
     ...progress.rows.map(
       (row) =>
-        `- ${row.label}: ${formatGoalValue(row, row.current)} → ${formatGoalValue(row, row.target)} | ${formatGoalRemaining(row)}`
+        `- ${row.label}: ${formatGoalValue(row, row.current)} → ${formatGoalTarget(row)} | ${formatGoalRemaining(row)}`
     ),
     `- Status: ${progress.status}`,
     "",
@@ -346,6 +369,7 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     `- Bodyweight delta 7d: ${formatSigned(metrics.bodyComp.bodyweightDelta7d, 1, " lb")}`,
     `- Bodyweight delta 14d: ${formatSigned(metrics.bodyComp.bodyweightDelta14d, 1, " lb")}`,
     "",
+    ...formatWaistToHeightSection(metrics),
     ...formatCoachSummarySection(metrics),
     ...formatGoalProgressSection(metrics),
     ...formatLeanPreservationSectionV2(metrics),
