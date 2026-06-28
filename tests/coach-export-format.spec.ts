@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { resetDexieDb } from "./helpers/dbSeed";
 import { buildNextWorkoutFocus } from "../src/lib/coachExport/buildNextWorkoutFocus";
 import { formatCoachExportText } from "../src/lib/coachExport/formatCoachExportText";
 import { buildLeanPreservationComposite } from "../src/lib/coachExport/leanPreservationComposite";
@@ -8,6 +9,8 @@ import { isStrengthBuildingSession, selectRecentStrengthBuildingSessions } from 
 import { informationRegistry } from "../src/config/information/informationRegistry";
 import type { CoachExportMetrics, CoachExportTrainingSignals } from "../src/lib/coachExport/types";
 
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5173";
+
 function getSection(text: string, heading: string, nextHeading?: string) {
   const start = text.indexOf(heading);
   expect(start).toBeGreaterThanOrEqual(0);
@@ -15,6 +18,33 @@ function getSection(text: string, heading: string, nextHeading?: string) {
   if (!nextHeading) return fromStart;
   const end = fromStart.indexOf(nextHeading);
   return end >= 0 ? fromStart.slice(0, end) : fromStart;
+}
+
+async function buildCoachExportTextFromSeededBodyRows(
+  page: import("@playwright/test").Page,
+  rows: Array<Record<string, unknown>>
+) {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+  return page.evaluate(async (seedRows) => {
+    const { db } = await import("/src/db.ts");
+    const { buildCoachExportMetrics } = await import("/src/lib/coachExport/buildCoachExportMetrics.ts");
+    const { formatCoachExportText } = await import("/src/lib/coachExport/formatCoachExportText.ts");
+    const now = Date.now();
+
+    await db.bodyMetrics.bulkAdd(
+      seedRows.map((row, index) => ({
+        id: `body-row-${index}-${crypto.randomUUID()}`,
+        measuredAt: row.measuredAt ?? now - index * 14 * 24 * 60 * 60 * 1000,
+        takenAt: row.takenAt ?? row.measuredAt ?? now - index * 14 * 24 * 60 * 60 * 1000,
+        createdAt: row.createdAt ?? row.measuredAt ?? now - index * 14 * 24 * 60 * 60 * 1000,
+        ...row,
+      })) as any[]
+    );
+
+    const metrics = await buildCoachExportMetrics();
+    return formatCoachExportText(metrics);
+  }, rows);
 }
 
 function buildMetrics(): CoachExportMetrics {
@@ -182,6 +212,32 @@ test("coach export visceral fat direction supports flat and worsening trends", a
   const worseningSection = getSection(formatCoachExportText(worseningMetrics), "Visceral Fat", "Cut / Phase Quality");
   expect(worseningSection).toContain("- Direction: Worsening");
   expect(worseningSection).toContain("- 14d trend: +2");
+});
+
+test("coach export includes visceral fat when only visceralFatEstimate exists", async ({ page }) => {
+  const now = Date.now();
+  const text = await buildCoachExportTextFromSeededBodyRows(page, [
+    { measuredAt: now, visceralFatEstimate: 7, weightLb: 198, waistIn: 35.5 },
+    { measuredAt: now - 14 * 24 * 60 * 60 * 1000, visceralFatEstimate: 8, weightLb: 201, waistIn: 36.1 },
+  ]);
+  const section = getSection(text, "Visceral Fat", "Cut / Phase Quality");
+
+  expect(section).toContain("- Latest estimate: 7");
+  expect(section).toContain("- 14d trend: -1");
+  expect(section).toContain("- Direction: Improving");
+});
+
+test("coach export includes visceral fat when only legacy visceralFatIndex exists", async ({ page }) => {
+  const now = Date.now();
+  const text = await buildCoachExportTextFromSeededBodyRows(page, [
+    { measuredAt: now, visceralFatIndex: 9, weightLb: 198, waistIn: 35.5 },
+    { measuredAt: now - 14 * 24 * 60 * 60 * 1000, visceralFatIndex: 7, weightLb: 201, waistIn: 36.1 },
+  ]);
+  const section = getSection(text, "Visceral Fat", "Cut / Phase Quality");
+
+  expect(section).toContain("- Latest estimate: 9");
+  expect(section).toContain("- 14d trend: +2");
+  expect(section).toContain("- Direction: Worsening");
 });
 
 test("lean preservation composite is acceptable when lean mass is down but strength and waist improve", async () => {
