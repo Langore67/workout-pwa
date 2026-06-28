@@ -38,6 +38,7 @@ import {
 import { buildNextWorkoutFocus } from "./buildNextWorkoutFocus";
 import { buildCoachIntelligence } from "./coachIntelligence";
 import { buildExerciseVocabulary } from "./exerciseVocabulary";
+import { buildGoalProgress } from "./goalEngine";
 import { buildLeanPreservationComposite } from "./leanPreservationComposite";
 import { selectRecentStrengthBuildingSessions } from "./strengthBuildingSessions";
 import type {
@@ -47,6 +48,7 @@ import type {
   CoachExportTrainingSignals,
 } from "./types";
 import { getCurrentPhase } from "../../config/appConfig";
+import { getProfileGoals } from "../../profile/profileGoals";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -553,6 +555,7 @@ function buildTrainingSignalsFromRecentSessions(args: {
 export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
   const generatedAt = Date.now();
   const currentPhase = await getCurrentPhase();
+  const profileGoals = await getProfileGoals();
   const bodyRows = sortedBodyRows(((await db.bodyMetrics.toArray()) ?? []) as BodyMetricEntry[]);
 
   const bodyComp = {
@@ -645,12 +648,17 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     phaseQualityDrivers: phaseQuality?.drivers ?? [],
     hydrationNote: hydration.note,
   });
+  const goalProgress = buildGoalProgress({
+    goals: profileGoals,
+    bodyComp,
+  });
 
       const metrics: CoachExportMetrics = {
         generatedAt,
         currentPhase,
         bodyComp,
         hydration,
+        goalProgress,
         leanPreservation,
         strengthSignal,
         phaseQuality,

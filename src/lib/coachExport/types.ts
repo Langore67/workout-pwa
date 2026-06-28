@@ -2,6 +2,7 @@ import type { StrengthPattern } from "../../strength/Strength";
 import type { PhaseQualityResult } from "../../body/phaseQualityModel";
 import type { CurrentPhase } from "../../config/appConfig";
 import type { CoachIntelligence } from "./coachIntelligence";
+import type { GoalProgress } from "./goalEngine";
 import type { LeanPreservationComposite } from "./leanPreservationComposite";
 
 export type CoachExportMetric = {
@@ -84,6 +85,7 @@ export type CoachExportMetrics = {
   };
   hydration: CoachExportHydration;
   coachIntelligence?: CoachIntelligence | null;
+  goalProgress?: GoalProgress | null;
   leanPreservation?: LeanPreservationComposite | null;
   strengthSignal: CoachExportStrengthSignal;
   phaseQuality: PhaseQualityResult | null;

@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { resetDexieDb } from "./helpers/dbSeed";
 import { buildNextWorkoutFocus } from "../src/lib/coachExport/buildNextWorkoutFocus";
 import { formatCoachExportText } from "../src/lib/coachExport/formatCoachExportText";
+import { buildGoalProgress } from "../src/lib/coachExport/goalEngine";
 import { buildLeanPreservationComposite } from "../src/lib/coachExport/leanPreservationComposite";
 import { buildPatternSummary, type CompletedSession } from "../src/lib/coachExport/buildPatternSummary";
 import { buildExerciseVocabulary } from "../src/lib/coachExport/exerciseVocabulary";
@@ -489,6 +490,129 @@ test("coach intelligence clarifies later-set pressing fatigue instead of generic
 
   expect(text).toContain("Pressing endurance limited later sets");
   expect(text).not.toContain("Load looked too heavy");
+});
+
+test("coach export includes goal progress when profile targets exist", async () => {
+  const metrics = buildMetrics();
+  metrics.bodyComp.weight = { latest: 188.6, baseline14d: 190.2, delta14d: -1.6 };
+  metrics.bodyComp.bodyFatPct = { latest: 20.6, baseline14d: 21.1, delta14d: -0.5 };
+  metrics.bodyComp.waist = { latest: 36.5, baseline14d: 36.9, delta14d: -0.4 };
+  metrics.bodyComp.visceralFat = { latest: 7, baseline14d: 8, delta14d: -1 };
+  metrics.goalProgress = buildGoalProgress({
+    goals: {
+      targetWeightLb: 180,
+      targetBodyFatPct: 18,
+      targetWaistIn: 35.9,
+      targetVisceralFatEstimate: 6,
+    },
+    bodyComp: metrics.bodyComp,
+  });
+
+  const section = getSection(formatCoachExportText(metrics), "Goal Progress", "Lean Preservation");
+
+  expect(section).toContain("- Weight: 188.6 lb → 180.0 lb | 8.6 lb remaining");
+  expect(section).toContain("- Body Fat: 20.6% → 18.0% | 2.6 pts remaining");
+  expect(section).toContain("- Waist: 36.5 in → 35.9 in | 0.6 in remaining");
+  expect(section).toContain("- Visceral Fat: 7 → 6 | 1 remaining");
+  expect(section).toContain("- Status: On Track");
+});
+
+test("coach export omits missing goal targets cleanly", async () => {
+  const metrics = buildMetrics();
+  metrics.bodyComp.weight = { latest: 188.6, baseline14d: 190.2, delta14d: -1.6 };
+  metrics.bodyComp.waist = { latest: 36.5, baseline14d: 36.9, delta14d: -0.4 };
+  metrics.goalProgress = buildGoalProgress({
+    goals: {
+      targetWeightLb: 180,
+    },
+    bodyComp: metrics.bodyComp,
+  });
+
+  const section = getSection(formatCoachExportText(metrics), "Goal Progress", "Lean Preservation");
+
+  expect(section).toContain("- Weight: 188.6 lb → 180.0 lb | 8.6 lb remaining");
+  expect(section).not.toContain("Body Fat:");
+  expect(section).not.toContain("Waist:");
+  expect(section).not.toContain("Visceral Fat:");
+});
+
+test("goal progress status is on track when weight and waist are down", async () => {
+  const metrics = buildMetrics();
+  metrics.bodyComp.weight = { latest: 188.6, baseline14d: 190.2, delta14d: -1.6 };
+  metrics.bodyComp.waist = { latest: 36.5, baseline14d: 36.9, delta14d: -0.4 };
+  metrics.goalProgress = buildGoalProgress({
+    goals: { targetWeightLb: 180, targetWaistIn: 35.9 },
+    bodyComp: metrics.bodyComp,
+  });
+
+  expect(metrics.goalProgress.status).toBe("On Track");
+});
+
+test("goal progress status is watch when weight is down but waist is flat or up", async () => {
+  const metrics = buildMetrics();
+  metrics.bodyComp.weight = { latest: 188.6, baseline14d: 190.2, delta14d: -1.6 };
+  metrics.bodyComp.waist = { latest: 36.9, baseline14d: 36.5, delta14d: 0.4 };
+  metrics.goalProgress = buildGoalProgress({
+    goals: { targetWeightLb: 180, targetWaistIn: 35.9 },
+    bodyComp: metrics.bodyComp,
+  });
+
+  expect(metrics.goalProgress.status).toBe("Watch");
+});
+
+test("coach export goal progress uses bodyMetrics current values, not profile current fields", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  const text = await page.evaluate(async () => {
+    localStorage.setItem(
+      "workout_pwa_profile_v1",
+      JSON.stringify({
+        currentWeightLb: "999",
+        currentBodyFatPct: "99",
+        targetWeightLb: "180",
+        targetBodyFatPct: "18",
+      })
+    );
+
+    const { db } = await import("/src/db.ts");
+    const { buildCoachExportMetrics } = await import("/src/lib/coachExport/buildCoachExportMetrics.ts");
+    const { formatCoachExportText } = await import("/src/lib/coachExport/formatCoachExportText.ts");
+    const now = Date.now();
+
+    await db.bodyMetrics.bulkAdd([
+      {
+        id: crypto.randomUUID(),
+        measuredAt: now,
+        takenAt: now,
+        createdAt: now,
+        weightLb: 188.6,
+        waistIn: 36.5,
+        bodyFatPct: 20.6,
+        visceralFatEstimate: 7,
+      },
+      {
+        id: crypto.randomUUID(),
+        measuredAt: now - 14 * 24 * 60 * 60 * 1000,
+        takenAt: now - 14 * 24 * 60 * 60 * 1000,
+        createdAt: now - 14 * 24 * 60 * 60 * 1000,
+        weightLb: 190.2,
+        waistIn: 36.9,
+        bodyFatPct: 21.1,
+        visceralFatEstimate: 8,
+      },
+    ]);
+
+    const metrics = await buildCoachExportMetrics();
+    return formatCoachExportText(metrics);
+  });
+
+  const section = getSection(text, "Goal Progress", "Visceral Fat");
+
+  expect(section).toContain("- Weight: 188.6 lb → 180.0 lb | 8.6 lb remaining");
+  expect(section).toContain("- Body Fat: 20.6% → 18.0% | 2.6 pts remaining");
+  expect(section).not.toContain("999");
+  expect(section).not.toContain("99.0%");
 });
 
 test("coach export includes exercise vocabulary section and rules", async () => {
