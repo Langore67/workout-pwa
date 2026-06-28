@@ -1,6 +1,7 @@
 import type { CoachExportAnchorLift, CoachExportMetrics } from "./types";
 import type { CurrentPhase } from "../../config/appConfig";
 import { buildCoachIntelligence, clarifyCoachExportLine } from "./coachIntelligence";
+import type { GoalProgressRow } from "./goalEngine";
 
 function formatDate(ms: number | null | undefined) {
   if (ms == null || !Number.isFinite(ms)) return "Unknown";
@@ -121,6 +122,38 @@ function formatCoachSummarySection(metrics: CoachExportMetrics): string[] {
     "",
     "Recommendations",
     ...intelligence.recommendations.map((item) => `- ${item}`),
+    "",
+  ];
+}
+
+function formatGoalValue(row: GoalProgressRow, value: number) {
+  if (row.label === "Visceral Fat") {
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  }
+  if (row.unit === "pts") return `${value.toFixed(1)}%`;
+  return `${value.toFixed(1)} ${row.unit}`;
+}
+
+function formatGoalRemaining(row: GoalProgressRow) {
+  if (row.remaining <= 0) return "reached";
+  if (row.unit === "pts") return `${row.remaining.toFixed(1)} pts remaining`;
+  if (row.unit === "") {
+    return `${Number.isInteger(row.remaining) ? String(row.remaining) : row.remaining.toFixed(1)} remaining`;
+  }
+  return `${row.remaining.toFixed(1)} ${row.unit} remaining`;
+}
+
+function formatGoalProgressSection(metrics: CoachExportMetrics): string[] {
+  const progress = metrics.goalProgress;
+  if (!progress?.rows.length) return [];
+
+  return [
+    "Goal Progress",
+    ...progress.rows.map(
+      (row) =>
+        `- ${row.label}: ${formatGoalValue(row, row.current)} → ${formatGoalValue(row, row.target)} | ${formatGoalRemaining(row)}`
+    ),
+    `- Status: ${progress.status}`,
     "",
   ];
 }
@@ -314,6 +347,7 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     `- Bodyweight delta 14d: ${formatSigned(metrics.bodyComp.bodyweightDelta14d, 1, " lb")}`,
     "",
     ...formatCoachSummarySection(metrics),
+    ...formatGoalProgressSection(metrics),
     ...formatLeanPreservationSectionV2(metrics),
     ...formatVisceralFatSection(metrics),
     formatPhaseQualityHeading(metrics.currentPhase),

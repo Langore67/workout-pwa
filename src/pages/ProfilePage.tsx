@@ -20,6 +20,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Page, Section } from "../components/Page.tsx";
+import { getProfileGoals, setProfileGoals } from "../profile/profileGoals";
 
 type Sex = "male" | "female" | "other" | "";
 type ExperienceLevel = "beginner" | "intermediate" | "advanced" | "";
@@ -38,6 +39,8 @@ type ProfileData = {
   targetWeightLb: string;
   currentBodyFatPct: string;
   targetBodyFatPct: string;
+  targetWaistIn: string;
+  targetVisceralFatEstimate: string;
 
   trainingDaysPerWeek: string;
   experienceLevel: ExperienceLevel;
@@ -65,6 +68,8 @@ const DEFAULT_PROFILE: ProfileData = {
   targetWeightLb: "185",
   currentBodyFatPct: "23",
   targetBodyFatPct: "17",
+  targetWaistIn: "",
+  targetVisceralFatEstimate: "",
 
   trainingDaysPerWeek: "4-5",
   experienceLevel: "beginner",
@@ -100,6 +105,15 @@ function saveProfile(profile: ProfileData) {
   }
 }
 
+function toInputValue(value: number | undefined) {
+  return value != null && Number.isFinite(value) ? String(value) : "";
+}
+
+function toPositiveNumber(value: string) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 function formatHeight(feet: string, inches: string) {
   if (!feet && !inches) return "—";
   return `${feet || "—"}'${inches || "—"}"`;
@@ -113,6 +127,11 @@ function formatWeight(v: string) {
 function formatPct(v: string) {
   if (!v.trim()) return "—";
   return `${v}%`;
+}
+
+function formatIn(v: string) {
+  if (!v.trim()) return "â€”";
+  return `${v} in`;
 }
 
 function CardTitle({ children }: { children: React.ReactNode }) {
@@ -228,10 +247,50 @@ export default function ProfilePage() {
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
   const [profile, setProfile] = useState<ProfileData>(() => loadProfile());
+  const [goalsLoaded, setGoalsLoaded] = useState(false);
 
   useEffect(() => {
     saveProfile(profile);
   }, [profile]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const goals = await getProfileGoals();
+      if (cancelled) return;
+
+      setProfile((p) => ({
+        ...p,
+        targetWeightLb: toInputValue(goals.targetWeightLb) || p.targetWeightLb,
+        targetBodyFatPct: toInputValue(goals.targetBodyFatPct) || p.targetBodyFatPct,
+        targetWaistIn: toInputValue(goals.targetWaistIn),
+        targetVisceralFatEstimate: toInputValue(goals.targetVisceralFatEstimate),
+      }));
+      setGoalsLoaded(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!goalsLoaded) return;
+
+    void setProfileGoals({
+      targetWeightLb: toPositiveNumber(profile.targetWeightLb),
+      targetBodyFatPct: toPositiveNumber(profile.targetBodyFatPct),
+      targetWaistIn: toPositiveNumber(profile.targetWaistIn),
+      targetVisceralFatEstimate: toPositiveNumber(profile.targetVisceralFatEstimate),
+    });
+  }, [
+    goalsLoaded,
+    profile.targetWeightLb,
+    profile.targetBodyFatPct,
+    profile.targetWaistIn,
+    profile.targetVisceralFatEstimate,
+  ]);
 
   const overviewLine = useMemo(() => {
     const age = profile.age?.trim() ? `${profile.age} years old` : null;
@@ -381,40 +440,22 @@ export default function ProfilePage() {
 
           {!isEditing ? (
             <>
-              <ReadRow label="Current Weight" value={formatWeight(profile.currentWeightLb)} />
               <ReadRow label="Target Weight" value={formatWeight(profile.targetWeightLb)} />
-              <ReadRow
-                label="Current Body Fat"
-                value={formatPct(profile.currentBodyFatPct)}
-              />
               <ReadRow label="Target Body Fat" value={formatPct(profile.targetBodyFatPct)} />
+              <ReadRow label="Target Waist" value={formatIn(profile.targetWaistIn)} />
+              <ReadRow label="Target Visceral Fat" value={profile.targetVisceralFatEstimate || "â€”"} />
+              <div className="muted" style={{ fontSize: 12, lineHeight: 1.4 }}>
+                Current weight and body-fat values come from Body Metrics, not Profile.
+              </div>
             </>
           ) : (
             <>
-              <ReadRow
-                label="Current Weight"
-                value={
-                  <TextInput
-                    value={profile.currentWeightLb}
-                    onChange={(v) => setProfile((p) => ({ ...p, currentWeightLb: v }))}
-                  />
-                }
-              />
               <ReadRow
                 label="Target Weight"
                 value={
                   <TextInput
                     value={profile.targetWeightLb}
                     onChange={(v) => setProfile((p) => ({ ...p, targetWeightLb: v }))}
-                  />
-                }
-              />
-              <ReadRow
-                label="Current Body Fat"
-                value={
-                  <TextInput
-                    value={profile.currentBodyFatPct}
-                    onChange={(v) => setProfile((p) => ({ ...p, currentBodyFatPct: v }))}
                   />
                 }
               />
@@ -427,6 +468,28 @@ export default function ProfilePage() {
                   />
                 }
               />
+              <ReadRow
+                label="Target Waist"
+                value={
+                  <TextInput
+                    value={profile.targetWaistIn}
+                    onChange={(v) => setProfile((p) => ({ ...p, targetWaistIn: v }))}
+                  />
+                }
+              />
+              <ReadRow
+                label="Target Visceral Fat"
+                value={
+                  <TextInput
+                    value={profile.targetVisceralFatEstimate}
+                    onChange={(v) => setProfile((p) => ({ ...p, targetVisceralFatEstimate: v }))}
+                  />
+                }
+              />
+              <div className="muted" style={{ fontSize: 12, lineHeight: 1.4 }}>
+                Current weight and body-fat fields are deprecated here. Use Body Metrics
+                for measured current values.
+              </div>
             </>
           )}
         </div>

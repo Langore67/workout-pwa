@@ -113,6 +113,7 @@ import {
   setCurrentPhase,
   type CurrentPhase,
 } from "../config/appConfig";
+import { getProfileGoals } from "../profile/profileGoals";
 
 type Mode = CurrentPhase;
 
@@ -143,14 +144,6 @@ type BodyMetricRow = {
 };
 
 const MODE_KEY = "workout_pwa_bodycomp_mode_v1";
-const PROFILE_STORAGE_KEY = "workout_pwa_profile_v1";
-
-type ProfileGoalData = {
-  targetWeightLb?: string;
-  targetBodyFatPct?: string;
-};
-
-
 const BODY_COMP_INFO_KEYS = {
   goalTargets: "goal_targets",
   currentStatus: "current_status",
@@ -169,41 +162,6 @@ const BODY_COMP_INFO_CONTENT = {
 } as const;
 
 
-
-function loadProfileGoals(): {
-  targetWeightLb?: number;
-  targetBodyFatPct?: number;
-} {
-  try {
-    const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
-    if (!raw) return {};
-
-    const parsed = JSON.parse(raw) as ProfileGoalData;
-
-    const targetWeightLb =
-      parsed?.targetWeightLb != null && parsed.targetWeightLb !== ""
-        ? Number(parsed.targetWeightLb)
-        : undefined;
-
-    const targetBodyFatPct =
-      parsed?.targetBodyFatPct != null && parsed.targetBodyFatPct !== ""
-        ? Number(parsed.targetBodyFatPct)
-        : undefined;
-
-    return {
-      targetWeightLb:
-        targetWeightLb != null && Number.isFinite(targetWeightLb)
-          ? targetWeightLb
-          : undefined,
-      targetBodyFatPct:
-        targetBodyFatPct != null && Number.isFinite(targetBodyFatPct)
-          ? targetBodyFatPct
-          : undefined,
-    };
-  } catch {
-    return {};
-  }
-}
 
 /* ============================================================================
    Breadcrumb 1 — Helpers
@@ -529,7 +487,7 @@ export default function BodyCompositionPage() {
      Breadcrumb 3A — Derived data
      ========================================================================== */
 
-  const profileGoals = useMemo(() => loadProfileGoals(), []);
+  const profileGoals = useLiveQuery(async () => getProfileGoals(), []);
 
   const chartRows = useMemo(() => {
     return (rows ?? [])
@@ -541,6 +499,7 @@ export default function BodyCompositionPage() {
   const latestSnapshot = useMemo(() => {
     const source = rows ?? [];
     const latest = source[0];
+    const goals = profileGoals ?? {};
 
     const weight = latest ? sharedPickWeightLb(latest) : undefined;
     const waist = latest ? sharedPickWaistIn(latest) : undefined;
@@ -605,17 +564,17 @@ export default function BodyCompositionPage() {
         prevCorrectedLeanAvg
       ),
 
-      targetWeightLb: profileGoals.targetWeightLb,
-      targetBodyFatPct: profileGoals.targetBodyFatPct,
+      targetWeightLb: goals.targetWeightLb,
+      targetBodyFatPct: goals.targetBodyFatPct,
 
       remainingWeightLb:
-        weight != null && profileGoals.targetWeightLb != null
-          ? weight - profileGoals.targetWeightLb
+        weight != null && goals.targetWeightLb != null
+          ? weight - goals.targetWeightLb
           : undefined,
 
       remainingCorrectedBfPct:
-        correctedBodyFatPct != null && profileGoals.targetBodyFatPct != null
-          ? correctedBodyFatPct - profileGoals.targetBodyFatPct
+        correctedBodyFatPct != null && goals.targetBodyFatPct != null
+          ? correctedBodyFatPct - goals.targetBodyFatPct
           : undefined,
 
       confidenceScore,
