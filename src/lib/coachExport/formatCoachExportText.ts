@@ -1,5 +1,6 @@
 import type { CoachExportAnchorLift, CoachExportMetrics } from "./types";
 import type { CurrentPhase } from "../../config/appConfig";
+import { buildCoachIntelligence, clarifyCoachExportLine } from "./coachIntelligence";
 
 function formatDate(ms: number | null | undefined) {
   if (ms == null || !Number.isFinite(ms)) return "Unknown";
@@ -95,6 +96,76 @@ function formatLeanPreservationSection(metrics: CoachExportMetrics): string[] {
   ];
 }
 
+function formatCoachSummarySection(metrics: CoachExportMetrics): string[] {
+  const intelligence = metrics.coachIntelligence ?? buildCoachIntelligence(metrics);
+  const fatLossNarrative = intelligence.narrative.find((item) => item.startsWith("Fat Loss:")) ?? "Fat Loss: Evidence is incomplete.";
+  const muscleNarrative = intelligence.narrative.find((item) => item.startsWith("Muscle Preservation:")) ?? "Muscle Preservation: Evidence is incomplete.";
+  const trainingNarrative = intelligence.narrative.find((item) => item.startsWith("Training:")) ?? "Training: Evidence is incomplete.";
+
+  return [
+    "Coach Summary",
+    `- Overall: ${intelligence.overallStatus}`,
+    `- Confidence: ${intelligence.confidence}`,
+    "",
+    "Fat Loss",
+    `- ${intelligence.fatLossStatus}`,
+    `- ${fatLossNarrative.replace(/^Fat Loss:\s*/, "")}`,
+    "",
+    "Muscle Preservation",
+    `- ${intelligence.musclePreservationStatus}`,
+    `- ${muscleNarrative.replace(/^Muscle Preservation:\s*/, "")}`,
+    "",
+    "Training",
+    `- ${intelligence.trainingStatus}`,
+    `- ${trainingNarrative.replace(/^Training:\s*/, "")}`,
+    "",
+    "Recommendations",
+    ...intelligence.recommendations.map((item) => `- ${item}`),
+    "",
+  ];
+}
+
+function formatLeanPreservationSectionV2(metrics: CoachExportMetrics): string[] {
+  const composite = metrics.leanPreservation;
+  if (!composite) return [];
+  const intelligence = metrics.coachIntelligence ?? buildCoachIntelligence(metrics);
+  const positive = composite.evidence.positive.length
+    ? composite.evidence.positive.map((item) => `+ ${clarifyCoachExportLine(item === "Strength declining" ? "Strength evidence is mixed" : item)}`)
+    : ["- No positive evidence available."];
+  const negativeSource = intelligence.watchItems.length ? intelligence.watchItems : composite.evidence.negative;
+  const negative = negativeSource.length
+    ? negativeSource.map((item) => `- ${clarifyCoachExportLine(item === "Strength declining" ? "Strength evidence is mixed" : item)}`)
+    : ["- No negative evidence available."];
+  const muscleNarrative =
+    intelligence.narrative.find((item) => item.startsWith("Muscle Preservation:")) ??
+    "Muscle Preservation: Continue monitoring lean-mass estimates alongside strength and waist trend.";
+
+  return [
+    "Lean Preservation",
+    "",
+    "Raw Metrics",
+    `- Lean Mass: ${formatValue(composite.rawMetrics.leanMassLatest, 1, " lb")} (14d ${formatSigned(composite.rawMetrics.leanMassDelta14d, 1, " lb")})`,
+    "",
+    "Composite",
+    `- ${composite.status}`,
+    `- Confidence: ${composite.confidence}`,
+    "",
+    "Evidence",
+    "",
+    "Positive",
+    ...positive,
+    "",
+    "Negative",
+    ...negative,
+    "",
+    "Coach Interpretation",
+    composite.coachInterpretation
+      ? `- ${composite.coachInterpretation}`
+      : `- ${muscleNarrative.replace(/^Muscle Preservation:\s*/, "")}`,
+    "",
+  ];
+}
+
 function formatAnchorLift(lift: CoachExportAnchorLift) {
   if (lift.e1rm == null || lift.effectiveWeightLb == null || lift.reps == null) {
     return `- ${lift.pattern}: Insufficient Data`;
@@ -167,22 +238,22 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     "Training Signals (Recent Sessions)",
     "Movement Quality",
     ...(metrics.trainingSignals.movementQuality.length
-      ? metrics.trainingSignals.movementQuality.map((item) => `- ${item}`)
+      ? metrics.trainingSignals.movementQuality.map((item) => `- ${clarifyCoachExportLine(item)}`)
       : ["- No recent movement-quality notes."]),
     "",
     "Stimulus / Coverage",
     ...(metrics.trainingSignals.stimulusCoverage.length
-      ? metrics.trainingSignals.stimulusCoverage.map((item) => `- ${item}`)
+      ? metrics.trainingSignals.stimulusCoverage.map((item) => `- ${clarifyCoachExportLine(item)}`)
       : ["- No recent stimulus notes."]),
     "",
     "Fatigue / Readiness",
     ...(metrics.trainingSignals.fatigueReadiness.length
-      ? metrics.trainingSignals.fatigueReadiness.map((item) => `- ${item}`)
+      ? metrics.trainingSignals.fatigueReadiness.map((item) => `- ${clarifyCoachExportLine(item)}`)
       : ["- No recent fatigue notes."]),
     "",
     "Discuss with Gaz",
     ...(metrics.trainingSignals.discussWithGaz.length
-      ? metrics.trainingSignals.discussWithGaz.map((item) => `- ${item}`)
+      ? metrics.trainingSignals.discussWithGaz.map((item) => `- ${clarifyCoachExportLine(item)}`)
       : ["- No coach discussion flags from recent sessions."]),
   ];
 
@@ -217,9 +288,15 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
   const phaseQualityDriverLines = metrics.phaseQuality?.drivers?.length
     ? metrics.phaseQuality.drivers
         .filter((driver) => (metrics.leanPreservation ? !/^Lean Preservation\s*:/i.test(driver) : true))
+        .filter((driver) => !/^Status\s*:/i.test(driver))
         .slice(0, 4)
-        .map((driver) => `- ${driver}`)
+        .map((driver) => `- ${clarifyCoachExportLine(driver)}`)
     : ["- Drivers: Insufficient Data"];
+
+  const readinessNoteLines = metrics.readinessNotes
+    .filter((note) => !/^Phase quality:/i.test(note))
+    .filter((note) => (metrics.leanPreservation ? !/Lean Preservation\s*:/i.test(note) : true))
+    .map((note) => `- ${clarifyCoachExportLine(note || "Unknown")}`);
 
   const lines = [
     "IronForge Coach Export",
@@ -236,7 +313,8 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     `- Bodyweight delta 7d: ${formatSigned(metrics.bodyComp.bodyweightDelta7d, 1, " lb")}`,
     `- Bodyweight delta 14d: ${formatSigned(metrics.bodyComp.bodyweightDelta14d, 1, " lb")}`,
     "",
-    ...formatLeanPreservationSection(metrics),
+    ...formatCoachSummarySection(metrics),
+    ...formatLeanPreservationSectionV2(metrics),
     ...formatVisceralFatSection(metrics),
     formatPhaseQualityHeading(metrics.currentPhase),
     `- Status: ${metrics.phaseQuality?.finalStatus ?? "Insufficient Data"}`,
@@ -279,7 +357,7 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     ...patternSummaryLines,
     "",
     "Readiness / Confidence Notes",
-    ...metrics.readinessNotes.map((note) => `- ${note || "Unknown"}`),
+    ...(readinessNoteLines.length ? readinessNoteLines : ["- No additional readiness notes."]),
     "",
     "Data Gaps",
     ...metrics.dataNotes.map((note) => `- ${note || "Unknown"}`),
