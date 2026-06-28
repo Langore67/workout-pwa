@@ -18,6 +18,9 @@ import {
   getVisceralFatEstimate,
   getWeightLb,
   getWaistIn,
+  waistToHeightHealthyWaistTarget,
+  waistToHeightRatio,
+  waistToHeightStatus,
 } from "../../body/bodyCalculations";
 import { computeHydrationConfidenceFromBodyRows } from "../../body/hydrationConfidence";
 import { pickTime } from "../../body/bodySignalModel";
@@ -51,6 +54,7 @@ import { getCurrentPhase } from "../../config/appConfig";
 import { getProfileGoals } from "../../profile/profileGoals";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const HEIGHT_META_KEY = "profile.heightIn";
 
 function cleanNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -119,6 +123,17 @@ function buildMetric(
     delta14d:
       latest.value != null && baseline14d != null ? latest.value - baseline14d : null,
   };
+}
+
+async function readProfileHeightIn(): Promise<number | null> {
+  try {
+    const row = await db.app_meta.get(HEIGHT_META_KEY);
+    const parsed = row?.valueJson ? JSON.parse(row.valueJson) : undefined;
+    const heightIn = Number(parsed?.heightIn);
+    return Number.isFinite(heightIn) && heightIn > 0 ? heightIn : null;
+  } catch {
+    return null;
+  }
 }
 
 function buildHydration(rows: BodyMetricEntry[]) {
@@ -556,14 +571,34 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
   const generatedAt = Date.now();
   const currentPhase = await getCurrentPhase();
   const profileGoals = await getProfileGoals();
+  const heightIn = await readProfileHeightIn();
   const bodyRows = sortedBodyRows(((await db.bodyMetrics.toArray()) ?? []) as BodyMetricEntry[]);
+
+  const waistMetric = buildMetric(bodyRows, getWaistIn);
+  const waistToHeightLatest = waistToHeightRatio(waistMetric.latest, heightIn);
+  const waistToHeightBaseline = waistToHeightRatio(waistMetric.baseline14d, heightIn);
+  const healthyWaistTarget = waistToHeightHealthyWaistTarget(heightIn);
+  const waistToHeight =
+    waistToHeightLatest != null && healthyWaistTarget != null
+      ? {
+          latest: waistToHeightLatest,
+          baseline14d: waistToHeightBaseline ?? null,
+          delta14d:
+            waistToHeightBaseline != null ? waistToHeightLatest - waistToHeightBaseline : null,
+          status: waistToHeightStatus(waistToHeightLatest)!,
+          healthyWaistTargetIn: healthyWaistTarget,
+          distanceToThresholdIn:
+            waistMetric.latest != null ? waistMetric.latest - healthyWaistTarget : null,
+        }
+      : undefined;
 
   const bodyComp = {
     weight: buildMetric(bodyRows, getWeightLb),
-    waist: buildMetric(bodyRows, getWaistIn),
+    waist: waistMetric,
     bodyFatPct: buildMetric(bodyRows, getBodyFatPctRaw),
     leanMass: buildMetric(bodyRows, getLeanMassLb),
     visceralFat: buildMetric(bodyRows, getVisceralFatEstimate),
+    waistToHeight,
     bodyweightDelta7d: (() => {
       const latest = findLatestValue(bodyRows, getWeightLb);
       const baseline7d = findBaselineValue(bodyRows, getWeightLb, latest.at, 7);

@@ -11,6 +11,12 @@ export type CoachExportMetric = {
   delta14d: number | null;
 };
 
+export type CoachExportWaistToHeight = CoachExportMetric & {
+  status: "Very Lean" | "Healthy" | "Elevated" | "High Risk";
+  healthyWaistTargetIn: number;
+  distanceToThresholdIn: number | null;
+};
+
 export type CoachExportAnchorLift = {
   pattern: StrengthPattern;
   exerciseId?: string | null;
@@ -80,6 +86,7 @@ export type CoachExportMetrics = {
     bodyFatPct: CoachExportMetric;
     leanMass: CoachExportMetric;
     visceralFat?: CoachExportMetric;
+    waistToHeight?: CoachExportWaistToHeight;
     bodyweightDelta7d: number | null;
     bodyweightDelta14d: number | null;
   };

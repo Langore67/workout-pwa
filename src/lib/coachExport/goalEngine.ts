@@ -1,14 +1,14 @@
 import type { ProfileGoalsV1 } from "../../profile/profileGoals";
-import type { CoachExportMetric } from "./types";
+import type { CoachExportMetric, CoachExportWaistToHeight } from "./types";
 
 export type GoalProgressStatus = "Reached" | "On Track" | "Watch" | "Not Available";
 
 export type GoalProgressRow = {
-  label: "Weight" | "Body Fat" | "Waist" | "Visceral Fat";
+  label: "Weight" | "Body Fat" | "Waist" | "Visceral Fat" | "Waist-to-Height Ratio";
   current: number;
   target: number;
   remaining: number;
-  unit: "lb" | "pts" | "in" | "";
+  unit: "lb" | "pts" | "in" | "" | "ratio";
   status: GoalProgressStatus;
 };
 
@@ -24,6 +24,7 @@ type GoalProgressInput = {
     waist: CoachExportMetric;
     bodyFatPct: CoachExportMetric;
     visceralFat?: CoachExportMetric;
+    waistToHeight?: CoachExportWaistToHeight;
   };
 };
 
@@ -77,6 +78,12 @@ export function buildGoalProgress(input: GoalProgressInput): GoalProgress {
       input.bodyComp.visceralFat?.latest,
       input.goals.targetVisceralFatEstimate,
       ""
+    ),
+    buildRow(
+      "Waist-to-Height Ratio",
+      input.bodyComp.waistToHeight?.latest,
+      input.bodyComp.waistToHeight ? 0.5 : undefined,
+      "ratio"
     ),
   ].filter((row): row is GoalProgressRow => row != null);
 

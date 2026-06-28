@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { resetDexieDb } from "./helpers/dbSeed";
+import {
+  waistToHeightRatio,
+  waistToHeightStatus,
+} from "../src/body/bodyCalculations";
 import { buildNextWorkoutFocus } from "../src/lib/coachExport/buildNextWorkoutFocus";
+import { buildCoachIntelligence } from "../src/lib/coachExport/coachIntelligence";
 import { formatCoachExportText } from "../src/lib/coachExport/formatCoachExportText";
 import { buildGoalProgress } from "../src/lib/coachExport/goalEngine";
 import { buildLeanPreservationComposite } from "../src/lib/coachExport/leanPreservationComposite";
@@ -23,7 +28,8 @@ function getSection(text: string, heading: string, nextHeading?: string) {
 
 async function buildCoachExportTextFromSeededBodyRows(
   page: import("@playwright/test").Page,
-  rows: Array<Record<string, unknown>>
+  rows: Array<Record<string, unknown>>,
+  options: { heightIn?: number } = {}
 ) {
   await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
   await resetDexieDb(page);
@@ -34,7 +40,7 @@ async function buildCoachExportTextFromSeededBodyRows(
     const now = Date.now();
 
     await db.bodyMetrics.bulkAdd(
-      seedRows.map((row, index) => ({
+      seedRows.rows.map((row, index) => ({
         id: `body-row-${index}-${crypto.randomUUID()}`,
         measuredAt: row.measuredAt ?? now - index * 14 * 24 * 60 * 60 * 1000,
         takenAt: row.takenAt ?? row.measuredAt ?? now - index * 14 * 24 * 60 * 60 * 1000,
@@ -42,10 +48,17 @@ async function buildCoachExportTextFromSeededBodyRows(
         ...row,
       })) as any[]
     );
+    if (Number.isFinite(seedRows.options.heightIn)) {
+      await db.app_meta.put({
+        key: "profile.heightIn",
+        valueJson: JSON.stringify({ heightIn: seedRows.options.heightIn }),
+        updatedAt: now,
+      });
+    }
 
     const metrics = await buildCoachExportMetrics();
     return formatCoachExportText(metrics);
-  }, rows);
+  }, { rows, options });
 }
 
 function buildMetrics(): CoachExportMetrics {
@@ -213,6 +226,44 @@ test("coach export visceral fat direction supports flat and worsening trends", a
   const worseningSection = getSection(formatCoachExportText(worseningMetrics), "Visceral Fat", "Cut / Phase Quality");
   expect(worseningSection).toContain("- Direction: Worsening");
   expect(worseningSection).toContain("- 14d trend: +2");
+});
+
+test("waist-to-height helpers calculate ratio and classify status", async () => {
+  expect(waistToHeightRatio(36.5, 71.75)).toBeCloseTo(0.509, 3);
+  expect(waistToHeightStatus(0.399)).toBe("Very Lean");
+  expect(waistToHeightStatus(0.4)).toBe("Healthy");
+  expect(waistToHeightStatus(0.499)).toBe("Healthy");
+  expect(waistToHeightStatus(0.5)).toBe("Elevated");
+  expect(waistToHeightStatus(0.599)).toBe("Elevated");
+  expect(waistToHeightStatus(0.6)).toBe("High Risk");
+});
+
+test("coach export omits waist-to-height ratio when height is missing", async ({ page }) => {
+  const text = await buildCoachExportTextFromSeededBodyRows(page, [
+    { measuredAt: Date.now(), weightLb: 188.6, waistIn: 36.5, bodyFatPct: 20.6 },
+  ]);
+
+  expect(text).not.toContain("Waist-to-Height Ratio");
+});
+
+test("coach export includes waist-to-height ratio when height and waist exist", async ({ page }) => {
+  const now = Date.now();
+  const text = await buildCoachExportTextFromSeededBodyRows(
+    page,
+    [
+      { measuredAt: now, weightLb: 188.6, waistIn: 36.5, bodyFatPct: 20.6 },
+      { measuredAt: now - 14 * 24 * 60 * 60 * 1000, weightLb: 190.2, waistIn: 37.3, bodyFatPct: 21.1 },
+    ],
+    { heightIn: 71.75 }
+  );
+  const section = getSection(text, "Waist-to-Height Ratio", "Coach Summary");
+
+  expect(section).toContain("- Current: 0.509");
+  expect(section).toContain("- 14d trend: -0.011");
+  expect(section).toContain("- Status: Elevated");
+  expect(section).toContain("- Healthy threshold: <0.500");
+  expect(section).toContain("- Waist needed for threshold: 35.9 in");
+  expect(section).toContain("- Distance to threshold: 0.6 in");
 });
 
 test("coach export includes visceral fat when only visceralFatEstimate exists", async ({ page }) => {
@@ -498,6 +549,14 @@ test("coach export includes goal progress when profile targets exist", async () 
   metrics.bodyComp.bodyFatPct = { latest: 20.6, baseline14d: 21.1, delta14d: -0.5 };
   metrics.bodyComp.waist = { latest: 36.5, baseline14d: 36.9, delta14d: -0.4 };
   metrics.bodyComp.visceralFat = { latest: 7, baseline14d: 8, delta14d: -1 };
+  metrics.bodyComp.waistToHeight = {
+    latest: 36.5 / 71.75,
+    baseline14d: 36.9 / 71.75,
+    delta14d: 36.5 / 71.75 - 36.9 / 71.75,
+    status: "Elevated",
+    healthyWaistTargetIn: 35.875,
+    distanceToThresholdIn: 0.625,
+  };
   metrics.goalProgress = buildGoalProgress({
     goals: {
       targetWeightLb: 180,
@@ -514,7 +573,25 @@ test("coach export includes goal progress when profile targets exist", async () 
   expect(section).toContain("- Body Fat: 20.6% → 18.0% | 2.6 pts remaining");
   expect(section).toContain("- Waist: 36.5 in → 35.9 in | 0.6 in remaining");
   expect(section).toContain("- Visceral Fat: 7 → 6 | 1 remaining");
+  expect(section).toContain("- Waist-to-Height Ratio: 0.509 → <0.500 | 0.009 remaining");
   expect(section).toContain("- Status: On Track");
+});
+
+test("coach intelligence includes waist-to-height improvement evidence", async () => {
+  const metrics = buildMetrics();
+  metrics.bodyComp.waistToHeight = {
+    latest: 0.509,
+    baseline14d: 0.52,
+    delta14d: -0.011,
+    status: "Elevated",
+    healthyWaistTargetIn: 35.9,
+    distanceToThresholdIn: 0.6,
+  };
+
+  const intelligence = buildCoachIntelligence(metrics);
+
+  expect(intelligence.positives).toContain("Waist-to-height ratio improving");
+  expect(intelligence.watchItems).toContain("Waist-to-height ratio is near the healthy threshold");
 });
 
 test("coach export omits missing goal targets cleanly", async () => {
@@ -579,6 +656,11 @@ test("coach export goal progress uses bodyMetrics current values, not profile cu
     const { buildCoachExportMetrics } = await import("/src/lib/coachExport/buildCoachExportMetrics.ts");
     const { formatCoachExportText } = await import("/src/lib/coachExport/formatCoachExportText.ts");
     const now = Date.now();
+    await db.app_meta.put({
+      key: "profile.heightIn",
+      valueJson: JSON.stringify({ heightIn: 71.75 }),
+      updatedAt: now,
+    });
 
     await db.bodyMetrics.bulkAdd([
       {
@@ -611,6 +693,7 @@ test("coach export goal progress uses bodyMetrics current values, not profile cu
 
   expect(section).toContain("- Weight: 188.6 lb → 180.0 lb | 8.6 lb remaining");
   expect(section).toContain("- Body Fat: 20.6% → 18.0% | 2.6 pts remaining");
+  expect(section).toContain("- Waist-to-Height Ratio: 0.509 → <0.500 | 0.009 remaining");
   expect(section).not.toContain("999");
   expect(section).not.toContain("99.0%");
 });
