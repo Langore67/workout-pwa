@@ -351,13 +351,144 @@ test("coach export lean preservation composite replaces single-factor lean prese
   expect(section).toContain("Composite");
   expect(section).toContain("- Acceptable");
   expect(section).toContain("- Confidence: High");
-  expect(section).toContain("✓ Strength improving");
-  expect(section).toContain("✓ Waist decreasing");
-  expect(section).toContain("• Lean mass estimate down 1.0 lb");
-  expect(section).toContain("• Aggressive rate of weight loss");
+  expect(section).toContain("+ Strength improving");
+  expect(section).toContain("+ Waist decreasing");
+  expect(section).toContain("- Lean mass estimate down 1.0 lb");
+  expect(section).toContain("- Aggressive rate of weight loss");
   expect(section).toContain("Bioimpedance lean-mass estimates can fluctuate with hydration");
   expect(text).toContain("- Status: Aggressive Cut / Muscle-Risk Cut");
   expect(text).not.toContain("- Lean Preservation: Poor");
+});
+
+test("coach intelligence summary removes strength and lean-preservation contradictions", async () => {
+  const metrics = buildMetrics();
+  metrics.bodyComp.weight = { latest: 198, baseline14d: 202, delta14d: -4 };
+  metrics.bodyComp.waist = { latest: 35.5, baseline14d: 36.1, delta14d: -0.6 };
+  metrics.bodyComp.bodyFatPct = { latest: 16.2, baseline14d: 16.9, delta14d: -0.7 };
+  metrics.bodyComp.leanMass = { latest: 146.7, baseline14d: 147.7, delta14d: -1 };
+  metrics.bodyComp.visceralFat = { latest: 7, baseline14d: 8, delta14d: -1 };
+  metrics.strengthSignal.delta14d = -0.05;
+  metrics.phaseQuality = {
+    title: "CUT QUALITY",
+    quadrant: "fast_loss",
+    quadrantLabel: "AGGRESSIVE / POSSIBLE",
+    quadrantNote: "Weight down / Waist flat or up over last 10 entries",
+    finalStatus: "Aggressive Cut / Muscle-Risk Cut",
+    confidence: "High",
+    tone: "watch",
+    cells: [],
+    metricCards: [],
+    drivers: [
+      "Weight down / Waist flat or up over last 10 entries",
+      "Lean Preservation: Poor",
+      "Strength Preservation: Improving",
+      "Status: Aggressive Cut / Muscle-Risk Cut",
+    ],
+  };
+  metrics.readinessNotes = [
+    "Phase quality: Aggressive Cut / Muscle-Risk Cut.",
+    "Lean Preservation: Poor",
+    "Hydration signal is stable.",
+  ];
+  metrics.leanPreservation = buildLeanPreservationComposite({
+    leanMass: metrics.bodyComp.leanMass,
+    weight: metrics.bodyComp.weight,
+    waist: metrics.bodyComp.waist,
+    bodyFatPct: metrics.bodyComp.bodyFatPct,
+    hydration: metrics.hydration,
+    strengthSignal: metrics.strengthSignal,
+  });
+
+  const text = formatCoachExportText(metrics);
+  const summary = getSection(text, "Coach Summary", "Lean Preservation");
+
+  expect(summary).toContain("Fat Loss");
+  expect(summary).toContain("- On Track");
+  expect(summary).toContain("Muscle Preservation");
+  expect(summary).toMatch(/- (Acceptable|Watch)/);
+  expect(text).toContain("Strength evidence is mixed");
+  expect(text).not.toContain("Strength declining");
+  expect(text).not.toContain("Lean Preservation: Poor");
+  expect(text).not.toContain("Phase quality:");
+});
+
+test("coach intelligence suppresses old single-factor lean preservation lines when composite exists", async () => {
+  const metrics = buildMetrics();
+  metrics.bodyComp.leanMass = { latest: 145, baseline14d: 147, delta14d: -2 };
+  metrics.bodyComp.waist = { latest: 36, baseline14d: 36, delta14d: 0 };
+  metrics.strengthSignal.delta14d = -0.1;
+  metrics.phaseQuality = {
+    title: "CUT QUALITY",
+    quadrant: "fast_loss",
+    quadrantLabel: "AGGRESSIVE / POSSIBLE",
+    quadrantNote: "Weight down / Waist flat or up over last 10 entries",
+    finalStatus: "Aggressive Cut / Muscle-Risk Cut",
+    confidence: "High",
+    tone: "watch",
+    cells: [],
+    metricCards: [],
+    drivers: ["Lean Preservation: Poor", "Status: Aggressive Cut / Muscle-Risk Cut"],
+  };
+  metrics.readinessNotes = ["Lean Preservation: Poor", "Hydration signal is stable."];
+  metrics.leanPreservation = buildLeanPreservationComposite({
+    leanMass: metrics.bodyComp.leanMass,
+    weight: metrics.bodyComp.weight,
+    waist: metrics.bodyComp.waist,
+    bodyFatPct: metrics.bodyComp.bodyFatPct,
+    hydration: metrics.hydration,
+    strengthSignal: metrics.strengthSignal,
+  });
+
+  const text = formatCoachExportText(metrics);
+
+  expect(text).toContain("Lean Preservation");
+  expect(text).toContain("Composite");
+  expect(text).not.toContain("Lean Preservation: Poor");
+});
+
+test("coach intelligence avoids duplicate phase status lines", async () => {
+  const metrics = buildMetrics();
+  metrics.phaseQuality = {
+    title: "CUT QUALITY",
+    quadrant: "fast_loss",
+    quadrantLabel: "AGGRESSIVE / POSSIBLE",
+    quadrantNote: "Weight down / Waist flat or up over last 10 entries",
+    finalStatus: "Aggressive Cut / Muscle-Risk Cut",
+    confidence: "High",
+    tone: "watch",
+    cells: [],
+    metricCards: [],
+    drivers: [
+      "Status: Aggressive Cut / Muscle-Risk Cut",
+      "Strength Preservation: Improving",
+    ],
+  };
+
+  const section = getSection(formatCoachExportText(metrics), "Cut / Phase Quality", "Hydration");
+
+  expect(section.match(/Aggressive Cut \/ Muscle-Risk Cut/g) ?? []).toHaveLength(1);
+});
+
+test("coach intelligence clarifies technique probe rejection instead of generic load wording", async () => {
+  const metrics = buildMetrics();
+  metrics.trainingSignals.movementQuality = ["Lat Pulldown technique probe rejected: Load looked too heavy"];
+  metrics.trainingSignals.discussWithGaz = ["Review technique probe rejected: Load looked too heavy"];
+
+  const text = formatCoachExportText(metrics);
+
+  expect(text).toContain("Technique/probe variation was rejected");
+  expect(text).not.toContain("Load looked too heavy");
+});
+
+test("coach intelligence clarifies later-set pressing fatigue instead of generic load wording", async () => {
+  const metrics = buildMetrics();
+  metrics.trainingSignals.movementQuality = ["Bench Press: Load looked too heavy on later sets"];
+  metrics.trainingSignals.discussWithGaz = ["Review Bench Press: Load looked too heavy"];
+
+  const text = formatCoachExportText(metrics);
+
+  expect(text).toContain("Pressing endurance limited later sets");
+  expect(text).not.toContain("Load looked too heavy");
 });
 
 test("coach export includes exercise vocabulary section and rules", async () => {
