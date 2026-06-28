@@ -133,6 +133,7 @@ type BodyMetricRow = {
   bodyFatMassLb?: number;
   leanMassLb?: number;
   skeletalMuscleMassLb?: number;
+  visceralFatEstimate?: number;
   visceralFatIndex?: number;
   bodyWaterPct?: number;
 
