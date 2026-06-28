@@ -15,6 +15,7 @@ import { computeStrengthSignalV2 } from "../../strength/v2/computeStrengthSignal
 import {
   getBodyFatPctRaw,
   getLeanMassLb,
+  getVisceralFatEstimate,
   getWeightLb,
   getWaistIn,
 } from "../../body/bodyCalculations";
@@ -36,6 +37,7 @@ import {
 } from "./buildPatternSummary";
 import { buildNextWorkoutFocus } from "./buildNextWorkoutFocus";
 import { buildExerciseVocabulary } from "./exerciseVocabulary";
+import { buildLeanPreservationComposite } from "./leanPreservationComposite";
 import { selectRecentStrengthBuildingSessions } from "./strengthBuildingSessions";
 import type {
   CoachExportAnchorLift,
@@ -557,6 +559,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     waist: buildMetric(bodyRows, getWaistIn),
     bodyFatPct: buildMetric(bodyRows, getBodyFatPctRaw),
     leanMass: buildMetric(bodyRows, getLeanMassLb),
+    visceralFat: buildMetric(bodyRows, getVisceralFatEstimate),
     bodyweightDelta7d: (() => {
       const latest = findLatestValue(bodyRows, getWeightLb);
       const baseline7d = findBaselineValue(bodyRows, getWeightLb, latest.at, 7);
@@ -601,6 +604,15 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     sets: sets ?? [],
     tracks: tracks ?? [],
   });
+  const leanPreservation = buildLeanPreservationComposite({
+    leanMass: bodyComp.leanMass,
+    weight: bodyComp.weight,
+    waist: bodyComp.waist,
+    bodyFatPct: bodyComp.bodyFatPct,
+    hydration,
+    strengthSignal,
+    fatigueSignals: trainingSignalBundle.trainingSignals.fatigueReadiness,
+  });
   const patternSummary = buildPatternSummary({
     sessions: trainingSignalBundle.completedSessions,
     trainingSignals: trainingSignalBundle.trainingSignals,
@@ -638,6 +650,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
         currentPhase,
         bodyComp,
         hydration,
+        leanPreservation,
         strengthSignal,
         phaseQuality,
         anchorLifts,

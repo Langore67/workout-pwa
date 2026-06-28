@@ -31,6 +31,70 @@ function formatMetricLine(
   return `- ${label}: ${formatValue(latest, digits, unit)} (14d ${formatSigned(delta14d, digits, unit)})`;
 }
 
+function formatVisceralFatValue(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "Unknown";
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function visceralFatDirection(delta14d: number | null | undefined) {
+  if (delta14d == null || !Number.isFinite(delta14d)) return "Unknown";
+  if (delta14d < 0) return "Improving";
+  if (delta14d > 0) return "Worsening";
+  return "Flat";
+}
+
+function formatVisceralFatSection(metrics: CoachExportMetrics): string[] {
+  const visceralFat = metrics.bodyComp.visceralFat;
+  if (!visceralFat || visceralFat.latest == null || !Number.isFinite(visceralFat.latest)) return [];
+
+  return [
+    "Visceral Fat",
+    `- Latest estimate: ${formatVisceralFatValue(visceralFat.latest)}`,
+    `- 14d trend: ${formatSigned(visceralFat.delta14d, 0)}`,
+    `- Direction: ${visceralFatDirection(visceralFat.delta14d)}`,
+    `- Confidence: ${visceralFat.delta14d == null ? "Low" : "Moderate"}`,
+    "- Note: Hume visceral fat is an estimate. Use trend alongside waist circumference rather than as an absolute measurement.",
+    "",
+  ];
+}
+
+function formatLeanPreservationSection(metrics: CoachExportMetrics): string[] {
+  const composite = metrics.leanPreservation;
+  if (!composite) return [];
+
+  const positive = composite.evidence.positive.length
+    ? composite.evidence.positive.map((item) => `✓ ${item}`)
+    : ["- No positive evidence available."];
+  const negative = composite.evidence.negative.length
+    ? composite.evidence.negative.map((item) => `• ${item}`)
+    : ["- No negative evidence available."];
+
+  return [
+    "Lean Preservation",
+    "",
+    "Raw Metrics",
+    `- Lean Mass: ${formatValue(composite.rawMetrics.leanMassLatest, 1, " lb")} (14d ${formatSigned(composite.rawMetrics.leanMassDelta14d, 1, " lb")})`,
+    "",
+    "Composite",
+    `- ${composite.status}`,
+    `- Confidence: ${composite.confidence}`,
+    "",
+    "Evidence",
+    "",
+    "Positive",
+    ...positive,
+    "",
+    "Negative",
+    ...negative,
+    "",
+    "Coach Interpretation",
+    composite.coachInterpretation
+      ? `- ${composite.coachInterpretation}`
+      : "- No additional interpretation.",
+    "",
+  ];
+}
+
 function formatAnchorLift(lift: CoachExportAnchorLift) {
   if (lift.e1rm == null || lift.effectiveWeightLb == null || lift.reps == null) {
     return `- ${lift.pattern}: Insufficient Data`;
@@ -150,6 +214,13 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
       : ["- No repeated progression pattern yet."]),
   ];
 
+  const phaseQualityDriverLines = metrics.phaseQuality?.drivers?.length
+    ? metrics.phaseQuality.drivers
+        .filter((driver) => (metrics.leanPreservation ? !/^Lean Preservation\s*:/i.test(driver) : true))
+        .slice(0, 4)
+        .map((driver) => `- ${driver}`)
+    : ["- Drivers: Insufficient Data"];
+
   const lines = [
     "IronForge Coach Export",
     `Generated: ${formatDate(metrics.generatedAt)}`,
@@ -165,12 +236,12 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     `- Bodyweight delta 7d: ${formatSigned(metrics.bodyComp.bodyweightDelta7d, 1, " lb")}`,
     `- Bodyweight delta 14d: ${formatSigned(metrics.bodyComp.bodyweightDelta14d, 1, " lb")}`,
     "",
+    ...formatLeanPreservationSection(metrics),
+    ...formatVisceralFatSection(metrics),
     formatPhaseQualityHeading(metrics.currentPhase),
     `- Status: ${metrics.phaseQuality?.finalStatus ?? "Insufficient Data"}`,
     `- Confidence: ${metrics.phaseQuality?.confidence ?? "Unknown"}`,
-    ...(metrics.phaseQuality?.drivers?.length
-      ? metrics.phaseQuality.drivers.slice(0, 4).map((driver) => `- ${driver}`)
-      : ["- Drivers: Insufficient Data"]),
+    ...phaseQualityDriverLines,
     "",
     "Hydration",
     `- Latest body water %: ${formatValue(metrics.hydration.latestWaterPct, 1, "%")}`,

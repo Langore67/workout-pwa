@@ -192,6 +192,21 @@ function buildAnchorMeasurement(
   };
 }
 
+function bestScoredCandidateInWindow(
+  candidates: CandidateSet[],
+  now: number,
+  windowDays: number
+): CandidateSet | null {
+  const cutoff = now - windowDays * DAY_MS;
+  const windowCandidates = candidates.filter((candidate) => candidate.at >= cutoff && candidate.at <= now);
+  if (!windowCandidates.length) return null;
+
+  return windowCandidates.reduce((winner, candidate) => {
+    if (candidate.e1RM > winner.e1RM) return candidate;
+    if (candidate.e1RM === winner.e1RM && candidate.at > winner.at) return candidate;
+    return winner;
+  }, windowCandidates[0]);
+}
 
 function latestSetPayload(candidate: CandidateSet): StrengthSignalV2LatestSet {
   return {
@@ -247,6 +262,22 @@ function findLatestSelectedCandidate(
   if (!matchingCandidates.length) return null;
 
   return matchingCandidates.slice().sort((a, b) => b.at - a.at)[0] ?? null;
+}
+
+function isCarrySetTypeEligible(set: SetEntry): boolean {
+  const setType = String((set as any)?.setType ?? (set as any)?.type ?? "")
+    .trim()
+    .toLowerCase();
+  return ![
+    "warmup",
+    "warm-up",
+    "warm up",
+    "wu",
+    "drop",
+    "dropset",
+    "drop set",
+    "failure",
+  ].includes(setType);
 }
 
 function emptyAnchorResult(): StrengthSignalV2AnchorResult {
@@ -323,12 +354,13 @@ function buildScoredAnchorResult(
   // while leaving the existing slot-level fields wired to capacity for compatibility.
   const capacity = buildAnchorMeasurement(selectedExerciseCandidates, now, CAPACITY_WINDOW_DAYS, true);
   const state = buildAnchorMeasurement(selectedExerciseCandidates, now, STATE_WINDOW_DAYS, true);
+  const bestCapacityCandidate = bestScoredCandidateInWindow(selectedExerciseCandidates, now, CAPACITY_WINDOW_DAYS);
 
   return {
     anchorId: selected.anchorId,
     exerciseId: latest.exercise.id,
     exerciseName: latest.exercise.name,
-    latestSet: latestSetPayload(latest),
+    latestSet: bestCapacityCandidate ? latestSetPayload(bestCapacityCandidate) : latestSetPayload(latest),
     capacity,
     state,
     e1RM: capacity.e1RM,
@@ -352,7 +384,7 @@ function buildCarryAnchorResult(
 
   for (const set of sets) {
     const track = trackById.get(set.trackId);
-    if (!track) continue;
+    if (!track || !isStrengthTrackType(track.trackType) || !isCarrySetTypeEligible(set)) continue;
 
     const exercise = exerciseById.get(track.exerciseId);
     if (!exercise) continue;
