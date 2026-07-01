@@ -190,16 +190,36 @@ function formatGoalProgressSection(metrics: CoachExportMetrics): string[] {
   ];
 }
 
+function uniqueEvidenceLines(values: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of values) {
+    const value = String(raw ?? "").replace(/\s+/g, " ").trim();
+    if (!value) continue;
+    const key = value
+      .toLowerCase()
+      .replace(/\bhydration confidence is low\b/g, "hydration confidence low")
+      .replace(/\bhydration confidence is high\b/g, "hydration confidence high")
+      .replace(/[.]+$/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
 function formatLeanPreservationSectionV2(metrics: CoachExportMetrics): string[] {
   const composite = metrics.leanPreservation;
   if (!composite) return [];
   const intelligence = metrics.coachIntelligence ?? buildCoachIntelligence(metrics);
   const positive = composite.evidence.positive.length
-    ? composite.evidence.positive.map((item) => `+ ${clarifyCoachExportLine(item === "Strength declining" ? "Strength evidence is mixed" : item)}`)
+    ? uniqueEvidenceLines(composite.evidence.positive).map((item) => `+ ${clarifyCoachExportLine(item === "Strength declining" ? "Strength evidence is mixed" : item)}`)
     : ["- No positive evidence available."];
   const negativeSource = intelligence.watchItems.length ? intelligence.watchItems : composite.evidence.negative;
   const negative = negativeSource.length
-    ? negativeSource.map((item) => `- ${clarifyCoachExportLine(item === "Strength declining" ? "Strength evidence is mixed" : item)}`)
+    ? uniqueEvidenceLines(negativeSource).map((item) => `- ${clarifyCoachExportLine(item === "Strength declining" ? "Strength evidence is mixed" : item)}`)
     : ["- No negative evidence available."];
   const muscleNarrative =
     intelligence.narrative.find((item) => item.startsWith("Muscle Preservation:")) ??

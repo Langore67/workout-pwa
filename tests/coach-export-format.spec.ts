@@ -509,6 +509,102 @@ test("lean preservation composite keeps classification but reduces confidence wh
   expect(lowHydration?.confidence).toBe("Moderate");
 });
 
+test("lean preservation caps poor to watch when low hydration makes lean mass decline inconclusive", async () => {
+  const composite = buildLeanPreservationComposite({
+    leanMass: { latest: 145, baseline14d: 147, delta14d: -2 },
+    weight: { latest: 198, baseline14d: 200, delta14d: -2 },
+    waist: { latest: 36, baseline14d: 36, delta14d: 0 },
+    bodyFatPct: { latest: 17, baseline14d: 17, delta14d: 0 },
+    hydration: {
+      latestWaterPct: 49,
+      confidenceLabel: "Low",
+      confidenceScore: 25,
+      note: "Hydration confidence is low.",
+      distortionLikely: true,
+    },
+    strengthSignal: { current: 1.8, delta14d: -0.1, vs90dBestPct: -8, currentBodyweight: 198, bodyweightDaysUsed: 5 },
+    recentPerformanceSignals: ["Lat Pulldown: improved stretch and contraction"],
+  });
+
+  expect(composite?.status).toBe("Watch");
+  expect(composite?.evidence.negative).toContain("Lean mass estimate down 2.0 lb");
+  expect(composite?.evidence.negative).toContain("Hydration confidence low");
+  expect(composite?.coachInterpretation).toContain("low hydration confidence makes the lean-mass drop less conclusive");
+});
+
+test("lean preservation can remain poor when low hydration and performance both deteriorate", async () => {
+  const composite = buildLeanPreservationComposite({
+    leanMass: { latest: 145, baseline14d: 147, delta14d: -2 },
+    weight: { latest: 198, baseline14d: 200, delta14d: -2 },
+    waist: { latest: 36, baseline14d: 36, delta14d: 0 },
+    bodyFatPct: { latest: 17, baseline14d: 17, delta14d: 0 },
+    hydration: {
+      latestWaterPct: 49,
+      confidenceLabel: "Low",
+      confidenceScore: 25,
+      note: "Hydration confidence is low.",
+      distortionLikely: true,
+    },
+    strengthSignal: { current: 1.8, delta14d: -0.1, vs90dBestPct: -8, currentBodyweight: 198, bodyweightDaysUsed: 5 },
+    recentPerformanceSignals: [
+      "Bench Press: form breakdown under fatigue",
+      "Lat Pulldown: reduced capacity",
+    ],
+  });
+
+  expect(composite?.status).toBe("Poor");
+  expect(composite?.coachInterpretation).toContain("performance evidence is also deteriorating");
+});
+
+test("lean preservation includes positive recent performance evidence when global strength is pressured", async () => {
+  const composite = buildLeanPreservationComposite({
+    leanMass: { latest: 145.4, baseline14d: 147, delta14d: -1.6 },
+    weight: { latest: 198, baseline14d: 200, delta14d: -2 },
+    waist: { latest: 36, baseline14d: 36, delta14d: 0 },
+    bodyFatPct: { latest: 17, baseline14d: 17, delta14d: 0 },
+    hydration: { latestWaterPct: 57, confidenceLabel: "High", confidenceScore: 80, note: "Stable" },
+    strengthSignal: { current: 1.8, delta14d: -0.1, vs90dBestPct: -8, currentBodyweight: 198, bodyweightDaysUsed: 5 },
+    recentPerformanceSignals: [
+      "3-Point DB Row: breakthrough pattern found",
+      "Lat Pulldown: improved stretch and contraction",
+    ],
+  });
+
+  expect(composite?.evidence.positive.join(" ")).toContain(
+    "Strength is pressured globally, but recent session performance includes positive evidence"
+  );
+  expect(composite?.evidence.positive).not.toHaveLength(0);
+});
+
+test("lean preservation export suppresses duplicate hydration confidence evidence", async () => {
+  const metrics = buildMetrics();
+  metrics.bodyComp.leanMass = { latest: 145, baseline14d: 147, delta14d: -2 };
+  metrics.bodyComp.waist = { latest: 36, baseline14d: 36, delta14d: 0 };
+  metrics.bodyComp.bodyFatPct = { latest: 17, baseline14d: 17, delta14d: 0 };
+  metrics.bodyComp.visceralFat = { latest: 8, baseline14d: 8, delta14d: 0 };
+  metrics.strengthSignal.delta14d = -0.1;
+  metrics.hydration = {
+    latestWaterPct: 49,
+    confidenceLabel: "Low",
+    confidenceScore: 25,
+    note: "Hydration confidence is low.",
+    distortionLikely: true,
+  };
+  metrics.leanPreservation = buildLeanPreservationComposite({
+    leanMass: metrics.bodyComp.leanMass,
+    weight: metrics.bodyComp.weight,
+    waist: metrics.bodyComp.waist,
+    bodyFatPct: metrics.bodyComp.bodyFatPct,
+    hydration: metrics.hydration,
+    strengthSignal: metrics.strengthSignal,
+    recentPerformanceSignals: ["Bench Press: form breakdown under fatigue"],
+  });
+
+  const section = getSection(formatCoachExportText(metrics), "Lean Preservation", "Visceral Fat");
+
+  expect(section.match(/Hydration confidence(?: is)? low/g) ?? []).toHaveLength(1);
+});
+
 test("coach export lean preservation composite replaces single-factor lean preservation driver and preserves muscle-risk status", async () => {
   const metrics = buildMetrics();
   metrics.bodyComp.leanMass = { latest: 146.7, baseline14d: 147.7, delta14d: -1 };

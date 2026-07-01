@@ -651,6 +651,12 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     hydration,
     strengthSignal,
     fatigueSignals: trainingSignalBundle.trainingSignals.fatigueReadiness,
+    recentPerformanceSignals: [
+      ...trainingSignalBundle.trainingSignals.movementQuality,
+      ...trainingSignalBundle.trainingSignals.stimulusCoverage,
+      ...trainingSignalBundle.trainingSignals.fatigueReadiness,
+      ...trainingSignalBundle.trainingSignals.nextWorkoutFocus,
+    ],
   });
   const patternSummary = buildPatternSummary({
     sessions: trainingSignalBundle.completedSessions,
