@@ -283,7 +283,7 @@ function buildDataNotes(metrics: CoachExportMetrics) {
   if (metrics.strengthSignal.current == null) notes.push("Missing strength signal data.");
   if (!metrics.anchorLifts.some((lift) => lift.e1rm != null)) notes.push("Missing anchor-lift data.");
 
-  return notes.length ? notes : ["No major data gaps detected."];
+  return notes;
 }
 
 function uniqueCompact(values: Array<string | null | undefined>, limit = 4): string[] {

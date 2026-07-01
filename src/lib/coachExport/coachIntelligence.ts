@@ -4,6 +4,8 @@ export type CoachIntelligence = {
   fatLossStatus: "On Track" | "Watch" | "Off Track";
   musclePreservationStatus: "Strong" | "Acceptable" | "Watch" | "Poor";
   trainingStatus: "Progressing" | "Stable" | "Mixed" | "Regressing";
+  performanceTrendStatus: "Improving" | "Stable" | "Mixed" | "Regressing" | "Insufficient Data";
+  movementQualityStatus: "Improving" | "Stable" | "Watch" | "Mixed" | "Insufficient Data";
   recoveryStatus: "Good" | "Watch" | "Poor";
   overallStatus: "On Track" | "Watch" | "Intervene";
   confidence: "High" | "Moderate" | "Low";
@@ -78,7 +80,15 @@ function classifyFatLoss(metrics: CoachExportMetrics): {
   if (waist === "down") positives.push("Waist is decreasing");
   if (bf === "down") positives.push("Body-fat trend is improving");
   if (visceral === "down") positives.push("Visceral fat estimate is improving");
-  if (whtr === "down") positives.push("Waist-to-height ratio improving");
+  if (finite(metrics.bodyComp.waistToHeight?.latest)) {
+    const latest = metrics.bodyComp.waistToHeight.latest;
+    if (latest < 0.5) positives.push("Waist-to-height ratio is below the healthy threshold");
+    else if (latest < 0.52 && whtr === "down") {
+      positives.push("Waist-to-height ratio is near the healthy threshold and improving");
+    } else if (whtr === "down") {
+      positives.push("Waist-to-height ratio is improving");
+    }
+  }
 
   if (weight === "up") watchItems.push("Body weight is rising");
   if (waist === "up") watchItems.push("Waist is increasing");
@@ -86,10 +96,10 @@ function classifyFatLoss(metrics: CoachExportMetrics): {
   if (visceral === "up") watchItems.push("Visceral fat estimate is worsening");
   if (
     finite(metrics.bodyComp.waistToHeight?.latest) &&
-    metrics.bodyComp.waistToHeight.latest >= 0.5 &&
-    metrics.bodyComp.waistToHeight.latest < 0.52
+    metrics.bodyComp.waistToHeight.latest >= 0.52 &&
+    whtr !== "down"
   ) {
-    watchItems.push("Waist-to-height ratio is near the healthy threshold");
+    watchItems.push("Waist-to-height ratio remains elevated");
   }
 
   if (weight === "down" && waist === "down") {
@@ -120,18 +130,39 @@ function classifyFatLoss(metrics: CoachExportMetrics): {
   };
 }
 
-function classifyTraining(metrics: CoachExportMetrics): {
-  status: CoachIntelligence["trainingStatus"];
+function trainingEvidenceText(metrics: CoachExportMetrics) {
+  const movementText = metrics.trainingSignals.movementQuality.join(" ");
+  const stimulusText = metrics.trainingSignals.stimulusCoverage.join(" ");
+  const fatigueText = [
+    ...metrics.trainingSignals.fatigueReadiness,
+    ...metrics.patternSummary.fatigue,
+  ].join(" ");
+  const patternText = [
+    ...metrics.patternSummary.movementQuality,
+    ...metrics.patternSummary.constraints,
+    ...metrics.patternSummary.progression,
+  ].join(" ");
+
+  return {
+    movementText,
+    stimulusText,
+    fatigueText,
+    patternText,
+    allText: [movementText, stimulusText, fatigueText, patternText].join(" "),
+  };
+}
+
+function classifyPerformanceTrend(metrics: CoachExportMetrics): {
+  status: CoachIntelligence["performanceTrendStatus"];
   explanation: string;
   positives: string[];
   watchItems: string[];
 } {
   const strength = strengthTrend(metrics);
-  const movementText = metrics.trainingSignals.movementQuality.join(" ");
-  const fatigueText = [
-    ...metrics.trainingSignals.fatigueReadiness,
-    ...metrics.patternSummary.fatigue,
-  ].join(" ");
+  const { allText } = trainingEvidenceText(metrics);
+  const hasPositivePerformanceEvidence =
+    /pr\b|personal record|breakthrough|improved|improving|strong|consistent/i.test(allText) ||
+    hasPhaseStrengthImproving(metrics);
   const positives: string[] = [];
   const watchItems: string[] = [];
 
@@ -146,7 +177,39 @@ function classifyTraining(metrics: CoachExportMetrics): {
     );
   }
 
-  if (/improved|improving|strong|clean|solid|consistent/i.test(movementText)) {
+  if (hasPositivePerformanceEvidence) {
+    positives.push("Recent notes include positive performance or breakthrough evidence");
+  }
+
+  if (strength === "unknown" && !hasPositivePerformanceEvidence) {
+    return { status: "Insufficient Data", explanation: "Performance trend needs more strength or performance evidence.", positives, watchItems };
+  }
+  if (strength === "improving") {
+    return { status: "Improving", explanation: "Strength Signal and recent performance evidence are moving positively.", positives, watchItems };
+  }
+  if (strength === "stable") {
+    return { status: "Stable", explanation: "Strength Signal is holding steady.", positives, watchItems };
+  }
+  if (strength === "declining" && hasPositivePerformanceEvidence) {
+    return { status: "Mixed", explanation: "Global strength is down, but recent exercise-level performance evidence is positive.", positives, watchItems };
+  }
+  if (strength === "declining") {
+    return { status: "Regressing", explanation: "Global strength is below recent trend.", positives, watchItems };
+  }
+  return { status: "Mixed", explanation: "Performance evidence is mixed across global strength and recent sessions.", positives, watchItems };
+}
+
+function classifyMovementQuality(metrics: CoachExportMetrics): {
+  status: CoachIntelligence["movementQualityStatus"];
+  explanation: string;
+  positives: string[];
+  watchItems: string[];
+} {
+  const { movementText, fatigueText, allText } = trainingEvidenceText(metrics);
+  const positives: string[] = [];
+  const watchItems: string[] = [];
+
+  if (/improved|improving|breakthrough|clean|solid|consistent|strong/i.test(movementText)) {
     positives.push("Recent movement notes include positive execution signals");
   }
   if (/terminal reps|terminal-rep|later-set fatigue|fatigue/i.test(fatigueText)) {
@@ -155,23 +218,45 @@ function classifyTraining(metrics: CoachExportMetrics): {
   if (/press|pressing|bench|overhead/i.test(fatigueText) && /fatigue|terminal|later/i.test(fatigueText)) {
     watchItems.push("Pressing endurance limited later sets");
   }
-  if (/technique|probe|rejected/i.test(`${movementText} ${fatigueText}`)) {
+  if (/pain|twinge|joint feedback|stopped due to|sensitive|sensitivity/i.test(allText)) {
+    watchItems.push("Joint feedback or pain affected movement quality");
+  }
+  if (/form breakdown|form breaking|range shortened|reduced range|rom|lost position/i.test(allText)) {
+    watchItems.push("Form or range of motion changed under fatigue");
+  }
+  if (/technique|probe|rejected/i.test(allText)) {
     watchItems.push("Technique/probe variation was rejected");
   }
-  if (/equipment/i.test(`${movementText} ${fatigueText}`)) {
+  if (/equipment/i.test(allText)) {
     watchItems.push("Equipment issue identified");
   }
 
-  if (strength === "improving" && watchItems.length === 0) {
-    return { status: "Progressing", explanation: "Strength and recent execution signals are moving positively.", positives, watchItems };
+  if (!allText.trim()) {
+    return { status: "Insufficient Data", explanation: "Movement quality needs more recent session-note evidence.", positives, watchItems };
   }
-  if ((strength === "stable" || strength === "improving") && watchItems.length <= 1) {
-    return { status: "Stable", explanation: "Training performance is holding with manageable execution notes.", positives, watchItems };
+  if (watchItems.some((item) => /Joint feedback|pain|Form|range of motion|Technique\/probe|Equipment/i.test(item))) {
+    return { status: "Watch", explanation: "Recent session notes show movement-quality constraints to monitor.", positives, watchItems };
   }
-  if (strength === "declining" && watchItems.length >= 2) {
-    return { status: "Regressing", explanation: "Global strength and recent session notes both show performance pressure.", positives, watchItems };
+  if (positives.length && watchItems.length) {
+    return { status: "Mixed", explanation: "Recent sessions include both positive execution signals and movement-quality watch items.", positives, watchItems };
   }
-  return { status: "Mixed", explanation: "Training evidence is mixed across global strength and exercise-specific notes.", positives, watchItems };
+  if (watchItems.length) {
+    return { status: "Watch", explanation: "Recent session notes show movement-quality constraints to monitor.", positives, watchItems };
+  }
+  if (positives.length) {
+    return { status: "Improving", explanation: "Recent movement notes show cleaner or improving execution.", positives, watchItems };
+  }
+  return { status: "Stable", explanation: "No major movement-quality limiter is visible in recent session notes.", positives, watchItems };
+}
+
+function legacyTrainingStatus(
+  performance: ReturnType<typeof classifyPerformanceTrend>,
+  movement: ReturnType<typeof classifyMovementQuality>
+): CoachIntelligence["trainingStatus"] {
+  if (performance.status === "Regressing" && movement.status === "Watch") return "Regressing";
+  if (performance.status === "Improving" && (movement.status === "Improving" || movement.status === "Stable")) return "Progressing";
+  if (performance.status === "Stable" && movement.status !== "Watch") return "Stable";
+  return "Mixed";
 }
 
 function classifyRecovery(metrics: CoachExportMetrics): {
@@ -194,13 +279,13 @@ function classifyRecovery(metrics: CoachExportMetrics): {
   return { status: "Good", explanation: "No major recovery limiter is visible in the export evidence.", positives, watchItems };
 }
 
-function recommendationSet(metrics: CoachExportMetrics, training: ReturnType<typeof classifyTraining>): string[] {
+function recommendationSet(metrics: CoachExportMetrics, movement: ReturnType<typeof classifyMovementQuality>): string[] {
   const recommendations: string[] = [];
   if (aggressiveCut(metrics)) recommendations.push("Keep progression conservative while the cut rate is aggressive.");
-  if (training.watchItems.some((item) => /Pressing endurance/i.test(item))) {
+  if (movement.watchItems.some((item) => /Pressing endurance/i.test(item))) {
     recommendations.push("Monitor pressing endurance and stop sets before terminal-rep quality breaks down.");
   }
-  if (training.watchItems.some((item) => /Technique\/probe/i.test(item))) {
+  if (movement.watchItems.some((item) => /Technique\/probe/i.test(item))) {
     recommendations.push("Do not progress rejected technique/probe variations until execution is clean.");
   }
   if (!recommendations.length) recommendations.push("Continue current approach and monitor the next 1-2 check-ins.");
@@ -209,7 +294,9 @@ function recommendationSet(metrics: CoachExportMetrics, training: ReturnType<typ
 
 export function buildCoachIntelligence(metrics: CoachExportMetrics): CoachIntelligence {
   const fatLoss = classifyFatLoss(metrics);
-  const training = classifyTraining(metrics);
+  const performance = classifyPerformanceTrend(metrics);
+  const movement = classifyMovementQuality(metrics);
+  const trainingStatus = legacyTrainingStatus(performance, movement);
   const recovery = classifyRecovery(metrics);
   const muscleStatus = metrics.leanPreservation?.status ?? "Watch";
   const confidenceInputs = [
@@ -220,10 +307,10 @@ export function buildCoachIntelligence(metrics: CoachExportMetrics): CoachIntell
   ].filter(finite).length;
 
   let overallStatus: CoachIntelligence["overallStatus"] = "Watch";
-  if (fatLoss.status === "On Track" && (muscleStatus === "Strong" || muscleStatus === "Acceptable") && training.status !== "Regressing") {
+  if (fatLoss.status === "On Track" && (muscleStatus === "Strong" || muscleStatus === "Acceptable") && trainingStatus !== "Regressing") {
     overallStatus = aggressiveCut(metrics) || recovery.status === "Watch" ? "Watch" : "On Track";
   }
-  if (fatLoss.status === "Off Track" || muscleStatus === "Poor" || training.status === "Regressing" || recovery.status === "Poor") {
+  if (fatLoss.status === "Off Track" || muscleStatus === "Poor" || trainingStatus === "Regressing" || recovery.status === "Poor") {
     overallStatus = "Intervene";
   }
 
@@ -246,7 +333,8 @@ export function buildCoachIntelligence(metrics: CoachExportMetrics): CoachIntell
   const positives = unique([
     ...fatLoss.positives,
     ...(metrics.leanPreservation?.evidence.positive ?? []),
-    ...training.positives,
+    ...performance.positives,
+    ...movement.positives,
     ...recovery.positives,
   ], 8);
 
@@ -255,24 +343,28 @@ export function buildCoachIntelligence(metrics: CoachExportMetrics): CoachIntell
     ...(metrics.leanPreservation?.evidence.negative ?? []).map((item) =>
       item === "Strength declining" ? "Strength evidence is mixed" : item
     ),
-    ...training.watchItems,
+    ...performance.watchItems,
+    ...movement.watchItems,
     ...recovery.watchItems,
   ], 8);
 
   return {
     fatLossStatus: fatLoss.status,
     musclePreservationStatus: muscleStatus,
-    trainingStatus: training.status,
+    trainingStatus,
+    performanceTrendStatus: performance.status,
+    movementQualityStatus: movement.status,
     recoveryStatus: recovery.status,
     overallStatus,
     confidence,
     positives,
     watchItems,
-    recommendations: recommendationSet(metrics, training),
+    recommendations: recommendationSet(metrics, movement),
     narrative: [
       `Fat Loss: ${fatLoss.explanation}`,
       `Muscle Preservation: ${muscleExplanation}`,
-      `Training: ${training.explanation}`,
+      `Performance Trend: ${performance.explanation}`,
+      `Movement Quality: ${movement.explanation}`,
       `Recovery: ${recovery.explanation}`,
     ],
   };

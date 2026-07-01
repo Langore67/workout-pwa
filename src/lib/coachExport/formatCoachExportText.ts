@@ -101,7 +101,12 @@ function formatCoachSummarySection(metrics: CoachExportMetrics): string[] {
   const intelligence = metrics.coachIntelligence ?? buildCoachIntelligence(metrics);
   const fatLossNarrative = intelligence.narrative.find((item) => item.startsWith("Fat Loss:")) ?? "Fat Loss: Evidence is incomplete.";
   const muscleNarrative = intelligence.narrative.find((item) => item.startsWith("Muscle Preservation:")) ?? "Muscle Preservation: Evidence is incomplete.";
-  const trainingNarrative = intelligence.narrative.find((item) => item.startsWith("Training:")) ?? "Training: Evidence is incomplete.";
+  const performanceNarrative =
+    intelligence.narrative.find((item) => item.startsWith("Performance Trend:")) ??
+    "Performance Trend: Evidence is incomplete.";
+  const movementNarrative =
+    intelligence.narrative.find((item) => item.startsWith("Movement Quality:")) ??
+    "Movement Quality: Evidence is incomplete.";
 
   return [
     "Coach Summary",
@@ -117,8 +122,10 @@ function formatCoachSummarySection(metrics: CoachExportMetrics): string[] {
     `- ${muscleNarrative.replace(/^Muscle Preservation:\s*/, "")}`,
     "",
     "Training",
-    `- ${intelligence.trainingStatus}`,
-    `- ${trainingNarrative.replace(/^Training:\s*/, "")}`,
+    `- Performance Trend: ${intelligence.performanceTrendStatus}`,
+    `- ${performanceNarrative.replace(/^Performance Trend:\s*/, "")}`,
+    `- Movement Quality: ${intelligence.movementQualityStatus}`,
+    `- ${movementNarrative.replace(/^Movement Quality:\s*/, "")}`,
     "",
     "Recommendations",
     ...intelligence.recommendations.map((item) => `- ${item}`),
@@ -264,84 +271,72 @@ function formatPhaseQuestions(phase: CurrentPhase) {
 }
 
 export function formatCoachExportText(metrics: CoachExportMetrics) {
-  const nextWorkoutFocusLines = [
-    "Next Workout Focus",
-    ...(metrics.nextWorkoutFocus.progressionGuardrails.length
-      ? [
-          "Progression Guardrails",
-          ...metrics.nextWorkoutFocus.progressionGuardrails.map((item) => `- ${item}`),
-          "",
-        ]
-      : []),
-    ...(metrics.nextWorkoutFocus.executionPriorities.length
-      ? [
-          "Execution Priorities",
-          ...metrics.nextWorkoutFocus.executionPriorities.map((item) => `- ${item}`),
-          "",
-        ]
-      : []),
-    ...(metrics.nextWorkoutFocus.adjustmentTriggers.length
-      ? [
-          "Adjustment Triggers",
-          ...metrics.nextWorkoutFocus.adjustmentTriggers.map((item) => `- ${item}`),
-          "",
-        ]
-      : []),
-  ];
+  const nextWorkoutFocusHasContent =
+    metrics.nextWorkoutFocus.progressionGuardrails.length ||
+    metrics.nextWorkoutFocus.executionPriorities.length ||
+    metrics.nextWorkoutFocus.adjustmentTriggers.length;
+  const nextWorkoutFocusLines = nextWorkoutFocusHasContent ? [
+      "Next Workout Focus",
+      ...(metrics.nextWorkoutFocus.progressionGuardrails.length
+        ? [
+            "Progression Guardrails",
+            ...metrics.nextWorkoutFocus.progressionGuardrails.map((item) => `- ${item}`),
+            "",
+          ]
+        : []),
+      ...(metrics.nextWorkoutFocus.executionPriorities.length
+        ? [
+            "Execution Priorities",
+            ...metrics.nextWorkoutFocus.executionPriorities.map((item) => `- ${item}`),
+            "",
+          ]
+        : []),
+      ...(metrics.nextWorkoutFocus.adjustmentTriggers.length
+        ? [
+            "Adjustment Triggers",
+            ...metrics.nextWorkoutFocus.adjustmentTriggers.map((item) => `- ${item}`),
+            "",
+          ]
+        : []),
+    ] : [];
   if (nextWorkoutFocusLines[nextWorkoutFocusLines.length - 1] === "") {
     nextWorkoutFocusLines.pop();
   }
 
-  const trainingSignalLines = [
-    "Training Signals (Recent Sessions)",
-    "Movement Quality",
-    ...(metrics.trainingSignals.movementQuality.length
-      ? metrics.trainingSignals.movementQuality.map((item) => `- ${clarifyCoachExportLine(item)}`)
-      : ["- No recent movement-quality notes."]),
-    "",
-    "Stimulus / Coverage",
-    ...(metrics.trainingSignals.stimulusCoverage.length
-      ? metrics.trainingSignals.stimulusCoverage.map((item) => `- ${clarifyCoachExportLine(item)}`)
-      : ["- No recent stimulus notes."]),
-    "",
-    "Fatigue / Readiness",
-    ...(metrics.trainingSignals.fatigueReadiness.length
-      ? metrics.trainingSignals.fatigueReadiness.map((item) => `- ${clarifyCoachExportLine(item)}`)
-      : ["- No recent fatigue notes."]),
-    "",
-    "Discuss with Gaz",
-    ...(metrics.trainingSignals.discussWithGaz.length
-      ? metrics.trainingSignals.discussWithGaz.map((item) => `- ${clarifyCoachExportLine(item)}`)
-      : ["- No coach discussion flags from recent sessions."]),
-  ];
+  const trainingSignalGroups = [
+    { heading: "Movement Quality", items: metrics.trainingSignals.movementQuality },
+    { heading: "Stimulus / Coverage", items: metrics.trainingSignals.stimulusCoverage },
+    { heading: "Fatigue / Readiness", items: metrics.trainingSignals.fatigueReadiness },
+    { heading: "Discuss with Gaz", items: metrics.trainingSignals.discussWithGaz },
+  ].filter((group) => group.items.length > 0);
+  const trainingSignalLines = trainingSignalGroups.length
+    ? [
+        "Training Signals (Recent Sessions)",
+        ...trainingSignalGroups.flatMap((group, index) => [
+          ...(index > 0 ? [""] : []),
+          group.heading,
+          ...group.items.map((item) => `- ${clarifyCoachExportLine(item)}`),
+        ]),
+      ]
+    : [];
 
-  const patternSummaryLines = [
-    "Recent Patterns (Last 4 Sessions)",
-    "Movement Quality",
-    ...(metrics.patternSummary.movementQuality.length
-      ? metrics.patternSummary.movementQuality.map((item) => `- ${item}`)
-      : ["- No repeated movement-quality pattern yet."]),
-    "",
-    "Stimulus",
-    ...(metrics.patternSummary.stimulus.length
-      ? metrics.patternSummary.stimulus.map((item) => `- ${item}`)
-      : ["- No repeated stimulus pattern yet."]),
-    "",
-    "Fatigue / Readiness",
-    ...(metrics.patternSummary.fatigue.length
-      ? metrics.patternSummary.fatigue.map((item) => `- ${item}`)
-      : ["- No repeated fatigue pattern yet."]),
-    "",
-    "Constraints",
-    ...(metrics.patternSummary.constraints.length
-      ? metrics.patternSummary.constraints.map((item) => `- ${item}`)
-      : ["- No repeated constraint pattern yet."]),
-    "",
-    "Progression",
-    ...(metrics.patternSummary.progression.length
-      ? metrics.patternSummary.progression.map((item) => `- ${item}`)
-      : ["- No repeated progression pattern yet."]),
-  ];
+  const patternSummaryGroups = [
+    { heading: "Movement Quality", items: metrics.patternSummary.movementQuality },
+    { heading: "Stimulus", items: metrics.patternSummary.stimulus },
+    { heading: "Fatigue / Readiness", items: metrics.patternSummary.fatigue },
+    { heading: "Constraints", items: metrics.patternSummary.constraints },
+    { heading: "Progression", items: metrics.patternSummary.progression },
+  ].filter((group) => group.items.length > 0);
+  const patternSummaryLines = patternSummaryGroups.length
+    ? [
+        "Recent Patterns (Last 4 Sessions)",
+        ...patternSummaryGroups.flatMap((group, index) => [
+          ...(index > 0 ? [""] : []),
+          group.heading,
+          ...group.items.map((item) => `- ${item}`),
+        ]),
+      ]
+    : ["Recent Patterns (Last 4 Sessions)", "- No repeated patterns detected."];
 
   const phaseQualityDriverLines = metrics.phaseQuality?.drivers?.length
     ? metrics.phaseQuality.drivers
@@ -354,7 +349,13 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
   const readinessNoteLines = metrics.readinessNotes
     .filter((note) => !/^Phase quality:/i.test(note))
     .filter((note) => (metrics.leanPreservation ? !/Lean Preservation\s*:/i.test(note) : true))
+    .filter((note) => !/^Hydration signal is stable\.?$/i.test(note.trim()))
+    .filter((note) => !/^No additional readiness notes\.?$/i.test(note.trim()))
     .map((note) => `- ${clarifyCoachExportLine(note || "Unknown")}`);
+
+  const dataGapLines = metrics.dataNotes
+    .filter((note) => !/^No major data gaps detected\.?$/i.test(String(note ?? "").trim()))
+    .map((note) => `- ${note || "Unknown"}`);
 
   const lines = [
     "IronForge Coach Export",
@@ -410,17 +411,13 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     "- Do not create new exercise names unless necessary.",
     "- If suggesting a variation, label it as a new exercise.",
     "",
-    ...nextWorkoutFocusLines,
-    "",
-    ...trainingSignalLines,
-    "",
+    ...(nextWorkoutFocusLines.length ? [...nextWorkoutFocusLines, ""] : []),
+    ...(trainingSignalLines.length ? [...trainingSignalLines, ""] : []),
     ...patternSummaryLines,
-    "",
-    "Readiness / Confidence Notes",
-    ...(readinessNoteLines.length ? readinessNoteLines : ["- No additional readiness notes."]),
-    "",
-    "Data Gaps",
-    ...metrics.dataNotes.map((note) => `- ${note || "Unknown"}`),
+    ...(readinessNoteLines.length
+      ? ["", "Readiness / Confidence Notes", ...readinessNoteLines]
+      : []),
+    ...(dataGapLines.length ? ["", "Data Gaps", ...dataGapLines] : []),
   ];
 
   return lines.join("\n");
