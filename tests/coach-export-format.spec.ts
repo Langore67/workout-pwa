@@ -170,6 +170,7 @@ test("coach export includes recent training signals section", async () => {
   const text = formatCoachExportText(buildMetrics());
 
   expect(text).toContain("Training Signals (Recent Sessions)");
+  expect(text).toContain("Validated Learnings");
   expect(text).toContain("Movement Quality");
   expect(text).toContain("- Lat Pulldown: improved stretch and contraction");
   expect(text).toContain("Stimulus / Coverage");
@@ -188,6 +189,62 @@ test("coach export includes recent training signals section", async () => {
   expect(text).toContain("- Pulling movements show improving consistency");
   expect(text).not.toContain("Upper A");
   expect(text).not.toContain("Lower B");
+});
+
+test("coach export promotes validated learnings and keeps watch items visible", async () => {
+  const metrics = buildMetrics();
+  metrics.trainingSignals = {
+    movementQuality: [
+      "MTS Row: rep 15 on final set not counted due to form breakdown",
+      "MTS Row: chest-supported row reinforced Gaz's cues",
+      "Barbell Row: grounded hinge felt stable",
+    ],
+    stimulusCoverage: ["Pull: strong lat stimulus"],
+    fatigueReadiness: ["MTS Row: terminal-rep quality dropped"],
+    nextWorkoutFocus: [],
+    discussWithGaz: [
+      "Confirm whether the substitution stays in next session",
+      "Review form breakdown before adding load",
+    ],
+  };
+
+  const trainingSection = getSection(
+    formatCoachExportText(metrics),
+    "Training Signals (Recent Sessions)",
+    "Recent Patterns (Last 4 Sessions)"
+  );
+  const validatedSection = getSection(trainingSection, "Validated Learnings", "Movement Quality");
+  const movementSection = getSection(trainingSection, "Movement Quality", "Fatigue / Readiness");
+
+  expect(validatedSection).toContain("- MTS Row: chest-supported row reinforced Gaz's cues");
+  expect(validatedSection).toContain("- Barbell Row: grounded hinge felt stable");
+  expect(validatedSection).toContain("- Pull: strong lat stimulus");
+  expect((trainingSection.match(/MTS Row: chest-supported row reinforced Gaz's cues/g) ?? [])).toHaveLength(1);
+  expect(movementSection).toContain("- MTS Row: rep 15 on final set not counted due to form breakdown");
+  expect(trainingSection).toContain("- MTS Row: terminal-rep quality dropped");
+  expect(trainingSection).not.toContain("Confirm whether the substitution stays in next session");
+  expect(trainingSection).toContain("- Review form breakdown before adding load");
+});
+
+test("coach export suppresses empty validated learnings section", async () => {
+  const metrics = buildMetrics();
+  metrics.trainingSignals = {
+    movementQuality: ["MTS Row: rep 15 on final set not counted due to form breakdown"],
+    stimulusCoverage: [],
+    fatigueReadiness: ["MTS Row: terminal-rep quality dropped"],
+    nextWorkoutFocus: [],
+    discussWithGaz: [],
+  };
+
+  const trainingSection = getSection(
+    formatCoachExportText(metrics),
+    "Training Signals (Recent Sessions)",
+    "Recent Patterns (Last 4 Sessions)"
+  );
+
+  expect(trainingSection).not.toContain("Validated Learnings");
+  expect(trainingSection).toContain("- MTS Row: rep 15 on final set not counted due to form breakdown");
+  expect(trainingSection).toContain("- MTS Row: terminal-rep quality dropped");
 });
 
 test("coach export suppresses empty no-op export lines", async () => {
