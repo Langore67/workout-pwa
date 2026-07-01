@@ -247,6 +247,42 @@ test("coach export suppresses empty validated learnings section", async () => {
   expect(trainingSection).toContain("- MTS Row: terminal-rep quality dropped");
 });
 
+test("coach export renders validated learnings from coaching memory", async () => {
+  const metrics = buildMetrics();
+  metrics.trainingSignals = {
+    movementQuality: ["MTS Row: rep 15 on final set not counted due to form breakdown"],
+    stimulusCoverage: [],
+    fatigueReadiness: [],
+    nextWorkoutFocus: [],
+    discussWithGaz: [],
+  };
+  metrics.coachingMemory = {
+    validatedLearnings: [
+      {
+        id: "validated_learning:memory-only",
+        kind: "validated_learning",
+        label: "Memory",
+        sourceType: "derived",
+        confidence: "moderate",
+        evidenceCount: 2,
+        text: "Memory model: replacement pattern is now repeatable",
+      },
+    ],
+    activeWatchItems: [],
+    resolvedItems: [],
+    sourceWindow: { sessionCount: 4 },
+  };
+
+  const trainingSection = getSection(
+    formatCoachExportText(metrics),
+    "Training Signals (Recent Sessions)",
+    "Recent Patterns (Last 4 Sessions)"
+  );
+
+  expect(trainingSection).toContain("Validated Learnings");
+  expect(trainingSection).toContain("- Memory model: replacement pattern is now repeatable");
+});
+
 test("coach export suppresses empty no-op export lines", async () => {
   const metrics = buildMetrics();
   metrics.trainingSignals = {
