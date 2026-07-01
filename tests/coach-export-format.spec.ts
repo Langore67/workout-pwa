@@ -162,7 +162,7 @@ function buildMetrics(): CoachExportMetrics {
       },
     },
     readinessNotes: ["Phase quality: Insufficient Data.", "Hydration signal is stable."],
-    dataNotes: ["No major data gaps detected."],
+    dataNotes: [],
   };
 }
 
@@ -188,6 +188,73 @@ test("coach export includes recent training signals section", async () => {
   expect(text).toContain("- Pulling movements show improving consistency");
   expect(text).not.toContain("Upper A");
   expect(text).not.toContain("Lower B");
+});
+
+test("coach export suppresses empty no-op export lines", async () => {
+  const metrics = buildMetrics();
+  metrics.trainingSignals = {
+    movementQuality: [],
+    stimulusCoverage: [],
+    fatigueReadiness: [],
+    nextWorkoutFocus: [],
+    discussWithGaz: [],
+  };
+  metrics.patternSummary = {
+    movementQuality: [],
+    stimulus: [],
+    fatigue: [],
+    constraints: [],
+    progression: [],
+  };
+  metrics.nextWorkoutFocus = {
+    progressionGuardrails: [],
+    executionPriorities: [],
+    adjustmentTriggers: [],
+  };
+  metrics.readinessNotes = ["Phase quality: Insufficient Data.", "Hydration signal is stable."];
+  metrics.dataNotes = [];
+
+  const text = formatCoachExportText(metrics);
+
+  expect(text).not.toContain("No repeated movement-quality pattern yet.");
+  expect(text).not.toContain("No repeated stimulus pattern yet.");
+  expect(text).not.toContain("No repeated fatigue pattern yet.");
+  expect(text).not.toContain("No repeated constraint pattern yet.");
+  expect(text).not.toContain("No repeated progression pattern yet.");
+  expect(text).not.toContain("No major data gaps detected.");
+  expect(text).not.toContain("No additional readiness notes.");
+  expect(text).not.toContain("No recent movement-quality notes.");
+  expect(text).not.toContain("No recent stimulus notes.");
+  expect(text).not.toContain("No recent fatigue notes.");
+  expect(text).not.toContain("No coach discussion flags from recent sessions.");
+  expect(text).toContain("Recent Patterns (Last 4 Sessions)");
+  expect(text).toContain("- No repeated patterns detected.");
+  expect(text).not.toContain("Data Gaps");
+  expect(text).not.toContain("Readiness / Confidence Notes");
+});
+
+test("coach export keeps meaningful recent patterns and data gaps", async () => {
+  const metrics = buildMetrics();
+  metrics.patternSummary = {
+    movementQuality: [],
+    stimulus: ["Pull stimulus remains repeatable across recent sessions"],
+    fatigue: [],
+    constraints: [],
+    progression: ["Pulling movements show improving consistency"],
+  };
+  metrics.dataNotes = ["Missing waist data."];
+
+  const text = formatCoachExportText(metrics);
+  const patterns = getSection(text, "Recent Patterns (Last 4 Sessions)", "Readiness / Confidence Notes");
+
+  expect(patterns).toContain("Stimulus");
+  expect(patterns).toContain("- Pull stimulus remains repeatable across recent sessions");
+  expect(patterns).toContain("Progression");
+  expect(patterns).toContain("- Pulling movements show improving consistency");
+  expect(patterns).not.toContain("Movement Quality");
+  expect(patterns).not.toContain("No repeated");
+  expect(text).toContain("Data Gaps");
+  expect(text).toContain("- Missing waist data.");
 });
 
 test("coach export includes visceral fat section when estimate data exists", async () => {
@@ -545,6 +612,92 @@ test("coach intelligence summary removes strength and lean-preservation contradi
   expect(text).not.toContain("Phase quality:");
 });
 
+test("coach intelligence treats near-threshold improving WHtR as supportive instead of negative", async () => {
+  const metrics = buildMetrics();
+  metrics.bodyComp.weight = { latest: 198, baseline14d: 201, delta14d: -3 };
+  metrics.bodyComp.waist = { latest: 35.5, baseline14d: 36, delta14d: -0.5 };
+  metrics.bodyComp.waistToHeight = {
+    latest: 0.51,
+    baseline14d: 0.516,
+    delta14d: -0.006,
+    status: "Elevated",
+    healthyWaistTargetIn: 35.875,
+    distanceToThresholdIn: 0.625,
+  };
+
+  const intelligence = buildCoachIntelligence(metrics);
+
+  expect(intelligence.positives).toContain("Waist-to-height ratio is near the healthy threshold and improving");
+  expect(intelligence.watchItems.join(" ")).not.toMatch(/near the healthy threshold/i);
+  expect(intelligence.overallStatus).not.toBe("Intervene");
+});
+
+test("coach intelligence keeps near-threshold flat WHtR neutral and high WHtR as watch context", async () => {
+  const nearMetrics = buildMetrics();
+  nearMetrics.bodyComp.waistToHeight = {
+    latest: 0.51,
+    baseline14d: 0.51,
+    delta14d: 0,
+    status: "Elevated",
+    healthyWaistTargetIn: 35.875,
+    distanceToThresholdIn: 0.625,
+  };
+
+  const near = buildCoachIntelligence(nearMetrics);
+  expect(near.watchItems.join(" ")).not.toMatch(/near the healthy threshold/i);
+
+  const highMetrics = buildMetrics();
+  highMetrics.bodyComp.waistToHeight = {
+    latest: 0.54,
+    baseline14d: 0.54,
+    delta14d: 0,
+    status: "High Risk",
+    healthyWaistTargetIn: 35.875,
+    distanceToThresholdIn: 2.875,
+  };
+
+  const high = buildCoachIntelligence(highMetrics);
+  expect(high.watchItems).toContain("Waist-to-height ratio remains elevated");
+});
+
+test("coach summary splits weak performance trend from positive movement quality", async () => {
+  const metrics = buildMetrics();
+  metrics.strengthSignal.delta14d = -0.1;
+  metrics.trainingSignals.movementQuality = [
+    "Lat Pulldown: breakthrough pattern found",
+    "3-Point DB Row: improved stretch and contraction",
+  ];
+  metrics.trainingSignals.stimulusCoverage = ["Pull: strong lat stimulus"];
+  metrics.trainingSignals.fatigueReadiness = [];
+  metrics.trainingSignals.discussWithGaz = [];
+  metrics.patternSummary.movementQuality = [];
+  metrics.patternSummary.fatigue = [];
+  metrics.patternSummary.constraints = [];
+
+  const text = formatCoachExportText(metrics);
+  const summary = getSection(text, "Coach Summary", "Lean Preservation");
+
+  expect(summary).toContain("- Performance Trend: Mixed");
+  expect(summary).toContain("- Movement Quality: Improving");
+  expect(summary).not.toContain("Training: Regressing");
+  expect(summary).not.toContain("- Regressing");
+  expect(text).toContain("Lat Pulldown: breakthrough pattern found");
+});
+
+test("coach summary allows improving performance with movement quality watch", async () => {
+  const metrics = buildMetrics();
+  metrics.strengthSignal.delta14d = 0.06;
+  metrics.trainingSignals.movementQuality = ["Bench Press: movement quality looked solid"];
+  metrics.trainingSignals.fatigueReadiness = ["Bench Press: elbow pain showed up late"];
+  metrics.patternSummary.fatigue = [];
+
+  const summary = getSection(formatCoachExportText(metrics), "Coach Summary", "Lean Preservation");
+
+  expect(summary).toContain("- Performance Trend: Improving");
+  expect(summary).toContain("- Movement Quality: Watch");
+  expect(summary).not.toContain("Training: Regressing");
+});
+
 test("coach intelligence suppresses old single-factor lean preservation lines when composite exists", async () => {
   const metrics = buildMetrics();
   metrics.bodyComp.leanMass = { latest: 145, baseline14d: 147, delta14d: -2 };
@@ -671,8 +824,8 @@ test("coach intelligence includes waist-to-height improvement evidence", async (
 
   const intelligence = buildCoachIntelligence(metrics);
 
-  expect(intelligence.positives).toContain("Waist-to-height ratio improving");
-  expect(intelligence.watchItems).toContain("Waist-to-height ratio is near the healthy threshold");
+  expect(intelligence.positives).toContain("Waist-to-height ratio is near the healthy threshold and improving");
+  expect(intelligence.watchItems.join(" ")).not.toMatch(/near the healthy threshold/i);
 });
 
 test("coach export omits missing goal targets cleanly", async () => {
@@ -801,8 +954,8 @@ test("coach export preserves the structured coaching loop as plain text", async 
   expect(text).toContain("Adjustment Triggers");
   expect(text).toContain("Training Signals (Recent Sessions)");
   expect(text).toContain("Recent Patterns (Last 4 Sessions)");
-  expect(text).toContain("Readiness / Confidence Notes");
   expect(text).toContain("Discuss with Gaz");
+  expect(text).not.toContain("No additional readiness notes.");
 
   expect(text).not.toContain("```");
   expect(text).not.toContain("{");
