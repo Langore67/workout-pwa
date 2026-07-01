@@ -7,7 +7,7 @@
 
 export const buildInfo = {
   version: "v0.1.0",
-  commit: "84c588f",
+  commit: "5c52257",
   branch: "feature/lean-preservation-hydration-cap",
-  builtAt: "2026-07-01T20:08:39.527Z",
+  builtAt: "2026-07-01T20:13:27.587Z",
 } as const;
