@@ -40,6 +40,7 @@ import {
 } from "./buildPatternSummary";
 import { buildNextWorkoutFocus } from "./buildNextWorkoutFocus";
 import { buildCoachIntelligence } from "./coachIntelligence";
+import { buildCoachingMemory } from "./coachingMemory";
 import { buildExerciseVocabulary } from "./exerciseVocabulary";
 import { buildGoalProgress } from "./goalEngine";
 import { buildLeanPreservationComposite } from "./leanPreservationComposite";
@@ -662,6 +663,11 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     sessions: trainingSignalBundle.completedSessions,
     trainingSignals: trainingSignalBundle.trainingSignals,
   });
+  const coachingMemory = buildCoachingMemory({
+    completedSessions: trainingSignalBundle.completedSessions,
+    trainingSignals: trainingSignalBundle.trainingSignals,
+    patternSummary,
+  });
   const nextWorkoutFocus = buildNextWorkoutFocus({
     trainingSignals: trainingSignalBundle.trainingSignals,
     patternSummary,
@@ -706,6 +712,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
         anchorLifts,
         exerciseVocabulary,
         trainingSignals: trainingSignalBundle.trainingSignals,
+        coachingMemory,
         patternSummary,
         nextWorkoutFocus,
         readinessNotes,

@@ -71,6 +71,35 @@ export type PatternSummary = {
   progression: string[];
 };
 
+export type CoachingMemoryItem = {
+  id: string;
+  kind: "validated_learning" | "active_watch" | "resolved";
+  label: string;
+  sourceType: "session_signal" | "pattern" | "derived";
+  sourceSessionId?: string;
+  exerciseName?: string;
+  pattern?: string;
+  confidence: "low" | "moderate" | "high";
+  evidenceCount?: number;
+  lastSeenAt?: number;
+  severity?: "low" | "moderate" | "high";
+  status?: "active" | "stale" | "resolved";
+  isStale?: boolean;
+  decayReason?: string;
+  text: string;
+};
+
+export type CoachingMemory = {
+  validatedLearnings: CoachingMemoryItem[];
+  activeWatchItems: CoachingMemoryItem[];
+  resolvedItems: CoachingMemoryItem[];
+  sourceWindow: {
+    sessionCount: number;
+    fromDate?: string;
+    toDate?: string;
+  };
+};
+
 export type CoachExportNextWorkoutFocus = {
   progressionGuardrails: string[];
   executionPriorities: string[];
@@ -99,6 +128,7 @@ export type CoachExportMetrics = {
   anchorLifts: CoachExportAnchorLift[];
   exerciseVocabulary: string[];
   trainingSignals: CoachExportTrainingSignals;
+  coachingMemory?: CoachingMemory;
   patternSummary: PatternSummary;
   nextWorkoutFocus: CoachExportNextWorkoutFocus;
   exportConfidence: CoachExportConfidence;

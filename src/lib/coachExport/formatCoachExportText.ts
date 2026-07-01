@@ -1,6 +1,12 @@
 import type { CoachExportAnchorLift, CoachExportMetrics } from "./types";
 import type { CurrentPhase } from "../../config/appConfig";
 import { buildCoachIntelligence, clarifyCoachExportLine } from "./coachIntelligence";
+import {
+  buildCoachingMemory,
+  isGenericStaleDiscussPrompt,
+  isActiveWatchSignal,
+  normalizeCoachingMemoryText,
+} from "./coachingMemory";
 import type { GoalProgressRow } from "./goalEngine";
 
 function formatDate(ms: number | null | undefined) {
@@ -317,70 +323,12 @@ function isDuplicateReadinessNote(note: string, metrics: CoachExportMetrics, pha
   return false;
 }
 
-function normalizeTrainingSignalKey(value: string) {
-  return String(value ?? "")
-    .replace(/\s+/g, " ")
-    .replace(/[.]+$/g, "")
-    .trim()
-    .toLowerCase();
-}
-
-function isValidatedLearningSignal(value: string) {
-  const text = normalizeTrainingSignalKey(value);
-  if (!text) return false;
-  if (
-    /\b(?:not counted|form breakdown|form breaking|terminal[-\s]?rep|terminal reps|joint feedback|pain|twinge|fatigue|too heavy|equipment|rejected|stopped due to|sensitive|compensation|trap involvement)\b/i.test(text)
-  ) {
-    return false;
-  }
-
-  return (
-    /\breinforced gaz'?s cues\b/i.test(text) ||
-    /\bfelt (?:super )?grounded\b/i.test(text) ||
-    /\bgrounded hinge\b/i.test(text) ||
-    /\bfelt stable\b/i.test(text) ||
-    /\bbreakthrough\b/i.test(text) ||
-    /\bvalidated\b/i.test(text) ||
-    /\bclicked\b/i.test(text) ||
-    /\bsmoother\b/i.test(text) ||
-    /\bcleaner\b/i.test(text) ||
-    /\bbetter control\b/i.test(text) ||
-    /\btarget[-\s]?muscle\b/i.test(text) ||
-    /\bstimulus (?:was )?strong\b/i.test(text) ||
-    /\bstrong .+ stimulus\b/i.test(text) ||
-    /\bsuccessful substitution\b/i.test(text) ||
-    /\breplacement worked\b/i.test(text) ||
-    /\bimproved (?:stretch|contraction|execution|control)\b/i.test(text) ||
-    /\blat dominance achieved\b/i.test(text) ||
-    /\bno biceps\/trap takeover\b/i.test(text)
-  );
-}
-
-function uniqueTrainingSignals(values: string[], limit = 4) {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const value of values) {
-    const key = normalizeTrainingSignalKey(value);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(value);
-    if (out.length >= limit) break;
-  }
-  return out;
-}
-
 function removePromotedTrainingSignals(values: string[], promotedKeys: Set<string>) {
-  return values.filter((value) => !promotedKeys.has(normalizeTrainingSignalKey(value)));
+  return values.filter((value) => !promotedKeys.has(normalizeCoachingMemoryText(value)));
 }
 
-function isStaleDiscussWithGazPrompt(value: string) {
-  const text = normalizeTrainingSignalKey(value);
-  if (!text) return true;
-  const isSubstitutionConfirmation =
-    /\bconfirm\b.*\bsubstitution\b.*\b(?:stays|stay|remains|remain|next session)\b/i.test(text) ||
-    /^confirm whether the substitution stays in next session$/i.test(text);
-  if (!isSubstitutionConfirmation) return false;
-  return true;
+function filterStaleWatchSignals(values: string[], activeWatchKeys: Set<string>) {
+  return values.filter((value) => !isActiveWatchSignal(value) || activeWatchKeys.has(normalizeCoachingMemoryText(value)));
 }
 
 export function formatCoachExportText(metrics: CoachExportMetrics) {
@@ -416,29 +364,33 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     nextWorkoutFocusLines.pop();
   }
 
-  const validatedLearningItems = uniqueTrainingSignals(
-    [
-      ...metrics.trainingSignals.movementQuality,
-      ...metrics.trainingSignals.stimulusCoverage,
-    ].filter(isValidatedLearningSignal),
-    4
-  );
-  const validatedLearningKeys = new Set(validatedLearningItems.map(normalizeTrainingSignalKey));
+  const coachingMemory =
+    metrics.coachingMemory ??
+    buildCoachingMemory({
+      trainingSignals: metrics.trainingSignals,
+      patternSummary: metrics.patternSummary,
+    });
+  const validatedLearningItems = coachingMemory.validatedLearnings.map((item) => item.text);
+  const validatedLearningKeys = new Set(validatedLearningItems.map(normalizeCoachingMemoryText));
+  const activeWatchKeys = new Set(coachingMemory.activeWatchItems.map((item) => normalizeCoachingMemoryText(item.text)));
   const discussWithGazItems = metrics.trainingSignals.discussWithGaz.filter(
-    (item) => !isStaleDiscussWithGazPrompt(item)
+    (item) => !isGenericStaleDiscussPrompt(item) && (!isActiveWatchSignal(item) || activeWatchKeys.has(normalizeCoachingMemoryText(item)))
   );
 
   const trainingSignalGroups = [
     { heading: "Validated Learnings", items: validatedLearningItems },
     {
       heading: "Movement Quality",
-      items: removePromotedTrainingSignals(metrics.trainingSignals.movementQuality, validatedLearningKeys),
+      items: filterStaleWatchSignals(
+        removePromotedTrainingSignals(metrics.trainingSignals.movementQuality, validatedLearningKeys),
+        activeWatchKeys
+      ),
     },
     {
       heading: "Stimulus / Coverage",
       items: removePromotedTrainingSignals(metrics.trainingSignals.stimulusCoverage, validatedLearningKeys),
     },
-    { heading: "Fatigue / Readiness", items: metrics.trainingSignals.fatigueReadiness },
+    { heading: "Fatigue / Readiness", items: filterStaleWatchSignals(metrics.trainingSignals.fatigueReadiness, activeWatchKeys) },
     { heading: "Discuss with Gaz", items: discussWithGazItems },
   ].filter((group) => group.items.length > 0);
   const trainingSignalLines = trainingSignalGroups.length
