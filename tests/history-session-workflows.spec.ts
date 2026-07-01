@@ -477,7 +477,8 @@ test.describe("history and ad hoc session workflows", () => {
     expect(copiedText).toContain("Adjustment Triggers");
     expect(copiedText).toContain("Training Signals (Recent Sessions)");
     expect(copiedText).toContain("Recent Patterns (Last 4 Sessions)");
-    expect(copiedText).toContain("Readiness / Confidence Notes");
+    expect(copiedText).not.toContain("Readiness / Confidence Notes");
+    expect(copiedText).not.toContain("No additional readiness notes.");
     expect(copiedText).toContain("Discuss with Gaz");
 
     const focusSection = getSection(copiedText, "Next Workout Focus", "Training Signals (Recent Sessions)");
