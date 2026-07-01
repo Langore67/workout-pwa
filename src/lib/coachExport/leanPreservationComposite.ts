@@ -25,6 +25,7 @@ type BuildLeanPreservationCompositeInput = {
   hydration: CoachExportHydration;
   strengthSignal: CoachExportStrengthSignal;
   fatigueSignals?: string[];
+  recentPerformanceSignals?: string[];
 };
 
 function finite(value: unknown): value is number {
@@ -76,6 +77,35 @@ function aggressiveWeightLoss(weight: CoachExportMetric): boolean {
   return false;
 }
 
+function uniqueEvidence(values: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of values) {
+    const value = String(raw ?? "").replace(/\s+/g, " ").trim();
+    if (!value) continue;
+    const key = value.toLowerCase().replace(/\bis\b/g, "").replace(/\s+/g, " ").trim();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
+function recentPerformanceState(
+  signals: string[] | undefined
+): "positive" | "mixedPositive" | "negative" | "unknown" {
+  const text = (signals ?? []).join(" ").toLowerCase();
+  if (!text.trim()) return "unknown";
+
+  const hasPositive = /\b(pr|personal record|breakthrough|improved|improving|strong|consistent|lat dominance|stretch and contraction|repeatable)\b/.test(text);
+  const hasNegative = /\b(pain|twinge|joint feedback|stopped due to|form breakdown|form breaking|terminal-rep|terminal reps|reduced capacity|failed|missed|regress|worse|declin)\b/.test(text);
+
+  if (hasPositive && hasNegative) return "mixedPositive";
+  if (hasPositive) return "positive";
+  if (hasNegative) return "negative";
+  return "unknown";
+}
+
 export function buildLeanPreservationComposite(
   input: BuildLeanPreservationCompositeInput
 ): LeanPreservationComposite | null {
@@ -99,6 +129,8 @@ export function buildLeanPreservationComposite(
   const aggressiveCut = aggressiveWeightLoss(input.weight);
   const repeatedFatigue = (input.fatigueSignals ?? []).length >= 2;
   const hasPerformanceMetric = strength !== "unknown";
+  const recentPerformance = recentPerformanceState(input.recentPerformanceSignals);
+  const recentPerformanceClearlyNegative = recentPerformance === "negative";
 
   const positive: string[] = [];
   const negative: string[] = [];
@@ -106,6 +138,20 @@ export function buildLeanPreservationComposite(
   if (strengthImproving) positive.push("Strength improving");
   else if (strength === "stable") positive.push("Strength stable");
   else if (strengthDeclining) negative.push("Strength declining");
+
+  if (recentPerformance === "positive") {
+    positive.push(
+      strengthDeclining
+        ? "Strength is pressured globally, but recent session performance includes positive evidence"
+        : "Recent exercise-level performance evidence is positive"
+    );
+  } else if (recentPerformance === "mixedPositive") {
+    positive.push(
+      strengthDeclining
+        ? "Strength is pressured globally, but recent session performance includes positive evidence"
+        : "Recent performance evidence is mixed but includes positive exercise-level signals"
+    );
+  }
 
   if (waistImproving) positive.push("Waist decreasing");
   else if (waist === "up") negative.push("Waist not improving");
@@ -140,6 +186,13 @@ export function buildLeanPreservationComposite(
   if (status === "Poor" && !hasPerformanceMetric) status = "Watch";
   if (status === "Poor" && !strengthDeclining) status = "Watch";
 
+  const hydrationCapsPoor =
+    status === "Poor" &&
+    hydrationIsLow(input.hydration) &&
+    leanDown &&
+    !recentPerformanceClearlyNegative;
+  if (hydrationCapsPoor) status = "Watch";
+
   if (aggressiveCut && strengthStableOrImproving && status === "Watch") {
     status = "Acceptable";
   }
@@ -158,10 +211,20 @@ export function buildLeanPreservationComposite(
   if (strengthImproving && hasPerformanceMetric) confidence = improveConfidence(confidence);
   if (hydrationIsLow(input.hydration)) confidence = reduceConfidence(confidence);
 
-  const coachInterpretation =
-    hydrationIsHigh(input.hydration) && strengthStableOrImproving
-      ? "Bioimpedance lean-mass estimates can fluctuate with hydration. Current lifting performance suggests muscle preservation is better than lean-mass estimates alone indicate."
-      : undefined;
+  let coachInterpretation: string | undefined;
+  if (hydrationCapsPoor) {
+    coachInterpretation =
+      "Lean-preservation risk is elevated, but low hydration confidence makes the lean-mass drop less conclusive. Treat this as Watch until hydration stabilizes or performance confirms the trend.";
+  } else if (hydrationIsLow(input.hydration) && leanDown && strengthDeclining && recentPerformanceClearlyNegative) {
+    coachInterpretation =
+      "Lean-mass estimate is down and performance evidence is also deteriorating, so muscle-preservation risk remains high despite hydration uncertainty.";
+  } else if (hydrationIsHigh(input.hydration) && strengthStableOrImproving) {
+    coachInterpretation =
+      "Bioimpedance lean-mass estimates can fluctuate with hydration. Current lifting performance suggests muscle preservation is better than lean-mass estimates alone indicate.";
+  } else if (hydrationIsLow(input.hydration) && leanDown) {
+    coachInterpretation =
+      "Lean-preservation risk is elevated, but low hydration confidence makes the lean-mass drop less conclusive.";
+  }
 
   return {
     status,
@@ -170,7 +233,10 @@ export function buildLeanPreservationComposite(
       leanMassLatest: leanLatest,
       leanMassDelta14d: leanDelta,
     },
-    evidence: { positive, negative },
+    evidence: {
+      positive: uniqueEvidence(positive),
+      negative: uniqueEvidence(negative),
+    },
     coachInterpretation,
   };
 }

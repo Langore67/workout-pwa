@@ -7,7 +7,7 @@
 
 export const buildInfo = {
   version: "v0.1.0",
-  commit: "a4b660f",
-  branch: "feature/coach-export-reasoning-cleanup",
-  builtAt: "2026-07-01T18:37:28.044Z",
+  commit: "84c588f",
+  branch: "feature/lean-preservation-hydration-cap",
+  builtAt: "2026-07-01T20:08:39.527Z",
 } as const;
