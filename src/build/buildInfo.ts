@@ -7,7 +7,7 @@
 
 export const buildInfo = {
   version: "v0.1.0",
-  commit: "fc4f365",
-  branch: "feature/coaching-memory-model",
-  builtAt: "2026-07-01T21:28:58.458Z",
+  commit: "a26aeba",
+  branch: "feature/coaching-memory-stale-decay",
+  builtAt: "2026-07-01T21:55:26.551Z",
 } as const;

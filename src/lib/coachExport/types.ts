@@ -82,6 +82,10 @@ export type CoachingMemoryItem = {
   confidence: "low" | "moderate" | "high";
   evidenceCount?: number;
   lastSeenAt?: number;
+  severity?: "low" | "moderate" | "high";
+  status?: "active" | "stale" | "resolved";
+  isStale?: boolean;
+  decayReason?: string;
   text: string;
 };
 
