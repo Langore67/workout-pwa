@@ -180,7 +180,7 @@ function formatGoalProgressSection(metrics: CoachExportMetrics): string[] {
   if (!progress?.rows.length) return [];
 
   return [
-    "Goal Progress",
+    "Goal Trajectory",
     ...progress.rows.map(
       (row) =>
         `- ${row.label}: ${formatGoalValue(row, row.current)} -> ${formatGoalTarget(row)} | ${formatGoalRemaining(row)}`
@@ -270,6 +270,33 @@ function formatPhaseQuestions(phase: CurrentPhase) {
   ];
 }
 
+function normalizeNarrativeLine(value: string) {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/[.]+$/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function isDuplicateReadinessNote(note: string, metrics: CoachExportMetrics, phaseDriverKeys: Set<string>) {
+  const raw = String(note ?? "").trim();
+  const normalized = normalizeNarrativeLine(raw);
+  if (!normalized) return true;
+
+  if (/^phase quality:/i.test(raw)) return true;
+  if (/^status\s*:/i.test(raw)) return true;
+  if (phaseDriverKeys.has(normalized)) return true;
+  if (normalizeNarrativeLine(metrics.hydration.note) === normalized) return true;
+  if (metrics.leanPreservation && /lean preservation\s*:/i.test(raw)) return true;
+  if (/^strength preservation\s*:/i.test(raw)) return true;
+  if (/^hydration confidence\s+(?:is\s+)?(?:low|moderate|high|unknown)/i.test(raw)) return true;
+  if (/hydration.*(?:distort|distorting|impedance)|impedance-derived/i.test(raw)) return true;
+  if (/^weight\s+(?:down|flat|up)\s*\/\s*waist\s+(?:down|flat|up)/i.test(raw)) return true;
+  if (/^no additional readiness notes\.?$/i.test(raw)) return true;
+
+  return false;
+}
+
 export function formatCoachExportText(metrics: CoachExportMetrics) {
   const nextWorkoutFocusHasContent =
     metrics.nextWorkoutFocus.progressionGuardrails.length ||
@@ -346,16 +373,20 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
         .map((driver) => `- ${clarifyCoachExportLine(driver)}`)
     : ["- Drivers: Insufficient Data"];
 
+  const phaseDriverKeys = new Set(
+    (metrics.phaseQuality?.drivers ?? []).map((driver) => normalizeNarrativeLine(driver))
+  );
   const readinessNoteLines = metrics.readinessNotes
-    .filter((note) => !/^Phase quality:/i.test(note))
-    .filter((note) => (metrics.leanPreservation ? !/Lean Preservation\s*:/i.test(note) : true))
-    .filter((note) => !/^Hydration signal is stable\.?$/i.test(note.trim()))
-    .filter((note) => !/^No additional readiness notes\.?$/i.test(note.trim()))
+    .filter((note) => !isDuplicateReadinessNote(note, metrics, phaseDriverKeys))
     .map((note) => `- ${clarifyCoachExportLine(note || "Unknown")}`);
 
   const dataGapLines = metrics.dataNotes
     .filter((note) => !/^No major data gaps detected\.?$/i.test(String(note ?? "").trim()))
     .map((note) => `- ${note || "Unknown"}`);
+  const hydrationNote = metrics.hydration.note || "Unknown";
+  const hydrationNoteDuplicatesPhase =
+    phaseDriverKeys.has(normalizeNarrativeLine(hydrationNote)) &&
+    /hydration|impedance|lean mass|body-fat/i.test(hydrationNote);
 
   const lines = [
     "IronForge Coach Export",
@@ -385,7 +416,7 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     "Hydration",
     `- Latest body water %: ${formatValue(metrics.hydration.latestWaterPct, 1, "%")}`,
     `- Confidence: ${metrics.hydration.confidenceLabel}${metrics.hydration.confidenceScore != null ? ` (${Math.round(metrics.hydration.confidenceScore)})` : ""}`,
-    `- Note: ${metrics.hydration.note || "Unknown"}`,
+    ...(hydrationNoteDuplicatesPhase ? [] : [`- Note: ${hydrationNote}`]),
     "",
     "Strength Signal",
     "- Primary metric: IronForge's blended strength trend metric.",

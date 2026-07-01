@@ -380,7 +380,7 @@ test("coach export uses prior available waist when latest body row has no waist"
     { heightIn: 71.75 }
   );
   const section = getSection(text, "Waist-to-Height Ratio", "Coach Summary");
-  const goals = getSection(text, "Goal Progress", "Lean Preservation");
+  const goals = getSection(text, "Goal Trajectory", "Lean Preservation");
 
   expect(section).toContain("- Current: 0.509");
   expect(section).toContain("- 14d trend: -0.011");
@@ -612,6 +612,95 @@ test("coach intelligence summary removes strength and lean-preservation contradi
   expect(text).not.toContain("Phase quality:");
 });
 
+test("coach export suppresses readiness notes that repeat phase, hydration, lean, and strength ownership", async () => {
+  const metrics = buildMetrics();
+  const hydrationCaveat = "Hydration context may be distorting impedance-derived lean mass and body-fat changes.";
+  metrics.bodyComp.leanMass = { latest: 145, baseline14d: 147, delta14d: -2 };
+  metrics.bodyComp.waist = { latest: 36, baseline14d: 36, delta14d: 0 };
+  metrics.strengthSignal.delta14d = -0.1;
+  metrics.hydration = {
+    latestWaterPct: 49,
+    confidenceLabel: "Low",
+    confidenceScore: 28,
+    note: hydrationCaveat,
+    distortionLikely: true,
+  };
+  metrics.phaseQuality = {
+    title: "CUT QUALITY",
+    quadrant: "fast_loss",
+    quadrantLabel: "AGGRESSIVE / POSSIBLE",
+    quadrantNote: "Weight down / Waist flat or up over last 10 entries",
+    finalStatus: "Aggressive Cut / Muscle-Risk Cut",
+    confidence: "High",
+    tone: "watch",
+    cells: [],
+    metricCards: [],
+    drivers: [
+      "Weight down / Waist flat or up over last 10 entries",
+      "Strength Preservation: Significant Drop",
+      hydrationCaveat,
+      "Status: Aggressive Cut / Muscle-Risk Cut",
+    ],
+  };
+  metrics.readinessNotes = [
+    "Phase quality: Aggressive Cut / Muscle-Risk Cut.",
+    "Weight down / Waist flat or up over last 10 entries",
+    "Strength Preservation: Significant Drop",
+    hydrationCaveat,
+    "Lean Preservation: Poor",
+    "Hydration confidence low",
+  ];
+  metrics.leanPreservation = buildLeanPreservationComposite({
+    leanMass: metrics.bodyComp.leanMass,
+    weight: metrics.bodyComp.weight,
+    waist: metrics.bodyComp.waist,
+    bodyFatPct: metrics.bodyComp.bodyFatPct,
+    hydration: metrics.hydration,
+    strengthSignal: metrics.strengthSignal,
+  });
+
+  const text = formatCoachExportText(metrics);
+
+  expect(text).not.toContain("Readiness / Confidence Notes");
+  expect(text.match(/Hydration context may be distorting impedance-derived lean mass and body-fat changes\./g) ?? []).toHaveLength(1);
+  expect(text.match(/Strength Preservation: Significant Drop/g) ?? []).toHaveLength(1);
+  expect(text).not.toContain("Lean Preservation: Poor");
+  expect(text).toContain("Coach Summary");
+  expect(text).toContain("Muscle Preservation");
+});
+
+test("coach export keeps unique readiness notes after duplicate narrative suppression", async () => {
+  const metrics = buildMetrics();
+  metrics.phaseQuality = {
+    title: "CUT QUALITY",
+    quadrant: "fast_loss",
+    quadrantLabel: "AGGRESSIVE / POSSIBLE",
+    quadrantNote: "Weight down / Waist flat or up over last 10 entries",
+    finalStatus: "Aggressive Cut / Muscle-Risk Cut",
+    confidence: "High",
+    tone: "watch",
+    cells: [],
+    metricCards: [],
+    drivers: [
+      "Weight down / Waist flat or up over last 10 entries",
+      "Strength Preservation: Significant Drop",
+    ],
+  };
+  metrics.readinessNotes = [
+    "Phase quality: Aggressive Cut / Muscle-Risk Cut.",
+    "Strength Preservation: Significant Drop",
+    "Sleep disrupted.",
+    "Recovery improved.",
+  ];
+
+  const section = getSection(formatCoachExportText(metrics), "Readiness / Confidence Notes", "Data Gaps");
+
+  expect(section).toContain("- Sleep disrupted.");
+  expect(section).toContain("- Recovery improved.");
+  expect(section).not.toContain("Strength Preservation: Significant Drop");
+  expect(section).not.toContain("Phase quality:");
+});
+
 test("coach intelligence treats near-threshold improving WHtR as supportive instead of negative", async () => {
   const metrics = buildMetrics();
   metrics.bodyComp.weight = { latest: 198, baseline14d: 201, delta14d: -3 };
@@ -801,7 +890,8 @@ test("coach export includes goal progress when profile targets exist", async () 
     bodyComp: metrics.bodyComp,
   });
 
-  const section = getSection(formatCoachExportText(metrics), "Goal Progress", "Lean Preservation");
+  const text = formatCoachExportText(metrics);
+  const section = getSection(text, "Goal Trajectory", "Lean Preservation");
 
   expect(section).toContain("- Weight: 188.6 lb -> 180.0 lb | 8.6 lb remaining");
   expect(section).toContain("- Body Fat: 20.6% -> 18.0% | 2.6 pts remaining");
@@ -809,6 +899,7 @@ test("coach export includes goal progress when profile targets exist", async () 
   expect(section).toContain("- Visceral Fat: 7 -> 6 | 1 remaining");
   expect(section).toContain("- Waist-to-Height Ratio: 0.509 -> < 0.500 | 0.009 remaining");
   expect(section).toContain("- Status: On Track");
+  expect(text).not.toContain("Goal Progress");
 });
 
 test("coach intelligence includes waist-to-height improvement evidence", async () => {
@@ -839,7 +930,7 @@ test("coach export omits missing goal targets cleanly", async () => {
     bodyComp: metrics.bodyComp,
   });
 
-  const section = getSection(formatCoachExportText(metrics), "Goal Progress", "Lean Preservation");
+  const section = getSection(formatCoachExportText(metrics), "Goal Trajectory", "Lean Preservation");
 
   expect(section).toContain("- Weight: 188.6 lb -> 180.0 lb | 8.6 lb remaining");
   expect(section).not.toContain("Body Fat:");
@@ -923,7 +1014,7 @@ test("coach export goal progress uses bodyMetrics current values, not profile cu
     return formatCoachExportText(metrics);
   });
 
-  const section = getSection(text, "Goal Progress", "Visceral Fat");
+  const section = getSection(text, "Goal Trajectory", "Visceral Fat");
 
   expect(section).toContain("- Weight: 188.6 lb -> 180.0 lb | 8.6 lb remaining");
   expect(section).toContain("- Body Fat: 20.6% -> 18.0% | 2.6 pts remaining");
