@@ -388,6 +388,47 @@ test("coach export renders validated learnings from coaching memory", async () =
   expect(trainingSection).toContain("- Memory model: replacement pattern is now repeatable");
 });
 
+test("coach export suppresses stale coaching memory watch items but keeps active watches", async () => {
+  const metrics = buildMetrics();
+  metrics.trainingSignals = {
+    movementQuality: [
+      "MTS Row: old rep not counted due to form breakdown",
+      "Bench Press: terminal-rep quality dropped",
+    ],
+    stimulusCoverage: [],
+    fatigueReadiness: ["MTS Row: old terminal-rep quality dropped"],
+    nextWorkoutFocus: [],
+    discussWithGaz: [],
+  };
+  metrics.coachingMemory = {
+    validatedLearnings: [],
+    activeWatchItems: [
+      {
+        id: "active_watch:bench-press-terminal-rep-quality-dropped",
+        kind: "active_watch",
+        label: "Bench Press",
+        sourceType: "session_signal",
+        confidence: "low",
+        severity: "moderate",
+        status: "active",
+        text: "Bench Press: terminal-rep quality dropped",
+      },
+    ],
+    resolvedItems: [],
+    sourceWindow: { sessionCount: 4 },
+  };
+
+  const trainingSection = getSection(
+    formatCoachExportText(metrics),
+    "Training Signals (Recent Sessions)",
+    "Recent Patterns (Last 4 Sessions)"
+  );
+
+  expect(trainingSection).not.toContain("MTS Row: old rep not counted due to form breakdown");
+  expect(trainingSection).not.toContain("MTS Row: old terminal-rep quality dropped");
+  expect(trainingSection).toContain("- Bench Press: terminal-rep quality dropped");
+});
+
 test("coach export suppresses empty no-op export lines", async () => {
   const metrics = buildMetrics();
   metrics.trainingSignals = {

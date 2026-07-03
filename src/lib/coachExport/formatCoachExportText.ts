@@ -4,6 +4,7 @@ import { buildCoachIntelligence, clarifyCoachExportLine } from "./coachIntellige
 import {
   buildCoachingMemory,
   isGenericStaleDiscussPrompt,
+  isActiveWatchSignal,
   normalizeCoachingMemoryText,
 } from "./coachingMemory";
 import type { GoalProgressRow } from "./goalEngine";
@@ -326,6 +327,10 @@ function removePromotedTrainingSignals(values: string[], promotedKeys: Set<strin
   return values.filter((value) => !promotedKeys.has(normalizeCoachingMemoryText(value)));
 }
 
+function filterStaleWatchSignals(values: string[], activeWatchKeys: Set<string>) {
+  return values.filter((value) => !isActiveWatchSignal(value) || activeWatchKeys.has(normalizeCoachingMemoryText(value)));
+}
+
 export function formatCoachExportText(metrics: CoachExportMetrics) {
   const nextWorkoutFocusHasContent =
     metrics.nextWorkoutFocus.progressionGuardrails.length ||
@@ -367,21 +372,25 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     });
   const validatedLearningItems = coachingMemory.validatedLearnings.map((item) => item.text);
   const validatedLearningKeys = new Set(validatedLearningItems.map(normalizeCoachingMemoryText));
+  const activeWatchKeys = new Set(coachingMemory.activeWatchItems.map((item) => normalizeCoachingMemoryText(item.text)));
   const discussWithGazItems = metrics.trainingSignals.discussWithGaz.filter(
-    (item) => !isGenericStaleDiscussPrompt(item)
+    (item) => !isGenericStaleDiscussPrompt(item) && (!isActiveWatchSignal(item) || activeWatchKeys.has(normalizeCoachingMemoryText(item)))
   );
 
   const trainingSignalGroups = [
     { heading: "Validated Learnings", items: validatedLearningItems },
     {
       heading: "Movement Quality",
-      items: removePromotedTrainingSignals(metrics.trainingSignals.movementQuality, validatedLearningKeys),
+      items: filterStaleWatchSignals(
+        removePromotedTrainingSignals(metrics.trainingSignals.movementQuality, validatedLearningKeys),
+        activeWatchKeys
+      ),
     },
     {
       heading: "Stimulus / Coverage",
       items: removePromotedTrainingSignals(metrics.trainingSignals.stimulusCoverage, validatedLearningKeys),
     },
-    { heading: "Fatigue / Readiness", items: metrics.trainingSignals.fatigueReadiness },
+    { heading: "Fatigue / Readiness", items: filterStaleWatchSignals(metrics.trainingSignals.fatigueReadiness, activeWatchKeys) },
     { heading: "Discuss with Gaz", items: discussWithGazItems },
   ].filter((group) => group.items.length > 0);
   const trainingSignalLines = trainingSignalGroups.length

@@ -8,6 +8,6 @@
 export const buildInfo = {
   version: "v0.1.0",
   commit: "a26aeba",
-  branch: "feature/body-confidence-engine",
-  builtAt: "2026-07-03T21:28:33.786Z",
+  branch: "feature/coaching-memory-stale-decay",
+  builtAt: "2026-07-01T21:55:26.551Z",
 } as const;
