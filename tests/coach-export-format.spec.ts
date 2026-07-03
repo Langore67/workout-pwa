@@ -1371,16 +1371,11 @@ test("coach export goal progress uses bodyMetrics current values, not profile cu
   expect(section).not.toContain("99.0%");
 });
 
-test("coach export includes exercise vocabulary section and rules", async () => {
+test("coach export hides exercise vocabulary from the main narrative", async () => {
   const text = formatCoachExportText(buildMetrics());
 
-  const section = getSection(text, "Exercise Vocabulary", "Next Workout Focus");
-  expect(section).toContain("Use these IronForge exercise names exactly when recommending movements:");
-  expect(section).toContain("- Bench Press");
-  expect(section).toContain("- Lat Pulldown");
-  expect(section).toContain("- Prefer exact names from this list.");
-  expect(section).toContain("- Do not create new exercise names unless necessary.");
-  expect(section).toContain("- If suggesting a variation, label it as a new exercise.");
+  expect(text).not.toContain("Exercise Vocabulary");
+  expect(text).toContain("Performance Anchors");
 });
 
 test("coach export renames anchor lifts to performance anchors and renders current movement focus", async () => {
@@ -1388,7 +1383,7 @@ test("coach export renames anchor lifts to performance anchors and renders curre
   const text = formatCoachExportText(metrics);
 
   const anchors = getSection(text, "Performance Anchors", "Current Movement Focus");
-  const focus = getSection(text, "Current Movement Focus", "Exercise Vocabulary");
+  const focus = getSection(text, "Current Movement Focus", "Next Workout Focus");
 
   expect(text).toContain("Performance Anchors");
   expect(text).not.toContain("Anchor Lifts");
@@ -1481,10 +1476,75 @@ test("coach export suppresses empty current movement focus section", async () =>
   expect(text).not.toContain("Current Movement Focus");
 });
 
+test("coach export includes a short narrative summary and biggest win or risk", async () => {
+  const metrics = buildMetrics();
+  metrics.goalProgress = {
+    rows: [
+      {
+        label: "Weight",
+        current: 198,
+        target: 180,
+        remaining: 18,
+        unit: "lb",
+      } as any,
+    ],
+    status: "On Track",
+  } as any;
+  metrics.coachingMemory = {
+    validatedLearnings: [
+      {
+        id: "win-1",
+        kind: "validated_learning",
+        label: "Pull",
+        sourceType: "session_signal",
+        confidence: "high",
+        text: "MTS Row: chest-supported row reinforced Gaz's cues",
+        exerciseName: "MTS Row",
+      },
+    ],
+    activeWatchItems: [],
+    resolvedItems: [],
+    sourceWindow: { sessionCount: 4 },
+  };
+  metrics.leanPreservation = {
+    status: "Watch",
+    confidence: "Moderate",
+    rawMetrics: { leanMassLatest: 145, leanMassDelta14d: -2 },
+    evidence: {
+      positive: ["Hydration confidence high"],
+      negative: ["Lean mass estimate down 2.0 lb"],
+    },
+    coachInterpretation: "Lean-preservation risk is elevated.",
+  } as any;
+  metrics.trainingSignals = {
+    movementQuality: [],
+    stimulusCoverage: [],
+    fatigueReadiness: [],
+    nextWorkoutFocus: [],
+    discussWithGaz: [],
+  };
+  metrics.patternSummary = {
+    movementQuality: [],
+    stimulus: [],
+    fatigue: [],
+    constraints: [],
+    progression: [],
+  };
+  metrics.coachIntelligence = undefined;
+
+  const summary = getSection(formatCoachExportText(metrics), "Coach Summary", "Fat Loss");
+
+  expect(summary).toContain("Summary");
+  expect(summary).toContain("Biggest Win");
+  expect(summary).toContain("Biggest Risk");
+  expect(summary).toContain("Goal trajectory is moving in the right direction");
+  expect(summary).toContain("MTS Row: chest-supported row reinforced Gaz's cues");
+});
+
 test("coach export preserves the structured coaching loop as plain text", async () => {
   const text = formatCoachExportText(buildMetrics());
 
-  expect(text).toContain("Questions to answer:");
+  expect(text).not.toContain("Questions to answer:");
   expect(text).toContain("Next Workout Focus");
   expect(text).toContain("Progression Guardrails");
   expect(text).toContain("Execution Priorities");
@@ -1493,6 +1553,7 @@ test("coach export preserves the structured coaching loop as plain text", async 
   expect(text).toContain("Recent Patterns (Last 4 Sessions)");
   expect(text).toContain("Discuss with Gaz");
   expect(text).not.toContain("No additional readiness notes.");
+  expect(text).not.toContain("Exercise Vocabulary");
 
   expect(text).not.toContain("```");
   expect(text).not.toContain("{");

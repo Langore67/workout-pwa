@@ -9,6 +9,9 @@ export type CoachIntelligence = {
   recoveryStatus: "Good" | "Watch" | "Poor";
   overallStatus: "On Track" | "Watch" | "Intervene";
   confidence: "High" | "Moderate" | "Low";
+  summary?: string;
+  biggestWin?: string | null;
+  biggestRisk?: string | null;
   positives: string[];
   watchItems: string[];
   recommendations: string[];
@@ -267,11 +270,14 @@ function classifyRecovery(metrics: CoachExportMetrics): {
 } {
   const fatigueCount = metrics.trainingSignals.fatigueReadiness.length + metrics.patternSummary.fatigue.length;
   const hydrationLabel = String(metrics.hydration.confidenceLabel ?? "").toLowerCase();
+  const hydrationConfidence = metrics.bodyConfidence?.hydration;
   const positives: string[] = [];
   const watchItems: string[] = [];
 
-  if (hydrationLabel === "high") positives.push("Hydration confidence is high");
-  if (hydrationLabel === "low" || metrics.hydration.distortionLikely) watchItems.push("Hydration confidence is low");
+  if (hydrationLabel === "high" || hydrationConfidence === "high") positives.push("Hydration confidence is high");
+  if ((hydrationLabel === "low" || metrics.hydration.distortionLikely) && hydrationConfidence !== "high") {
+    watchItems.push("Hydration confidence is low");
+  }
   if (fatigueCount >= 2) watchItems.push("Repeated fatigue signals are present");
 
   if (watchItems.length >= 3) return { status: "Poor", explanation: "Recovery evidence is constrained by hydration uncertainty and repeated fatigue.", positives, watchItems };
@@ -291,6 +297,90 @@ function recommendationSet(metrics: CoachExportMetrics, movement: ReturnType<typ
   }
   if (!recommendations.length) recommendations.push("Continue current approach and monitor the next 1-2 check-ins.");
   return unique(recommendations, 3);
+}
+
+function chooseBiggestWin(
+  metrics: CoachExportMetrics,
+  fatLoss: ReturnType<typeof classifyFatLoss>,
+  performance: ReturnType<typeof classifyPerformanceTrend>,
+  movement: ReturnType<typeof classifyMovementQuality>
+): string | null {
+  const validatedLearnings = metrics.coachingMemory?.validatedLearnings ?? [];
+  const preferredLearning = validatedLearnings.find((item) =>
+    /(reinforced|grounded|breakthrough|validated|clicked|smoother|cleaner|better control|strong .*stimulus|successful substitution|replacement worked|repeatable)/i.test(
+      item.text
+    )
+  );
+  if (preferredLearning) return preferredLearning.text;
+
+  const positiveSignal =
+    performance.positives[0] ??
+    movement.positives[0] ??
+    fatLoss.positives[0] ??
+    metrics.leanPreservation?.evidence.positive[0] ??
+    null;
+  if (positiveSignal) return positiveSignal;
+
+  if (metrics.goalProgress?.status === "On Track") return "Goal trajectory is moving in the right direction.";
+  return null;
+}
+
+function chooseBiggestRisk(
+  metrics: CoachExportMetrics,
+  fatLoss: ReturnType<typeof classifyFatLoss>,
+  performance: ReturnType<typeof classifyPerformanceTrend>,
+  movement: ReturnType<typeof classifyMovementQuality>,
+  recovery: ReturnType<typeof classifyRecovery>
+): string | null {
+  if (metrics.leanPreservation?.status === "Watch" || metrics.leanPreservation?.status === "Poor") {
+    return aggressiveCut(metrics)
+      ? "The current rate of weight loss may outpace the muscle-preservation margin if fatigue or strength pressure worsens."
+      : "Lean-preservation risk remains elevated until performance and hydration stabilize.";
+  }
+
+  if (performance.status === "Regressing") {
+    return "Global strength is below recent trend and needs monitoring before pushing load.";
+  }
+
+  const movementRisk = movement.watchItems[0];
+  if (movementRisk) return movementRisk;
+
+  if (recovery.status === "Watch" || recovery.status === "Poor") {
+    return recovery.watchItems[0] ?? "Recovery remains a constraint.";
+  }
+
+  if (fatLoss.status === "Watch" || fatLoss.status === "Off Track") {
+    return fatLoss.watchItems[0] ?? "Fat-loss evidence is not yet fully aligned.";
+  }
+
+  return null;
+}
+
+function buildSummaryNarrative(
+  metrics: CoachExportMetrics,
+  intelligence: Pick<CoachIntelligence, "fatLossStatus" | "musclePreservationStatus" | "performanceTrendStatus" | "movementQualityStatus" | "recoveryStatus" | "overallStatus">
+): string {
+  const parts: string[] = [];
+  if (metrics.goalProgress?.status === "On Track" && intelligence.fatLossStatus === "On Track") {
+    parts.push("Goal trajectory is moving in the right direction.");
+  }
+  if (aggressiveCut(metrics)) parts.push("The cut rate is aggressive.");
+  if (intelligence.overallStatus === "On Track") parts.push("The export is broadly on track.");
+  if (intelligence.overallStatus === "Watch") parts.push("The export is on watch.");
+  if (intelligence.overallStatus === "Intervene") parts.push("The export needs intervention.");
+  if (intelligence.musclePreservationStatus === "Watch" || intelligence.musclePreservationStatus === "Poor") {
+    parts.push("Muscle-preservation risk is still a watch item, not confirmed loss.");
+  }
+  if (intelligence.performanceTrendStatus === "Mixed" || intelligence.performanceTrendStatus === "Regressing") {
+    parts.push("Recent performance evidence is mixed enough to keep progression conservative.");
+  }
+  if (intelligence.movementQualityStatus === "Watch" || intelligence.movementQualityStatus === "Mixed") {
+    parts.push("Movement quality still has an unresolved watch item.");
+  }
+  if (metrics.bodyConfidence?.hydration === "low") {
+    parts.push("Hydration uncertainty is still limiting confidence in impedance-based signals.");
+  }
+  return unique(parts, 3).join(" ");
 }
 
 export function buildCoachIntelligence(metrics: CoachExportMetrics): CoachIntelligence {
@@ -354,6 +444,17 @@ export function buildCoachIntelligence(metrics: CoachExportMetrics): CoachIntell
     ...recovery.watchItems,
   ], 8);
 
+  const biggestWin = chooseBiggestWin(metrics, fatLoss, performance, movement);
+  const biggestRisk = chooseBiggestRisk(metrics, fatLoss, performance, movement, recovery);
+  const summary = buildSummaryNarrative(metrics, {
+    fatLossStatus: fatLoss.status,
+    musclePreservationStatus: muscleStatus,
+    performanceTrendStatus: performance.status,
+    movementQualityStatus: movement.status,
+    recoveryStatus: recovery.status,
+    overallStatus,
+  });
+
   return {
     fatLossStatus: fatLoss.status,
     musclePreservationStatus: muscleStatus,
@@ -363,6 +464,9 @@ export function buildCoachIntelligence(metrics: CoachExportMetrics): CoachIntell
     recoveryStatus: recovery.status,
     overallStatus,
     confidence,
+    summary,
+    biggestWin,
+    biggestRisk,
     positives,
     watchItems,
     recommendations: recommendationSet(metrics, movement),

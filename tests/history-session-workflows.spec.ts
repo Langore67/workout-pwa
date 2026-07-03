@@ -471,7 +471,7 @@ test.describe("history and ad hoc session workflows", () => {
     await page.getByRole("button", { name: /copy coach export/i }).click();
 
     const copiedText = await page.evaluate(() => (window as any).__copiedText.text);
-    expect(copiedText).toContain("Questions to answer:");
+    expect(copiedText).not.toContain("Questions to answer:");
     expect(copiedText).toContain("Next Workout Focus");
     expect(copiedText).toContain("Progression Guardrails");
     expect(copiedText).toContain("Execution Priorities");
