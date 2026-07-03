@@ -105,6 +105,9 @@ function formatLeanPreservationSection(metrics: CoachExportMetrics): string[] {
 
 function formatCoachSummarySection(metrics: CoachExportMetrics): string[] {
   const intelligence = metrics.coachIntelligence ?? buildCoachIntelligence(metrics);
+  const summary = intelligence.summary?.trim();
+  const biggestWin = intelligence.biggestWin?.trim();
+  const biggestRisk = intelligence.biggestRisk?.trim();
   const fatLossNarrative = intelligence.narrative.find((item) => item.startsWith("Fat Loss:")) ?? "Fat Loss: Evidence is incomplete.";
   const muscleNarrative = intelligence.narrative.find((item) => item.startsWith("Muscle Preservation:")) ?? "Muscle Preservation: Evidence is incomplete.";
   const performanceNarrative =
@@ -119,6 +122,9 @@ function formatCoachSummarySection(metrics: CoachExportMetrics): string[] {
     `- Overall: ${intelligence.overallStatus}`,
     `- Confidence: ${intelligence.confidence}`,
     "",
+    ...(summary ? ["Summary", `- ${summary}`, ""] : []),
+    ...(biggestWin ? ["Biggest Win", `- ${biggestWin}`, ""] : []),
+    ...(biggestRisk ? ["Biggest Risk", `- ${biggestRisk}`, ""] : []),
     "Fat Loss",
     `- ${intelligence.fatLossStatus}`,
     `- ${fatLossNarrative.replace(/^Fat Loss:\s*/, "")}`,
@@ -294,30 +300,6 @@ function formatPhaseQualityHeading(phase: CurrentPhase) {
   return "Cut / Phase Quality";
 }
 
-function formatPhaseQuestions(phase: CurrentPhase) {
-  if (phase === "bulk") {
-    return [
-      "1. Is weight gain trending appropriately?",
-      "2. Are lean mass gain signals showing up?",
-      "3. How is strength progression?",
-    ];
-  }
-
-  if (phase === "maintain") {
-    return [
-      "1. Is body weight staying stable?",
-      "2. Are recomposition signals showing up?",
-      "3. How stable is strength?",
-    ];
-  }
-
-  return [
-    "1. Is fat loss occurring (weight and waist aligned)?",
-    "2. Is muscle being preserved (lean mass and strength stable)?",
-    "3. Is training performance staying consistent?",
-  ];
-}
-
 function normalizeNarrativeLine(value: string) {
   return String(value ?? "")
     .replace(/\s+/g, " ")
@@ -471,9 +453,6 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     "IronForge Coach Export",
     `Generated: ${formatDate(metrics.generatedAt)}`,
     "",
-    "Questions to answer:",
-    ...formatPhaseQuestions(metrics.currentPhase),
-    "",
     "Body Composition (14d trends)",
     formatMetricLine("Weight", metrics.bodyComp.weight.latest, metrics.bodyComp.weight.delta14d, " lb"),
     formatMetricLine("Waist", metrics.bodyComp.waist.latest, metrics.bodyComp.waist.delta14d, " in"),
@@ -511,15 +490,6 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     "",
     ...formatPerformanceAnchorsSection(metrics),
     ...formatCurrentMovementFocusSection(metrics),
-    "",
-    "Exercise Vocabulary",
-    "Use these IronForge exercise names exactly when recommending movements:",
-    ...(metrics.exerciseVocabulary.length
-      ? metrics.exerciseVocabulary.map((name) => `- ${name}`)
-      : ["- No recent canonical exercise names available."]),
-    "- Prefer exact names from this list.",
-    "- Do not create new exercise names unless necessary.",
-    "- If suggesting a variation, label it as a new exercise.",
     "",
     ...(nextWorkoutFocusLines.length ? [...nextWorkoutFocusLines, ""] : []),
     ...(trainingSignalLines.length ? [...trainingSignalLines, ""] : []),
