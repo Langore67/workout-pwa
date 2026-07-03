@@ -101,6 +101,13 @@ export type CoachingMemory = {
   };
 };
 
+export type CoachExportMovementFocusGroup = {
+  label: "Pull" | "Push" | "Hinge" | "Squat / Legs" | "Carry" | "Core";
+  exercises: string[];
+};
+
+export type CoachExportCurrentMovementFocus = CoachExportMovementFocusGroup[];
+
 export type CoachExportNextWorkoutFocus = {
   progressionGuardrails: string[];
   executionPriorities: string[];
@@ -128,6 +135,7 @@ export type CoachExportMetrics = {
   strengthSignal: CoachExportStrengthSignal;
   phaseQuality: PhaseQualityResult | null;
   anchorLifts: CoachExportAnchorLift[];
+  currentMovementFocus?: CoachExportCurrentMovementFocus;
   exerciseVocabulary: string[];
   trainingSignals: CoachExportTrainingSignals;
   coachingMemory?: CoachingMemory;
