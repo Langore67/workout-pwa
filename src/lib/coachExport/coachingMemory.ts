@@ -100,6 +100,15 @@ function confidenceFor(evidenceCount: number): CoachingMemoryItem["confidence"] 
   return "low";
 }
 
+function severityFor(text: string): "low" | "moderate" | "high" {
+  const normalized = normalizeCoachingMemoryText(text);
+  if (/\b(?:pain|twinge|joint feedback|stopped due to|severe|sharp)\b/i.test(normalized)) return "high";
+  if (/\b(?:form breakdown|terminal[-\s]?rep|fatigue|equipment|rejected|too heavy|constraint|watch|caution)\b/i.test(normalized)) {
+    return "moderate";
+  }
+  return "low";
+}
+
 function compactMemoryItems(
   kind: CoachingMemoryItem["kind"],
   candidates: MemoryCandidate[],
@@ -137,6 +146,8 @@ function compactMemoryItems(
       confidence: confidenceFor(item.evidenceCount),
       evidenceCount: item.evidenceCount,
       lastSeenAt: item.lastSeenAt,
+      severity: kind === "active_watch" ? severityFor(item.text) : undefined,
+      status: kind === "resolved" ? "resolved" : "active",
       text: item.text,
     }));
 }

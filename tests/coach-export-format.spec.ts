@@ -9,6 +9,8 @@ import { buildNextWorkoutFocus } from "../src/lib/coachExport/buildNextWorkoutFo
 import { buildCoachIntelligence } from "../src/lib/coachExport/coachIntelligence";
 import { formatCoachExportText } from "../src/lib/coachExport/formatCoachExportText";
 import { buildGoalProgress } from "../src/lib/coachExport/goalEngine";
+import { buildBodyConfidence } from "../src/body/bodyConfidenceEngine";
+import { evaluatePhaseQuality } from "../src/body/phaseQualityModel";
 import { buildLeanPreservationComposite } from "../src/lib/coachExport/leanPreservationComposite";
 import { buildPatternSummary, type CompletedSession } from "../src/lib/coachExport/buildPatternSummary";
 import { buildExerciseVocabulary } from "../src/lib/coachExport/exerciseVocabulary";
@@ -81,6 +83,24 @@ function buildMetrics(): CoachExportMetrics {
       note: "Hydration signal is stable.",
       distortionLikely: false,
     },
+    bodyConfidence: buildBodyConfidence({
+      bodyComp: {
+        weight: { latest: 198, baseline14d: 201, delta14d: -3 },
+        waist: { latest: 35.5, baseline14d: 36.1, delta14d: -0.6 },
+        bodyFatPct: { latest: 16.2, baseline14d: 16.9, delta14d: -0.7 },
+        leanMass: { latest: 154.1, baseline14d: 153.6, delta14d: 0.5 },
+        visceralFat: { latest: 8.2, baseline14d: 8.4, delta14d: -0.2 },
+        bodyweightDelta7d: -1.2,
+        bodyweightDelta14d: -3,
+      },
+      hydration: {
+        latestWaterPct: 57.2,
+        confidenceLabel: "High Confidence",
+        confidenceScore: 82,
+        note: "Hydration signal is stable.",
+        distortionLikely: false,
+      },
+    }),
     strengthSignal: {
       current: 1.92,
       delta14d: 0.04,
@@ -245,6 +265,91 @@ test("coach export suppresses empty validated learnings section", async () => {
   expect(trainingSection).not.toContain("Validated Learnings");
   expect(trainingSection).toContain("- MTS Row: rep 15 on final set not counted due to form breakdown");
   expect(trainingSection).toContain("- MTS Row: terminal-rep quality dropped");
+});
+
+test("coach export low hydration lean preservation cap is driven by body confidence", async () => {
+  const metrics = buildMetrics();
+  metrics.bodyComp.leanMass = { latest: 145, baseline14d: 147, delta14d: -2 };
+  metrics.bodyComp.weight = { latest: 198, baseline14d: 202, delta14d: -4 };
+  metrics.bodyComp.waist = { latest: 35.6, baseline14d: 36.2, delta14d: -0.6 };
+  metrics.bodyComp.bodyFatPct = { latest: 17.1, baseline14d: 16.7, delta14d: 0.4 };
+  metrics.hydration = {
+    latestWaterPct: 49.8,
+    confidenceLabel: "Low Confidence",
+    confidenceScore: 32,
+    note: "Hydration signal is unstable.",
+    distortionLikely: true,
+  };
+  metrics.bodyConfidence = buildBodyConfidence({
+    bodyComp: {
+      weight: metrics.bodyComp.weight,
+      waist: metrics.bodyComp.waist,
+      bodyFatPct: metrics.bodyComp.bodyFatPct,
+      leanMass: metrics.bodyComp.leanMass,
+      bodyweightDelta7d: -2.8,
+      bodyweightDelta14d: -4,
+    },
+    hydration: metrics.hydration,
+  });
+  metrics.leanPreservation = buildLeanPreservationComposite({
+    leanMass: metrics.bodyComp.leanMass,
+    weight: metrics.bodyComp.weight,
+    waist: metrics.bodyComp.waist,
+    bodyFatPct: metrics.bodyComp.bodyFatPct,
+    hydration: metrics.hydration,
+    bodyConfidence: metrics.bodyConfidence,
+    strengthSignal: metrics.strengthSignal,
+    recentPerformanceSignals: ["Lat Pulldown: improved stretch and contraction"],
+  });
+  metrics.coachIntelligence = buildCoachIntelligence(metrics);
+
+  const summarySection = getSection(formatCoachExportText(metrics), "Coach Summary", "Goal Trajectory");
+  const leanSection = getSection(formatCoachExportText(metrics), "Lean Preservation", "Visceral Fat");
+
+  expect(metrics.bodyConfidence?.overall).toBe("moderate");
+  expect(leanSection).toContain("- Watch");
+  expect(leanSection).toContain("Hydration confidence low");
+  expect(summarySection).toContain("- Overall: Watch");
+});
+
+test("coach export phase quality hydration caveat uses body confidence", async () => {
+  const metrics = buildMetrics();
+  metrics.bodyComp.weight = { latest: 198, baseline14d: 202, delta14d: -4 };
+  metrics.bodyComp.waist = { latest: 35.4, baseline14d: 36, delta14d: -0.6 };
+  metrics.bodyComp.leanMass = { latest: 152.5, baseline14d: 154.7, delta14d: -2.2 };
+  metrics.bodyComp.bodyFatPct = { latest: 17.5, baseline14d: 16.7, delta14d: 0.8 };
+  metrics.hydration = {
+    latestWaterPct: 50.4,
+    confidenceLabel: "Moderate Confidence",
+    confidenceScore: 62,
+    note: "Hydration signal is mixed.",
+    distortionLikely: true,
+  };
+  metrics.bodyConfidence = buildBodyConfidence({
+    bodyComp: {
+      weight: metrics.bodyComp.weight,
+      waist: metrics.bodyComp.waist,
+      bodyFatPct: metrics.bodyComp.bodyFatPct,
+      leanMass: metrics.bodyComp.leanMass,
+      bodyweightDelta7d: -2.6,
+      bodyweightDelta14d: -4,
+    },
+    hydration: metrics.hydration,
+  });
+  metrics.phaseQuality = evaluatePhaseQuality("cut", {
+    weightDelta: -4,
+    waistDelta: -0.6,
+    correctedLeanDelta: -2.2,
+    correctedBodyFatDelta: 0.8,
+    strengthDelta: -0.1,
+    sampleCount: 4,
+    bodyConfidence: metrics.bodyConfidence,
+  });
+
+  const phaseSection = getSection(formatCoachExportText(metrics), "Cut / Phase Quality", "Hydration");
+
+  expect(phaseSection).toContain("Rapid bodyweight loss may distort impedance-derived metrics.");
+  expect(phaseSection).toContain("- Confidence: Low");
 });
 
 test("coach export renders validated learnings from coaching memory", async () => {
@@ -598,7 +703,7 @@ test("lean preservation composite keeps classification but reduces confidence wh
     strengthSignal: { current: 1.92, delta14d: 0.04, vs90dBestPct: -1, currentBodyweight: 198, bodyweightDaysUsed: 5 },
   });
 
-  expect(lowHydration?.status).toBe(highHydration?.status);
+  expect(lowHydration?.status).toBe("Watch");
   expect(lowHydration?.confidence).toBe("Moderate");
 });
 

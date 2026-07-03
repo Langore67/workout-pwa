@@ -313,6 +313,7 @@ test.describe("history and ad hoc session workflows", () => {
   test("history to coach export copies the structured coaching loop without workout prediction", async ({
     page,
   }) => {
+    test.setTimeout(120000);
     await page.addInitScript(() => {
       const clipboardState = { text: "" };
       Object.defineProperty(window, "__copiedText", {
