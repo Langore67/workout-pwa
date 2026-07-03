@@ -266,6 +266,28 @@ function formatAnchorLift(lift: CoachExportAnchorLift) {
   return `- ${lift.pattern}: ${name} | effective ${formatValue(lift.effectiveWeightLb, 0, " lb")} x ${formatValue(lift.reps, 0)} | e1RM ${formatValue(lift.e1rm, 0)} | ${formatDate(lift.performedAt)}`;
 }
 
+function formatPerformanceAnchorsSection(metrics: CoachExportMetrics): string[] {
+  if (!metrics.anchorLifts.length) return [];
+
+  return [
+    "Performance Anchors",
+    ...metrics.anchorLifts.map(formatAnchorLift),
+    "",
+  ];
+}
+
+function formatCurrentMovementFocusSection(metrics: CoachExportMetrics): string[] {
+  if (!metrics.currentMovementFocus?.length) return [];
+
+  return [
+    "Current Movement Focus",
+    ...metrics.currentMovementFocus.map(
+      (group) => `- ${group.label}: ${group.exercises.join("; ")}`
+    ),
+    "",
+  ];
+}
+
 function formatPhaseQualityHeading(phase: CurrentPhase) {
   if (phase === "bulk") return "Bulk / Phase Quality";
   if (phase === "maintain") return "Maintenance / Phase Quality";
@@ -487,8 +509,8 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
         "Export Confidence",
         `- Confidence: ${metrics.exportConfidence.label} (${metrics.exportConfidence.score})`,
     "",
-    "Anchor Lifts",
-    ...metrics.anchorLifts.map(formatAnchorLift),
+    ...formatPerformanceAnchorsSection(metrics),
+    ...formatCurrentMovementFocusSection(metrics),
     "",
     "Exercise Vocabulary",
     "Use these IronForge exercise names exactly when recommending movements:",

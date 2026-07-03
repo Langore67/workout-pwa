@@ -1,7 +1,6 @@
 import {
   db,
   type BodyMetricEntry,
-  type Exercise,
   type Session,
   type SetEntry,
   type Track,
@@ -43,6 +42,7 @@ import { buildNextWorkoutFocus } from "./buildNextWorkoutFocus";
 import { buildCoachIntelligence } from "./coachIntelligence";
 import { buildCoachingMemory } from "./coachingMemory";
 import { buildExerciseVocabulary } from "./exerciseVocabulary";
+import { buildCurrentMovementFocus } from "./currentMovementFocus";
 import { buildGoalProgress } from "./goalEngine";
 import { buildLeanPreservationComposite } from "./leanPreservationComposite";
 import { selectRecentStrengthBuildingSessions } from "./strengthBuildingSessions";
@@ -674,6 +674,15 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     trainingSignals: trainingSignalBundle.trainingSignals,
     patternSummary,
   });
+  const currentMovementFocus = buildCurrentMovementFocus({
+    sessions: sessions ?? [],
+    sets: sets ?? [],
+    tracks: tracks ?? [],
+    exercises: exercises ?? [],
+    exerciseVocabulary,
+    coachingMemory,
+    anchorLifts,
+  });
   const nextWorkoutFocus = buildNextWorkoutFocus({
     trainingSignals: trainingSignalBundle.trainingSignals,
     patternSummary,
@@ -717,6 +726,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
         strengthSignal,
         phaseQuality,
         anchorLifts,
+        currentMovementFocus,
         exerciseVocabulary,
         trainingSignals: trainingSignalBundle.trainingSignals,
         coachingMemory,
