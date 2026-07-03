@@ -274,8 +274,9 @@ function classifyRecovery(metrics: CoachExportMetrics): {
   if (hydrationLabel === "low" || metrics.hydration.distortionLikely) watchItems.push("Hydration confidence is low");
   if (fatigueCount >= 2) watchItems.push("Repeated fatigue signals are present");
 
-  if (watchItems.length >= 2) return { status: "Poor", explanation: "Recovery evidence is constrained by hydration uncertainty and repeated fatigue.", positives, watchItems };
+  if (watchItems.length >= 3) return { status: "Poor", explanation: "Recovery evidence is constrained by hydration uncertainty and repeated fatigue.", positives, watchItems };
   if (watchItems.length === 1) return { status: "Watch", explanation: "Recovery is mostly manageable, but one recovery signal needs monitoring.", positives, watchItems };
+  if (watchItems.length === 2) return { status: "Watch", explanation: "Recovery is constrained by hydration uncertainty and repeated fatigue, but not enough to call it poor yet.", positives, watchItems };
   return { status: "Good", explanation: "No major recovery limiter is visible in the export evidence.", positives, watchItems };
 }
 
@@ -298,6 +299,7 @@ export function buildCoachIntelligence(metrics: CoachExportMetrics): CoachIntell
   const movement = classifyMovementQuality(metrics);
   const trainingStatus = legacyTrainingStatus(performance, movement);
   const recovery = classifyRecovery(metrics);
+  const bodyConfidence = metrics.bodyConfidence;
   const muscleStatus = metrics.leanPreservation?.status ?? "Watch";
   const confidenceInputs = [
     metrics.bodyComp.weight.delta14d,
@@ -315,11 +317,13 @@ export function buildCoachIntelligence(metrics: CoachExportMetrics): CoachIntell
   }
 
   const confidence: CoachIntelligence["confidence"] =
-    confidenceInputs >= 4 && metrics.leanPreservation?.confidence === "High"
-      ? "High"
-      : confidenceInputs >= 3
-        ? "Moderate"
-        : "Low";
+    bodyConfidence?.overall === "low"
+      ? "Low"
+      : confidenceInputs >= 4 && metrics.leanPreservation?.confidence === "High"
+        ? "High"
+        : confidenceInputs >= 3
+          ? "Moderate"
+          : "Low";
 
   const muscleExplanation =
     muscleStatus === "Strong"
@@ -327,7 +331,9 @@ export function buildCoachIntelligence(metrics: CoachExportMetrics): CoachIntell
       : muscleStatus === "Acceptable"
         ? "Lean-mass estimate is not perfect, but performance and waist evidence support acceptable preservation."
         : muscleStatus === "Poor"
-          ? "Lean-mass and performance evidence both indicate elevated muscle-preservation risk."
+          ? bodyConfidence?.leanMass === "low"
+            ? "Lean-mass confidence is limited, so the muscle-preservation warning is cautious rather than definitive."
+            : "Lean-mass and performance evidence both indicate elevated muscle-preservation risk."
           : "Muscle-preservation evidence needs monitoring before increasing cut pressure.";
 
   const positives = unique([

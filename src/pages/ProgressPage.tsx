@@ -602,20 +602,22 @@ export default function ProgressPage() {
   useEffect(() => {
     let cancelled = false;
 
-    async function prepareCoachExport() {
-      setCoachExportReadyState("preparing");
+    async function generateCoachExportText() {
       try {
         const metrics = await buildCoachExportMetrics();
-        if (cancelled) return;
-        const nextText = formatCoachExportText(metrics);
-        if (cancelled) return;
-        setCoachExportText(nextText);
-        setCoachExportReadyState("ready");
+        return formatCoachExportText(metrics);
       } catch (err: any) {
-        if (cancelled) return;
-        setCoachExportText("");
-        setCoachExportReadyState("error");
+        setManualCopyText(err?.message || "Could not generate coach export text.");
+        return "";
       }
+    }
+
+    async function prepareCoachExport() {
+      setCoachExportReadyState("preparing");
+      const nextText = await generateCoachExportText();
+      if (cancelled) return;
+      setCoachExportText(nextText);
+      setCoachExportReadyState(nextText ? "ready" : "error");
     }
 
     void prepareCoachExport();
@@ -626,11 +628,22 @@ export default function ProgressPage() {
   }, []);
 
   async function onCopyCoachExport() {
-    const text = coachExportText;
+    let text = coachExportText;
     if (!text) {
-      setCopyState("error");
-      setManualCopyText("Could not generate coach export text.");
-      return;
+      try {
+        const metrics = await buildCoachExportMetrics();
+        text = formatCoachExportText(metrics);
+        setCoachExportText(text);
+        setCoachExportReadyState(text ? "ready" : "error");
+      } catch (err: any) {
+        text = "";
+        setManualCopyText(err?.message || "Could not generate coach export text.");
+      }
+      if (!text) {
+        setCopyState("error");
+        setManualCopyText("Could not generate coach export text.");
+        return;
+      }
     }
 
     try {
@@ -703,7 +716,7 @@ export default function ProgressPage() {
           <button
             className="btn primary"
             onClick={() => void onCopyCoachExport()}
-            disabled={coachExportReadyState === "preparing"}
+            disabled={false}
           >
             {coachExportReadyState === "preparing" ? "Preparing Export…" : "Copy Coach Export"}
           </button>

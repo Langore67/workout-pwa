@@ -1,5 +1,6 @@
 import type { BodyMetricEntry } from "../db";
 import { getCorrectedBodyFatPct, getCorrectedLeanMassLb } from "./bodyCalculations";
+import type { BodyConfidence } from "./bodyConfidenceEngine";
 import { pickTime, pickWaistIn, pickWeightLb } from "./bodySignalModel";
 import type { StrengthTrendRow } from "../strength/Strength";
 
@@ -14,6 +15,7 @@ export type PhaseQualityInputs = {
   correctedBodyFatDelta?: number;
   strengthDelta?: number;
   sampleCount?: number;
+  bodyConfidence?: BodyConfidence;
   hydrationDistortionLikely?: boolean;
 };
 
@@ -277,8 +279,14 @@ function buildConfidence(inputs: PhaseQualityInputs): "High" | "Moderate" | "Low
   if (isFiniteNum(inputs.correctedLeanDelta) && isFiniteNum(inputs.correctedBodyFatDelta)) score += 1;
   if (isFiniteNum(inputs.strengthDelta)) score += 1;
 
-  if (inputs.hydrationDistortionLikely) {
-    score = Math.max(0, score - 1);
+  if (
+    inputs.hydrationDistortionLikely ||
+    inputs.bodyConfidence?.hydration === "low" ||
+    inputs.bodyConfidence?.leanMass === "low" ||
+    inputs.bodyConfidence?.bodyFat === "low" ||
+    inputs.bodyConfidence?.cautionFlags.some((flag) => /hydration|impedance/i.test(flag))
+  ) {
+    score = Math.max(0, score - 2);
   }
 
   if (score >= 3) return "High";
@@ -290,14 +298,21 @@ function buildDrivers(
   metricCards: PhaseQualityMetricCard[],
   quadrantNote: string,
   finalStatus: string,
+  bodyConfidence?: BodyConfidence,
   hydrationDistortionLikely?: boolean
 ) {
   const drivers = [quadrantNote];
+  const caution =
+    bodyConfidence?.cautionFlags.find((flag) => /hydration confidence is low/i.test(flag)) ??
+    bodyConfidence?.cautionFlags.find((flag) => /impedance|lean mass|body fat/i.test(flag)) ??
+    (hydrationDistortionLikely
+      ? "Hydration context may be distorting impedance-derived lean mass and body-fat changes."
+      : undefined);
+  if (caution) {
+    drivers.push(caution);
+  }
   for (const card of metricCards) {
     drivers.push(`${card.label}: ${card.value}`);
-  }
-  if (hydrationDistortionLikely) {
-    drivers.push("Hydration context may be distorting impedance-derived lean mass and body-fat changes.");
   }
   drivers.push(`Status: ${finalStatus}`);
   return drivers;
@@ -311,7 +326,7 @@ export function evaluatePhaseQuality(mode: PhaseMode, inputs: PhaseQualityInputs
     correctedBodyFatDelta,
     strengthDelta,
     sampleCount = 10,
-    hydrationDistortionLikely,
+    bodyConfidence,
   } = inputs;
   const weightTrend = getTrend(weightDelta, 0.5);
   const waistTrend = getTrend(waistDelta, 0.25);
@@ -329,7 +344,7 @@ export function evaluatePhaseQuality(mode: PhaseMode, inputs: PhaseQualityInputs
       lean: cutLean,
       strength,
       bf,
-      hydrationDistortionLikely,
+      hydrationDistortionLikely: bodyConfidence?.hydration === "low" || bodyConfidence?.leanMass === "low" || bodyConfidence?.bodyFat === "low",
     });
     const metricCards: PhaseQualityMetricCard[] = [
       {
@@ -376,7 +391,7 @@ export function evaluatePhaseQuality(mode: PhaseMode, inputs: PhaseQualityInputs
       metricCards,
       tone: quadrantTone(mode, quadrant),
       confidence: buildConfidence(inputs),
-      drivers: buildDrivers(metricCards, quadrantNote, finalStatus, hydrationDistortionLikely),
+      drivers: buildDrivers(metricCards, quadrantNote, finalStatus, bodyConfidence, inputs.hydrationDistortionLikely),
     };
   }
 
@@ -430,7 +445,7 @@ export function evaluatePhaseQuality(mode: PhaseMode, inputs: PhaseQualityInputs
       metricCards,
       tone: quadrantTone(mode, quadrant),
       confidence: buildConfidence(inputs),
-      drivers: buildDrivers(metricCards, quadrantNote, finalStatus, hydrationDistortionLikely),
+      drivers: buildDrivers(metricCards, quadrantNote, finalStatus, bodyConfidence, inputs.hydrationDistortionLikely),
     };
   }
 
@@ -475,7 +490,7 @@ export function evaluatePhaseQuality(mode: PhaseMode, inputs: PhaseQualityInputs
     metricCards,
     tone: "good",
     confidence: buildConfidence(inputs),
-    drivers: buildDrivers(metricCards, maintain.note, maintain.label, hydrationDistortionLikely),
+    drivers: buildDrivers(metricCards, maintain.note, maintain.label, bodyConfidence, inputs.hydrationDistortionLikely),
   };
 }
 
@@ -530,7 +545,7 @@ export function buildPhaseQualityInputsFromBodyRows(
   rows: BodyMetricEntry[],
   strengthDelta?: number,
   sampleWindow = 10,
-  hydrationDistortionLikely?: boolean
+  bodyConfidence?: BodyConfidence | boolean
 ): PhaseQualityInputs {
   const window = (rows ?? [])
     .slice()
@@ -541,7 +556,8 @@ export function buildPhaseQualityInputsFromBodyRows(
     return {
       strengthDelta,
       sampleCount: window.length,
-      hydrationDistortionLikely,
+      bodyConfidence: typeof bodyConfidence === "object" ? bodyConfidence : undefined,
+      hydrationDistortionLikely: typeof bodyConfidence === "boolean" ? bodyConfidence : undefined,
     };
   }
 
@@ -557,6 +573,7 @@ export function buildPhaseQualityInputsFromBodyRows(
       (getCorrectedBodyFatPct(last as any) ?? 0) - (getCorrectedBodyFatPct(first as any) ?? 0),
     strengthDelta,
     sampleCount: window.length,
-    hydrationDistortionLikely,
+    bodyConfidence: typeof bodyConfidence === "object" ? bodyConfidence : undefined,
+    hydrationDistortionLikely: typeof bodyConfidence === "boolean" ? bodyConfidence : undefined,
   };
 }

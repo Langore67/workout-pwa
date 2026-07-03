@@ -30,6 +30,7 @@ import {
   computeStrengthDeltaFromStrengthTrend,
   evaluatePhaseQuality,
 } from "../../body/phaseQualityModel";
+import { buildBodyConfidence } from "../../body/bodyConfidenceEngine";
 import {
   buildSessionCoachingSignals,
   type SessionSnapshotTrackSummary,
@@ -613,6 +614,10 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
   };
 
   const hydration = buildHydration(bodyRows);
+  const bodyConfidence = buildBodyConfidence({
+    bodyComp,
+    hydration,
+  });
   const strengthSignal = await buildStrengthSignal(generatedAt);
   const [sessions, sets, tracks, exercises] = await Promise.all([
     db.sessions.toArray(),
@@ -626,7 +631,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     bodyRows,
     computedStrength.strengthDelta,
     10,
-    hydration.distortionLikely
+    bodyConfidence
   );
   const phaseQuality =
     (phaseQualityInputs.sampleCount ?? 0) > 0 ? evaluatePhaseQuality(currentPhase, phaseQualityInputs) : null;
@@ -650,6 +655,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     waist: bodyComp.waist,
     bodyFatPct: bodyComp.bodyFatPct,
     hydration,
+    bodyConfidence,
     strengthSignal,
     fatigueSignals: trainingSignalBundle.trainingSignals.fatigueReadiness,
     recentPerformanceSignals: [
@@ -704,9 +710,10 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
         generatedAt,
         currentPhase,
         bodyComp,
-        hydration,
-        goalProgress,
-        leanPreservation,
+    hydration,
+    bodyConfidence,
+    goalProgress,
+    leanPreservation,
         strengthSignal,
         phaseQuality,
         anchorLifts,

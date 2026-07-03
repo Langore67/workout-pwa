@@ -244,7 +244,7 @@ function compactMemoryItems(
       evidenceCount: item.evidenceCount,
       lastSeenAt: item.lastSeenAt,
       severity: kind === "active_watch" ? severityFor(item.text) : undefined,
-      status: "active",
+      status: kind === "resolved" ? "resolved" : "active",
       text: item.text,
     }));
 }

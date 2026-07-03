@@ -1,3 +1,4 @@
+import type { BodyConfidence } from "../../body/bodyConfidenceEngine";
 import type { CoachExportHydration, CoachExportMetric, CoachExportStrengthSignal } from "./types";
 
 export type LeanPreservationCompositeStatus = "Strong" | "Acceptable" | "Watch" | "Poor";
@@ -23,6 +24,7 @@ type BuildLeanPreservationCompositeInput = {
   waist: CoachExportMetric;
   bodyFatPct: CoachExportMetric;
   hydration: CoachExportHydration;
+  bodyConfidence?: BodyConfidence;
   strengthSignal: CoachExportStrengthSignal;
   fatigueSignals?: string[];
   recentPerformanceSignals?: string[];
@@ -131,6 +133,10 @@ export function buildLeanPreservationComposite(
   const hasPerformanceMetric = strength !== "unknown";
   const recentPerformance = recentPerformanceState(input.recentPerformanceSignals);
   const recentPerformanceClearlyNegative = recentPerformance === "negative";
+  const bodyConfidenceHydration = input.bodyConfidence?.hydration ?? (hydrationIsHigh(input.hydration) ? "high" : hydrationIsLow(input.hydration) ? "low" : "moderate");
+  const bodyConfidenceLeanMass = input.bodyConfidence?.leanMass ?? bodyConfidenceHydration;
+  const hydrationConfidenceLow = bodyConfidenceHydration === "low";
+  const leanMassConfidenceLow = bodyConfidenceLeanMass === "low" || hydrationConfidenceLow;
 
   const positive: string[] = [];
   const negative: string[] = [];
@@ -159,8 +165,8 @@ export function buildLeanPreservationComposite(
   if (bodyFatImproving) positive.push("BF trend improving");
   else if (bodyFat === "up") negative.push("BF trend worsening");
 
-  if (hydrationIsHigh(input.hydration)) positive.push("Hydration confidence high");
-  else if (hydrationIsLow(input.hydration)) negative.push("Hydration confidence low");
+  if (bodyConfidenceHydration === "high") positive.push("Hydration confidence high");
+  else if (hydrationConfidenceLow) negative.push("Hydration confidence low");
 
   if (leanDown && finite(leanDelta)) {
     negative.push(`Lean mass estimate down ${Math.abs(leanDelta).toFixed(1)} lb`);
@@ -188,12 +194,24 @@ export function buildLeanPreservationComposite(
 
   const hydrationCapsPoor =
     status === "Poor" &&
-    hydrationIsLow(input.hydration) &&
+    leanMassConfidenceLow &&
     leanDown &&
     !recentPerformanceClearlyNegative;
   if (hydrationCapsPoor) status = "Watch";
 
-  if (aggressiveCut && strengthStableOrImproving && status === "Watch") {
+  const hydrationCapsAcceptable =
+    (status === "Acceptable" || status === "Poor") &&
+    leanMassConfidenceLow &&
+    leanDown &&
+    !recentPerformanceClearlyNegative;
+  if (hydrationCapsAcceptable) status = "Watch";
+
+  if (
+    aggressiveCut &&
+    strengthStableOrImproving &&
+    status === "Watch" &&
+    !(hydrationConfidenceLow && leanMassConfidenceLow && leanDown && !recentPerformanceClearlyNegative)
+  ) {
     status = "Acceptable";
   }
 
@@ -209,19 +227,21 @@ export function buildLeanPreservationComposite(
   else if (evidenceCount >= 3) confidence = "Moderate";
 
   if (strengthImproving && hasPerformanceMetric) confidence = improveConfidence(confidence);
-  if (hydrationIsLow(input.hydration)) confidence = reduceConfidence(confidence);
+  if (hydrationConfidenceLow) confidence = reduceConfidence(confidence);
 
   let coachInterpretation: string | undefined;
   if (hydrationCapsPoor) {
-    coachInterpretation =
-      "Lean-preservation risk is elevated, but low hydration confidence makes the lean-mass drop less conclusive. Treat this as Watch until hydration stabilizes or performance confirms the trend.";
-  } else if (hydrationIsLow(input.hydration) && leanDown && strengthDeclining && recentPerformanceClearlyNegative) {
+    const caution = input.bodyConfidence?.cautionFlags.find((flag) => /hydration|impedance/i.test(flag));
+    coachInterpretation = caution
+      ? `${caution} Lean-preservation risk is elevated, but the lean-mass drop is less conclusive. Treat this as Watch until hydration stabilizes or performance confirms the trend.`
+      : "Lean-preservation risk is elevated, but low hydration confidence makes the lean-mass drop less conclusive. Treat this as Watch until hydration stabilizes or performance confirms the trend.";
+  } else if (hydrationConfidenceLow && leanDown && strengthDeclining && recentPerformanceClearlyNegative) {
     coachInterpretation =
       "Lean-mass estimate is down and performance evidence is also deteriorating, so muscle-preservation risk remains high despite hydration uncertainty.";
-  } else if (hydrationIsHigh(input.hydration) && strengthStableOrImproving) {
+  } else if (bodyConfidenceHydration === "high" && strengthStableOrImproving) {
     coachInterpretation =
       "Bioimpedance lean-mass estimates can fluctuate with hydration. Current lifting performance suggests muscle preservation is better than lean-mass estimates alone indicate.";
-  } else if (hydrationIsLow(input.hydration) && leanDown) {
+  } else if (hydrationConfidenceLow && leanDown) {
     coachInterpretation =
       "Lean-preservation risk is elevated, but low hydration confidence makes the lean-mass drop less conclusive.";
   }
