@@ -44,6 +44,10 @@ import { db, Template, TemplateItem, Track, Folder, Session } from "../db";
 import { uuid } from "../utils";
 import { Page, Section } from "../components/Page.tsx";
 import { ActionMenu, MenuIcons, MenuItem } from "../components/ActionMenu";
+import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetrics";
+import type { CoachExportMetrics } from "../lib/coachExport/types";
+import { buildCoachStateFromExportMetrics } from "../lib/coachState/buildCoachState";
+import type { CoachState } from "../lib/coachState/coachStateTypes";
 
 /* ============================================================================
    Breadcrumb 1 — Helpers
@@ -77,6 +81,91 @@ function fmtDurationSince(ms?: number) {
 
   if (rem === 0) return `${hrs} hr`;
   return `${hrs} hr ${rem} min`;
+}
+
+function fmtCoachStatus(value?: string) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return "—";
+  if (normalized === "not_enough_data") return "Not Enough Data";
+  return normalized
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function fmtCoachConfidence(value?: string) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "high") return "High";
+  if (normalized === "moderate" || normalized === "medium") return "Moderate";
+  if (normalized === "low") return "Low";
+  return "—";
+}
+
+function fmtNumber(value?: number | null, decimals = 1) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  const fixed = value.toFixed(decimals);
+  return fixed.replace(/\.0+$/, "");
+}
+
+function fmtSignedNumber(value?: number | null, decimals = 1) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  const fixed = value.toFixed(decimals).replace(/\.0+$/, "");
+  return value > 0 ? `+${fixed}` : fixed;
+}
+
+type CoachStateAnchor = NonNullable<CoachState["strength"]["anchors"]>[number];
+
+function fmtAnchorSummary(anchor?: CoachStateAnchor | null) {
+  if (!anchor) return "—";
+  const parts = [
+    anchor.pattern
+      ? `${String(anchor.pattern).charAt(0).toUpperCase()}${String(anchor.pattern).slice(1)}`
+      : "",
+    anchor.exerciseName ?? anchor.trackDisplayName ?? "",
+  ].filter(Boolean);
+  const load = [
+    anchor.effectiveWeightLb != null ? `${fmtNumber(anchor.effectiveWeightLb)} lb` : null,
+    anchor.reps != null ? `${fmtNumber(anchor.reps, 0)} reps` : null,
+  ]
+    .filter(Boolean)
+    .join(" x ");
+  const e1rm = anchor.e1rm != null ? `e1RM ${fmtNumber(anchor.e1rm)} lb` : "";
+  return [parts.join(": "), load, e1rm].filter(Boolean).join(" | ");
+}
+
+function hasCoachDashboardData(metrics?: CoachExportMetrics | null) {
+  if (!metrics) return false;
+  return Boolean(
+    metrics.bodyComp.weight.latest != null ||
+      metrics.bodyComp.waist.latest != null ||
+      metrics.bodyComp.bodyFatPct.latest != null ||
+      metrics.bodyComp.leanMass.latest != null ||
+      metrics.bodyComp.visceralFat?.latest != null ||
+      metrics.bodyComp.waistToHeight?.latest != null ||
+      (typeof metrics.strengthSignal.current === "number" && metrics.strengthSignal.current !== 0) ||
+      (typeof metrics.strengthSignal.delta14d === "number" && metrics.strengthSignal.delta14d !== 0) ||
+      (typeof metrics.strengthSignal.vs90dBestPct === "number" && metrics.strengthSignal.vs90dBestPct !== 0) ||
+      (metrics.anchorLifts ?? []).some(
+        (anchor) =>
+          anchor.exerciseName != null ||
+          anchor.trackDisplayName != null ||
+          anchor.effectiveWeightLb != null ||
+          anchor.reps != null ||
+          anchor.e1rm != null ||
+          anchor.performedAt != null
+      ) ||
+      (metrics.goalProgress?.rows?.length ?? 0) > 0 ||
+      (metrics.coachingMemory?.validatedLearnings?.length ?? 0) > 0 ||
+      (metrics.coachingMemory?.activeWatchItems?.length ?? 0) > 0 ||
+      (metrics.coachingMemory?.resolvedItems?.length ?? 0) > 0 ||
+      (metrics.currentMovementFocus?.some((group) => (group.exercises?.length ?? 0) > 0) ?? false) ||
+      (metrics.trainingSignals?.movementQuality?.length ?? 0) > 0 ||
+      (metrics.trainingSignals?.stimulusCoverage?.length ?? 0) > 0 ||
+      (metrics.trainingSignals?.fatigueReadiness?.length ?? 0) > 0 ||
+      (metrics.trainingSignals?.nextWorkoutFocus?.length ?? 0) > 0 ||
+      (metrics.trainingSignals?.discussWithGaz?.length ?? 0) > 0
+  );
 }
 
 type TemplatePreviewRow = {
@@ -130,6 +219,9 @@ export default function StartPage() {
      Breadcrumb 4 — UI state
      ----------------------------------------------------------------------- */
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [coachState, setCoachState] = useState<CoachState | null>(null);
+  const [coachStateStatus, setCoachStateStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [coachStateError, setCoachStateError] = useState<string | null>(null);
 
   const [openFolderIds, setOpenFolderIds] = useState<Set<string>>(() => {
     try {
@@ -150,6 +242,33 @@ export default function StartPage() {
       localStorage.setItem(OPEN_FOLDERS_KEY, JSON.stringify(Array.from(openFolderIds)));
     } catch {}
   }, [openFolderIds]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCoachState() {
+      setCoachStateStatus("loading");
+      setCoachStateError(null);
+
+      try {
+        const metrics = await buildCoachExportMetrics();
+        if (cancelled) return;
+        setCoachState(buildCoachStateFromExportMetrics(metrics));
+        setCoachStateStatus("ready");
+      } catch (err: any) {
+        if (cancelled) return;
+        setCoachState(null);
+        setCoachStateStatus("error");
+        setCoachStateError(err?.message || "Coach dashboard unavailable.");
+      }
+    }
+
+    void loadCoachState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /* --------------------------------------------------------------------------
      Breadcrumb 5 — Derived maps
@@ -484,6 +603,210 @@ export default function StartPage() {
      ----------------------------------------------------------------------- */
   return (
     <Page title="Today" subtitle="Start, continue, import, or review your latest training.">
+      <Section>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <div>
+            <div style={{ fontWeight: 900, fontSize: 18 }}>Coach Dashboard</div>
+            <div className="muted" style={{ marginTop: 4 }}>
+              Daily coaching snapshot from your latest body, strength, and goal data.
+            </div>
+          </div>
+        </div>
+
+        {coachStateStatus === "loading" ? (
+          <div className="card" data-testid="coach-dashboard-loading" style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 800 }}>Building coach dashboard...</div>
+          </div>
+        ) : coachStateStatus === "error" ? (
+          <div className="card" data-testid="coach-dashboard-error" style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 800 }}>Coach dashboard unavailable.</div>
+            {coachStateError ? (
+              <div className="muted" style={{ marginTop: 6 }}>
+                {coachStateError}
+              </div>
+            ) : null}
+          </div>
+        ) : !hasCoachDashboardData(coachState?.export.sourceMetrics) ? (
+          <div className="card" data-testid="coach-dashboard-empty" style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 800 }}>Not enough coaching data yet.</div>
+            <div className="muted" style={{ marginTop: 6 }}>
+              Complete workouts and add body metrics to unlock the dashboard.
+            </div>
+          </div>
+        ) : (
+          <div
+            data-testid="coach-dashboard"
+            style={{
+              marginTop: 12,
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+              gap: 10,
+            }}
+          >
+            <div className="card" data-testid="coach-dashboard-snapshot">
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>Coach Snapshot</div>
+              <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                <DashboardLine label="Overall" value={fmtCoachStatus(coachState.snapshot.overallStatus)} />
+                <DashboardLine label="Confidence" value={fmtCoachConfidence(coachState.snapshot.confidence)} />
+                {coachState.snapshot.narrative ? (
+                  <DashboardLine label="Narrative" value={coachState.snapshot.narrative} />
+                ) : null}
+                {coachState.snapshot.biggestWin ? (
+                  <DashboardLine label="Biggest Win" value={coachState.snapshot.biggestWin} />
+                ) : null}
+                {coachState.snapshot.biggestRisk ? (
+                  <DashboardLine label="Biggest Risk" value={coachState.snapshot.biggestRisk} />
+                ) : null}
+                {coachState.snapshot.todayFocus ? (
+                  <DashboardLine label="Today's Focus" value={coachState.snapshot.todayFocus} />
+                ) : null}
+              </div>
+            </div>
+
+            <div className="card" data-testid="coach-dashboard-body">
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>Body</div>
+              <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                {coachState.body.confidence ? (
+                  <>
+                    <DashboardLine label="Overall" value={fmtCoachConfidence(coachState.body.confidence.overall)} />
+                    <DashboardLine label="Weight" value={fmtCoachConfidence(coachState.body.confidence.weight)} />
+                    <DashboardLine label="Waist" value={fmtCoachConfidence(coachState.body.confidence.waist)} />
+                    <DashboardLine label="Lean Mass" value={fmtCoachConfidence(coachState.body.confidence.leanMass)} />
+                    <DashboardLine label="Body Fat" value={fmtCoachConfidence(coachState.body.confidence.bodyFat)} />
+                    <DashboardLine label="Hydration" value={fmtCoachConfidence(coachState.body.confidence.hydration)} />
+                  </>
+                ) : null}
+                {coachState.body.latestWeightLb != null ? (
+                  <DashboardLine
+                    label="Latest Weight"
+                    value={`${fmtNumber(coachState.body.latestWeightLb)} lb${
+                      coachState.body.weightDelta14dLb != null ? ` (${fmtSignedNumber(coachState.body.weightDelta14dLb)} / 14d)` : ""
+                    }`}
+                  />
+                ) : null}
+                {coachState.body.latestWaistIn != null ? (
+                  <DashboardLine
+                    label="Latest Waist"
+                    value={`${fmtNumber(coachState.body.latestWaistIn)} in${
+                      coachState.body.waistDelta14dIn != null ? ` (${fmtSignedNumber(coachState.body.waistDelta14dIn)} / 14d)` : ""
+                    }`}
+                  />
+                ) : null}
+              </div>
+            </div>
+
+            <div className="card" data-testid="coach-dashboard-performance">
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>Performance</div>
+              <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                <DashboardLine
+                  label="Performance Trend"
+                  value={fmtCoachStatus(coachState.strength.performanceTrend)}
+                />
+                <DashboardLine
+                  label="Movement Quality"
+                  value={fmtCoachStatus(coachState.strength.movementQuality)}
+                />
+                {coachState.strength.strengthSignalCurrent != null ? (
+                  <DashboardLine
+                    label="Strength Signal"
+                    value={[
+                      fmtNumber(coachState.strength.strengthSignalCurrent, 2),
+                      coachState.strength.strengthSignalDelta14d != null
+                        ? `Δ ${fmtSignedNumber(coachState.strength.strengthSignalDelta14d, 2)}`
+                        : null,
+                      coachState.strength.strengthSignalVsBestPct != null
+                        ? `vs best ${fmtSignedNumber(coachState.strength.strengthSignalVsBestPct, 1)}%`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" | ")}
+                  />
+                ) : null}
+                {coachState.strength.anchors?.length ? (
+                  <DashboardLine label="Anchor" value={fmtAnchorSummary(coachState.strength.anchors[0])} />
+                ) : null}
+              </div>
+            </div>
+
+            <div className="card" data-testid="coach-dashboard-goals">
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>Goals</div>
+              <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                <DashboardLine label="Goal Trajectory" value={fmtCoachStatus(coachState.goals.trajectoryStatus)} />
+                {(coachState.goals.targets ?? []).slice(0, 3).map((row) => (
+                  <DashboardLine
+                    key={row.label}
+                    label={row.label}
+                    value={`${fmtNumber(row.current)} / ${fmtNumber(row.target)} (${fmtSignedNumber(
+                      row.remaining,
+                      row.unit === "pts" || row.unit === "ratio" ? 1 : 1
+                    )}${row.unit === "ratio" ? "" : row.unit ? ` ${row.unit}` : ""}) • ${fmtCoachStatus(row.status)}`}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="card" data-testid="coach-dashboard-learnings">
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>Learnings</div>
+              <div style={{ display: "grid", gap: 10, fontSize: 13 }}>
+                <div>
+                  <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    Validated Learnings
+                  </div>
+                  <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
+                    {coachState.learnings.validated.slice(0, 3).length ? (
+                      coachState.learnings.validated.slice(0, 3).map((item) => <div key={item}>- {item}</div>)
+                    ) : (
+                      <div className="muted">No validated learnings yet.</div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    Active Watch Items
+                  </div>
+                  <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
+                    {coachState.learnings.watchItems.slice(0, 2).length ? (
+                      coachState.learnings.watchItems.slice(0, 2).map((item) => <div key={item}>- {item}</div>)
+                    ) : (
+                      <div className="muted">No active watch items.</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="card" data-testid="coach-dashboard-cardio">
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>Cardio</div>
+              <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                {coachState.cardio.available ? (
+                  <>
+                    <DashboardLine label="Walks 7d" value={fmtNumber(coachState.cardio.walkCount7d, 0)} />
+                    <DashboardLine
+                      label="Duration 7d"
+                      value={
+                        typeof coachState.cardio.totalDuration7dSeconds === "number"
+                          ? `${fmtNumber(coachState.cardio.totalDuration7dSeconds / 60, 0)} min`
+                          : "—"
+                      }
+                    />
+                    <DashboardLine
+                      label="Distance 7d"
+                      value={
+                        typeof coachState.cardio.totalDistance7dMeters === "number"
+                          ? `${fmtNumber(coachState.cardio.totalDistance7dMeters / 1609.34, 1)} mi`
+                          : "—"
+                      }
+                    />
+                  </>
+                ) : (
+                  <div className="muted">Cardio summary not available yet.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </Section>
+
       {/* Start Hub */}
       <Section>
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 12 }}>
@@ -733,6 +1056,17 @@ export default function StartPage() {
         </div>
       )}
     </Page>
+  );
+}
+
+function DashboardLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "110px minmax(0, 1fr)", gap: 8, alignItems: "start" }}>
+      <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+        {label}
+      </div>
+      <div style={{ minWidth: 0, wordBreak: "break-word" }}>{value}</div>
+    </div>
   );
 }
 
