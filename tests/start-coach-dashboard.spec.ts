@@ -321,12 +321,10 @@ test.describe("Start Coach Dashboard", () => {
 
     const snapshot = page.getByTestId("coach-dashboard-snapshot");
     await expect(snapshot).toContainText("Coach Snapshot");
-    await expect(snapshot).toContainText("Overall");
+    await expect(snapshot).toContainText("Status");
     await expect(snapshot).toContainText("Confidence");
-    await expect(snapshot).toContainText("Narrative");
-    await expect(snapshot).toContainText("Biggest Win");
-    await expect(snapshot).toContainText("Biggest Risk");
-    await expect(snapshot).toContainText("Today's Focus");
+    await expect(snapshot).toContainText("Why");
+    await expect(snapshot).toContainText("Today");
 
     const body = page.getByTestId("coach-dashboard-body");
     await expect(body).toContainText("Body");
@@ -342,18 +340,20 @@ test.describe("Start Coach Dashboard", () => {
 
     const performance = page.getByTestId("coach-dashboard-performance");
     await expect(performance).toContainText("Performance Trend");
-    await expect(performance).toContainText("Movement Quality");
     await expect(performance).toContainText("Strength Signal");
     await expect(performance).toContainText("historical anchor");
+    await expect(performance).toContainText("Movement Quality");
+    await expect(performance).toContainText("Performance Read");
 
     const goals = page.getByTestId("coach-dashboard-goals");
     await expect(goals).toContainText("Goal Trajectory");
+    await expect(goals).toContainText("Goal Read");
     await expect(goals).toContainText("Weight");
     await expect(goals).toContainText("Waist");
 
     const learnings = page.getByTestId("coach-dashboard-learnings");
-    await expect(learnings).toContainText("Validated Learnings");
-    await expect(learnings).toContainText("Active Watch Items");
+    await expect(learnings).toContainText("What's Working");
+    await expect(learnings).toContainText("Watch Now");
     await expect(learnings).toContainText("reinforced Gaz's cues");
     await expect(learnings).toContainText("form breakdown");
 

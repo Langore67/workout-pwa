@@ -234,6 +234,74 @@ function fmtAnchorSummary(anchor?: CoachStateAnchor | null) {
   return [parts.join(": "), load, e1rm, age, recency].filter(Boolean).join(" | ");
 }
 
+function fmtSnapshotWhy(state: CoachState) {
+  return state.snapshot.narrative ?? state.snapshot.biggestRisk ?? state.snapshot.biggestWin ?? "—";
+}
+
+function fmtPerformanceRead(state: CoachState) {
+  const trend = String(state.strength.performanceTrend ?? "").trim();
+  const movement = String(state.strength.movementQuality ?? "").trim();
+  const anchor = state.strength.anchors?.[0];
+  const hasHistoricalAnchor =
+    anchor?.recency === "historical" || anchor?.recency === "stale" || anchor?.isStale;
+
+  if (trend === "Regressing" || trend === "Mixed" || movement === "Watch" || movement === "Mixed") {
+    return hasHistoricalAnchor
+      ? "Historical anchors remain useful, but recent strength signal is pressured."
+      : "Recent strength signal is pressured.";
+  }
+
+  if (trend === "Improving") {
+    return "Recent strength trend is improving, with cleaner movement noted in recent sessions.";
+  }
+
+  if (trend === "Stable") {
+    return "Strength is holding steady, with no major movement-quality limiter in recent sessions.";
+  }
+
+  return hasHistoricalAnchor
+    ? "Historical anchors are still useful context."
+    : "Recent performance evidence is still building.";
+}
+
+function fmtGoalRead(state: CoachState) {
+  const rows = state.goals.targets ?? [];
+  if (!rows.length) return "—";
+
+  const findRow = (pattern: RegExp) => rows.find((row) => pattern.test(row.label));
+  const weight = findRow(/^Weight$/i);
+  const waist = findRow(/waist/i);
+  const bodyFat = findRow(/body fat/i);
+  const status = String(state.goals.trajectoryStatus ?? "").trim().toLowerCase();
+
+  const weightClose =
+    weight != null &&
+    typeof weight.remaining === "number" &&
+    Number.isFinite(weight.remaining) &&
+    weight.remaining <= Math.max(5, Math.abs(weight.target) * 0.08);
+  const bodyCompNeedsConfirmation =
+    [waist, bodyFat].filter(
+      (row) => row != null && typeof row.remaining === "number" && Number.isFinite(row.remaining) && row.remaining > 0
+    ).length > 0;
+
+  if (status === "watch") {
+    if (weightClose && bodyCompNeedsConfirmation) {
+      return "Weight goal is close, but waist/body-fat goals need cleaner confirmation.";
+    }
+    return "Trajectory is watchable; keep the cut conservative and confirm the body-composition trend.";
+  }
+
+  if (status === "intervene") {
+    return "Body-composition trend is not yet close enough to relax progression.";
+  }
+
+  if (status === "solid") {
+    return "Goal trajectory is moving in the right direction.";
+  }
+
+  return "Goal trajectory still needs more data before it can be called clearly.";
+}
+
 function hasCoachDashboardData(metrics?: CoachExportMetrics | null) {
   if (!metrics) return false;
   return Boolean(
@@ -843,20 +911,10 @@ export default function StartPage() {
             <div className="card" data-testid="coach-dashboard-snapshot">
               <div style={{ fontWeight: 800, marginBottom: 8 }}>Coach Snapshot</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                <DashboardLine label="Overall" value={fmtCoachStatus(coachState.snapshot.overallStatus)} />
+                <DashboardLine label="Status" value={fmtCoachStatus(coachState.snapshot.overallStatus)} />
                 <DashboardLine label="Confidence" value={fmtCoachConfidence(coachState.snapshot.confidence)} />
-                {coachState.snapshot.narrative ? (
-                  <DashboardLine label="Narrative" value={coachState.snapshot.narrative} />
-                ) : null}
-                {coachState.snapshot.biggestWin ? (
-                  <DashboardLine label="Biggest Win" value={coachState.snapshot.biggestWin} />
-                ) : null}
-                {coachState.snapshot.biggestRisk ? (
-                  <DashboardLine label="Biggest Risk" value={coachState.snapshot.biggestRisk} />
-                ) : null}
-                {coachState.snapshot.todayFocus ? (
-                  <DashboardLine label="Today's Focus" value={coachState.snapshot.todayFocus} />
-                ) : null}
+                <DashboardLine label="Why" value={fmtSnapshotWhy(coachState)} />
+                <DashboardLine label="Today" value={coachState.snapshot.todayFocus ?? "—"} />
               </div>
             </div>
 
@@ -902,10 +960,9 @@ export default function StartPage() {
                   label="Performance Trend"
                   value={fmtCoachStatus(coachState.strength.performanceTrend)}
                 />
-                <DashboardLine
-                  label="Movement Quality"
-                  value={fmtCoachStatus(coachState.strength.movementQuality)}
-                />
+                {coachState.strength.anchors?.length ? (
+                  <DashboardLine label="Anchor" value={fmtAnchorSummary(coachState.strength.anchors[0])} />
+                ) : null}
                 {coachState.strength.strengthSignalCurrent != null ? (
                   <DashboardLine
                     label="Strength Signal"
@@ -922,9 +979,11 @@ export default function StartPage() {
                       .join(" | ")}
                   />
                 ) : null}
-                {coachState.strength.anchors?.length ? (
-                  <DashboardLine label="Anchor" value={fmtAnchorSummary(coachState.strength.anchors[0])} />
-                ) : null}
+                <DashboardLine
+                  label="Movement Quality"
+                  value={fmtCoachStatus(coachState.strength.movementQuality)}
+                />
+                <DashboardLine label="Performance Read" value={fmtPerformanceRead(coachState)} />
               </div>
             </div>
 
@@ -932,6 +991,7 @@ export default function StartPage() {
               <div style={{ fontWeight: 800, marginBottom: 8 }}>Goals</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
                 <DashboardLine label="Goal Trajectory" value={fmtCoachStatus(coachState.goals.trajectoryStatus)} />
+                <DashboardLine label="Goal Read" value={fmtGoalRead(coachState)} />
                 {(coachState.goals.targets ?? []).slice(0, 3).map((row) => (
                   <DashboardLine
                     key={row.label}
@@ -950,7 +1010,7 @@ export default function StartPage() {
               <div style={{ display: "grid", gap: 10, fontSize: 13 }}>
                 <div>
                   <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                    Validated Learnings
+                    What&apos;s Working
                   </div>
                   <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
                     {coachState.learnings.validated.slice(0, 3).length ? (
@@ -962,7 +1022,7 @@ export default function StartPage() {
                 </div>
                 <div>
                   <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                    Active Watch Items
+                    Watch Now
                   </div>
                   <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
                     {coachState.learnings.watchItems.slice(0, 2).length ? (
