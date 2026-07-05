@@ -37,7 +37,7 @@
    - 2026-03-08  SP-08  Fix Ungrouped kebab/state + compress Start action spacing
    ============================================================================ */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
 import { db, Template, TemplateItem, Track, Folder, Session } from "../db";
@@ -115,6 +115,52 @@ function fmtSignedNumber(value?: number | null, decimals = 1) {
 }
 
 type CoachStateAnchor = NonNullable<CoachState["strength"]["anchors"]>[number];
+
+const COACH_DASHBOARD_REFRESH_EVENT = "ironforge:coach-dashboard-refresh";
+const COACH_DASHBOARD_LOAD_TIMEOUT_MS = 4500;
+const COACH_DASHBOARD_LOAD_TIMEOUT_OVERRIDE_KEY = "IRONFORGE_COACH_DASHBOARD_TIMEOUT_MS";
+const COACH_DASHBOARD_DEBUG_KEY = "IRONFORGE_DEBUG_COACH_DASHBOARD";
+
+function isCoachDashboardDebugEnabled() {
+  try {
+    return localStorage.getItem(COACH_DASHBOARD_DEBUG_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function coachDashboardLog(...args: unknown[]) {
+  if (!isCoachDashboardDebugEnabled()) return;
+  console.info("[coach-dashboard]", ...args);
+}
+
+function getCoachDashboardLoadTimeoutMs() {
+  try {
+    const raw = localStorage.getItem(COACH_DASHBOARD_LOAD_TIMEOUT_OVERRIDE_KEY);
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  } catch {}
+  return COACH_DASHBOARD_LOAD_TIMEOUT_MS;
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeoutId: number | undefined;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId != null) {
+      window.clearTimeout(timeoutId);
+    }
+  }
+}
 
 function fmtAnchorSummary(anchor?: CoachStateAnchor | null) {
   if (!anchor) return "—";
@@ -220,8 +266,30 @@ export default function StartPage() {
      ----------------------------------------------------------------------- */
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [coachState, setCoachState] = useState<CoachState | null>(null);
-  const [coachStateStatus, setCoachStateStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [coachMetrics, setCoachMetrics] = useState<CoachExportMetrics | null>(null);
+  const [coachLoading, setCoachLoading] = useState<boolean>(true);
   const [coachStateError, setCoachStateError] = useState<string | null>(null);
+  const [hasLoadedCoachDashboard, setHasLoadedCoachDashboard] = useState(false);
+  const coachStateRef = useRef<CoachState | null>(null);
+  const hasLoadedRef = useRef(false);
+  const mountedRef = useRef(false);
+  const initialRefreshRequestedRef = useRef(false);
+  const refreshRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    coachStateRef.current = coachState;
+  }, [coachState]);
+
+  useEffect(() => {
+    hasLoadedRef.current = hasLoadedCoachDashboard;
+  }, [hasLoadedCoachDashboard]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const [openFolderIds, setOpenFolderIds] = useState<Set<string>>(() => {
     try {
@@ -243,32 +311,104 @@ export default function StartPage() {
     } catch {}
   }, [openFolderIds]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const refreshCoachDashboard = useCallback(async (reason: "initial" | "background" = "background") => {
+    const requestId = ++refreshRequestIdRef.current;
+    const preserveExisting = hasLoadedRef.current || coachStateRef.current != null;
+    const startedAt = Date.now();
+    const shouldShowLoading = reason === "initial" || !preserveExisting;
 
-    async function loadCoachState() {
-      setCoachStateStatus("loading");
-      setCoachStateError(null);
-
-      try {
-        const metrics = await buildCoachExportMetrics();
-        if (cancelled) return;
-        setCoachState(buildCoachStateFromExportMetrics(metrics));
-        setCoachStateStatus("ready");
-      } catch (err: any) {
-        if (cancelled) return;
-        setCoachState(null);
-        setCoachStateStatus("error");
-        setCoachStateError(err?.message || "Coach dashboard unavailable.");
-      }
+    if (shouldShowLoading) {
+      setCoachLoading(true);
     }
 
-    void loadCoachState();
+    coachDashboardLog(`[${requestId}] refresh start`, {
+      reason,
+      preserveExisting,
+    });
+
+    try {
+      coachDashboardLog(`[${requestId}] buildCoachExportMetrics start`);
+      const metricsStartedAt = Date.now();
+      const metrics = await withTimeout(
+        buildCoachExportMetrics(),
+        getCoachDashboardLoadTimeoutMs(),
+        "buildCoachExportMetrics"
+      );
+      coachDashboardLog(`[${requestId}] buildCoachExportMetrics complete`, {
+        elapsedMs: Date.now() - metricsStartedAt,
+      });
+      if (!mountedRef.current || requestId !== refreshRequestIdRef.current) {
+        coachDashboardLog(`[${requestId}] refresh stale after metrics`);
+        return;
+      }
+
+      coachDashboardLog(`[${requestId}] buildCoachStateFromExportMetrics start`);
+      const stateStartedAt = Date.now();
+      const nextCoachState = buildCoachStateFromExportMetrics(metrics);
+      coachDashboardLog(`[${requestId}] buildCoachStateFromExportMetrics complete`, {
+        elapsedMs: Date.now() - stateStartedAt,
+      });
+      if (!mountedRef.current || requestId !== refreshRequestIdRef.current) {
+        coachDashboardLog(`[${requestId}] refresh stale after coach state`);
+        return;
+      }
+
+      setCoachMetrics(metrics);
+      setCoachState(nextCoachState);
+      setCoachStateError(null);
+      setHasLoadedCoachDashboard(true);
+    } catch (err: any) {
+      coachDashboardLog(`[${requestId}] refresh failed`, {
+        elapsedMs: Date.now() - startedAt,
+        error: err?.message ?? String(err),
+      });
+      if (!mountedRef.current || requestId !== refreshRequestIdRef.current) return;
+      if (!preserveExisting) {
+        setCoachMetrics(null);
+        setCoachState(null);
+        setCoachStateError(err?.message || "Coach dashboard unavailable.");
+        setHasLoadedCoachDashboard(true);
+      }
+    } finally {
+      if (!mountedRef.current || requestId !== refreshRequestIdRef.current) return;
+      if (shouldShowLoading) {
+        setCoachLoading(false);
+      }
+      coachDashboardLog(`[${requestId}] refresh complete`, {
+        elapsedMs: Date.now() - startedAt,
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    if (initialRefreshRequestedRef.current) {
+      return () => {
+        mountedRef.current = false;
+      };
+    }
+
+    initialRefreshRequestedRef.current = true;
+    void refreshCoachDashboard("initial");
 
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
     };
-  }, []);
+  }, [refreshCoachDashboard]);
+
+  useEffect(() => {
+    const onRefreshEvent = () => {
+      void refreshCoachDashboard("background");
+    };
+
+    window.addEventListener(COACH_DASHBOARD_REFRESH_EVENT, onRefreshEvent);
+    window.addEventListener("storage", onRefreshEvent);
+
+    return () => {
+      window.removeEventListener(COACH_DASHBOARD_REFRESH_EVENT, onRefreshEvent);
+      window.removeEventListener("storage", onRefreshEvent);
+    };
+  }, [refreshCoachDashboard]);
 
   /* --------------------------------------------------------------------------
      Breadcrumb 5 — Derived maps
@@ -613,11 +753,11 @@ export default function StartPage() {
           </div>
         </div>
 
-        {coachStateStatus === "loading" ? (
+        {coachLoading && !hasLoadedCoachDashboard ? (
           <div className="card" data-testid="coach-dashboard-loading" style={{ marginTop: 12 }}>
             <div style={{ fontWeight: 800 }}>Building coach dashboard...</div>
           </div>
-        ) : coachStateStatus === "error" ? (
+        ) : !coachMetrics && coachStateError ? (
           <div className="card" data-testid="coach-dashboard-error" style={{ marginTop: 12 }}>
             <div style={{ fontWeight: 800 }}>Coach dashboard unavailable.</div>
             {coachStateError ? (
@@ -626,7 +766,7 @@ export default function StartPage() {
               </div>
             ) : null}
           </div>
-        ) : !hasCoachDashboardData(coachState?.export.sourceMetrics) ? (
+        ) : !hasCoachDashboardData(coachMetrics) ? (
           <div className="card" data-testid="coach-dashboard-empty" style={{ marginTop: 12 }}>
             <div style={{ fontWeight: 800 }}>Not enough coaching data yet.</div>
             <div className="muted" style={{ marginTop: 6 }}>
