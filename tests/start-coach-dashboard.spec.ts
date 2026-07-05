@@ -1,13 +1,40 @@
 import { expect, test, type Page } from "@playwright/test";
 import { resetDexieDb } from "./helpers/dbSeed";
 
-async function seedCoachDashboardData(page: Page) {
-  await page.evaluate(async () => {
+test.describe.configure({ timeout: 120000 });
+test.setTimeout(120000);
+
+async function seedCoachDashboardData(
+  page: Page,
+  overrides: {
+    weightLb?: number;
+    waistIn?: number;
+    bodyFatPct?: number;
+    leanMassLb?: number;
+    visceralFatEstimate?: number;
+    currentSessionId?: string;
+    currentSessionNotes?: string[];
+  } = {}
+) {
+  await page.evaluate(async (args) => {
     const db = (window as any).__db;
     if (!db) throw new Error("__db missing on window.");
 
     const now = Date.now();
     const twoWeeks = 14 * 24 * 60 * 60 * 1000;
+    const weightLb = args.weightLb ?? 198;
+    const waistIn = args.waistIn ?? 35.5;
+    const bodyFatPct = args.bodyFatPct ?? 16.2;
+    const leanMassLb = args.leanMassLb ?? 154.2;
+    const visceralFatEstimate = args.visceralFatEstimate ?? 8.2;
+    const currentSessionId = args.currentSessionId ?? "session-coach-dashboard";
+    const currentSessionNotes =
+      args.currentSessionNotes ?? [
+        "MTS Row: chest-supported row reinforced Gaz's cues",
+        "Barbell Row: 30-45 degree hinge angle felt super grounded",
+        "Pull: strong lat stimulus",
+        "MTS Row: rep 15 on final set not counted due to form breakdown",
+      ];
 
     await db.app_meta.put({
       key: "profile.heightIn",
@@ -32,11 +59,11 @@ async function seedCoachDashboardData(page: Page) {
         measuredAt: now,
         takenAt: now,
         createdAt: now,
-        weightLb: 198,
-        waistIn: 35.5,
-        bodyFatPct: 16.2,
-        leanMassLb: 154.2,
-        visceralFatEstimate: 8.2,
+        weightLb,
+        waistIn,
+        bodyFatPct,
+        leanMassLb,
+        visceralFatEstimate,
         bodyWaterPct: 57.4,
       },
       {
@@ -44,18 +71,18 @@ async function seedCoachDashboardData(page: Page) {
         measuredAt: now - twoWeeks,
         takenAt: now - twoWeeks,
         createdAt: now - twoWeeks,
-        weightLb: 201,
-        waistIn: 36.1,
-        bodyFatPct: 16.9,
-        leanMassLb: 153.6,
-        visceralFatEstimate: 8.5,
+        weightLb: weightLb + 3,
+        waistIn: waistIn + 0.6,
+        bodyFatPct: bodyFatPct + 0.7,
+        leanMassLb: leanMassLb - 0.6,
+        visceralFatEstimate: visceralFatEstimate + 0.3,
         bodyWaterPct: 56.8,
       },
     ] as any[]);
 
     const exerciseId = "exercise-mts-row";
     const trackId = "track-mts-row";
-    const sessionId = "session-coach-dashboard";
+    const sessionId = currentSessionId;
     const templateId = "template-coach-dashboard";
 
     await db.exercises.put({
@@ -101,12 +128,7 @@ async function seedCoachDashboardData(page: Page) {
       templateName: "Coach Dashboard Template",
       startedAt: now - 90 * 60 * 1000,
       endedAt: now - 60 * 60 * 1000,
-      notes: [
-        "MTS Row: chest-supported row reinforced Gaz's cues",
-        "Barbell Row: 30-45 degree hinge angle felt super grounded",
-        "Pull: strong lat stimulus",
-        "MTS Row: rep 15 on final set not counted due to form breakdown",
-      ].join("\n"),
+      notes: currentSessionNotes.join("\n"),
     } as any);
 
     await db.sets.put({
@@ -119,7 +141,27 @@ async function seedCoachDashboardData(page: Page) {
       weight: 225,
       reps: 5,
     } as any);
-  });
+  }, overrides);
+}
+
+async function setCoachDashboardTimeoutOverride(page: Page, timeoutMs: number) {
+  await page.evaluate((value) => {
+    localStorage.setItem("IRONFORGE_COACH_DASHBOARD_TIMEOUT_MS", String(value));
+  }, timeoutMs);
+}
+
+async function waitForCoachDashboardReady(page: Page) {
+  const dashboard = page.getByTestId("coach-dashboard");
+  const error = page.getByTestId("coach-dashboard-error");
+  const empty = page.getByTestId("coach-dashboard-empty");
+  const loading = page.getByTestId("coach-dashboard-loading");
+
+  await Promise.race([
+    dashboard.waitFor({ state: "visible", timeout: 15000 }).catch(() => null),
+    error.waitFor({ state: "visible", timeout: 15000 }).catch(() => null),
+    empty.waitFor({ state: "visible", timeout: 15000 }).catch(() => null),
+  ]);
+  await expect(loading).toBeHidden({ timeout: 15000 });
 }
 
 test.describe("Start Coach Dashboard", () => {
@@ -130,6 +172,7 @@ test.describe("Start Coach Dashboard", () => {
     });
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
+    await waitForCoachDashboardReady(page);
     await expect(page.getByText("Coach Dashboard", { exact: true })).toBeVisible();
     await expect(page.getByTestId("coach-dashboard-empty")).toBeVisible();
     await expect(page.getByText("Not enough coaching data yet.")).toBeVisible();
@@ -146,6 +189,7 @@ test.describe("Start Coach Dashboard", () => {
     await seedCoachDashboardData(page);
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
+    await waitForCoachDashboardReady(page);
     const dashboard = page.getByTestId("coach-dashboard");
     await expect(dashboard).toBeVisible();
 
@@ -183,5 +227,58 @@ test.describe("Start Coach Dashboard", () => {
 
     const cardio = page.getByTestId("coach-dashboard-cardio");
     await expect(cardio).toContainText("Cardio summary not available yet.");
+  });
+
+  test("refreshes the dashboard after body data changes without reload", async ({ page }) => {
+    await resetDexieDb(page);
+    await seedCoachDashboardData(page, { weightLb: 200, currentSessionId: "session-coach-dashboard-refresh" });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    await waitForCoachDashboardReady(page);
+    const body = page.getByTestId("coach-dashboard-body");
+    await expect(body).toContainText("200");
+    await expect(body).not.toContainText("194");
+
+    await page.evaluate(async () => {
+      const db = (window as any).__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const now = Date.now();
+      await db.bodyMetrics.where("id").equals("body-now").modify({
+        weightLb: 194,
+        waistIn: 34.9,
+      });
+      await db.bodyMetrics.where("id").equals("body-prev").modify({
+        weightLb: 197,
+        waistIn: 35.5,
+      });
+      await db.sessions.where("id").equals("session-coach-dashboard-refresh").modify({
+        notes: [
+          "MTS Row: chest-supported row reinforced Gaz's cues",
+          "Barbell Row: 30-45 degree hinge angle felt super grounded",
+          "Pull: strong lat stimulus",
+          `Updated at ${now}`,
+        ].join("\n"),
+      });
+
+      window.dispatchEvent(new CustomEvent("ironforge:coach-dashboard-refresh"));
+    });
+
+    await expect(body).toContainText("194");
+    await expect(body).not.toContainText("200");
+    await expect(page).toHaveURL(/\/$/);
+  });
+
+  test("falls back to unavailable when the dashboard build stalls", async ({ page }) => {
+    await resetDexieDb(page);
+    await page.evaluate(() => {
+      localStorage.clear();
+    });
+    await setCoachDashboardTimeoutOverride(page, 1);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    await expect(page.getByTestId("coach-dashboard-error")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId("coach-dashboard-loading")).toBeHidden({ timeout: 10000 });
+    await expect(page.getByText("Coach dashboard unavailable.", { exact: false })).toBeVisible();
   });
 });
