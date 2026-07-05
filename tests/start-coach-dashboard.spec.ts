@@ -15,6 +15,7 @@ async function seedCoachDashboardData(
     visceralFatEstimate?: number;
     currentSessionId?: string;
     currentSessionNotes?: string[];
+    includeCardio?: boolean;
   } = {}
 ) {
   await page.evaluate(async (args) => {
@@ -142,6 +143,113 @@ async function seedCoachDashboardData(
       weight: 225,
       reps: 5,
     } as any);
+
+    if (args.includeCardio) {
+      const cardioExerciseId = "exercise-coach-dashboard-walk";
+      const cardioDistanceTrackId = "track-coach-dashboard-walk-distance";
+      const cardioDurationTrackId = "track-coach-dashboard-walk-duration";
+      const recentWalkId = `${currentSessionId}-walk-recent`;
+      const olderWalkId = `${currentSessionId}-walk-older`;
+
+      await db.exercises.put({
+        id: cardioExerciseId,
+        name: "Walk",
+        normalizedName: "walk",
+        equipmentTags: ["bodyweight"],
+        createdAt: now - 14 * 24 * 60 * 60 * 1000,
+      });
+
+      await db.tracks.bulkPut([
+        {
+          id: cardioDistanceTrackId,
+          exerciseId: cardioExerciseId,
+          trackType: "conditioning",
+          displayName: "Walk",
+          trackingMode: "repsOnly",
+          warmupSetsDefault: 0,
+          workingSetsDefault: 1,
+          repMin: 1,
+          repMax: 1,
+          restSecondsDefault: 0,
+          weightJumpDefault: 0,
+          createdAt: now - 14 * 24 * 60 * 60 * 1000,
+        } as any,
+        {
+          id: cardioDurationTrackId,
+          exerciseId: cardioExerciseId,
+          trackType: "conditioning",
+          displayName: "Walk",
+          trackingMode: "timeSeconds",
+          warmupSetsDefault: 0,
+          workingSetsDefault: 1,
+          repMin: 1,
+          repMax: 1,
+          restSecondsDefault: 0,
+          weightJumpDefault: 0,
+          createdAt: now - 14 * 24 * 60 * 60 * 1000,
+        } as any,
+      ]);
+
+      await db.sessions.bulkPut([
+        {
+          id: recentWalkId,
+          templateName: "Walk - MapMyWalk",
+          conditioningIntent: "fitness",
+          startedAt: now - 4 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000,
+          endedAt: now - 4 * 24 * 60 * 60 * 1000,
+          notes: "Source: MapMyWalk screenshot\nRoute: River Loop",
+        } as any,
+        {
+          id: olderWalkId,
+          templateName: "Walk - Treadmill",
+          conditioningIntent: "recovery",
+          startedAt: now - 12 * 24 * 60 * 60 * 1000 - 45 * 60 * 1000,
+          endedAt: now - 12 * 24 * 60 * 60 * 1000,
+          notes: "Source: treadmill",
+        } as any,
+      ]);
+
+      await db.sets.bulkPut([
+        {
+          id: "set-coach-dashboard-walk-distance-recent",
+          sessionId: recentWalkId,
+          trackId: cardioDistanceTrackId,
+          createdAt: now - 4 * 24 * 60 * 60 * 1000 - 59 * 60 * 1000,
+          completedAt: now - 4 * 24 * 60 * 60 * 1000 - 59 * 60 * 1000,
+          setType: "working",
+          distance: 2.4,
+          distanceUnit: "miles",
+        } as any,
+        {
+          id: "set-coach-dashboard-walk-duration-recent",
+          sessionId: recentWalkId,
+          trackId: cardioDurationTrackId,
+          createdAt: now - 4 * 24 * 60 * 60 * 1000 - 58 * 60 * 1000,
+          completedAt: now - 4 * 24 * 60 * 60 * 1000 - 58 * 60 * 1000,
+          setType: "working",
+          seconds: 50 * 60,
+        } as any,
+        {
+          id: "set-coach-dashboard-walk-distance-older",
+          sessionId: olderWalkId,
+          trackId: cardioDistanceTrackId,
+          createdAt: now - 12 * 24 * 60 * 60 * 1000 - 44 * 60 * 1000,
+          completedAt: now - 12 * 24 * 60 * 60 * 1000 - 44 * 60 * 1000,
+          setType: "working",
+          distance: 1.8,
+          distanceUnit: "miles",
+        } as any,
+        {
+          id: "set-coach-dashboard-walk-duration-older",
+          sessionId: olderWalkId,
+          trackId: cardioDurationTrackId,
+          createdAt: now - 12 * 24 * 60 * 60 * 1000 - 43 * 60 * 1000,
+          completedAt: now - 12 * 24 * 60 * 60 * 1000 - 43 * 60 * 1000,
+          setType: "working",
+          seconds: 42 * 60,
+        } as any,
+      ]);
+    }
   }, overrides);
 }
 
@@ -202,7 +310,7 @@ test.describe("Start Coach Dashboard", () => {
 
   test("renders CoachState cards from live export metrics", async ({ page }) => {
     await resetDexieDb(page);
-    await seedCoachDashboardData(page);
+    await seedCoachDashboardData(page, { includeCardio: true });
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
     await waitForCoachDashboardReady(page);
@@ -242,7 +350,13 @@ test.describe("Start Coach Dashboard", () => {
     await expect(learnings).toContainText("form breakdown");
 
     const cardio = page.getByTestId("coach-dashboard-cardio");
-    await expect(cardio).toContainText("Cardio summary not available yet.");
+    await expect(cardio).toContainText("Cardio Status");
+    await expect(cardio).toContainText("Last 7 Days");
+    await expect(cardio).toContainText("Last 28 Days");
+    await expect(cardio).toContainText("Recent Walk/Cardio");
+    await expect(cardio).toContainText("Cardio Note");
+    await expect(cardio).toContainText("Walk - MapMyWalk");
+    await expect(cardio).toContainText("2 walks");
   });
 
   test("refreshes the dashboard after body data changes without reload", async ({ page }) => {
@@ -283,6 +397,69 @@ test.describe("Start Coach Dashboard", () => {
     await expect(body).toContainText("194");
     await expect(body).not.toContainText("200");
     await expect(page).toHaveURL(/\/$/);
+  });
+
+  test("refreshes cardio content after a walk mutation without reload", async ({ page }) => {
+    await resetDexieDb(page);
+    await seedCoachDashboardData(page, {
+      includeCardio: true,
+      currentSessionId: "session-coach-dashboard-cardio-refresh",
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    await waitForCoachDashboardReady(page);
+    const cardio = page.getByTestId("coach-dashboard-cardio");
+    await expect(cardio).toContainText("2 walks");
+
+    await page.evaluate(async () => {
+      const db = (window as any).__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const now = Date.now();
+      const sessionId = "session-coach-dashboard-cardio-refresh-walk-new";
+      const walkExercise = await db.exercises.where("normalizedName").equals("walk").first();
+      if (!walkExercise) throw new Error("walk exercise missing on window.");
+
+      const walkTracks = await db.tracks.where("exerciseId").equals(walkExercise.id).toArray();
+      const distanceTrack = walkTracks.find((track: any) => track.trackingMode === "repsOnly") ?? walkTracks[0];
+      const durationTrack = walkTracks.find((track: any) => track.trackingMode === "timeSeconds") ?? walkTracks[0];
+      if (!distanceTrack || !durationTrack) throw new Error("walk tracks missing on window.");
+
+      await db.sessions.put({
+        id: sessionId,
+        templateName: "Walk - MapMyWalk",
+        conditioningIntent: "fitness",
+        startedAt: now - 90 * 60 * 1000,
+        endedAt: now - 40 * 60 * 1000,
+        notes: "Source: MapMyWalk screenshot\nRoute: Added in test",
+      } as any);
+
+      await db.sets.bulkPut([
+        {
+          id: "set-coach-dashboard-cardio-refresh-distance",
+          sessionId,
+          trackId: distanceTrack.id,
+          createdAt: now - 89 * 60 * 1000,
+          completedAt: now - 89 * 60 * 1000,
+          setType: "working",
+          distance: 2.1,
+          distanceUnit: "miles",
+        } as any,
+        {
+          id: "set-coach-dashboard-cardio-refresh-duration",
+          sessionId,
+          trackId: durationTrack.id,
+          createdAt: now - 88 * 60 * 1000,
+          completedAt: now - 88 * 60 * 1000,
+          setType: "working",
+          seconds: 48 * 60,
+        } as any,
+      ]);
+
+      window.dispatchEvent(new CustomEvent("ironforge:coach-dashboard-refresh"));
+    });
+
+    await expect(cardio).toContainText("3 walks");
   });
 
   test("falls back to unavailable when the dashboard build stalls", async ({ page }) => {

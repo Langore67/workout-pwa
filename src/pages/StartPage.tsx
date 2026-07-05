@@ -44,6 +44,13 @@ import { db, Template, TemplateItem, Track, Folder, Session } from "../db";
 import { uuid } from "../utils";
 import { Page, Section } from "../components/Page.tsx";
 import { ActionMenu, MenuIcons, MenuItem } from "../components/ActionMenu";
+import {
+  formatCardioDuration,
+  formatCardioPace,
+  formatCardioWalkDateTime,
+  formatDistanceMiKm,
+  pluralizeWalk,
+} from "../lib/cardio/formatCardioWalk";
 import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetrics";
 import type { CoachExportMetrics } from "../lib/coachExport/types";
 import { buildCoachStateFromExportMetrics } from "../lib/coachState/buildCoachState";
@@ -116,6 +123,33 @@ function fmtSignedNumber(value?: number | null, decimals = 1) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "—";
   const fixed = value.toFixed(decimals).replace(/\.0+$/, "");
   return value > 0 ? `+${fixed}` : fixed;
+}
+
+function fmtCardioWindowSummary(
+  count?: number,
+  durationSeconds?: number,
+  distanceMeters?: number
+) {
+  const parts = [count != null ? pluralizeWalk(count) : null];
+  if (typeof durationSeconds === "number" && Number.isFinite(durationSeconds) && durationSeconds > 0) {
+    parts.push(formatCardioDuration(durationSeconds) || null);
+  }
+  if (typeof distanceMeters === "number" && Number.isFinite(distanceMeters) && distanceMeters > 0) {
+    parts.push(formatDistanceMiKm(distanceMeters));
+  }
+  return parts.filter(Boolean).join(" | ") || "—";
+}
+
+function fmtCardioRecentSummary(recent?: NonNullable<CoachState["cardio"]["recent"]> | null) {
+  if (!recent) return "—";
+  const parts = [
+    formatCardioWalkDateTime(recent.startedAt),
+    recent.name,
+    formatCardioDuration(recent.durationSeconds) || null,
+    formatDistanceMiKm(recent.distanceMeters) || null,
+    formatCardioPace(recent.paceSecondsPerMile) || null,
+  ].filter(Boolean);
+  return parts.join(" | ") || "—";
 }
 
 type CoachStateAnchor = NonNullable<CoachState["strength"]["anchors"]>[number];
@@ -192,6 +226,7 @@ function hasCoachDashboardData(metrics?: CoachExportMetrics | null) {
       metrics.bodyComp.leanMass.latest != null ||
       metrics.bodyComp.visceralFat?.latest != null ||
       metrics.bodyComp.waistToHeight?.latest != null ||
+      (metrics.cardioSummary?.normalizedWalks?.length ?? 0) > 0 ||
       (typeof metrics.strengthSignal.current === "number" && metrics.strengthSignal.current !== 0) ||
       (typeof metrics.strengthSignal.delta14d === "number" && metrics.strengthSignal.delta14d !== 0) ||
       (typeof metrics.strengthSignal.vs90dBestPct === "number" && metrics.strengthSignal.vs90dBestPct !== 0) ||
@@ -925,22 +960,30 @@ export default function StartPage() {
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
                 {coachState.cardio.available ? (
                   <>
-                    <DashboardLine label="Walks 7d" value={fmtNumber(coachState.cardio.walkCount7d, 0)} />
+                    <DashboardLine label="Cardio Status" value={fmtCoachStatus(coachState.cardio.status)} />
                     <DashboardLine
-                      label="Duration 7d"
-                      value={
-                        typeof coachState.cardio.totalDuration7dSeconds === "number"
-                          ? `${fmtNumber(coachState.cardio.totalDuration7dSeconds / 60, 0)} min`
-                          : "—"
-                      }
+                      label="Last 7 Days"
+                      value={fmtCardioWindowSummary(
+                        coachState.cardio.walkCount7d,
+                        coachState.cardio.totalDuration7dSeconds,
+                        coachState.cardio.totalDistance7dMeters
+                      )}
                     />
                     <DashboardLine
-                      label="Distance 7d"
-                      value={
-                        typeof coachState.cardio.totalDistance7dMeters === "number"
-                          ? `${fmtNumber(coachState.cardio.totalDistance7dMeters / 1609.34, 1)} mi`
-                          : "—"
-                      }
+                      label="Last 28 Days"
+                      value={fmtCardioWindowSummary(
+                        coachState.cardio.walkCount28d,
+                        coachState.cardio.totalDuration28dSeconds,
+                        coachState.cardio.totalDistance28dMeters
+                      )}
+                    />
+                    <DashboardLine
+                      label="Recent Walk/Cardio"
+                      value={fmtCardioRecentSummary(coachState.cardio.recent)}
+                    />
+                    <DashboardLine
+                      label="Cardio Note"
+                      value={coachState.cardio.note ?? "—"}
                     />
                   </>
                 ) : (

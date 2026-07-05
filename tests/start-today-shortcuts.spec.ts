@@ -81,6 +81,7 @@ test.describe("Start Today shortcuts", () => {
     await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
     await expect(page.getByText("Start, continue, import, or review your latest training.")).toBeVisible();
     const todayActions = page.getByTestId("start-today-actions");
+    const progressAction = todayActions.getByRole("button").filter({ hasText: "Review trends and copy Coach Export" });
     await expect(todayActions.getByRole("button", { name: /Start Empty Workout/i })).toBeVisible();
     await expect(todayActions.getByRole("button", { name: /Paste Workout/i })).toBeVisible();
     await expect(todayActions.getByRole("button", { name: /Last Session/i })).toBeVisible();
@@ -92,7 +93,7 @@ test.describe("Start Today shortcuts", () => {
     await expect(page).toHaveURL(/\/paste-workout$/);
 
     await gotoStart(page);
-    await page.getByRole("button", { name: /Progress/i }).click();
+    await progressAction.click();
     await expect(page).toHaveURL(/\/progress#exports$/);
   });
 
