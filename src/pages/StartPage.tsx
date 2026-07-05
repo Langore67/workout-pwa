@@ -113,6 +113,11 @@ function fmtCoachConfidence(value?: string) {
   return "—";
 }
 
+function fmtConfidencePhrase(value?: string) {
+  const label = fmtCoachConfidence(value);
+  return label === "—" ? "—" : `${label} confidence`;
+}
+
 function fmtNumber(value?: number | null, decimals = 1) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "—";
   const fixed = value.toFixed(decimals);
@@ -848,12 +853,15 @@ export default function StartPage() {
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
                 {coachState.body.confidence ? (
                   <>
-                    <DashboardLine label="Overall" value={fmtCoachConfidence(coachState.body.confidence.overall)} />
-                    <DashboardLine label="Weight" value={fmtCoachConfidence(coachState.body.confidence.weight)} />
-                    <DashboardLine label="Waist" value={fmtCoachConfidence(coachState.body.confidence.waist)} />
-                    <DashboardLine label="Lean Mass" value={fmtCoachConfidence(coachState.body.confidence.leanMass)} />
-                    <DashboardLine label="Body Fat" value={fmtCoachConfidence(coachState.body.confidence.bodyFat)} />
-                    <DashboardLine label="Hydration" value={fmtCoachConfidence(coachState.body.confidence.hydration)} />
+                    <DashboardLine label="Overall confidence" value={fmtConfidencePhrase(coachState.body.confidence.overall)} />
+                    <DashboardLine label="Weight trend confidence" value={fmtConfidencePhrase(coachState.body.confidence.weight)} />
+                    <DashboardLine label="Waist trend confidence" value={fmtConfidencePhrase(coachState.body.confidence.waist)} />
+                    <DashboardLine label="Lean mass confidence" value={fmtConfidencePhrase(coachState.body.confidence.leanMass)} />
+                    <DashboardLine label="Body fat confidence" value={fmtConfidencePhrase(coachState.body.confidence.bodyFat)} />
+                    <DashboardLine label="Hydration confidence" value={fmtConfidencePhrase(coachState.body.confidence.hydration)} />
+                    <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
+                      Confidence reflects how much recent data is available, not whether the number is high or low.
+                    </div>
                   </>
                 ) : null}
                 {coachState.body.latestWeightLb != null ? (
