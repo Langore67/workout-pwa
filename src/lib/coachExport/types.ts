@@ -2,6 +2,7 @@ import type { StrengthPattern } from "../../strength/Strength";
 import type { PhaseQualityResult } from "../../body/phaseQualityModel";
 import type { CurrentPhase } from "../../config/appConfig";
 import type { BodyConfidence } from "../../body/bodyConfidenceEngine";
+import type { CardioWalkSummary } from "../cardio/cardioTypes";
 import type { CoachIntelligence } from "./coachIntelligence";
 import type { GoalProgress } from "./goalEngine";
 import type { LeanPreservationComposite } from "./leanPreservationComposite";
@@ -128,6 +129,7 @@ export type CoachExportMetrics = {
     bodyweightDelta14d: number | null;
   };
   hydration: CoachExportHydration;
+  cardioSummary?: CardioWalkSummary;
   bodyConfidence?: BodyConfidence;
   coachIntelligence?: CoachIntelligence | null;
   goalProgress?: GoalProgress | null;

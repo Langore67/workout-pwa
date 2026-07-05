@@ -32,11 +32,47 @@ function firstDefined(values: Array<string | null | undefined>): string | undefi
 
 function buildCardioState(cardioSummary?: CardioWalkSummary | null) {
   if (!cardioSummary) {
-    return { available: false } as const;
+    return {
+      available: false,
+      status: "not_enough_data",
+    } as const;
   }
 
+  const hasWalkHistory = (cardioSummary.normalizedWalks?.length ?? 0) > 0;
+  const recentCount = cardioSummary.last7d.count;
+  const recent28dCount = cardioSummary.last28d.count;
+  const status: CoachState["cardio"]["status"] = !hasWalkHistory
+    ? "not_enough_data"
+    : recentCount >= 4 || recent28dCount >= 8
+      ? "solid"
+      : "watch";
+
+  const recentWalk = cardioSummary.recentWalks?.[0];
+  const recent =
+    recentWalk && Number.isFinite(recentWalk.startedAt)
+      ? {
+          sessionId: recentWalk.sessionId,
+          name: recentWalk.name,
+          startedAt: recentWalk.startedAt,
+          durationSeconds: recentWalk.durationSeconds,
+          distanceMeters: recentWalk.distanceMeters,
+          paceSecondsPerMile: recentWalk.paceSecondsPerMile,
+        }
+      : undefined;
+
+  const note = hasWalkHistory
+    ? recentCount > 0
+      ? `${recentCount} walk${recentCount === 1 ? "" : "s"} in the last 7 days.`
+      : recent28dCount > 0
+        ? `${recent28dCount} walk${recent28dCount === 1 ? "" : "s"} in the last 28 days.`
+        : `${cardioSummary.normalizedWalks.length} walk${cardioSummary.normalizedWalks.length === 1 ? "" : "s"} in history.`
+    : undefined;
+
   return {
-    available: true,
+    available: hasWalkHistory,
+    status,
+    note,
+    recent,
     walkCount7d: cardioSummary.last7d.count,
     totalDuration7dSeconds: cardioSummary.last7d.totalDurationSeconds,
     totalDistance7dMeters: cardioSummary.last7d.totalDistanceMeters,
@@ -62,7 +98,7 @@ function buildStrengthAnchors(metrics: CoachExportMetrics): CoachStateStrengthAn
 export function buildCoachStateFromExportMetrics(metrics: CoachExportMetrics | null | undefined): CoachState {
   const source = metrics ?? ({} as CoachExportMetrics);
   const intelligence = source.coachIntelligence ?? null;
-  const cardioSummary = (source as CoachExportMetrics & { cardioSummary?: CardioWalkSummary }).cardioSummary;
+  const cardioSummary = source.cardioSummary;
   const goalProgress = source.goalProgress ?? null;
   const coachingMemory = source.coachingMemory ?? null;
   const nextWorkoutFocus = source.nextWorkoutFocus ?? null;

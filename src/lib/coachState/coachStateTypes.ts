@@ -51,6 +51,16 @@ export type CoachStateStrength = {
 
 export type CoachStateCardio = {
   available: boolean;
+  status: CoachStateOverallStatus;
+  note?: string;
+  recent?: {
+    sessionId: string;
+    name: string;
+    startedAt: number;
+    durationSeconds?: number;
+    distanceMeters?: number;
+    paceSecondsPerMile?: number;
+  };
   walkCount7d?: number;
   totalDuration7dSeconds?: number;
   totalDistance7dMeters?: number;

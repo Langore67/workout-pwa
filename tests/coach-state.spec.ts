@@ -1,8 +1,114 @@
 import { expect, test } from "@playwright/test";
 import { buildBodyConfidence } from "../src/body/bodyConfidenceEngine";
+import { buildCardioWalkSummary } from "../src/lib/cardio/buildCardioWalkSummary";
 import { buildCoachStateFromExportMetrics } from "../src/lib/coachState/buildCoachState";
 import { buildGoalProgress } from "../src/lib/coachExport/goalEngine";
 import type { CoachExportMetrics } from "../src/lib/coachExport/types";
+import type { Exercise, Session, SetEntry, Track } from "../src/db";
+
+function ms(year: number, month: number, day: number, hour: number, minute: number) {
+  return new Date(year, month - 1, day, hour, minute, 0, 0).getTime();
+}
+
+function makeSession(id: string, name: string, startedAt: number, endedAt: number): Session {
+  return {
+    id,
+    templateName: name,
+    startedAt,
+    endedAt,
+  } as Session;
+}
+
+function makeExercise(id: string, name: string): Exercise {
+  return {
+    id,
+    name,
+    normalizedName: name.toLowerCase(),
+    equipmentTags: [],
+    createdAt: ms(2026, 4, 1, 9, 0),
+  } as Exercise;
+}
+
+function makeTrack(id: string, exerciseId: string, displayName: string): Track {
+  return {
+    id,
+    exerciseId,
+    displayName,
+    trackType: "conditioning",
+    trackingMode: "timeSeconds",
+    warmupSetsDefault: 0,
+    workingSetsDefault: 1,
+    repMin: 1,
+    repMax: 1,
+    restSecondsDefault: 0,
+    weightJumpDefault: 0,
+    createdAt: ms(2026, 4, 1, 9, 0),
+  } as Track;
+}
+
+function makeSet(
+  id: string,
+  sessionId: string,
+  trackId: string,
+  options: { distanceMiles?: number; seconds?: number }
+): SetEntry {
+  return {
+    id,
+    sessionId,
+    trackId,
+    createdAt: ms(2026, 4, 1, 9, 0),
+    setType: "working",
+    ...(options.distanceMiles != null
+      ? { distance: options.distanceMiles * 1609.344, distanceUnit: "m" }
+      : null),
+    ...(options.seconds != null ? { seconds: options.seconds } : null),
+    completedAt: ms(2026, 4, 1, 9, 0),
+  } as SetEntry;
+}
+
+function buildCardioSummary() {
+  const exercise = makeExercise("cardio-walk", "Walk");
+  const trackDistance = makeTrack("cardio-walk-distance", exercise.id, "Walk");
+  const trackDuration = makeTrack("cardio-walk-duration", exercise.id, "Walk");
+  const sessions = [
+    makeSession(
+      "walk-recent",
+      "Walk - MapMyWalk",
+      ms(2026, 4, 26, 7, 30),
+      ms(2026, 4, 26, 8, 20)
+    ),
+    makeSession(
+      "walk-mid",
+      "Walk - Treadmill",
+      ms(2026, 4, 18, 7, 30),
+      ms(2026, 4, 18, 8, 15)
+    ),
+    makeSession(
+      "walk-old",
+      "Walk - Park",
+      ms(2026, 4, 12, 7, 30),
+      ms(2026, 4, 12, 8, 10)
+    ),
+  ];
+
+  const sets = [
+    makeSet("set-recent-distance", "walk-recent", trackDistance.id, { distanceMiles: 2.3 }),
+    makeSet("set-mid-distance", "walk-mid", trackDistance.id, { distanceMiles: 1.8 }),
+    makeSet("set-old-distance", "walk-old", trackDistance.id, { distanceMiles: 1.5 }),
+    makeSet("set-recent-duration", "walk-recent", trackDuration.id, { seconds: 50 * 60 }),
+    makeSet("set-mid-duration", "walk-mid", trackDuration.id, { seconds: 45 * 60 }),
+    makeSet("set-old-duration", "walk-old", trackDuration.id, { seconds: 40 * 60 }),
+  ];
+
+  return buildCardioWalkSummary({
+    now: ms(2026, 4, 27, 9, 0),
+    sessions,
+    sets,
+    tracks: [trackDistance, trackDuration],
+    exercises: [exercise],
+    recentLimit: 5,
+  });
+}
 
 function buildMetrics(): CoachExportMetrics {
   const bodyComp = {
@@ -50,12 +156,14 @@ function buildMetrics(): CoachExportMetrics {
     } as any,
     bodyComp,
   });
+  const cardioSummary = buildCardioSummary();
 
   return {
     generatedAt: new Date("2026-04-27T09:00:00-04:00").getTime(),
     currentPhase: "cut",
     bodyComp,
     hydration,
+    cardioSummary,
     bodyConfidence,
     strengthSignal: {
       current: 1.92,
@@ -227,6 +335,23 @@ test("coach state learnings and goals map from export metrics", async () => {
   expect(state.learnings.resolved).toContain("Substitution worked");
 });
 
+test("coach state cardio section maps cardio summary windows and recent walk", async () => {
+  const state = buildCoachStateFromExportMetrics(buildMetrics());
+
+  expect(state.cardio.available).toBe(true);
+  expect(state.cardio.status).toBe("watch");
+  expect(state.cardio.walkCount7d).toBe(1);
+  expect(state.cardio.totalDuration7dSeconds).toBe(50 * 60);
+  expect(state.cardio.totalDistance7dMeters).toBeCloseTo(2.3 * 1609.344, 3);
+  expect(state.cardio.walkCount28d).toBe(3);
+  expect(state.cardio.totalDuration28dSeconds).toBe(135 * 60);
+  expect(state.cardio.totalDistance28dMeters).toBeCloseTo((2.3 + 1.8 + 1.5) * 1609.344, 3);
+  expect(state.cardio.averagePace7dSecondsPerMile).toBeGreaterThan(0);
+  expect(state.cardio.recent?.sessionId).toBe("walk-recent");
+  expect(state.cardio.recent?.name).toBe("Walk - MapMyWalk");
+  expect(state.cardio.note).toContain("walk in the last 7 days");
+});
+
 test("coach state remains read-only and keeps safe defaults when data is missing", async () => {
   const emptyInput: any = undefined;
   const state = buildCoachStateFromExportMetrics(emptyInput);
@@ -236,6 +361,7 @@ test("coach state remains read-only and keeps safe defaults when data is missing
   expect(state.snapshot.confidence).toBe("low");
   expect(state.body.latestWeightLb).toBeUndefined();
   expect(state.cardio.available).toBe(false);
+  expect(state.cardio.status).toBe("not_enough_data");
   expect(state.goals.targets).toEqual([]);
   expect(state.learnings.validated).toEqual([]);
   expect(state.learnings.watchItems).toEqual([]);

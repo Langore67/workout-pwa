@@ -30,6 +30,7 @@ import {
   evaluatePhaseQuality,
 } from "../../body/phaseQualityModel";
 import { buildBodyConfidence } from "../../body/bodyConfidenceEngine";
+import { buildCardioWalkSummary } from "../cardio/buildCardioWalkSummary";
 import {
   buildSessionCoachingSignals,
   type SessionSnapshotTrackSummary,
@@ -625,6 +626,13 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     db.tracks.toArray(),
     db.exercises.toArray(),
   ]);
+  const cardioSummary = buildCardioWalkSummary({
+    sessions: sessions ?? [],
+    sets: sets ?? [],
+    tracks: tracks ?? [],
+    exercises: exercises ?? [],
+    recentLimit: 5,
+  });
   const sharedStrengthTrend = await computeStrengthTrend(12, 28);
   const computedStrength = computeStrengthDeltaFromStrengthTrend(sharedStrengthTrend, currentPhase);
   const phaseQualityInputs = buildPhaseQualityInputsFromBodyRows(
@@ -715,11 +723,12 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     bodyComp,
   });
 
-      const metrics: CoachExportMetrics = {
+  const metrics: CoachExportMetrics = {
         generatedAt,
         currentPhase,
         bodyComp,
     hydration,
+    cardioSummary,
     bodyConfidence,
     goalProgress,
     leanPreservation,
