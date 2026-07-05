@@ -120,6 +120,9 @@ function buildMetrics(): CoachExportMetrics {
         reps: 5,
         e1rm: 262,
         performedAt: new Date("2026-04-24T09:00:00-04:00").getTime(),
+        ageDays: 3,
+        recency: "recent",
+        isStale: false,
       },
     ],
     exerciseVocabulary: ["Bench Press", "Lat Pulldown", "Romanian Deadlift"],
@@ -1387,7 +1390,7 @@ test("coach export renames anchor lifts to performance anchors and renders curre
 
   expect(text).toContain("Performance Anchors");
   expect(text).not.toContain("Anchor Lifts");
-  expect(anchors).toContain("- push: Bench Press | effective 225 lb x 5 | e1RM 262 | Apr 24, 2026");
+  expect(anchors).toContain("- push: Bench Press | effective 225 lb x 5 | e1RM 262 | Apr 24, 2026 | 3d old | recent anchor");
   expect(text).toContain("Current Movement Focus");
   expect(focus).toContain("- Pull: MTS Row; Assisted Pull Up; Straight-Arm Cable Pulldown");
   expect(focus).toContain("- Push: Barbell Bench Press; DB Chest Fly; Cable Tricep Pushdown");
@@ -1396,13 +1399,42 @@ test("coach export renames anchor lifts to performance anchors and renders curre
   expect(focus).toContain("- Carry: Farmer Carry");
 });
 
+test("coach export labels stale performance anchors without treating them as current evidence", async () => {
+  const metrics = buildMetrics();
+  metrics.anchorLifts = [
+    {
+      pattern: "pull",
+      exerciseId: "lat",
+      exerciseName: "Lat Pulldown",
+      trackDisplayName: "Lat Pulldown",
+      effectiveWeightLb: 140,
+      reps: 10,
+      e1rm: 187,
+      performedAt: new Date("2026-03-01T09:00:00-04:00").getTime(),
+      ageDays: 57,
+      recency: "stale",
+      isStale: true,
+    },
+  ];
+  metrics.currentMovementFocus = [];
+
+  const text = formatCoachExportText(metrics);
+  const anchors = getSection(text, "Performance Anchors", "Current Movement Focus");
+
+  expect(anchors).toContain("57d old | stale anchor");
+  expect(anchors).toContain("Lat Pulldown");
+  expect(text).not.toContain("Current Movement Focus");
+});
+
 test("current movement focus groups recent exercises by movement family", async () => {
   const now = Date.now();
   const sessions = [
+    { id: "s-old", startedAt: now - 40 * 24 * 60 * 60 * 1000, endedAt: now - 40 * 24 * 60 * 60 * 1000 + 45 * 60 * 1000 } as any,
     { id: "s1", startedAt: now - 2 * 24 * 60 * 60 * 1000, endedAt: now - 2 * 24 * 60 * 60 * 1000 + 45 * 60 * 1000 } as any,
     { id: "s2", startedAt: now - 24 * 60 * 60 * 1000, endedAt: now - 24 * 60 * 60 * 1000 + 45 * 60 * 1000 } as any,
   ];
   const tracks = [
+    { id: "t-old", exerciseId: "e-old", trackType: "strength" } as any,
     { id: "t1", exerciseId: "e1", trackType: "strength" } as any,
     { id: "t2", exerciseId: "e2", trackType: "strength" } as any,
     { id: "t3", exerciseId: "e3", trackType: "strength" } as any,
@@ -1410,6 +1442,7 @@ test("current movement focus groups recent exercises by movement family", async 
     { id: "t5", exerciseId: "e5", trackType: "strength" } as any,
   ];
   const exercises = [
+    { id: "e-old", name: "Lat Pulldown" } as any,
     { id: "e1", name: "MTS Row" } as any,
     { id: "e2", name: "Assisted Pull Up" } as any,
     { id: "e3", name: "Trap Bar Deadlift" } as any,
@@ -1417,6 +1450,7 @@ test("current movement focus groups recent exercises by movement family", async 
     { id: "e5", name: "Farmer Carry" } as any,
   ];
   const sets = [
+    { id: "set-old", sessionId: "s-old", trackId: "t-old", createdAt: sessions[0].startedAt + 1, completedAt: sessions[0].startedAt + 2, weight: 140, reps: 10 } as any,
     { id: "set1", sessionId: "s1", trackId: "t1", createdAt: sessions[0].startedAt + 1, completedAt: sessions[0].startedAt + 2, weight: 100, reps: 10 } as any,
     { id: "set2", sessionId: "s1", trackId: "t3", createdAt: sessions[0].startedAt + 3, completedAt: sessions[0].startedAt + 4, weight: 200, reps: 6 } as any,
     { id: "set3", sessionId: "s2", trackId: "t2", createdAt: sessions[1].startedAt + 1, completedAt: sessions[1].startedAt + 2, weight: 0, reps: 6 } as any,
@@ -1461,11 +1495,12 @@ test("current movement focus groups recent exercises by movement family", async 
   });
 
   expect(focus).toEqual([
-    { label: "Pull", exercises: ["MTS Row", "Assisted Pull Up"] },
+    { label: "Pull", exercises: ["Assisted Pull Up", "MTS Row"] },
     { label: "Push", exercises: ["Barbell Bench Press"] },
     { label: "Hinge", exercises: ["Trap Bar Deadlift"] },
     { label: "Carry", exercises: ["Farmer Carry"] },
   ]);
+  expect(focus.flatMap((group) => group.exercises)).not.toContain("Lat Pulldown");
 });
 
 test("coach export suppresses empty current movement focus section", async () => {

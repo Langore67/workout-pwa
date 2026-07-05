@@ -1,8 +1,8 @@
 import type { Exercise, Session, SetEntry, Track } from "../../db";
-import type { CoachExportAnchorLift, CoachExportCurrentMovementFocus, CoachingMemory } from "./types";
+import type { CoachExportCurrentMovementFocus } from "./types";
 import { selectRecentStrengthBuildingSessions } from "./strengthBuildingSessions";
 
-type CandidateSource = "recent_session" | "exercise_vocabulary" | "coaching_memory" | "anchor_fallback";
+type CandidateSource = "recent_session";
 
 type Candidate = {
   name: string;
@@ -85,22 +85,12 @@ function exerciseNameForTrack(exercisesById: Map<string, Exercise>, track: Track
   return name || null;
 }
 
-function anchorCategory(pattern: CoachExportAnchorLift["pattern"]): MovementFocusCategory | null {
-  if (pattern === "pull") return "Pull";
-  if (pattern === "push") return "Push";
-  if (pattern === "hinge") return "Hinge";
-  if (pattern === "squat") return "Squat / Legs";
-  return null;
-}
-
 function collectCandidates(args: {
   sessions: Session[];
   sets: SetEntry[];
   tracks: Track[];
   exercises: Exercise[];
-  exerciseVocabulary: string[];
-  coachingMemory?: CoachingMemory;
-  anchorLifts: CoachExportAnchorLift[];
+  asOf?: number;
 }) {
   const tracksById = new Map((args.tracks ?? []).map((track) => [track.id, track]));
   const exercisesById = new Map((args.exercises ?? []).map((exercise) => [exercise.id, exercise]));
@@ -108,7 +98,9 @@ function collectCandidates(args: {
     sessions: args.sessions,
     sets: args.sets,
     tracks: args.tracks,
-    limit: 8,
+    limit: 6,
+    asOf: args.asOf,
+    maxAgeDays: 28,
   });
 
   const candidatesByCategory = new Map<MovementFocusCategory, Candidate[]>(
@@ -147,37 +139,6 @@ function collectCandidates(args: {
     }
   }
 
-  for (const name of args.exerciseVocabulary ?? []) {
-    addCandidate(classifyMovementCategory(name), {
-      name,
-      source: "exercise_vocabulary",
-    });
-  }
-
-  for (const item of args.coachingMemory?.validatedLearnings ?? []) {
-    const name = normalizedName(item.exerciseName ?? "");
-    if (!name || isBroadLabel(name)) continue;
-    addCandidate(classifyMovementCategory(name), {
-      name,
-      source: "coaching_memory",
-      sourceSessionId: item.sourceSessionId,
-      lastSeenAt: item.lastSeenAt,
-    });
-  }
-
-  for (const anchor of args.anchorLifts ?? []) {
-    if (!anchor.exerciseName) continue;
-    const category = anchorCategory(anchor.pattern);
-    if (!category) continue;
-    const bucket = candidatesByCategory.get(category);
-    if (!bucket || bucket.length > 0) continue;
-    addCandidate(category, {
-      name: anchor.exerciseName,
-      source: "anchor_fallback",
-      lastSeenAt: anchor.performedAt ?? undefined,
-    });
-  }
-
   return candidatesByCategory;
 }
 
@@ -194,9 +155,13 @@ export function buildCurrentMovementFocus(args: {
   tracks: Track[];
   exercises: Exercise[];
   exerciseVocabulary: string[];
-  coachingMemory?: CoachingMemory;
-  anchorLifts: CoachExportAnchorLift[];
+  coachingMemory?: unknown;
+  anchorLifts: unknown[];
+  asOf?: number;
 }): CoachExportCurrentMovementFocus {
+  void args.exerciseVocabulary;
+  void args.coachingMemory;
+  void args.anchorLifts;
   const candidatesByCategory = collectCandidates(args);
 
   return CATEGORY_ORDER.flatMap((category) => {

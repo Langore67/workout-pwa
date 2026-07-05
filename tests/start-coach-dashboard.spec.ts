@@ -16,6 +16,7 @@ async function seedCoachDashboardData(
     currentSessionId?: string;
     currentSessionNotes?: string[];
     includeCardio?: boolean;
+    currentSessionAgeDaysAgo?: number;
   } = {}
 ) {
   await page.evaluate(async (args) => {
@@ -30,6 +31,7 @@ async function seedCoachDashboardData(
     const leanMassLb = args.leanMassLb ?? 154.2;
     const visceralFatEstimate = args.visceralFatEstimate ?? 8.2;
     const currentSessionId = args.currentSessionId ?? "session-coach-dashboard";
+    const currentSessionAgeDaysAgo = args.currentSessionAgeDaysAgo ?? 0;
     const currentSessionNotes =
       args.currentSessionNotes ?? [
         "MTS Row: chest-supported row reinforced Gaz's cues",
@@ -128,8 +130,8 @@ async function seedCoachDashboardData(
       id: sessionId,
       templateId,
       templateName: "Coach Dashboard Template",
-      startedAt: now - 90 * 60 * 1000,
-      endedAt: now - 60 * 60 * 1000,
+      startedAt: now - currentSessionAgeDaysAgo * 24 * 60 * 60 * 1000 - 90 * 60 * 1000,
+      endedAt: now - currentSessionAgeDaysAgo * 24 * 60 * 60 * 1000 - 60 * 60 * 1000,
       notes: currentSessionNotes.join("\n"),
     } as any);
 
@@ -137,8 +139,8 @@ async function seedCoachDashboardData(
       id: "set-coach-dashboard-1",
       sessionId,
       trackId,
-      createdAt: now - 89 * 60 * 1000,
-      completedAt: now - 88 * 60 * 1000,
+      createdAt: now - currentSessionAgeDaysAgo * 24 * 60 * 60 * 1000 - 89 * 60 * 1000,
+      completedAt: now - currentSessionAgeDaysAgo * 24 * 60 * 60 * 1000 - 88 * 60 * 1000,
       setType: "working",
       weight: 225,
       reps: 5,
@@ -319,12 +321,10 @@ test.describe("Start Coach Dashboard", () => {
 
     const snapshot = page.getByTestId("coach-dashboard-snapshot");
     await expect(snapshot).toContainText("Coach Snapshot");
-    await expect(snapshot).toContainText("Overall");
+    await expect(snapshot).toContainText("Status");
     await expect(snapshot).toContainText("Confidence");
-    await expect(snapshot).toContainText("Narrative");
-    await expect(snapshot).toContainText("Biggest Win");
-    await expect(snapshot).toContainText("Biggest Risk");
-    await expect(snapshot).toContainText("Today's Focus");
+    await expect(snapshot).toContainText("Why");
+    await expect(snapshot).toContainText("Today");
 
     const body = page.getByTestId("coach-dashboard-body");
     await expect(body).toContainText("Body");
@@ -340,17 +340,20 @@ test.describe("Start Coach Dashboard", () => {
 
     const performance = page.getByTestId("coach-dashboard-performance");
     await expect(performance).toContainText("Performance Trend");
-    await expect(performance).toContainText("Movement Quality");
     await expect(performance).toContainText("Strength Signal");
+    await expect(performance).toContainText("historical anchor");
+    await expect(performance).toContainText("Movement Quality");
+    await expect(performance).toContainText("Performance Read");
 
     const goals = page.getByTestId("coach-dashboard-goals");
     await expect(goals).toContainText("Goal Trajectory");
+    await expect(goals).toContainText("Goal Read");
     await expect(goals).toContainText("Weight");
     await expect(goals).toContainText("Waist");
 
     const learnings = page.getByTestId("coach-dashboard-learnings");
-    await expect(learnings).toContainText("Validated Learnings");
-    await expect(learnings).toContainText("Active Watch Items");
+    await expect(learnings).toContainText("What's Working");
+    await expect(learnings).toContainText("Watch Now");
     await expect(learnings).toContainText("reinforced Gaz's cues");
     await expect(learnings).toContainText("form breakdown");
 
@@ -362,6 +365,20 @@ test.describe("Start Coach Dashboard", () => {
     await expect(cardio).toContainText("Cardio Note");
     await expect(cardio).toContainText("Walk - MapMyWalk");
     await expect(cardio).toContainText("2 walks");
+  });
+
+  test("labels stale performance anchors as historical context", async ({ page }) => {
+    await resetDexieDb(page);
+    await seedCoachDashboardData(page, {
+      currentSessionId: "session-coach-dashboard-old-anchor",
+      currentSessionAgeDaysAgo: 60,
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    await waitForCoachDashboardReady(page);
+    const performance = page.getByTestId("coach-dashboard-performance");
+    await expect(performance).toContainText("Anchor");
+    await expect(performance).toContainText("historical anchor");
   });
 
   test("refreshes the dashboard after body data changes without reload", async ({ page }) => {

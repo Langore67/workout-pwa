@@ -51,6 +51,7 @@ import type {
   CoachExportAnchorLift,
   CoachExportMetric,
   CoachExportMetrics,
+  CoachExportRecency,
   CoachExportTrainingSignals,
 } from "./types";
 import { getCurrentPhase } from "../../config/appConfig";
@@ -58,6 +59,20 @@ import { getProfileGoals } from "../../profile/profileGoals";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HEIGHT_META_KEY = "profile.heightIn";
+
+function anchorRecencyFromAgeDays(ageDays: number | null | undefined): CoachExportRecency {
+  if (!Number.isFinite(ageDays as number)) return "historical";
+  const days = Math.max(0, Math.floor(Number(ageDays)));
+  if (days <= 21) return "recent";
+  if (days <= 28) return "historical";
+  return "stale";
+}
+
+function ageDaysBetween(asOf: number, timestamp: number | null | undefined) {
+  if (!Number.isFinite(asOf) || !Number.isFinite(timestamp as number)) return null;
+  const value = Math.floor(Math.max(0, asOf - Number(timestamp)) / DAY_MS);
+  return Number.isFinite(value) ? value : null;
+}
 
 function cleanNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -192,7 +207,7 @@ async function buildStrengthSignal(now: number) {
 }
 
 
-async function buildAnchorLifts(): Promise<CoachExportAnchorLift[]> {
+async function buildAnchorLifts(generatedAt: number): Promise<CoachExportAnchorLift[]> {
   const result = await computeStrengthSignalV2();
 
   const anchorForExport = {
@@ -206,6 +221,8 @@ async function buildAnchorLifts(): Promise<CoachExportAnchorLift[]> {
 
   return patterns.map((pattern) => {
     const anchor = anchorForExport[pattern];
+    const ageDays = ageDaysBetween(generatedAt, anchor?.latestSet?.completedAt ?? null);
+    const recency = anchorRecencyFromAgeDays(ageDays);
 
     return {
       pattern,
@@ -216,6 +233,9 @@ async function buildAnchorLifts(): Promise<CoachExportAnchorLift[]> {
       reps: anchor?.latestSet?.reps ?? null,
       e1rm: anchor?.capacity?.e1RM ?? null,
       performedAt: anchor?.latestSet?.completedAt ?? null,
+      ageDays,
+      recency,
+      isStale: recency === "stale",
     };
   });
 }
@@ -449,6 +469,7 @@ function buildTrainingSignalsFromRecentSessions(args: {
   sessions: Session[];
   sets: SetEntry[];
   tracks: Track[];
+  asOf: number;
 }) {
   const tracksById = new Map((args.tracks ?? []).map((track) => [track.id, track]));
   const recentSessions = selectRecentStrengthBuildingSessions({
@@ -456,6 +477,8 @@ function buildTrainingSignalsFromRecentSessions(args: {
     sets: args.sets,
     tracks: args.tracks,
     limit: 4,
+    asOf: args.asOf,
+    maxAgeDays: 21,
   });
   const completedSessions: CompletedSession[] = [];
   const aggregated = {
@@ -643,19 +666,21 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
   );
   const phaseQuality =
     (phaseQualityInputs.sampleCount ?? 0) > 0 ? evaluatePhaseQuality(currentPhase, phaseQualityInputs) : null;
-  const anchorLifts = await buildAnchorLifts();
+  const anchorLifts = await buildAnchorLifts(generatedAt);
   const exerciseVocabulary = buildExerciseVocabulary({
     sessions: sessions ?? [],
     sets: sets ?? [],
     tracks: tracks ?? [],
     exercises: exercises ?? [],
     anchorLifts,
+    asOf: generatedAt,
     limit: 25,
   });
   const trainingSignalBundle = buildTrainingSignalsFromRecentSessions({
     sessions: sessions ?? [],
     sets: sets ?? [],
     tracks: tracks ?? [],
+    asOf: generatedAt,
   });
   const leanPreservation = buildLeanPreservationComposite({
     leanMass: bodyComp.leanMass,
@@ -690,6 +715,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     exerciseVocabulary,
     coachingMemory,
     anchorLifts,
+    asOf: generatedAt,
   });
   const nextWorkoutFocus = buildNextWorkoutFocus({
     trainingSignals: trainingSignalBundle.trainingSignals,

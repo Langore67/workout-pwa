@@ -13,6 +13,8 @@ export type CoachExportMetric = {
   delta14d: number | null;
 };
 
+export type CoachExportRecency = "recent" | "historical" | "stale";
+
 export type CoachExportWaistToHeight = CoachExportMetric & {
   status: "Very Lean" | "Healthy" | "Elevated" | "High Risk";
   healthyWaistTargetIn: number;
@@ -28,6 +30,9 @@ export type CoachExportAnchorLift = {
   reps: number | null;
   e1rm: number | null;
   performedAt: number | null;
+  ageDays?: number | null;
+  recency?: CoachExportRecency;
+  isStale?: boolean;
 };
 
 export type CoachExportHydration = {
