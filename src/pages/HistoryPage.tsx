@@ -29,6 +29,7 @@ import { safeParsePrsCount } from "../lib/safeParsePrsCount";
 import { computeSessionTotalLifted } from "../lib/sessionTotalLifted";
 import { summarizeSessionActivityMetrics } from "../lib/activityMetrics";
 import { buildCardioWalkSummary } from "../lib/cardio/buildCardioWalkSummary";
+import { dispatchCoachDashboardRefresh } from "../lib/coachDashboardEvents";
 import type { PRHit } from "../prs";
 
 /* =============================================================================
@@ -514,6 +515,8 @@ export default function HistoryPage() {
       if (prsTable) await prsTable.where("sessionId").equals(sessionId).delete();
       await db.sessions.delete(sessionId);
     });
+
+    dispatchCoachDashboardRefresh("session:delete");
   }
 
   function openSessionDetails(sessionId: string) {

@@ -10,6 +10,10 @@
 
 import { test, expect } from "@playwright/test";
 
+async function waitForStartDashboard(page: import("@playwright/test").Page) {
+  await expect(page.getByTestId("coach-dashboard-loading")).toBeHidden({ timeout: 15000 });
+}
+
 test("StartPage folders: template appears in folder, chevron toggles, ActionMenu opens", async ({ page, browserName }) => {
   // Stub prompts before app code runs
   await page.addInitScript(() => {
@@ -27,6 +31,7 @@ test("StartPage folders: template appears in folder, chevron toggles, ActionMenu
 
   // Go to app
   await page.goto("/", { waitUntil: "domcontentloaded" });
+  await waitForStartDashboard(page);
 
   // Templates admin
   await page.getByRole("link", { name: "Templates" }).click();
@@ -53,6 +58,7 @@ test("StartPage folders: template appears in folder, chevron toggles, ActionMenu
 
   // Back to Start
   await page.getByRole("link", { name: "Start" }).click();
+  await waitForStartDashboard(page);
 
   // Folder header should exist + be clickable
   const folderHeader = page.getByTestId(/start-folder-/).filter({ hasText: "AM Folder" }).first();

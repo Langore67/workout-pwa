@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { resetDexieDb } from "./helpers/dbSeed";
+import { COACH_DASHBOARD_REFRESH_EVENT } from "../src/lib/coachDashboardEvents";
 
 test.describe.configure({ timeout: 120000 });
 test.setTimeout(120000);
@@ -164,6 +165,21 @@ async function waitForCoachDashboardReady(page: Page) {
   await expect(loading).toBeHidden({ timeout: 15000 });
 }
 
+async function waitForCoachDashboardRefreshReason(page: Page) {
+  return page.evaluate((eventName) => {
+    return new Promise<string>((resolve) => {
+      window.addEventListener(
+        eventName,
+        (event: Event) => {
+          const detail = (event as CustomEvent<{ reason?: string }>).detail;
+          resolve(detail?.reason ?? "");
+        },
+        { once: true }
+      );
+    });
+  }, COACH_DASHBOARD_REFRESH_EVENT);
+}
+
 test.describe("Start Coach Dashboard", () => {
   test("renders the dashboard shell and keeps Today actions visible with no data", async ({ page }) => {
     await resetDexieDb(page);
@@ -280,5 +296,58 @@ test.describe("Start Coach Dashboard", () => {
     await expect(page.getByTestId("coach-dashboard-error")).toBeVisible({ timeout: 10000 });
     await expect(page.getByTestId("coach-dashboard-loading")).toBeHidden({ timeout: 10000 });
     await expect(page.getByText("Coach dashboard unavailable.", { exact: false })).toBeVisible();
+  });
+
+  test("dispatches a refresh after body metric add and delete mutations", async ({ page }) => {
+    await resetDexieDb(page);
+    await page.goto("/body", { waitUntil: "domcontentloaded" });
+
+    const addReasonPromise = waitForCoachDashboardRefreshReason(page);
+    const addCard = page.locator("div.card").filter({ hasText: "Add entry" }).first();
+    await addCard.locator('input[placeholder="200"]').fill("204");
+    await addCard.getByRole("button", { name: /^Save$/ }).click();
+    await expect(addReasonPromise).resolves.toBe("body:add");
+
+    const deleteReasonPromise = waitForCoachDashboardRefreshReason(page);
+    page.once("dialog", async (dialog) => {
+      await dialog.accept();
+    });
+    await expect(page.getByTitle("Delete entry").first()).toBeVisible();
+    await page.getByTitle("Delete entry").first().click();
+    await expect(deleteReasonPromise).resolves.toBe("body:delete");
+  });
+
+  test("dispatches a refresh after a session edit mutation", async ({ page }) => {
+    await resetDexieDb(page);
+    await page.evaluate(async () => {
+      const db = (window as any).__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const now = Date.now();
+      await db.sessions.add({
+        id: "session-edit-refresh",
+        startedAt: now - 30 * 60 * 1000,
+        endedAt: now - 20 * 60 * 1000,
+        templateName: "Ad-hoc",
+        conditioningIntent: undefined,
+      });
+    });
+
+    await page.goto("/session/session-edit-refresh", { waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("session-detail")).toBeVisible({ timeout: 15000 });
+
+    const refreshReasonPromise = waitForCoachDashboardRefreshReason(page);
+    await page.getByTestId("session-conditioning-intent").selectOption("fitness");
+    await expect(refreshReasonPromise).resolves.toBe("session:update");
+  });
+
+  test("dispatches a refresh after starting an empty workout from Start", async ({ page }) => {
+    await resetDexieDb(page);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    const refreshReasonPromise = waitForCoachDashboardRefreshReason(page);
+    await page.getByRole("button", { name: /Start Empty Workout/i }).click();
+    await expect(refreshReasonPromise).resolves.toBe("session:add");
+    await expect(page).toHaveURL(/\/gym\//);
   });
 });

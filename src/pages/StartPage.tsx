@@ -48,6 +48,10 @@ import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetr
 import type { CoachExportMetrics } from "../lib/coachExport/types";
 import { buildCoachStateFromExportMetrics } from "../lib/coachState/buildCoachState";
 import type { CoachState } from "../lib/coachState/coachStateTypes";
+import {
+  COACH_DASHBOARD_REFRESH_EVENT,
+  dispatchCoachDashboardRefresh,
+} from "../lib/coachDashboardEvents";
 
 /* ============================================================================
    Breadcrumb 1 — Helpers
@@ -116,7 +120,6 @@ function fmtSignedNumber(value?: number | null, decimals = 1) {
 
 type CoachStateAnchor = NonNullable<CoachState["strength"]["anchors"]>[number];
 
-const COACH_DASHBOARD_REFRESH_EVENT = "ironforge:coach-dashboard-refresh";
 const COACH_DASHBOARD_LOAD_TIMEOUT_MS = 4500;
 const COACH_DASHBOARD_LOAD_TIMEOUT_OVERRIDE_KEY = "IRONFORGE_COACH_DASHBOARD_TIMEOUT_MS";
 const COACH_DASHBOARD_DEBUG_KEY = "IRONFORGE_DEBUG_COACH_DASHBOARD";
@@ -641,6 +644,7 @@ export default function StartPage() {
       startedAt: now,
     } as any);
 
+    dispatchCoachDashboardRefresh("session:add");
     navigate(`/gym/${sessionId}`);
   }
 
@@ -704,6 +708,7 @@ export default function StartPage() {
       if (setRows.length) await db.sets.bulkAdd(setRows as any);
     });
 
+    dispatchCoachDashboardRefresh("workout:add");
     closeModal();
     navigate(`/gym/${sessionId}`);
   }

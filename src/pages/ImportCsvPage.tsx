@@ -33,6 +33,7 @@ import {
   buildExerciseResolverIndex,
   resolveExerciseFromIndex,
 } from "../domain/exercises/exerciseResolver";
+import { dispatchCoachDashboardRefresh } from "../lib/coachDashboardEvents";
 import {
   buildExerciseDuplicateCandidates,
   type ExerciseDuplicateCandidate,
@@ -481,6 +482,7 @@ export default function ImportCsvPage() {
     setStatus(
       `Rollback complete ✓ Deleted ${rec.sessionIds.length} sessions, ${siIds.length} session items, ${setIds.length} sets. (Tracks/Exercises left intact.)`
     );
+    dispatchCoachDashboardRefresh("session:delete");
   }
 
   /* --------------------------------------------------------------------------
@@ -836,6 +838,7 @@ export default function ImportCsvPage() {
         aliasesRemembered > 0 ? `\nAliases remembered: ${aliasesRemembered}` : ""
       }\nSaved rollback handle: ${importId}`
     );
+    dispatchCoachDashboardRefresh("session:add");
   }
 
   /* --------------------------------------------------------------------------

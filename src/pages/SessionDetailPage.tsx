@@ -47,6 +47,7 @@ import {
   formatDurationShortFromSeconds,
   summarizeSessionActivityMetrics,
 } from "../lib/activityMetrics";
+import { dispatchCoachDashboardRefresh } from "../lib/coachDashboardEvents";
 
 /* =============================================================================
    Breadcrumb 0 — Types
@@ -244,6 +245,7 @@ export default function SessionDetailPage() {
       conditioningIntent,
       updatedAt: Date.now(),
     } as any);
+    dispatchCoachDashboardRefresh("session:update");
   }
 
   /* ---------------------------------------------------------------------------
