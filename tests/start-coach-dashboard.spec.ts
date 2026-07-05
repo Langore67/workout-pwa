@@ -16,6 +16,7 @@ async function seedCoachDashboardData(
     currentSessionId?: string;
     currentSessionNotes?: string[];
     includeCardio?: boolean;
+    currentSessionAgeDaysAgo?: number;
   } = {}
 ) {
   await page.evaluate(async (args) => {
@@ -30,6 +31,7 @@ async function seedCoachDashboardData(
     const leanMassLb = args.leanMassLb ?? 154.2;
     const visceralFatEstimate = args.visceralFatEstimate ?? 8.2;
     const currentSessionId = args.currentSessionId ?? "session-coach-dashboard";
+    const currentSessionAgeDaysAgo = args.currentSessionAgeDaysAgo ?? 0;
     const currentSessionNotes =
       args.currentSessionNotes ?? [
         "MTS Row: chest-supported row reinforced Gaz's cues",
@@ -128,8 +130,8 @@ async function seedCoachDashboardData(
       id: sessionId,
       templateId,
       templateName: "Coach Dashboard Template",
-      startedAt: now - 90 * 60 * 1000,
-      endedAt: now - 60 * 60 * 1000,
+      startedAt: now - currentSessionAgeDaysAgo * 24 * 60 * 60 * 1000 - 90 * 60 * 1000,
+      endedAt: now - currentSessionAgeDaysAgo * 24 * 60 * 60 * 1000 - 60 * 60 * 1000,
       notes: currentSessionNotes.join("\n"),
     } as any);
 
@@ -137,8 +139,8 @@ async function seedCoachDashboardData(
       id: "set-coach-dashboard-1",
       sessionId,
       trackId,
-      createdAt: now - 89 * 60 * 1000,
-      completedAt: now - 88 * 60 * 1000,
+      createdAt: now - currentSessionAgeDaysAgo * 24 * 60 * 60 * 1000 - 89 * 60 * 1000,
+      completedAt: now - currentSessionAgeDaysAgo * 24 * 60 * 60 * 1000 - 88 * 60 * 1000,
       setType: "working",
       weight: 225,
       reps: 5,
@@ -342,6 +344,7 @@ test.describe("Start Coach Dashboard", () => {
     await expect(performance).toContainText("Performance Trend");
     await expect(performance).toContainText("Movement Quality");
     await expect(performance).toContainText("Strength Signal");
+    await expect(performance).toContainText("historical anchor");
 
     const goals = page.getByTestId("coach-dashboard-goals");
     await expect(goals).toContainText("Goal Trajectory");
@@ -362,6 +365,20 @@ test.describe("Start Coach Dashboard", () => {
     await expect(cardio).toContainText("Cardio Note");
     await expect(cardio).toContainText("Walk - MapMyWalk");
     await expect(cardio).toContainText("2 walks");
+  });
+
+  test("labels stale performance anchors as historical context", async ({ page }) => {
+    await resetDexieDb(page);
+    await seedCoachDashboardData(page, {
+      currentSessionId: "session-coach-dashboard-old-anchor",
+      currentSessionAgeDaysAgo: 60,
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    await waitForCoachDashboardReady(page);
+    const performance = page.getByTestId("coach-dashboard-performance");
+    await expect(performance).toContainText("Anchor");
+    await expect(performance).toContainText("historical anchor");
   });
 
   test("refreshes the dashboard after body data changes without reload", async ({ page }) => {

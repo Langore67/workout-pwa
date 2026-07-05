@@ -92,6 +92,9 @@ function buildStrengthAnchors(metrics: CoachExportMetrics): CoachStateStrengthAn
     reps: lift.reps,
     e1rm: lift.e1rm,
     performedAt: lift.performedAt,
+    ageDays: lift.ageDays,
+    recency: lift.recency,
+    isStale: lift.isStale,
   }));
 }
 

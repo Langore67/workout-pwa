@@ -44,6 +44,15 @@ function formatVisceralFatValue(value: number | null | undefined) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
+function formatAnchorRecencyLabel(lift: CoachExportAnchorLift) {
+  if (lift.ageDays == null || !Number.isFinite(lift.ageDays)) return null;
+  const age = Math.max(0, Math.floor(lift.ageDays));
+  if (lift.recency === "stale") return `${age}d old | stale anchor`;
+  if (lift.recency === "historical") return `${age}d old | historical anchor`;
+  if (lift.recency === "recent") return `${age}d old | recent anchor`;
+  return `${age}d old`;
+}
+
 function visceralFatDirection(delta14d: number | null | undefined) {
   if (delta14d == null || !Number.isFinite(delta14d)) return "Unknown";
   if (delta14d < 0) return "Improving";
@@ -269,7 +278,8 @@ function formatAnchorLift(lift: CoachExportAnchorLift) {
   }
 
   const name = lift.trackDisplayName || lift.exerciseName || "Unknown";
-  return `- ${lift.pattern}: ${name} | effective ${formatValue(lift.effectiveWeightLb, 0, " lb")} x ${formatValue(lift.reps, 0)} | e1RM ${formatValue(lift.e1rm, 0)} | ${formatDate(lift.performedAt)}`;
+  const recency = formatAnchorRecencyLabel(lift);
+  return `- ${lift.pattern}: ${name} | effective ${formatValue(lift.effectiveWeightLb, 0, " lb")} x ${formatValue(lift.reps, 0)} | e1RM ${formatValue(lift.e1rm, 0)} | ${formatDate(lift.performedAt)}${recency ? ` | ${recency}` : ""}`;
 }
 
 function formatPerformanceAnchorsSection(metrics: CoachExportMetrics): string[] {

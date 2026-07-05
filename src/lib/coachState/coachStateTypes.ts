@@ -37,7 +37,16 @@ export type CoachStateBody = {
 
 export type CoachStateStrengthAnchor = Pick<
   CoachExportAnchorLift,
-  "pattern" | "exerciseName" | "trackDisplayName" | "effectiveWeightLb" | "reps" | "e1rm" | "performedAt"
+  | "pattern"
+  | "exerciseName"
+  | "trackDisplayName"
+  | "effectiveWeightLb"
+  | "reps"
+  | "e1rm"
+  | "performedAt"
+  | "ageDays"
+  | "recency"
+  | "isStale"
 >;
 
 export type CoachStateStrength = {

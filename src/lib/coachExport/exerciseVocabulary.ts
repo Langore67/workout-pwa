@@ -30,6 +30,7 @@ export function buildExerciseVocabulary(args: {
   exercises: Exercise[];
   anchorLifts: CoachExportAnchorLift[];
   limit?: number;
+  asOf?: number;
 }): string[] {
   const limit = Math.max(1, Math.floor(args.limit ?? 25));
   const out: string[] = [];
@@ -41,6 +42,8 @@ export function buildExerciseVocabulary(args: {
     sets: args.sets,
     tracks: args.tracks,
     limit: 8,
+    asOf: args.asOf,
+    maxAgeDays: 28,
   });
   const recentSessionIds = new Set(recentSessions.map((session) => session.id));
   const setsBySessionId = new Map<string, SetEntry[]>();

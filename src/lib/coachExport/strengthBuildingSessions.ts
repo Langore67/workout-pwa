@@ -9,6 +9,8 @@ function sortRecentCompletedSessions(sessions: Session[]) {
     );
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 function isStrengthBuildingTrackType(trackType: unknown) {
   const raw = String(trackType ?? "").trim().toLowerCase();
   return raw === "strength" || raw === "hypertrophy" || raw === "technique";
@@ -44,9 +46,23 @@ export function selectRecentStrengthBuildingSessions(args: {
   sets: SetEntry[];
   tracks: Track[];
   limit: number;
+  asOf?: number;
+  maxAgeDays?: number;
 }) {
   const tracksById = new Map((args.tracks ?? []).map((track) => [track.id, track]));
-  return sortRecentCompletedSessions(args.sessions)
+  const sortedSessions = sortRecentCompletedSessions(args.sessions);
+  const latestSessionTime = sortedSessions[0]?.endedAt ?? sortedSessions[0]?.startedAt ?? Date.now();
+  const asOf = Number.isFinite(args.asOf) ? Number(args.asOf) : Number(latestSessionTime);
+  const maxAgeDays = Number.isFinite(args.maxAgeDays) ? Math.max(0, Math.floor(Number(args.maxAgeDays))) : null;
+  const filtered = sortedSessions.filter((session) => {
+    if (maxAgeDays == null) return true;
+    const endedAt = Number(session.endedAt ?? session.startedAt ?? 0);
+    if (!Number.isFinite(endedAt) || endedAt <= 0) return false;
+    const ageDays = Math.floor(Math.max(0, asOf - endedAt) / DAY_MS);
+    return ageDays <= maxAgeDays;
+  });
+
+  return filtered
     .filter((session) =>
       isStrengthBuildingSession({
         session,

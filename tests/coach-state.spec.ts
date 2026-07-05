@@ -183,6 +183,9 @@ function buildMetrics(): CoachExportMetrics {
         reps: 5,
         e1rm: 262,
         performedAt: new Date("2026-04-24T09:00:00-04:00").getTime(),
+        ageDays: 3,
+        recency: "recent",
+        isStale: false,
       },
     ],
     exerciseVocabulary: ["Bench Press", "Lat Pulldown", "Romanian Deadlift"],
@@ -323,6 +326,9 @@ test("coach state strength section maps trend, signal, and anchors", async () =>
   expect(state.strength.strengthSignalVsBestPct).toBe(-1.5);
   expect(state.strength.anchors?.[0].pattern).toBe("push");
   expect(state.strength.anchors?.[0].exerciseName).toBe("Bench Press");
+  expect(state.strength.anchors?.[0].ageDays).toBe(3);
+  expect(state.strength.anchors?.[0].recency).toBe("recent");
+  expect(state.strength.anchors?.[0].isStale).toBe(false);
 });
 
 test("coach state learnings and goals map from export metrics", async () => {

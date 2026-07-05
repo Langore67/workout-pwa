@@ -219,7 +219,19 @@ function fmtAnchorSummary(anchor?: CoachStateAnchor | null) {
     .filter(Boolean)
     .join(" x ");
   const e1rm = anchor.e1rm != null ? `e1RM ${fmtNumber(anchor.e1rm)} lb` : "";
-  return [parts.join(": "), load, e1rm].filter(Boolean).join(" | ");
+  const age =
+    typeof anchor.ageDays === "number" && Number.isFinite(anchor.ageDays)
+      ? `${Math.max(0, Math.floor(anchor.ageDays))}d old`
+      : null;
+  const recency =
+    anchor.recency === "stale"
+      ? "stale anchor"
+      : anchor.recency === "historical"
+        ? "historical anchor"
+        : anchor.recency === "recent"
+          ? "recent anchor"
+          : null;
+  return [parts.join(": "), load, e1rm, age, recency].filter(Boolean).join(" | ");
 }
 
 function hasCoachDashboardData(metrics?: CoachExportMetrics | null) {
