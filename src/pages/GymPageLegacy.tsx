@@ -7,6 +7,7 @@ import type { TemplateItem, Track, SetEntry } from "../db";
 import { uuid } from "../utils";
 import { getBestSessionLastNDays, suggestionFromBest } from "../progression";
 import { computeAndStorePRsForSession } from "../prs";
+import { dispatchCoachDashboardRefresh } from "../lib/coachDashboardEvents";
 
 // --- Breadcrumb 1 -----------------------------------------------------------
 // GymPage.tsx (Execution / Logging)
@@ -151,6 +152,7 @@ export default function GymPageLegacy() {
       await db.templates.update(session.templateId, { lastPerformedAt: endedAt } as any);
     }
 
+    dispatchCoachDashboardRefresh("session:update");
     nav(`/complete/${sessionId}`);
   }
 

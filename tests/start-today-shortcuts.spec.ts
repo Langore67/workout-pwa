@@ -3,6 +3,7 @@ import { resetDexieDb } from "./helpers/dbSeed";
 
 async function gotoStart(page: Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("coach-dashboard-loading")).toBeHidden({ timeout: 15000 });
 }
 
 async function seedSession(

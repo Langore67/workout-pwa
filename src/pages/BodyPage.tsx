@@ -49,6 +49,7 @@ import { Page, Section } from "../components/Page.tsx";
 import VisxTrendChartCard from "../components/charts/VisxTrendChartCard";
 import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTypes";
 import { formatInches, formatLbs } from "../components/charts/chartFormatters";
+import { dispatchCoachDashboardRefresh } from "../lib/coachDashboardEvents";
 import {
   getFatMassLb,
   getLeanMassLb,
@@ -653,6 +654,9 @@ export default function BodyPage() {
         updatedAt: now,
       } as any);
       setHeightIn(String(valueIn));
+      dispatchCoachDashboardRefresh("body:height");
+    } else {
+      dispatchCoachDashboardRefresh("body:add");
     }
 
     closeMeasurementComposer();
@@ -726,6 +730,7 @@ export default function BodyPage() {
       };
   
       await table.add(row as any);
+      dispatchCoachDashboardRefresh("body:add");
   
       setWeightLb("");
       setWaistIn("");
@@ -744,6 +749,7 @@ export default function BodyPage() {
     const ok = window.confirm("Delete this entry?");
     if (!ok) return;
     await table.delete(id);
+    dispatchCoachDashboardRefresh("body:delete");
   }
 
   /* ------------------------------------------------------------------------

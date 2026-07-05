@@ -40,6 +40,7 @@ import { isBodyweightEffectiveLoadExerciseName } from "../strength/Strength";
 import { getNextWorkingRecommendation } from "../domain/coaching/nextWorkingRecommendation";
 import { formatWeightedRepsSetDisplay } from "../domain/coaching/setDisplay";
 import NumericPad from "../components/NumericPad";
+import { dispatchCoachDashboardRefresh } from "../lib/coachDashboardEvents";
 import {
   createTrackVariant as createTrackVariantShared,
   findOrCreateExerciseByName as findOrCreateExerciseByNameShared,
@@ -1242,6 +1243,7 @@ export default function GymPage() {
     try {
       await db.sets.where("sessionId").equals(sessionId).delete();
       await db.sessions.delete(sessionId);
+      dispatchCoachDashboardRefresh("session:delete");
       nav("/history");
     } catch (err: any) {
       window.alert(err?.message || "Cancel failed. Please try again.");
@@ -1258,6 +1260,7 @@ export default function GymPage() {
         await db.sets.where("sessionId").equals(sessionId).delete();
         await db.sessionItems.where("sessionId").equals(sessionId).delete();
         await db.sessions.delete(sessionId);
+        dispatchCoachDashboardRefresh("session:delete");
       } else if (isOpenAdHoc) {
         await finalizeCurrentSession();
       }

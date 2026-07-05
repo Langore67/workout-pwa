@@ -2,6 +2,7 @@ import { db, Readiness, SessionSummary, StoredPR, UUID } from "./db";
 import { computeAndStorePRsForSession } from "./prs";
 import type { PRHit } from "./prs";
 import { computeSessionTotalLifted } from "./lib/sessionTotalLifted";
+import { dispatchCoachDashboardRefresh } from "./lib/coachDashboardEvents";
 
 /**
  * Shared helper for Gym's current live finalize write contract.
@@ -37,6 +38,7 @@ export async function finalizeGymSessionWrites(
     await db.templates.update(sess.templateId, { lastPerformedAt: endedAt } as any);
   }
 
+  dispatchCoachDashboardRefresh("session:update");
   return { endedAt, prsJson, prHits };
 }
 

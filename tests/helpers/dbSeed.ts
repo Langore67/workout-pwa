@@ -2,6 +2,7 @@ import { Page } from "@playwright/test";
 
 export async function resetDexieDb(page: Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => !!(window as any).__db, null, { timeout: 15000 });
 
   await page.evaluate(async () => {
     // @ts-ignore
