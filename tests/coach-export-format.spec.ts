@@ -600,8 +600,8 @@ test("coach export suppresses empty no-op export lines", async () => {
   expect(text).not.toContain("No recent stimulus notes.");
   expect(text).not.toContain("No recent fatigue notes.");
   expect(text).not.toContain("No coach discussion flags from recent sessions.");
-  expect(text).toContain("Recent Patterns (Last 4 Sessions)");
-  expect(text).toContain("- No repeated patterns detected.");
+  expect(text).not.toContain("Recent Patterns (Last 4 Sessions)");
+  expect(text).not.toContain("- No repeated patterns detected.");
   expect(text).not.toContain("Data Gaps");
   expect(text).not.toContain("Readiness / Confidence Notes");
 });
@@ -618,7 +618,7 @@ test("coach export keeps meaningful recent patterns and data gaps", async () => 
   metrics.dataNotes = ["Missing waist data."];
 
   const text = formatCoachExportText(metrics);
-  const patterns = getSection(text, "Recent Patterns (Last 4 Sessions)", "Readiness / Confidence Notes");
+  const patterns = getSection(text, "Recent Patterns (Last 4 Sessions)", "Coach Summary");
 
   expect(patterns).toContain("Stimulus");
   expect(patterns).toContain("- Pull stimulus remains repeatable across recent sessions");
@@ -1016,14 +1016,14 @@ test("coach export lean preservation composite replaces single-factor lean prese
   const section = getSection(text, "Lean Preservation", "Visceral Fat");
 
   expect(section).toContain("Raw Metrics");
-  expect(section).toContain("- Lean Mass: 146.7 lb (14d -1.0 lb)");
+  expect(section).toContain("- Raw Metrics: Lean Mass: 146.7 lb (14d -1 lb)");
   expect(section).toContain("Composite");
   expect(section).toContain("- Acceptable");
   expect(section).toContain("- Confidence: High");
-  expect(section).toContain("+ Strength improving");
-  expect(section).toContain("+ Waist decreasing");
-  expect(section).toContain("- Lean mass estimate down 1.0 lb");
-  expect(section).toContain("- Aggressive rate of weight loss");
+  expect(section).toContain("✓ Strength improving");
+  expect(section).toContain("✓ Waist decreasing");
+  expect(section).toContain("Lean mass estimate down 1.0 lb");
+  expect(section).toContain("Aggressive rate of weight loss");
   expect(section).toContain("Bioimpedance lean-mass estimates can fluctuate with hydration");
   expect(text).toContain("- Status: Aggressive Cut / Muscle-Risk Cut");
   expect(text).not.toContain("- Lean Preservation: Poor");
