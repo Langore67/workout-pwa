@@ -130,6 +130,52 @@ function fmtSignedNumber(value?: number | null, decimals = 1) {
   return value > 0 ? `+${fixed}` : fixed;
 }
 
+function fmtCoachBodyTrendDisplay(
+  metric:
+    | {
+        rawLatest: number | null;
+        rolling5: number | null;
+        sampleCount: number;
+      }
+    | null
+    | undefined,
+  unit: string,
+  options: {
+    order?: "latest-first" | "average-first";
+    decimals?: number;
+  } = {}
+) {
+  if (!metric) return "—";
+
+  const decimals = options.decimals ?? 1;
+  const hasLatest = metric.rawLatest != null && Number.isFinite(metric.rawLatest);
+  const hasAverage = metric.rolling5 != null && Number.isFinite(metric.rolling5);
+  const distinctAverage =
+    hasLatest &&
+    hasAverage &&
+    metric.sampleCount > 1 &&
+    Math.abs((metric.rolling5 as number) - (metric.rawLatest as number)) > 0.0001;
+
+  const fmt = (value: number | null | undefined) =>
+    typeof value === "number" && Number.isFinite(value) ? `${fmtNumber(value, decimals)}${unit}` : "—";
+
+  if (distinctAverage) {
+    const latest = `latest ${fmt(metric.rawLatest)}`;
+    const average = `${fmt(metric.rolling5)} coach avg`;
+    return options.order === "average-first" ? `${average} · ${latest}` : `${latest} · ${average}`;
+  }
+
+  if (hasLatest) {
+    return `${fmt(metric.rawLatest)} latest/manual`;
+  }
+
+  if (hasAverage) {
+    return `${fmt(metric.rolling5)} coach avg`;
+  }
+
+  return "—";
+}
+
 function fmtCardioWindowSummary(
   count?: number,
   durationSeconds?: number,
@@ -919,7 +965,7 @@ export default function StartPage() {
             </div>
 
             <div className="card" data-testid="coach-dashboard-body">
-              <div style={{ fontWeight: 800, marginBottom: 8 }}>Body</div>
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>Body Values</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
                 {coachState.body.confidence ? (
                   <>
@@ -937,9 +983,20 @@ export default function StartPage() {
                     </div>
                   </>
                 ) : null}
-                {coachState.body.latestWeightLb != null ? (
+                {coachMetrics?.bodyTrendInputs?.weight14d ? (
                   <DashboardLine
-                    label="Latest Weight"
+                    label="Weight"
+                    value={`${fmtCoachBodyTrendDisplay(coachMetrics.bodyTrendInputs.weight14d, " lb", {
+                      order: "latest-first",
+                    })}${
+                      coachState.body.weightDelta14dLb != null
+                        ? ` | 14d ${fmtSignedNumber(coachState.body.weightDelta14dLb)}`
+                        : ""
+                    }`}
+                  />
+                ) : coachState.body.latestWeightLb != null ? (
+                  <DashboardLine
+                    label="Weight"
                     value={`${fmtNumber(coachState.body.latestWeightLb)} lb${
                       coachState.body.weightDelta14dLb != null ? ` (${fmtSignedNumber(coachState.body.weightDelta14dLb)} / 14d)` : ""
                     }`}
@@ -947,11 +1004,31 @@ export default function StartPage() {
                 ) : null}
                 {coachState.body.latestWaistIn != null ? (
                   <DashboardLine
-                    label="Latest Waist"
+                    label="Waist"
                     value={`${fmtNumber(coachState.body.latestWaistIn)} in${
-                      coachState.body.waistDelta14dIn != null ? ` (${fmtSignedNumber(coachState.body.waistDelta14dIn)} / 14d)` : ""
+                      coachState.body.waistDelta14dIn != null ? ` latest/manual (${fmtSignedNumber(coachState.body.waistDelta14dIn)} / 14d)` : " latest/manual"
                     }`}
                   />
+                ) : null}
+                {coachMetrics?.bodyTrendInputs?.bodyFatPct ? (
+                  <DashboardLine
+                    label="Body Fat"
+                    value={fmtCoachBodyTrendDisplay(coachMetrics.bodyTrendInputs.bodyFatPct, "%", {
+                      order: "latest-first",
+                    })}
+                  />
+                ) : coachState.body.latestBodyFatPct != null ? (
+                  <DashboardLine label="Body Fat" value={`${fmtNumber(coachState.body.latestBodyFatPct)}%`} />
+                ) : null}
+                {coachMetrics?.bodyTrendInputs?.leanMass ? (
+                  <DashboardLine
+                    label="Lean Mass"
+                    value={fmtCoachBodyTrendDisplay(coachMetrics.bodyTrendInputs.leanMass, " lb", {
+                      order: "latest-first",
+                    })}
+                  />
+                ) : coachState.body.latestLeanMassLb != null ? (
+                  <DashboardLine label="Lean Mass" value={`${fmtNumber(coachState.body.latestLeanMassLb)} lb`} />
                 ) : null}
               </div>
             </div>
