@@ -932,6 +932,9 @@ export default function StartPage() {
                     <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
                       Confidence reflects how much recent data is available, not whether the number is high or low.
                     </div>
+                    <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
+                      Coach body trends use rolling 5-entry averages except waist.
+                    </div>
                   </>
                 ) : null}
                 {coachState.body.latestWeightLb != null ? (

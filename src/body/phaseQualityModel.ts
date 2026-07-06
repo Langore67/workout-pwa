@@ -3,6 +3,7 @@ import { getCorrectedBodyFatPct, getCorrectedLeanMassLb } from "./bodyCalculatio
 import type { BodyConfidence } from "./bodyConfidenceEngine";
 import { pickTime, pickWaistIn, pickWeightLb } from "./bodySignalModel";
 import type { StrengthTrendRow } from "../strength/Strength";
+import type { CoachExportBodyTrendMetric } from "../lib/coachExport/types";
 
 export type PhaseMode = "cut" | "maintain" | "bulk";
 type Trend = "up" | "down" | "flat";
@@ -17,6 +18,12 @@ export type PhaseQualityInputs = {
   sampleCount?: number;
   bodyConfidence?: BodyConfidence;
   hydrationDistortionLikely?: boolean;
+};
+
+export type PhaseQualityTrendInputs = {
+  weight?: CoachExportBodyTrendMetric;
+  bodyFatPct?: CoachExportBodyTrendMetric;
+  leanMass?: CoachExportBodyTrendMetric;
 };
 
 export type PhaseQualityMetricCard = {
@@ -545,7 +552,8 @@ export function buildPhaseQualityInputsFromBodyRows(
   rows: BodyMetricEntry[],
   strengthDelta?: number,
   sampleWindow = 10,
-  bodyConfidence?: BodyConfidence | boolean
+  bodyConfidence?: BodyConfidence | boolean,
+  trendInputs?: PhaseQualityTrendInputs
 ): PhaseQualityInputs {
   const window = (rows ?? [])
     .slice()
@@ -554,6 +562,10 @@ export function buildPhaseQualityInputsFromBodyRows(
 
   if (window.length < 3) {
     return {
+      weightDelta: trendInputs?.weight?.delta14d,
+      waistDelta: undefined,
+      correctedLeanDelta: trendInputs?.leanMass?.delta14d,
+      correctedBodyFatDelta: trendInputs?.bodyFatPct?.delta14d,
       strengthDelta,
       sampleCount: window.length,
       bodyConfidence: typeof bodyConfidence === "object" ? bodyConfidence : undefined,
@@ -565,12 +577,16 @@ export function buildPhaseQualityInputsFromBodyRows(
   const last = window[window.length - 1];
 
   return {
-    weightDelta: (pickWeightLb(last as any) ?? 0) - (pickWeightLb(first as any) ?? 0),
+    weightDelta:
+      trendInputs?.weight?.delta14d ??
+      ((pickWeightLb(last as any) ?? 0) - (pickWeightLb(first as any) ?? 0)),
     waistDelta: (pickWaistIn(last as any) ?? 0) - (pickWaistIn(first as any) ?? 0),
     correctedLeanDelta:
-      (getCorrectedLeanMassLb(last as any) ?? 0) - (getCorrectedLeanMassLb(first as any) ?? 0),
+      trendInputs?.leanMass?.delta14d ??
+      ((getCorrectedLeanMassLb(last as any) ?? 0) - (getCorrectedLeanMassLb(first as any) ?? 0)),
     correctedBodyFatDelta:
-      (getCorrectedBodyFatPct(last as any) ?? 0) - (getCorrectedBodyFatPct(first as any) ?? 0),
+      trendInputs?.bodyFatPct?.delta14d ??
+      ((getCorrectedBodyFatPct(last as any) ?? 0) - (getCorrectedBodyFatPct(first as any) ?? 0)),
     strengthDelta,
     sampleCount: window.length,
     bodyConfidence: typeof bodyConfidence === "object" ? bodyConfidence : undefined,

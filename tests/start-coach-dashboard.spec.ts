@@ -336,6 +336,7 @@ test.describe("Start Coach Dashboard", () => {
     await expect(body).toContainText("Hydration confidence");
     await expect(body).toContainText("High confidence");
     await expect(body).toContainText("Confidence reflects how much recent data is available");
+    await expect(body).toContainText("Coach body trends use rolling 5-entry averages except waist");
     await expect(body).toContainText("198");
 
     const performance = page.getByTestId("coach-dashboard-performance");

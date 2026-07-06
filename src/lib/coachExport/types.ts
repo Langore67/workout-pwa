@@ -13,6 +13,33 @@ export type CoachExportMetric = {
   delta14d: number | null;
 };
 
+export type CoachExportBodyTrendMetric = {
+  rawLatest: number | null;
+  rolling5: number | null;
+  baseline14d: number | null;
+  delta14d: number | null;
+  sampleCount: number;
+  latestAt: number | null;
+  baselineSampleCount: number;
+};
+
+export type CoachExportBodyTrendInputs = {
+  method: "rolling_5_data_points_except_waist";
+  weight7d: CoachExportBodyTrendMetric;
+  weight14d: CoachExportBodyTrendMetric;
+  bodyFatPct: CoachExportBodyTrendMetric;
+  leanMass: CoachExportBodyTrendMetric;
+  fatMass: CoachExportBodyTrendMetric;
+  bodyWaterPct?: CoachExportBodyTrendMetric | null;
+  waist: {
+    rawLatest: number | null;
+    baseline14d: number | null;
+    delta14d: number | null;
+    sampleCount: number;
+    latestAt: number | null;
+  };
+};
+
 export type CoachExportRecency = "recent" | "historical" | "stale";
 
 export type CoachExportWaistToHeight = CoachExportMetric & {
@@ -133,6 +160,7 @@ export type CoachExportMetrics = {
     bodyweightDelta7d: number | null;
     bodyweightDelta14d: number | null;
   };
+  bodyTrendInputs?: CoachExportBodyTrendInputs;
   hydration: CoachExportHydration;
   cardioSummary?: CardioWalkSummary;
   bodyConfidence?: BodyConfidence;
