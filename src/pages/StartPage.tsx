@@ -55,6 +55,8 @@ import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetr
 import type { CoachExportMetrics } from "../lib/coachExport/types";
 import { buildCoachStateFromExportMetrics } from "../lib/coachState/buildCoachState";
 import type { CoachState } from "../lib/coachState/coachStateTypes";
+import { buildCoachReport } from "../lib/coachReport/buildCoachReport";
+import type { CoachReport } from "../lib/coachReport/coachReportTypes";
 import {
   COACH_DASHBOARD_REFRESH_EVENT,
   dispatchCoachDashboardRefresh,
@@ -439,6 +441,7 @@ export default function StartPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [coachState, setCoachState] = useState<CoachState | null>(null);
   const [coachMetrics, setCoachMetrics] = useState<CoachExportMetrics | null>(null);
+  const [coachReport, setCoachReport] = useState<CoachReport | null>(null);
   const [coachLoading, setCoachLoading] = useState<boolean>(true);
   const [coachStateError, setCoachStateError] = useState<string | null>(null);
   const [hasLoadedCoachDashboard, setHasLoadedCoachDashboard] = useState(false);
@@ -527,6 +530,13 @@ export default function StartPage() {
 
       setCoachMetrics(metrics);
       setCoachState(nextCoachState);
+      setCoachReport(
+        buildCoachReport({
+          coachState: nextCoachState,
+          metrics,
+          generatedAt: metrics.generatedAt,
+        })
+      );
       setCoachStateError(null);
       setHasLoadedCoachDashboard(true);
     } catch (err: any) {
@@ -538,6 +548,7 @@ export default function StartPage() {
       if (!preserveExisting) {
         setCoachMetrics(null);
         setCoachState(null);
+        setCoachReport(null);
         setCoachStateError(err?.message || "Coach dashboard unavailable.");
         setHasLoadedCoachDashboard(true);
       }
@@ -646,6 +657,16 @@ export default function StartPage() {
     if (!open.length) return null;
     return open.sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))[0] ?? null;
   }, [sessions]);
+
+  const renderedCoachReport = useMemo(() => {
+    if (coachReport) return coachReport;
+    if (!coachState || !coachMetrics) return null;
+    return buildCoachReport({
+      coachState,
+      metrics: coachMetrics,
+      generatedAt: coachMetrics.generatedAt,
+    });
+  }, [coachReport, coachMetrics, coachState]);
 
   const lastCompletedSession = useMemo(() => {
     const all = (sessions ?? []) as Session[];
@@ -960,134 +981,63 @@ export default function StartPage() {
             <div className="card" data-testid="coach-dashboard-snapshot">
               <div style={{ fontWeight: 800, marginBottom: 8 }}>Coach Snapshot</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                <DashboardLine label="Status" value={fmtCoachStatus(coachState.snapshot.overallStatus)} />
-                <DashboardLine label="Confidence" value={fmtCoachConfidence(coachState.snapshot.confidence)} />
-                <DashboardLine label="Why" value={fmtSnapshotWhy(coachState)} />
-                <DashboardLine label="Today" value={coachState.snapshot.todayFocus ?? "—"} />
+                <DashboardLine label="Status" value={renderedCoachReport?.snapshot.status ?? "—"} />
+                <DashboardLine label="Confidence" value={renderedCoachReport?.snapshot.confidence ?? "—"} />
+                <DashboardLine label="Why" value={renderedCoachReport?.snapshot.why ?? "—"} />
+                <DashboardLine label="Today" value={renderedCoachReport?.snapshot.today ?? "—"} />
               </div>
             </div>
 
             <div className="card" data-testid="coach-dashboard-body">
-              <div style={{ fontWeight: 800, marginBottom: 8 }}>Body Values</div>
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>{renderedCoachReport?.body?.heading ?? "Body Values"}</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                {coachMetrics?.bodyTrendInputs?.weight14d ? (
-                  <DashboardLine
-                    label="Weight"
-                    value={`${fmtCoachBodyTrendDisplay(coachMetrics.bodyTrendInputs.weight14d, " lb", {
-                      order: "latest-first",
-                    })}${
-                      coachState.body.weightDelta14dLb != null
-                        ? ` | 14d ${fmtSignedNumber(coachState.body.weightDelta14dLb)}`
-                        : ""
-                    }`}
-                  />
-                ) : coachState.body.latestWeightLb != null ? (
-                  <DashboardLine
-                    label="Weight"
-                    value={`${fmtNumber(coachState.body.latestWeightLb)} lb${
-                      coachState.body.weightDelta14dLb != null ? ` (${fmtSignedNumber(coachState.body.weightDelta14dLb)} / 14d)` : ""
-                    }`}
-                  />
+                {renderedCoachReport?.body?.values
+                  .filter((line) => line.label !== "Fat Mass")
+                  .map((line) => (
+                    <DashboardLine key={line.label} label={line.label} value={line.value} />
+                  ))}
+                {renderedCoachReport?.body?.note ? (
+                  <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
+                    {renderedCoachReport.body.note}
+                  </div>
                 ) : null}
-                {coachState.body.latestWaistIn != null ? (
-                  <DashboardLine
-                    label="Waist"
-                    value={`${fmtNumber(coachState.body.latestWaistIn)} in${
-                      coachState.body.waistDelta14dIn != null ? ` latest/manual (${fmtSignedNumber(coachState.body.waistDelta14dIn)} / 14d)` : " latest/manual"
-                    }`}
-                  />
-                ) : null}
-                {coachMetrics?.bodyTrendInputs?.bodyFatPct ? (
-                  <DashboardLine
-                    label="Body Fat"
-                    value={fmtCoachBodyTrendDisplay(coachMetrics.bodyTrendInputs.bodyFatPct, "%", {
-                      order: "latest-first",
-                    })}
-                  />
-                ) : coachState.body.latestBodyFatPct != null ? (
-                  <DashboardLine label="Body Fat" value={`${fmtNumber(coachState.body.latestBodyFatPct)}%`} />
-                ) : null}
-                {coachMetrics?.bodyTrendInputs?.leanMass ? (
-                  <DashboardLine
-                    label="Lean Mass"
-                    value={fmtCoachBodyTrendDisplay(coachMetrics.bodyTrendInputs.leanMass, " lb", {
-                      order: "latest-first",
-                    })}
-                  />
-                ) : coachState.body.latestLeanMassLb != null ? (
-                  <DashboardLine label="Lean Mass" value={`${fmtNumber(coachState.body.latestLeanMassLb)} lb`} />
-                ) : null}
-                <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
-                  Coach trends use rolling 5-entry averages except waist. Latest is today&apos;s/raw reading. Coach avg is what Coach uses for trend decisions.
-                </div>
               </div>
 
               <div style={{ fontWeight: 800, marginTop: 12, marginBottom: 8 }}>Body Confidence</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                {coachState.body.confidence ? (
-                  <>
-                    <DashboardLine label="Overall confidence" value={fmtConfidencePhrase(coachState.body.confidence.overall)} />
-                    <DashboardLine label="Weight trend confidence" value={fmtConfidencePhrase(coachState.body.confidence.weight)} />
-                    <DashboardLine label="Waist trend confidence" value={fmtConfidencePhrase(coachState.body.confidence.waist)} />
-                    <DashboardLine label="Lean mass confidence" value={fmtConfidencePhrase(coachState.body.confidence.leanMass)} />
-                    <DashboardLine label="Body fat confidence" value={fmtConfidencePhrase(coachState.body.confidence.bodyFat)} />
-                    <DashboardLine label="Hydration confidence" value={fmtConfidencePhrase(coachState.body.confidence.hydration)} />
-                    <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
-                      Confidence reflects how much recent data is available, not whether the number is high or low.
-                    </div>
-                  </>
-                ) : null}
+                {renderedCoachReport?.body?.confidenceRows.map((line) => (
+                  <DashboardLine key={line.label} label={line.label} value={line.value} />
+                ))}
+                <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
+                  Confidence reflects how much recent data is available, not whether the number is high or low.
+                </div>
               </div>
             </div>
 
             <div className="card" data-testid="coach-dashboard-performance">
               <div style={{ fontWeight: 800, marginBottom: 8 }}>Performance</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                <DashboardLine
-                  label="Performance Trend"
-                  value={fmtCoachStatus(coachState.strength.performanceTrend)}
-                />
-                {coachState.strength.anchors?.length ? (
-                  <DashboardLine label="Anchor" value={fmtAnchorSummary(coachState.strength.anchors[0])} />
+                <DashboardLine label="Performance Trend" value={renderedCoachReport?.performance?.trend ?? "—"} />
+                {renderedCoachReport?.performance?.anchor ? (
+                  <DashboardLine label={renderedCoachReport.performance.anchor.label} value={renderedCoachReport.performance.anchor.text} />
                 ) : null}
-                {coachState.strength.strengthSignalCurrent != null ? (
-                  <DashboardLine
-                    label="Strength Signal"
-                    value={[
-                      fmtNumber(coachState.strength.strengthSignalCurrent, 2),
-                      coachState.strength.strengthSignalDelta14d != null
-                        ? `Δ ${fmtSignedNumber(coachState.strength.strengthSignalDelta14d, 2)}`
-                        : null,
-                      coachState.strength.strengthSignalVsBestPct != null
-                        ? `vs best ${fmtSignedNumber(coachState.strength.strengthSignalVsBestPct, 1)}%`
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" | ")}
-                  />
+                {renderedCoachReport?.performance?.strengthSignal ? (
+                  <DashboardLine label="Strength Signal" value={renderedCoachReport.performance.strengthSignal} />
                 ) : null}
-                <DashboardLine
-                  label="Movement Quality"
-                  value={fmtCoachStatus(coachState.strength.movementQuality)}
-                />
-                <DashboardLine label="Performance Read" value={fmtPerformanceRead(coachState)} />
+                <DashboardLine label="Movement Quality" value={renderedCoachReport?.performance?.movementQuality ?? "—"} />
+                {renderedCoachReport?.performance?.read ? (
+                  <DashboardLine label="Performance Read" value={renderedCoachReport.performance.read} />
+                ) : null}
               </div>
             </div>
 
             <div className="card" data-testid="coach-dashboard-goals">
               <div style={{ fontWeight: 800, marginBottom: 8 }}>Goals</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                <DashboardLine label="Goal Trajectory" value={fmtCoachStatus(coachState.goals.trajectoryStatus)} />
-                <DashboardLine label="Goal Read" value={fmtGoalRead(coachState)} />
-                {(coachState.goals.targets ?? []).slice(0, 3).map((row) => (
-                  <DashboardLine
-                    key={row.label}
-                    label={row.label}
-                    value={`${fmtNumber(row.current)} / ${fmtNumber(row.target)} (${fmtSignedNumber(
-                      row.remaining,
-                      row.unit === "pts" || row.unit === "ratio" ? 1 : 1
-                    )}${row.unit === "ratio" ? "" : row.unit ? ` ${row.unit}` : ""}) • ${fmtCoachStatus(row.status)}`}
-                  />
+                <DashboardLine label="Goal Trajectory" value={renderedCoachReport?.goals?.trajectory ?? "—"} />
+                {renderedCoachReport?.goals?.read ? <DashboardLine label="Goal Read" value={renderedCoachReport.goals.read} /> : null}
+                {(renderedCoachReport?.goals?.targets ?? []).slice(0, 3).map((row) => (
+                  <DashboardLine key={row.label} label={row.label} value={row.value} />
                 ))}
               </div>
             </div>
@@ -1100,8 +1050,8 @@ export default function StartPage() {
                     What&apos;s Working
                   </div>
                   <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
-                    {coachState.learnings.validated.slice(0, 3).length ? (
-                      coachState.learnings.validated.slice(0, 3).map((item) => <div key={item}>- {item}</div>)
+                    {renderedCoachReport?.learnings?.whatsWorking.length ? (
+                      renderedCoachReport.learnings.whatsWorking.map((item) => <div key={item}>- {item}</div>)
                     ) : (
                       <div className="muted">No validated learnings yet.</div>
                     )}
@@ -1112,8 +1062,8 @@ export default function StartPage() {
                     Watch Now
                   </div>
                   <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
-                    {coachState.learnings.watchItems.slice(0, 2).length ? (
-                      coachState.learnings.watchItems.slice(0, 2).map((item) => <div key={item}>- {item}</div>)
+                    {renderedCoachReport?.learnings?.watchNow.length ? (
+                      renderedCoachReport.learnings.watchNow.map((item) => <div key={item}>- {item}</div>)
                     ) : (
                       <div className="muted">No active watch items.</div>
                     )}
@@ -1125,36 +1075,16 @@ export default function StartPage() {
             <div className="card" data-testid="coach-dashboard-cardio">
               <div style={{ fontWeight: 800, marginBottom: 8 }}>Cardio</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                {coachState.cardio.available ? (
-                  <>
-                    <DashboardLine label="Cardio Status" value={fmtCoachStatus(coachState.cardio.status)} />
-                    <DashboardLine
-                      label="Last 7 Days"
-                      value={fmtCardioWindowSummary(
-                        coachState.cardio.walkCount7d,
-                        coachState.cardio.totalDuration7dSeconds,
-                        coachState.cardio.totalDistance7dMeters
-                      )}
-                    />
-                    <DashboardLine
-                      label="Last 28 Days"
-                      value={fmtCardioWindowSummary(
-                        coachState.cardio.walkCount28d,
-                        coachState.cardio.totalDuration28dSeconds,
-                        coachState.cardio.totalDistance28dMeters
-                      )}
-                    />
-                    <DashboardLine
-                      label="Recent Walk/Cardio"
-                      value={fmtCardioRecentSummary(coachState.cardio.recent)}
-                    />
-                    <DashboardLine
-                      label="Cardio Note"
-                      value={coachState.cardio.note ?? "—"}
-                    />
-                  </>
+                {renderedCoachReport?.cardio?.isEmpty ? (
+                  <div className="muted">{renderedCoachReport.cardio.note ?? "Cardio summary not available yet."}</div>
                 ) : (
-                  <div className="muted">Cardio summary not available yet.</div>
+                  <>
+                    {renderedCoachReport?.cardio?.status ? <DashboardLine label="Cardio Status" value={renderedCoachReport.cardio.status} /> : null}
+                    {renderedCoachReport?.cardio?.rows.map((line) => (
+                      <DashboardLine key={line.label} label={line.label} value={line.value} />
+                    ))}
+                    {renderedCoachReport?.cardio?.note ? <DashboardLine label="Cardio Note" value={renderedCoachReport.cardio.note} /> : null}
+                  </>
                 )}
               </div>
             </div>
