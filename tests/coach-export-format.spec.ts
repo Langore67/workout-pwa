@@ -325,7 +325,7 @@ test("coach export body composition shows raw latest and coach average while kee
   expect(bodySection).toContain("except waist");
   expect(bodySection).toContain("Weight:");
   expect(bodySection).toContain("coach avg");
-  expect(bodySection).toContain("latest 208");
+  expect(bodySection).toContain("208 lb latest");
   expect(bodySection).toContain("201.2 lb");
   expect(bodySection).toContain("Waist:");
   expect(bodySection).toContain("latest/manual");
@@ -1367,7 +1367,7 @@ test("coach export includes goal progress when profile targets exist", async () 
   expect(section).toContain("- Waist: 36.5 in -> 35.9 in | 0.6 in remaining");
   expect(section).toContain("- Visceral Fat: 7 -> 6 | 1 remaining");
   expect(section).toContain("- Waist-to-Height Ratio: 0.509 -> < 0.500 | 0.009 remaining");
-  expect(section).toContain("- Status: On Track");
+  expect(section).toContain("Goal Trajectory: On Track");
   expect(text).not.toContain("Goal Progress");
 });
 
