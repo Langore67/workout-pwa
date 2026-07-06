@@ -79,6 +79,12 @@ export type CoachReport = {
   generatedAt?: string;
   snapshot: CoachReportSnapshot;
   body?: CoachReportBody;
+  waistToHeight?: CoachReportSection;
+  summary?: CoachReportSection;
+  hydration?: CoachReportSection;
+  trainingSignals?: CoachReportSection;
+  readinessNotes?: CoachReportSection;
+  dataGaps?: CoachReportSection;
   performance?: CoachReportPerformance;
   goals?: CoachReportGoals;
   learnings?: CoachReportLearnings;

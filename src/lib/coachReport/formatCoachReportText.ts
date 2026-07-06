@@ -40,6 +40,12 @@ export function formatCoachReportText(
   } = {}
 ) {
   const body = report.body;
+  const waistToHeight = report.waistToHeight;
+  const summary = report.summary;
+  const hydration = report.hydration;
+  const trainingSignals = report.trainingSignals;
+  const readinessNotes = report.readinessNotes;
+  const dataGaps = report.dataGaps;
   const performance = report.performance;
   const goals = report.goals;
   const learnings = report.learnings;
@@ -70,6 +76,9 @@ export function formatCoachReportText(
           "",
         ]
       : []),
+    ...(waistToHeight ? [...renderSection(waistToHeight)] : []),
+    ...(summary ? [...renderSection(summary)] : []),
+    ...(hydration ? [...renderSection(hydration)] : []),
     ...(performance
       ? [
           "Performance",
@@ -81,6 +90,9 @@ export function formatCoachReportText(
           "",
         ]
       : []),
+    ...(trainingSignals ? [...renderSection(trainingSignals)] : []),
+    ...(readinessNotes ? [...renderSection(readinessNotes)] : []),
+    ...(dataGaps ? [...renderSection(dataGaps)] : []),
     ...(goals
       ? [
           "Goals",
