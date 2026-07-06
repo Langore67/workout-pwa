@@ -10,6 +10,7 @@ import { buildCoachIntelligence } from "../src/lib/coachExport/coachIntelligence
 import { formatCoachExportText } from "../src/lib/coachExport/formatCoachExportText";
 import { buildGoalProgress } from "../src/lib/coachExport/goalEngine";
 import { buildBodyConfidence } from "../src/body/bodyConfidenceEngine";
+import { buildRollingBodyMetric } from "../src/body/bodyTrendAverages";
 import { evaluatePhaseQuality } from "../src/body/phaseQualityModel";
 import { buildCurrentMovementFocus } from "../src/lib/coachExport/currentMovementFocus";
 import { buildLeanPreservationComposite } from "../src/lib/coachExport/leanPreservationComposite";
@@ -281,6 +282,107 @@ test("coach export suppresses empty validated learnings section", async () => {
   expect(trainingSection).not.toContain("Validated Learnings");
   expect(trainingSection).toContain("- MTS Row: rep 15 on final set not counted due to form breakdown");
   expect(trainingSection).toContain("- MTS Row: terminal-rep quality dropped");
+});
+
+test("rolling body metric uses the latest five valid points and ignores missing values", async () => {
+  const now = Date.UTC(2026, 6, 6, 9, 0, 0, 0);
+  const rows = [
+    { measuredAt: now, weightLb: 208 },
+    { measuredAt: now - 1 * 24 * 60 * 60 * 1000, weightLb: 201 },
+    { measuredAt: now - 2 * 24 * 60 * 60 * 1000, weightLb: undefined },
+    { measuredAt: now - 3 * 24 * 60 * 60 * 1000, weightLb: 200 },
+    { measuredAt: now - 4 * 24 * 60 * 60 * 1000, weightLb: 199 },
+    { measuredAt: now - 5 * 24 * 60 * 60 * 1000, weightLb: 198 },
+    { measuredAt: now - 18 * 24 * 60 * 60 * 1000, weightLb: 194 },
+  ] as any[];
+
+  const metric = buildRollingBodyMetric(rows, (row) => row.weightLb, 14);
+
+  expect(metric.rawLatest).toBe(208);
+  expect(metric.sampleCount).toBe(5);
+  expect(metric.rolling5).toBeCloseTo((208 + 201 + 200 + 199 + 198) / 5, 10);
+  expect(metric.baseline14d).toBe(194);
+  expect(metric.delta14d).toBeCloseTo(((208 + 201 + 200 + 199 + 198) / 5) - 194, 10);
+});
+
+test("coach export body composition uses rolling averages and keeps waist raw", async ({ page }) => {
+  const text = await buildCoachExportTextFromSeededBodyRows(
+    page,
+    [
+      { measuredAt: Date.UTC(2026, 6, 6, 9, 0, 0, 0), weightLb: 208, waistIn: 35.5, bodyFatPct: 16.2, leanMassLb: 154.1, bodyWaterPct: 57.3 },
+      { measuredAt: Date.UTC(2026, 6, 5, 9, 0, 0, 0), weightLb: 201, waistIn: 35.6, bodyFatPct: 16.2, leanMassLb: 154.0, bodyWaterPct: 57.2 },
+      { measuredAt: Date.UTC(2026, 6, 4, 9, 0, 0, 0), weightLb: 200, waistIn: 35.7, bodyFatPct: 16.3, leanMassLb: 153.9, bodyWaterPct: 57.1 },
+      { measuredAt: Date.UTC(2026, 6, 3, 9, 0, 0, 0), weightLb: 199, waistIn: 35.8, bodyFatPct: 16.2, leanMassLb: 154.2, bodyWaterPct: 57.0 },
+      { measuredAt: Date.UTC(2026, 6, 2, 9, 0, 0, 0), weightLb: 198, waistIn: 35.9, bodyFatPct: 16.1, leanMassLb: 154.3, bodyWaterPct: 56.9 },
+      { measuredAt: Date.UTC(2026, 5, 18, 9, 0, 0, 0), weightLb: 194, waistIn: 36.1, bodyFatPct: 16.0, leanMassLb: 154.5, bodyWaterPct: 56.8 },
+    ],
+    { heightIn: 70 }
+  );
+
+  const bodySection = getSection(text, "Body Composition (14d trends)", "Waist-to-Height Ratio");
+
+  expect(bodySection).toContain("rolling 5-entry average");
+  expect(bodySection).toContain("except waist");
+  expect(bodySection).toContain("Weight:");
+  expect(bodySection).toContain("rolling avg");
+  expect(bodySection).toContain("201.2 lb");
+  expect(bodySection).toContain("Waist:");
+  expect(bodySection).toContain("latest/manual");
+  expect(bodySection).toContain("Fat Mass:");
+});
+
+test("coach body smoothing softens a one-day lean mass outlier", async () => {
+  const now = Date.UTC(2026, 6, 6, 9, 0, 0, 0);
+  const leanRows = [
+    { measuredAt: now, leanMassLb: 140, weightLb: 180, bodyFatPct: 22.0, waistIn: 36.2 },
+    { measuredAt: now - 1 * 24 * 60 * 60 * 1000, leanMassLb: 153, weightLb: 198, bodyFatPct: 16.2, waistIn: 35.6 },
+    { measuredAt: now - 2 * 24 * 60 * 60 * 1000, leanMassLb: 153, weightLb: 198, bodyFatPct: 16.1, waistIn: 35.6 },
+    { measuredAt: now - 3 * 24 * 60 * 60 * 1000, leanMassLb: 153, weightLb: 198, bodyFatPct: 16.1, waistIn: 35.6 },
+    { measuredAt: now - 4 * 24 * 60 * 60 * 1000, leanMassLb: 153, weightLb: 198, bodyFatPct: 16.1, waistIn: 35.6 },
+    { measuredAt: now - 18 * 24 * 60 * 60 * 1000, leanMassLb: 154, weightLb: 200, bodyFatPct: 16.0, waistIn: 35.8 },
+  ] as any[];
+
+  const leanMetric = buildRollingBodyMetric(leanRows, (row) => row.leanMassLb, 14);
+  const weightMetric = buildRollingBodyMetric(leanRows, (row) => row.weightLb, 14);
+  const bodyFatMetric = buildRollingBodyMetric(leanRows, (row) => row.bodyFatPct, 14);
+  const hydration = {
+    latestWaterPct: 57.2,
+    confidenceLabel: "High Confidence",
+    confidenceScore: 82,
+    note: "Hydration signal is stable.",
+    distortionLikely: false,
+  };
+  const bodyConfidence = buildBodyConfidence({
+    bodyComp: {
+      weight: { latest: weightMetric.rolling5, baseline14d: weightMetric.baseline14d, delta14d: weightMetric.delta14d },
+      waist: { latest: 35.6, baseline14d: 35.8, delta14d: -0.2 },
+      bodyFatPct: { latest: bodyFatMetric.rolling5, baseline14d: bodyFatMetric.baseline14d, delta14d: bodyFatMetric.delta14d },
+      leanMass: { latest: leanMetric.rolling5, baseline14d: leanMetric.baseline14d, delta14d: leanMetric.delta14d },
+      bodyweightDelta7d: -1.2,
+      bodyweightDelta14d: weightMetric.delta14d,
+    },
+    hydration,
+  });
+  const leanPreservation = buildLeanPreservationComposite({
+    leanMass: { latest: leanMetric.rolling5, baseline14d: leanMetric.baseline14d, delta14d: leanMetric.delta14d },
+    weight: { latest: weightMetric.rolling5, baseline14d: weightMetric.baseline14d, delta14d: weightMetric.delta14d },
+    waist: { latest: 35.6, baseline14d: 35.8, delta14d: -0.2 },
+    bodyFatPct: { latest: bodyFatMetric.rolling5, baseline14d: bodyFatMetric.baseline14d, delta14d: bodyFatMetric.delta14d },
+    hydration,
+    bodyConfidence,
+    strengthSignal: {
+      current: 1.92,
+      delta14d: -0.01,
+      vs90dBestPct: -1.5,
+      currentBodyweight: weightMetric.rolling5,
+      bodyweightDaysUsed: 5,
+    },
+    recentPerformanceSignals: ["MTS Row: chest-supported row reinforced Gaz's cues"],
+  });
+
+  expect(leanMetric.rawLatest).toBe(140);
+  expect(leanMetric.rolling5).toBeGreaterThan(150);
+  expect(leanPreservation?.status).not.toBe("Poor");
 });
 
 test("coach export low hydration lean preservation cap is driven by body confidence", async () => {
@@ -1367,8 +1469,8 @@ test("coach export goal progress uses bodyMetrics current values, not profile cu
 
   const section = getSection(text, "Goal Trajectory", "Visceral Fat");
 
-  expect(section).toContain("- Weight: 188.6 lb -> 180.0 lb | 8.6 lb remaining");
-  expect(section).toContain("- Body Fat: 20.6% -> 18.0% | 2.6 pts remaining");
+  expect(section).toContain("- Weight: 189.4 lb -> 180.0 lb | 9.4 lb remaining");
+  expect(section).toContain("- Body Fat: 20.9% -> 18.0% | 2.9 pts remaining");
   expect(section).toContain("- Waist-to-Height Ratio: 0.509 -> < 0.500 | 0.009 remaining");
   expect(section).not.toContain("999");
   expect(section).not.toContain("99.0%");

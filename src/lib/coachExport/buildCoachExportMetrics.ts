@@ -13,6 +13,7 @@ import {
 import { computeStrengthSignalV2 } from "../../strength/v2/computeStrengthSignalV2";
 import {
   getBodyFatPctRaw,
+  getFatMassLb,
   getLeanMassLb,
   getVisceralFatEstimate,
   getWeightLb,
@@ -30,6 +31,7 @@ import {
   evaluatePhaseQuality,
 } from "../../body/phaseQualityModel";
 import { buildBodyConfidence } from "../../body/bodyConfidenceEngine";
+import { buildRollingBodyMetric } from "../../body/bodyTrendAverages";
 import { buildCardioWalkSummary } from "../cardio/buildCardioWalkSummary";
 import {
   buildSessionCoachingSignals,
@@ -49,6 +51,7 @@ import { buildLeanPreservationComposite } from "./leanPreservationComposite";
 import { selectRecentStrengthBuildingSessions } from "./strengthBuildingSessions";
 import type {
   CoachExportAnchorLift,
+  CoachExportBodyTrendInputs,
   CoachExportMetric,
   CoachExportMetrics,
   CoachExportRecency,
@@ -637,9 +640,61 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     })(),
   };
 
+  const weightTrend7d = buildRollingBodyMetric(bodyRows, getWeightLb, 7);
+  const weightTrend14d = buildRollingBodyMetric(bodyRows, getWeightLb, 14);
+  const bodyFatTrend14d = buildRollingBodyMetric(bodyRows, getBodyFatPctRaw, 14);
+  const leanMassTrend14d = buildRollingBodyMetric(bodyRows, getLeanMassLb, 14);
+  const fatMassTrend14d = buildRollingBodyMetric(bodyRows, getFatMassLb, 14);
+  const bodyWaterTrend14d = buildRollingBodyMetric(
+    bodyRows,
+    (row) => (typeof row.bodyWaterPct === "number" && Number.isFinite(row.bodyWaterPct) ? row.bodyWaterPct : undefined),
+    14
+  );
+  const latestWaistRow = bodyRows.find((row) => getWaistIn(row) != null) ?? null;
+  const waistSampleCount = bodyRows.filter((row) => getWaistIn(row) != null).length;
+  const bodyTrendInputs: CoachExportBodyTrendInputs = {
+    method: "rolling_5_data_points_except_waist",
+    weight7d: weightTrend7d,
+    weight14d: weightTrend14d,
+    bodyFatPct: bodyFatTrend14d,
+    leanMass: leanMassTrend14d,
+    fatMass: fatMassTrend14d,
+    bodyWaterPct: bodyWaterTrend14d,
+    waist: {
+      rawLatest: bodyComp.waist.latest,
+      baseline14d: bodyComp.waist.baseline14d,
+      delta14d: bodyComp.waist.delta14d,
+      sampleCount: waistSampleCount,
+      latestAt: latestWaistRow ? pickTime(latestWaistRow as any) : null,
+    },
+  };
+
+  const coachBodyComp = {
+    weight: {
+      latest: weightTrend14d.rolling5,
+      baseline14d: weightTrend14d.baseline14d,
+      delta14d: weightTrend14d.delta14d,
+    },
+    waist: bodyComp.waist,
+    bodyFatPct: {
+      latest: bodyFatTrend14d.rolling5,
+      baseline14d: bodyFatTrend14d.baseline14d,
+      delta14d: bodyFatTrend14d.delta14d,
+    },
+    leanMass: {
+      latest: leanMassTrend14d.rolling5,
+      baseline14d: leanMassTrend14d.baseline14d,
+      delta14d: leanMassTrend14d.delta14d,
+    },
+    visceralFat: bodyComp.visceralFat,
+    waistToHeight,
+    bodyweightDelta7d: weightTrend7d.delta14d,
+    bodyweightDelta14d: weightTrend14d.delta14d,
+  };
+
   const hydration = buildHydration(bodyRows);
   const bodyConfidence = buildBodyConfidence({
-    bodyComp,
+    bodyComp: coachBodyComp,
     hydration,
   });
   const strengthSignal = await buildStrengthSignal(generatedAt);
@@ -662,7 +717,12 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     bodyRows,
     computedStrength.strengthDelta,
     10,
-    bodyConfidence
+    bodyConfidence,
+    {
+      weight: bodyTrendInputs.weight14d,
+      bodyFatPct: bodyTrendInputs.bodyFatPct,
+      leanMass: bodyTrendInputs.leanMass,
+    }
   );
   const phaseQuality =
     (phaseQualityInputs.sampleCount ?? 0) > 0 ? evaluatePhaseQuality(currentPhase, phaseQualityInputs) : null;
@@ -683,10 +743,10 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     asOf: generatedAt,
   });
   const leanPreservation = buildLeanPreservationComposite({
-    leanMass: bodyComp.leanMass,
-    weight: bodyComp.weight,
+    leanMass: coachBodyComp.leanMass,
+    weight: coachBodyComp.weight,
     waist: bodyComp.waist,
-    bodyFatPct: bodyComp.bodyFatPct,
+    bodyFatPct: coachBodyComp.bodyFatPct,
     hydration,
     bodyConfidence,
     strengthSignal,
@@ -746,33 +806,37 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
   });
   const goalProgress = buildGoalProgress({
     goals: profileGoals,
-    bodyComp,
+    bodyComp: coachBodyComp,
   });
 
   const metrics: CoachExportMetrics = {
-        generatedAt,
-        currentPhase,
-        bodyComp,
+    generatedAt,
+    currentPhase,
+    bodyComp,
+    bodyTrendInputs,
     hydration,
     cardioSummary,
     bodyConfidence,
     goalProgress,
     leanPreservation,
-        strengthSignal,
-        phaseQuality,
-        anchorLifts,
-        currentMovementFocus,
-        exerciseVocabulary,
-        trainingSignals: trainingSignalBundle.trainingSignals,
-        coachingMemory,
-        patternSummary,
-        nextWorkoutFocus,
-        readinessNotes,
-        dataNotes: [],
-        exportConfidence,
+    strengthSignal,
+    phaseQuality,
+    anchorLifts,
+    currentMovementFocus,
+    exerciseVocabulary,
+    trainingSignals: trainingSignalBundle.trainingSignals,
+    coachingMemory,
+    patternSummary,
+    nextWorkoutFocus,
+    readinessNotes,
+    dataNotes: [],
+    exportConfidence,
   };
 
-  metrics.coachIntelligence = buildCoachIntelligence(metrics);
+  metrics.coachIntelligence = buildCoachIntelligence({
+    ...metrics,
+    bodyComp: coachBodyComp,
+  });
   metrics.dataNotes = buildDataNotes(metrics);
   return metrics;
 }
