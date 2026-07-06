@@ -13,12 +13,15 @@ import { buildBodyConfidence } from "../src/body/bodyConfidenceEngine";
 import { buildRollingBodyMetric } from "../src/body/bodyTrendAverages";
 import { evaluatePhaseQuality } from "../src/body/phaseQualityModel";
 import { buildCurrentMovementFocus } from "../src/lib/coachExport/currentMovementFocus";
+import { buildCoachReport } from "../src/lib/coachReport/buildCoachReport";
 import { buildLeanPreservationComposite } from "../src/lib/coachExport/leanPreservationComposite";
 import { buildPatternSummary, type CompletedSession } from "../src/lib/coachExport/buildPatternSummary";
 import { buildExerciseVocabulary } from "../src/lib/coachExport/exerciseVocabulary";
 import { isStrengthBuildingSession, selectRecentStrengthBuildingSessions } from "../src/lib/coachExport/strengthBuildingSessions";
 import { informationRegistry } from "../src/config/information/informationRegistry";
 import type { CoachExportMetrics, CoachExportTrainingSignals } from "../src/lib/coachExport/types";
+import { buildCoachStateFromExportMetrics } from "../src/lib/coachState/buildCoachState";
+import { formatCoachReportText } from "../src/lib/coachReport/formatCoachReportText";
 
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5173";
 
@@ -437,11 +440,11 @@ test("coach export low hydration lean preservation cap is driven by body confide
   });
   metrics.coachIntelligence = buildCoachIntelligence(metrics);
 
-  const summarySection = getSection(formatCoachExportText(metrics), "Coach Summary", "Goal Trajectory");
-  const leanSection = getSection(formatCoachExportText(metrics), "Lean Preservation", "Visceral Fat");
+  const summarySection = getSection(formatCoachExportText(metrics), "Coach Summary", "Hydration");
+  const leanSection = getSection(formatCoachExportText(metrics), "Lean Preservation", "Strength Signal");
 
   expect(metrics.bodyConfidence?.overall).toBe("moderate");
-  expect(leanSection).toContain("- Watch");
+  expect(leanSection).toContain("- Composite: Watch");
   expect(leanSection).toContain("Hydration confidence low");
   expect(summarySection).toContain("- Overall: Watch");
 });
@@ -1018,7 +1021,7 @@ test("coach export lean preservation composite replaces single-factor lean prese
   expect(section).toContain("Raw Metrics");
   expect(section).toContain("- Raw Metrics: Lean Mass: 146.7 lb (14d -1 lb)");
   expect(section).toContain("Composite");
-  expect(section).toContain("- Acceptable");
+  expect(section).toContain("- Composite: Acceptable");
   expect(section).toContain("- Confidence: High");
   expect(section).toContain("✓ Strength improving");
   expect(section).toContain("✓ Waist decreasing");
@@ -1162,7 +1165,7 @@ test("coach export keeps unique readiness notes after duplicate narrative suppre
     "Recovery improved.",
   ];
 
-  const section = getSection(formatCoachExportText(metrics), "Readiness / Confidence Notes", "Data Gaps");
+  const section = getSection(formatCoachExportText(metrics), "Readiness / Confidence Notes", "Goals");
 
   expect(section).toContain("- Sleep disrupted.");
   expect(section).toContain("- Recovery improved.");
@@ -1692,6 +1695,20 @@ test("coach export includes a short narrative summary and biggest win or risk", 
   expect(summary).toContain("Biggest Risk");
   expect(summary).toContain("Goal trajectory is moving in the right direction");
   expect(summary).toContain("MTS Row: chest-supported row reinforced Gaz's cues");
+});
+
+test("coach export delegates fully to coach report rendering", async () => {
+  const metrics = buildMetrics();
+  const coachState = buildCoachStateFromExportMetrics(metrics);
+  const report = buildCoachReport({
+    coachState,
+    metrics,
+    generatedAt: metrics.generatedAt,
+  });
+
+  expect(formatCoachExportText(metrics)).toBe(
+    formatCoachReportText(report, { bodyHeadingOverride: "Body Composition — Coach Trend Values" })
+  );
 });
 
 test("coach export preserves the structured coaching loop as plain text", async () => {

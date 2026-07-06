@@ -1,6 +1,12 @@
 import type { CoachExportMetrics } from "../coachExport/types";
 import type { CoachState } from "../coachState/coachStateTypes";
 import { buildCoachIntelligence, clarifyCoachExportLine } from "../coachExport/coachIntelligence";
+import {
+  buildCoachingMemory,
+  isActiveWatchSignal,
+  isGenericStaleDiscussPrompt,
+  normalizeCoachingMemoryText,
+} from "../coachExport/coachingMemory";
 import type {
   CoachReport,
   CoachReportAnchor,
@@ -152,7 +158,7 @@ function buildBodyValueLine(
     method = "rolling_5";
   }
 
-  const line: CoachReportLine = {
+  return {
     label,
     value,
     text: `- ${label}: ${value}`,
@@ -161,7 +167,6 @@ function buildBodyValueLine(
     method,
     delta: delta != null ? fmtSigned(delta, 1, unit) : undefined,
   };
-  return line;
 }
 
 function fmtSnapshotWhy(state: CoachState) {
@@ -232,6 +237,41 @@ function fmtGoalRead(state: CoachState) {
   return "Goal trajectory still needs more data before it can be called clearly.";
 }
 
+function normalizeNarrativeLine(value: string) {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/[.]+$/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function isDuplicateReadinessNote(note: string, metrics: CoachExportMetrics, phaseDriverKeys: Set<string>) {
+  const raw = String(note ?? "").trim();
+  const normalized = normalizeNarrativeLine(raw);
+  if (!normalized) return true;
+
+  if (/^phase quality:/i.test(raw)) return true;
+  if (/^status\s*:/i.test(raw)) return true;
+  if (phaseDriverKeys.has(normalized)) return true;
+  if (normalizeNarrativeLine(metrics.hydration.note) === normalized) return true;
+  if (metrics.leanPreservation && /lean preservation\s*:/i.test(raw)) return true;
+  if (/^strength preservation\s*:/i.test(raw)) return true;
+  if (/^hydration confidence\s+(?:is\s+)?(?:low|moderate|high|unknown)/i.test(raw)) return true;
+  if (/hydration.*(?:distort|distorting|impedance)|impedance-derived/i.test(raw)) return true;
+  if (/^weight\s+(?:down|flat|up)\s*\/\s*waist\s+(?:down|flat|up)/i.test(raw)) return true;
+  if (/^no additional readiness notes\.?$/i.test(raw)) return true;
+
+  return false;
+}
+
+function removePromotedTrainingSignals(values: string[], promotedKeys: Set<string>) {
+  return values.filter((value) => !promotedKeys.has(normalizeCoachingMemoryText(value)));
+}
+
+function filterStaleWatchSignals(values: string[], activeWatchKeys: Set<string>) {
+  return values.filter((value) => !isActiveWatchSignal(value) || activeWatchKeys.has(normalizeCoachingMemoryText(value)));
+}
+
 function formatCardioSection(cardio: CoachState["cardio"]): CoachReportCardio {
   if (!cardio.available) {
     return {
@@ -261,8 +301,211 @@ function formatCardioSection(cardio: CoachState["cardio"]): CoachReportCardio {
   };
 }
 
+export function hasCoachReportDashboardContent(
+  report?: Pick<CoachReport, "body" | "performance" | "goals" | "learnings" | "cardio"> | null
+) {
+  if (!report) return false;
+  const hasMeaningfulText = (value?: string | null) => {
+    const normalized = String(value ?? "").trim();
+    if (!normalized) return false;
+    return !/^(?:—|not enough data|unknown)$/i.test(normalized);
+  };
+  return Boolean(
+    (report.body?.values?.length ?? 0) > 0 ||
+      hasMeaningfulText(report.performance?.trend) ||
+      hasMeaningfulText(report.performance?.strengthSignal) ||
+      hasMeaningfulText(report.performance?.movementQuality) ||
+      hasMeaningfulText(report.performance?.anchor?.text) ||
+      hasMeaningfulText(report.performance?.read) ||
+      hasMeaningfulText(report.goals?.trajectory) ||
+      hasMeaningfulText(report.goals?.read) ||
+      (report.goals?.targets?.length ?? 0) > 0 ||
+      (report.learnings?.whatsWorking?.length ?? 0) > 0 ||
+      (report.learnings?.watchNow?.length ?? 0) > 0 ||
+      (report.cardio?.isEmpty === false &&
+        Boolean(
+          hasMeaningfulText(report.cardio.status) ||
+            hasMeaningfulText(report.cardio.note) ||
+            (report.cardio.rows?.length ?? 0) > 0
+        ))
+  );
+}
+
+function buildWaistToHeightReportSection(metrics: CoachExportMetrics): CoachReportSection | undefined {
+  const whtr = metrics.bodyComp.waistToHeight;
+  if (!whtr || whtr.latest == null || !Number.isFinite(whtr.latest)) return undefined;
+
+  const rows: CoachReportLine[] = [
+    { label: "Current", value: whtr.latest.toFixed(3), text: `- Current: ${whtr.latest.toFixed(3)}` },
+  ];
+  if (whtr.delta14d != null && Number.isFinite(whtr.delta14d)) {
+    rows.push({ label: "14d trend", value: fmtSigned(whtr.delta14d, 3), text: `- 14d trend: ${fmtSigned(whtr.delta14d, 3)}` });
+  }
+  rows.push(
+    { label: "Status", value: whtr.status, text: `- Status: ${whtr.status}` },
+    { label: "Healthy threshold", value: "< 0.500", text: "- Healthy threshold: < 0.500" },
+    {
+      label: "Waist needed for threshold",
+      value: `${fmtNumber(whtr.healthyWaistTargetIn, 1)} in`,
+      text: `- Waist needed for threshold: ${fmtNumber(whtr.healthyWaistTargetIn, 1)} in`,
+    },
+    {
+      label: "Distance to threshold",
+      value: `${fmtNumber(whtr.distanceToThresholdIn, 1)} in`,
+      text: `- Distance to threshold: ${fmtNumber(whtr.distanceToThresholdIn, 1)} in`,
+    }
+  );
+
+  return {
+    title: "Waist-to-Height Ratio",
+    rows,
+  };
+}
+
+function buildCoachSummaryReportSection(metrics: CoachExportMetrics): CoachReportSection {
+  const intelligence = metrics.coachIntelligence ?? buildCoachIntelligence(metrics);
+  const summary = intelligence.summary?.trim();
+  const biggestWin = intelligence.biggestWin?.trim();
+  const biggestRisk = intelligence.biggestRisk?.trim();
+  const fatLossNarrative =
+    intelligence.narrative.find((item) => item.startsWith("Fat Loss:")) ?? "Fat Loss: Evidence is incomplete.";
+  const muscleNarrative =
+    intelligence.narrative.find((item) => item.startsWith("Muscle Preservation:")) ??
+    "Muscle Preservation: Evidence is incomplete.";
+  const performanceNarrative =
+    intelligence.narrative.find((item) => item.startsWith("Performance Trend:")) ??
+    "Performance Trend: Evidence is incomplete.";
+  const movementNarrative =
+    intelligence.narrative.find((item) => item.startsWith("Movement Quality:")) ??
+    "Movement Quality: Evidence is incomplete.";
+
+  return {
+    title: "Coach Summary",
+    rows: [
+      { label: "Overall", value: intelligence.overallStatus, text: `- Overall: ${intelligence.overallStatus}` },
+      { label: "Confidence", value: intelligence.confidence, text: `- Confidence: ${intelligence.confidence}` },
+    ],
+    blocks: [
+      ...(summary ? [{ heading: "Summary", items: [summary] }] : []),
+      ...(biggestWin ? [{ heading: "Biggest Win", items: [biggestWin] }] : []),
+      ...(biggestRisk ? [{ heading: "Biggest Risk", items: [biggestRisk] }] : []),
+      { heading: "Fat Loss", items: [intelligence.fatLossStatus, fatLossNarrative.replace(/^Fat Loss:\s*/, "")] },
+      {
+        heading: "Muscle Preservation",
+        items: [intelligence.musclePreservationStatus, muscleNarrative.replace(/^Muscle Preservation:\s*/, "")],
+      },
+      {
+        heading: "Training",
+        items: [
+          `Performance Trend: ${intelligence.performanceTrendStatus}`,
+          performanceNarrative.replace(/^Performance Trend:\s*/, ""),
+          `Movement Quality: ${intelligence.movementQualityStatus}`,
+          movementNarrative.replace(/^Movement Quality:\s*/, ""),
+        ],
+      },
+      { heading: "Recommendations", items: intelligence.recommendations.slice() },
+    ],
+  };
+}
+
+function buildHydrationReportSection(metrics: CoachExportMetrics): CoachReportSection {
+  const phaseDriverKeys = new Set((metrics.phaseQuality?.drivers ?? []).map((driver) => normalizeNarrativeLine(driver)));
+  const hydrationNote = metrics.hydration.note || "Unknown";
+  const hydrationNoteDuplicatesPhase =
+    phaseDriverKeys.has(normalizeNarrativeLine(hydrationNote)) &&
+    /hydration|impedance|lean mass|body-fat/i.test(hydrationNote);
+
+  return {
+    title: "Hydration",
+    rows: [
+      {
+        label: "Latest body water %",
+        value: fmtNumber(metrics.hydration.latestWaterPct, 1, "%"),
+        text: `- Latest body water %: ${fmtNumber(metrics.hydration.latestWaterPct, 1, "%")}`,
+      },
+      {
+        label: "Confidence",
+        value:
+          `${metrics.hydration.confidenceLabel}${metrics.hydration.confidenceScore != null ? ` (${Math.round(metrics.hydration.confidenceScore)})` : ""}`,
+        text: `- Confidence: ${metrics.hydration.confidenceLabel}${metrics.hydration.confidenceScore != null ? ` (${Math.round(metrics.hydration.confidenceScore)})` : ""}`,
+      },
+    ],
+    note: hydrationNoteDuplicatesPhase ? undefined : hydrationNote,
+  };
+}
+
+function buildTrainingSignalsReportSection(metrics: CoachExportMetrics): CoachReportSection | undefined {
+  const coachingMemory =
+    metrics.coachingMemory ??
+    buildCoachingMemory({
+      trainingSignals: metrics.trainingSignals,
+      patternSummary: metrics.patternSummary,
+    });
+  const validatedLearningItems = coachingMemory.validatedLearnings.map((item) => item.text);
+  const validatedLearningKeys = new Set(validatedLearningItems.map(normalizeCoachingMemoryText));
+  const activeWatchKeys = new Set(coachingMemory.activeWatchItems.map((item) => normalizeCoachingMemoryText(item.text)));
+  const discussWithGazItems = metrics.trainingSignals.discussWithGaz.filter(
+    (item) => !isGenericStaleDiscussPrompt(item) && (!isActiveWatchSignal(item) || activeWatchKeys.has(normalizeCoachingMemoryText(item)))
+  );
+
+  const groups = [
+    { heading: "Validated Learnings", items: validatedLearningItems },
+    {
+      heading: "Movement Quality",
+      items: filterStaleWatchSignals(
+        removePromotedTrainingSignals(metrics.trainingSignals.movementQuality, validatedLearningKeys),
+        activeWatchKeys
+      ),
+    },
+    {
+      heading: "Stimulus / Coverage",
+      items: removePromotedTrainingSignals(metrics.trainingSignals.stimulusCoverage, validatedLearningKeys),
+    },
+    { heading: "Fatigue / Readiness", items: filterStaleWatchSignals(metrics.trainingSignals.fatigueReadiness, activeWatchKeys) },
+    { heading: "Discuss with Gaz", items: discussWithGazItems },
+  ].filter((group) => group.items.length > 0);
+
+  if (!groups.length) return undefined;
+
+  return {
+    title: "Training Signals (Recent Sessions)",
+    blocks: groups.map((group) => ({
+      heading: group.heading,
+      items: group.items.map((item) => clarifyCoachExportLine(item)),
+    })),
+  };
+}
+
+function buildReadinessNotesReportSection(metrics: CoachExportMetrics): CoachReportSection | undefined {
+  const phaseDriverKeys = new Set((metrics.phaseQuality?.drivers ?? []).map((driver) => normalizeNarrativeLine(driver)));
+  const notes = metrics.readinessNotes
+    .filter((note) => !isDuplicateReadinessNote(note, metrics, phaseDriverKeys))
+    .map((note) => clarifyCoachExportLine(note || "Unknown"));
+
+  if (!notes.length) return undefined;
+
+  return {
+    title: "Readiness / Confidence Notes",
+    bullets: notes,
+  };
+}
+
+function buildDataGapsReportSection(metrics: CoachExportMetrics): CoachReportSection | undefined {
+  const notes = metrics.dataNotes.filter((note) => !/^No major data gaps detected\.?$/i.test(String(note ?? "").trim()));
+  if (!notes.length) return undefined;
+
+  return {
+    title: "Data Gaps",
+    bullets: notes.map((note) => note || "Unknown"),
+  };
+}
+
 function formatGoalTargetRow(row: CoachState["goals"]["targets"][number]): CoachReportLine {
-  const current = fmtBodyMetricValue(row.current, row.unit === "ratio" ? 3 : row.unit === "pts" ? 1 : 1, row.unit === "pts" ? "%" : row.unit === "ratio" ? "" : row.unit ? ` ${row.unit}` : "");
+  const current = fmtBodyMetricValue(
+    row.current,
+    row.unit === "ratio" ? 3 : row.unit === "pts" ? 1 : 1,
+    row.unit === "pts" ? "%" : row.unit === "ratio" ? "" : row.unit ? ` ${row.unit}` : ""
+  );
   const target =
     row.label === "Waist-to-Height Ratio"
       ? `< ${Number.isFinite(row.target) ? row.target.toFixed(3) : "—"}`
@@ -318,9 +561,7 @@ function formatVisceralFatValue(value: number | null | undefined) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
-function formatAnchorRecencyLabel(
-  lift: NonNullable<CoachExportMetrics["anchorLifts"]>[number]
-) {
+function formatAnchorRecencyLabel(lift: NonNullable<CoachExportMetrics["anchorLifts"]>[number]) {
   if (lift.ageDays == null || !Number.isFinite(lift.ageDays)) return null;
   const age = Math.max(0, Math.floor(lift.ageDays));
   if (lift.recency === "stale") return `${age}d old | stale anchor`;
@@ -358,16 +599,8 @@ function buildLeanPreservationReportSection(metrics: CoachExportMetrics): CoachR
         value: `Lean Mass: ${fmtNumber(composite.rawMetrics.leanMassLatest, 1)} lb (14d ${fmtSigned(composite.rawMetrics.leanMassDelta14d, 1, " lb")})`,
         text: lineText("Raw Metrics", `Lean Mass: ${fmtNumber(composite.rawMetrics.leanMassLatest, 1)} lb (14d ${fmtSigned(composite.rawMetrics.leanMassDelta14d, 1, " lb")})`),
       },
-      {
-        label: "Composite",
-        value: composite.status,
-        text: lineText("Composite", composite.status),
-      },
-      {
-        label: "Confidence",
-        value: composite.confidence,
-        text: lineText("Confidence", composite.confidence),
-      },
+      { label: "Composite", value: composite.status, text: lineText("Composite", composite.status) },
+      { label: "Confidence", value: composite.confidence, text: lineText("Confidence", composite.confidence) },
     ],
     positive,
     negative,
@@ -665,6 +898,12 @@ export function buildCoachReport({
     watchNow: coachState.learnings.watchItems.slice(0, 2),
   };
 
+  const waistToHeight = buildWaistToHeightReportSection(metrics);
+  const summary = buildCoachSummaryReportSection(metrics);
+  const hydration = buildHydrationReportSection(metrics);
+  const trainingSignals = buildTrainingSignalsReportSection(metrics);
+  const readinessNotes = buildReadinessNotesReportSection(metrics);
+  const dataGaps = buildDataGapsReportSection(metrics);
   const cardio = formatCardioSection(coachState.cardio);
   const exportOnly = {
     leanPreservation: buildLeanPreservationReportSection(metrics),
@@ -692,12 +931,18 @@ export function buildCoachReport({
       values: bodyValues,
       confidenceRows: bodyConfidenceRows,
     } satisfies CoachReportBody,
+    waistToHeight,
+    summary,
+    hydration,
+    trainingSignals,
+    readinessNotes,
+    dataGaps,
     performance,
     goals,
     learnings,
     cardio,
-    exportOnly: Object.fromEntries(
-      Object.entries(exportOnly).filter(([, section]) => hasSectionContent(section))
-    ) as NonNullable<CoachReport["exportOnly"]>,
+    exportOnly: Object.fromEntries(Object.entries(exportOnly).filter(([, section]) => hasSectionContent(section))) as NonNullable<
+      CoachReport["exportOnly"]
+    >,
   };
 }

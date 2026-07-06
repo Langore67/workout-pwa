@@ -353,7 +353,17 @@ function fmtGoalRead(state: CoachState) {
   return "Goal trajectory still needs more data before it can be called clearly.";
 }
 
-function hasCoachDashboardData(metrics?: CoachExportMetrics | null) {
+type TemplatePreviewRow = {
+  template: Template;
+  itemCount: number;
+  lastPerformedAt?: number;
+  exerciseNamesPreview: string[];
+};
+
+const OPEN_FOLDERS_KEY = "STARTPAGE_OPEN_FOLDERS_V1";
+const UNGROUPED_KEY = "__UNGROUPED__";
+
+function hasCoachDashboardSourceData(metrics?: CoachExportMetrics | null) {
   if (!metrics) return false;
   return Boolean(
     metrics.bodyComp.weight.latest != null ||
@@ -379,24 +389,9 @@ function hasCoachDashboardData(metrics?: CoachExportMetrics | null) {
       (metrics.coachingMemory?.validatedLearnings?.length ?? 0) > 0 ||
       (metrics.coachingMemory?.activeWatchItems?.length ?? 0) > 0 ||
       (metrics.coachingMemory?.resolvedItems?.length ?? 0) > 0 ||
-      (metrics.currentMovementFocus?.some((group) => (group.exercises?.length ?? 0) > 0) ?? false) ||
-      (metrics.trainingSignals?.movementQuality?.length ?? 0) > 0 ||
-      (metrics.trainingSignals?.stimulusCoverage?.length ?? 0) > 0 ||
-      (metrics.trainingSignals?.fatigueReadiness?.length ?? 0) > 0 ||
-      (metrics.trainingSignals?.nextWorkoutFocus?.length ?? 0) > 0 ||
-      (metrics.trainingSignals?.discussWithGaz?.length ?? 0) > 0
+      (metrics.currentMovementFocus?.some((group) => (group.exercises?.length ?? 0) > 0) ?? false)
   );
 }
-
-type TemplatePreviewRow = {
-  template: Template;
-  itemCount: number;
-  lastPerformedAt?: number;
-  exerciseNamesPreview: string[];
-};
-
-const OPEN_FOLDERS_KEY = "STARTPAGE_OPEN_FOLDERS_V1";
-const UNGROUPED_KEY = "__UNGROUPED__";
 
 function lruCompare(a: TemplatePreviewRow, b: TemplatePreviewRow) {
   const aNever = a.lastPerformedAt == null;
@@ -667,6 +662,8 @@ export default function StartPage() {
       generatedAt: coachMetrics.generatedAt,
     });
   }, [coachReport, coachMetrics, coachState]);
+
+  const hasCoachDashboardContent = useMemo(() => hasCoachDashboardSourceData(coachMetrics), [coachMetrics]);
 
   const lastCompletedSession = useMemo(() => {
     const all = (sessions ?? []) as Session[];
@@ -961,7 +958,7 @@ export default function StartPage() {
               </div>
             ) : null}
           </div>
-        ) : !hasCoachDashboardData(coachMetrics) ? (
+        ) : !hasCoachDashboardContent ? (
           <div className="card" data-testid="coach-dashboard-empty" style={{ marginTop: 12 }}>
             <div style={{ fontWeight: 800 }}>Not enough coaching data yet.</div>
             <div className="muted" style={{ marginTop: 6 }}>

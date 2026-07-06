@@ -2,7 +2,10 @@ import { expect, test } from "@playwright/test";
 import { buildBodyConfidence } from "../src/body/bodyConfidenceEngine";
 import { evaluatePhaseQuality } from "../src/body/phaseQualityModel";
 import { buildLeanPreservationComposite } from "../src/lib/coachExport/leanPreservationComposite";
-import { buildCoachReport } from "../src/lib/coachReport/buildCoachReport";
+import { formatCoachExportText } from "../src/lib/coachExport/formatCoachExportText";
+import { buildCoachReport, hasCoachReportDashboardContent } from "../src/lib/coachReport/buildCoachReport";
+import { formatCoachReportText } from "../src/lib/coachReport/formatCoachReportText";
+import { buildCoachStateFromExportMetrics } from "../src/lib/coachState/buildCoachState";
 
 function buildFixture(overrides: any = {}) {
   return {
@@ -216,6 +219,41 @@ test("coach report keeps cardio quiet when no summary exists", async () => {
   expect(report.cardio?.rows).toEqual([]);
 });
 
+test("coach report dashboard visibility is driven by report sections, not raw training-only notes", async () => {
+  expect(
+    hasCoachReportDashboardContent({
+      snapshot: {
+        status: "Not Enough Data",
+        confidence: "Low",
+        why: "Insufficient data.",
+        today: "Build more data.",
+      },
+      trainingSignals: {
+        title: "Training Signals (Recent Sessions)",
+        blocks: [{ heading: "Fatigue / Readiness", items: ["Bench Press: elbow pain showed up late"] }],
+      } as any,
+    } as any)
+  ).toBeFalsy();
+
+  expect(
+    hasCoachReportDashboardContent({
+      snapshot: {
+        status: "Watch",
+        confidence: "High",
+        why: "Goal trajectory is moving in the right direction.",
+        today: "Keep progression conservative.",
+      },
+      body: {
+        heading: "Body Values",
+        values: [
+          { label: "Weight", value: "186.1 lb coach avg | latest 184.3 lb", text: "- Weight: 186.1 lb coach avg | latest 184.3 lb" },
+        ],
+        confidenceRows: [],
+      } as any,
+    } as any)
+  ).toBeTruthy();
+});
+
 test("coach report includes structured export-only sections", async () => {
   const fixture = buildFixture();
   const leanConfidence = buildBodyConfidence({
@@ -273,6 +311,29 @@ test("coach report includes structured export-only sections", async () => {
     executionPriorities: ["Preserve known pulling setup constraints when selecting or progressing work."],
     adjustmentTriggers: ["Reduce volume if later-set fatigue or terminal-rep quality drop appears early."],
   };
+  fixture.metrics.trainingSignals = {
+    movementQuality: ["MTS Row: improved stretch and contraction"],
+    stimulusCoverage: ["Pull: strong lat stimulus"],
+    fatigueReadiness: ["Terminal-rep quality dropped"],
+    nextWorkoutFocus: [],
+    discussWithGaz: [],
+  };
+  fixture.metrics.coachingMemory = {
+    validatedLearnings: [
+      {
+        id: "learn-1",
+        kind: "validated_learning",
+        label: "MTS Row",
+        sourceType: "session_signal",
+        confidence: "moderate",
+        text: "MTS Row: chest-supported row reinforced Gaz's cues",
+        exerciseName: "MTS Row",
+      },
+    ],
+    activeWatchItems: [],
+    resolvedItems: [],
+    sourceWindow: { sessionCount: 4 },
+  } as any;
   fixture.metrics.patternSummary = {
     movementQuality: ["Lat engagement improving across recent pull work"],
     stimulus: ["Pull stimulus remains repeatable across recent sessions"],
@@ -280,6 +341,8 @@ test("coach report includes structured export-only sections", async () => {
     constraints: ["Trap compensation remains a carry constraint"],
     progression: ["Pulling movements show improving consistency"],
   };
+  fixture.metrics.readinessNotes = ["Sleep disrupted."];
+  fixture.metrics.dataNotes = ["Waist history is sparse.", "No major data gaps detected."];
 
   const report = buildCoachReport(fixture as any);
 
@@ -301,5 +364,31 @@ test("coach report includes structured export-only sections", async () => {
   );
   expect(report.exportOnly?.recentPatterns?.blocks?.map((block) => block.heading)).toEqual(
     expect.arrayContaining(["Movement Quality", "Stimulus", "Fatigue / Readiness", "Constraints", "Progression"])
+  );
+  expect(report.waistToHeight?.title).toBe("Waist-to-Height Ratio");
+  expect(report.summary?.title).toBe("Coach Summary");
+  expect(report.summary?.blocks?.map((block) => block.heading)).toEqual(
+    expect.arrayContaining(["Summary", "Biggest Win", "Biggest Risk", "Fat Loss", "Muscle Preservation", "Training", "Recommendations"])
+  );
+  expect(report.hydration?.title).toBe("Hydration");
+  expect(report.trainingSignals?.title).toBe("Training Signals (Recent Sessions)");
+  expect(report.readinessNotes?.title).toBe("Readiness / Confidence Notes");
+  expect(report.dataGaps?.title).toBe("Data Gaps");
+  expect(report.trainingSignals?.blocks?.map((block) => block.heading)).toEqual(
+    expect.arrayContaining(["Validated Learnings", "Movement Quality", "Stimulus / Coverage"])
+  );
+});
+
+test("coach export formatter delegates to coach report rendering", async () => {
+  const fixture = buildFixture();
+  const coachState = buildCoachStateFromExportMetrics(fixture.metrics as any);
+  const report = buildCoachReport({
+    coachState,
+    metrics: fixture.metrics as any,
+    generatedAt: fixture.metrics.generatedAt,
+  });
+
+  expect(formatCoachExportText(fixture.metrics as any)).toBe(
+    formatCoachReportText(report, { bodyHeadingOverride: "Body Composition — Coach Trend Values" })
   );
 });
