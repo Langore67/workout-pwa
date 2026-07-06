@@ -1,4 +1,37 @@
-import type { CoachReport } from "./coachReportTypes";
+import type { CoachReport, CoachReportSection } from "./coachReportTypes";
+
+function renderSection(section: CoachReportSection | undefined) {
+  if (!section) return [] as string[];
+
+  const lines: string[] = [section.title];
+  if (section.status) lines.push(`- Status: ${section.status}`);
+  if (section.confidence) lines.push(`- Confidence: ${section.confidence}`);
+  if (section.rows?.length) {
+    lines.push(...section.rows.map((row) => row.text));
+  }
+  if (section.positive?.length || section.negative?.length) {
+    lines.push("", "Evidence");
+    if (section.positive?.length) {
+      lines.push("", "Positive", ...section.positive.map((item) => `- ${item}`));
+    }
+    if (section.negative?.length) {
+      lines.push("", "Negative", ...section.negative.map((item) => `- ${item}`));
+    }
+  }
+  if (section.blocks?.length) {
+    for (const block of section.blocks) {
+      lines.push("", block.heading, ...block.items.map((item) => `- ${item}`));
+    }
+  }
+  if (section.bullets?.length) {
+    lines.push(...section.bullets.map((item) => `- ${item}`));
+  }
+  if (section.note) {
+    lines.push("", `- Note: ${section.note}`);
+  }
+  lines.push("");
+  return lines;
+}
 
 export function formatCoachReportText(
   report: CoachReport,
@@ -11,6 +44,7 @@ export function formatCoachReportText(
   const goals = report.goals;
   const learnings = report.learnings;
   const cardio = report.cardio;
+  const exportOnly = report.exportOnly;
   const bodyHeading = options.bodyHeadingOverride ?? body?.heading ?? "Body Values";
 
   const lines = [
@@ -79,6 +113,17 @@ export function formatCoachReportText(
             ...(cardio.note ? [`- Cardio Note: ${cardio.note}`] : []),
             "",
           ]
+      : []),
+    ...(exportOnly
+      ? [
+          ...renderSection(exportOnly.leanPreservation),
+          ...renderSection(exportOnly.visceralFat),
+          ...renderSection(exportOnly.phaseQuality),
+          ...renderSection(exportOnly.strengthSignalDetails),
+          ...renderSection(exportOnly.currentMovementFocus),
+          ...renderSection(exportOnly.nextWorkoutFocus),
+          ...renderSection(exportOnly.recentPatterns),
+        ]
       : []),
   ];
 

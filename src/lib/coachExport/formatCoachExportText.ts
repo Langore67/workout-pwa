@@ -1,5 +1,4 @@
-import type { CoachExportAnchorLift, CoachExportMetrics } from "./types";
-import type { CurrentPhase } from "../../config/appConfig";
+import type { CoachExportMetrics } from "./types";
 import { buildCoachIntelligence, clarifyCoachExportLine } from "./coachIntelligence";
 import {
   buildCoachingMemory,
@@ -32,126 +31,16 @@ function formatValue(value: number | null | undefined, digits = 1, suffix = "") 
   return `${value.toFixed(digits)}${suffix}`;
 }
 
-function formatMetricLine(
-  label: string,
-  latest: number | null,
-  delta14d: number | null,
-  unit: string,
-  digits = 1
-) {
-  return `- ${label}: ${formatValue(latest, digits, unit)} (14d ${formatSigned(delta14d, digits, unit)})`;
-}
-
-function formatCoachTrendBodyLine(
-  label: string,
-  metric: { rawLatest: number | null; rolling5: number | null; sampleCount: number },
-  unit: string,
-  delta14d: number | null | undefined,
-  digits = 1
-) {
-  const hasLatest = metric.rawLatest != null && Number.isFinite(metric.rawLatest);
-  const hasAverage = metric.rolling5 != null && Number.isFinite(metric.rolling5);
-  const distinctAverage =
-    hasLatest &&
-    hasAverage &&
-    metric.sampleCount > 1 &&
-    Math.abs((metric.rolling5 as number) - (metric.rawLatest as number)) > 0.0001;
-
-  let value = "";
-  if (distinctAverage) {
-    value = `${formatValue(metric.rolling5, digits, unit)} coach avg | latest ${formatValue(metric.rawLatest, digits, unit)}`;
-  } else if (hasLatest) {
-    value = `${formatValue(metric.rawLatest, digits, unit)} latest/manual`;
-  } else if (hasAverage) {
-    value = `${formatValue(metric.rolling5, digits, unit)} coach avg`;
-  } else {
-    value = "Unknown";
-  }
-
-  const delta = delta14d != null && Number.isFinite(delta14d) ? ` | 14d ${formatSigned(delta14d, digits, unit)}` : "";
-  return `- ${label}: ${value}${delta}`;
-}
-
-function formatVisceralFatValue(value: number | null | undefined) {
-  if (value == null || !Number.isFinite(value)) return "Unknown";
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
-}
-
-function formatAnchorRecencyLabel(lift: CoachExportAnchorLift) {
-  if (lift.ageDays == null || !Number.isFinite(lift.ageDays)) return null;
-  const age = Math.max(0, Math.floor(lift.ageDays));
-  if (lift.recency === "stale") return `${age}d old | stale anchor`;
-  if (lift.recency === "historical") return `${age}d old | historical anchor`;
-  if (lift.recency === "recent") return `${age}d old | recent anchor`;
-  return `${age}d old`;
-}
-
-function visceralFatDirection(delta14d: number | null | undefined) {
-  if (delta14d == null || !Number.isFinite(delta14d)) return "Unknown";
-  if (delta14d < 0) return "Improving";
-  if (delta14d > 0) return "Worsening";
-  return "Flat";
-}
-
-function formatVisceralFatSection(metrics: CoachExportMetrics): string[] {
-  const visceralFat = metrics.bodyComp.visceralFat;
-  if (!visceralFat || visceralFat.latest == null || !Number.isFinite(visceralFat.latest)) return [];
-
-  return [
-    "Visceral Fat",
-    `- Latest estimate: ${formatVisceralFatValue(visceralFat.latest)}`,
-    `- 14d trend: ${formatSigned(visceralFat.delta14d, 0)}`,
-    `- Direction: ${visceralFatDirection(visceralFat.delta14d)}`,
-    `- Confidence: ${visceralFat.delta14d == null ? "Low" : "Moderate"}`,
-    "- Note: Hume visceral fat is an estimate. Use trend alongside waist circumference rather than as an absolute measurement.",
-    "",
-  ];
-}
-
-function formatLeanPreservationSection(metrics: CoachExportMetrics): string[] {
-  const composite = metrics.leanPreservation;
-  if (!composite) return [];
-
-  const positive = composite.evidence.positive.length
-    ? composite.evidence.positive.map((item) => `✓ ${item}`)
-    : ["- No positive evidence available."];
-  const negative = composite.evidence.negative.length
-    ? composite.evidence.negative.map((item) => `• ${item}`)
-    : ["- No negative evidence available."];
-
-  return [
-    "Lean Preservation",
-    "",
-    "Raw Metrics",
-    `- Lean Mass: ${formatValue(composite.rawMetrics.leanMassLatest, 1, " lb")} (14d ${formatSigned(composite.rawMetrics.leanMassDelta14d, 1, " lb")})`,
-    "",
-    "Composite",
-    `- ${composite.status}`,
-    `- Confidence: ${composite.confidence}`,
-    "",
-    "Evidence",
-    "",
-    "Positive",
-    ...positive,
-    "",
-    "Negative",
-    ...negative,
-    "",
-    "Coach Interpretation",
-    composite.coachInterpretation
-      ? `- ${composite.coachInterpretation}`
-      : "- No additional interpretation.",
-    "",
-  ];
-}
-
 function formatCoachSummarySection(metrics: CoachExportMetrics): string[] {
   const intelligence = metrics.coachIntelligence ?? buildCoachIntelligence(metrics);
   const summary = intelligence.summary?.trim();
   const biggestWin = intelligence.biggestWin?.trim();
   const biggestRisk = intelligence.biggestRisk?.trim();
-  const fatLossNarrative = intelligence.narrative.find((item) => item.startsWith("Fat Loss:")) ?? "Fat Loss: Evidence is incomplete.";
-  const muscleNarrative = intelligence.narrative.find((item) => item.startsWith("Muscle Preservation:")) ?? "Muscle Preservation: Evidence is incomplete.";
+  const fatLossNarrative =
+    intelligence.narrative.find((item) => item.startsWith("Fat Loss:")) ?? "Fat Loss: Evidence is incomplete.";
+  const muscleNarrative =
+    intelligence.narrative.find((item) => item.startsWith("Muscle Preservation:")) ??
+    "Muscle Preservation: Evidence is incomplete.";
   const performanceNarrative =
     intelligence.narrative.find((item) => item.startsWith("Performance Trend:")) ??
     "Performance Trend: Evidence is incomplete.";
@@ -205,11 +94,6 @@ function formatWaistToHeightSection(metrics: CoachExportMetrics): string[] {
   ];
 }
 
-function formatGoalTarget(row: GoalProgressRow) {
-  if (row.label === "Waist-to-Height Ratio") return `< ${row.target.toFixed(3)}`;
-  return formatGoalValue(row, row.target);
-}
-
 function formatGoalValue(row: GoalProgressRow, value: number) {
   if (row.label === "Visceral Fat") {
     return Number.isInteger(value) ? String(value) : value.toFixed(1);
@@ -237,110 +121,11 @@ function formatGoalProgressSection(metrics: CoachExportMetrics): string[] {
     "Goal Trajectory",
     ...progress.rows.map(
       (row) =>
-        `- ${row.label}: ${formatGoalValue(row, row.current)} -> ${formatGoalTarget(row)} | ${formatGoalRemaining(row)}`
+        `- ${row.label}: ${formatGoalValue(row, row.current)} -> ${row.label === "Waist-to-Height Ratio" ? `< ${row.target.toFixed(3)}` : formatGoalValue(row, row.target)} | ${formatGoalRemaining(row)}`
     ),
     `- Status: ${progress.status}`,
     "",
   ];
-}
-
-function uniqueEvidenceLines(values: string[]): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const raw of values) {
-    const value = String(raw ?? "").replace(/\s+/g, " ").trim();
-    if (!value) continue;
-    const key = value
-      .toLowerCase()
-      .replace(/\bhydration confidence is low\b/g, "hydration confidence low")
-      .replace(/\bhydration confidence is high\b/g, "hydration confidence high")
-      .replace(/[.]+$/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(value);
-  }
-  return out;
-}
-
-function formatLeanPreservationSectionV2(metrics: CoachExportMetrics): string[] {
-  const composite = metrics.leanPreservation;
-  if (!composite) return [];
-  const intelligence = metrics.coachIntelligence ?? buildCoachIntelligence(metrics);
-  const positive = composite.evidence.positive.length
-    ? uniqueEvidenceLines(composite.evidence.positive).map((item) => `+ ${clarifyCoachExportLine(item === "Strength declining" ? "Strength evidence is mixed" : item)}`)
-    : ["- No positive evidence available."];
-  const negativeSource = intelligence.watchItems.length ? intelligence.watchItems : composite.evidence.negative;
-  const negative = negativeSource.length
-    ? uniqueEvidenceLines(negativeSource).map((item) => `- ${clarifyCoachExportLine(item === "Strength declining" ? "Strength evidence is mixed" : item)}`)
-    : ["- No negative evidence available."];
-  const muscleNarrative =
-    intelligence.narrative.find((item) => item.startsWith("Muscle Preservation:")) ??
-    "Muscle Preservation: Continue monitoring lean-mass estimates alongside strength and waist trend.";
-
-  return [
-    "Lean Preservation",
-    "",
-    "Raw Metrics",
-    `- Lean Mass: ${formatValue(composite.rawMetrics.leanMassLatest, 1, " lb")} (14d ${formatSigned(composite.rawMetrics.leanMassDelta14d, 1, " lb")})`,
-    "",
-    "Composite",
-    `- ${composite.status}`,
-    `- Confidence: ${composite.confidence}`,
-    "",
-    "Evidence",
-    "",
-    "Positive",
-    ...positive,
-    "",
-    "Negative",
-    ...negative,
-    "",
-    "Coach Interpretation",
-    composite.coachInterpretation
-      ? `- ${composite.coachInterpretation}`
-      : `- ${muscleNarrative.replace(/^Muscle Preservation:\s*/, "")}`,
-    "",
-  ];
-}
-
-function formatAnchorLift(lift: CoachExportAnchorLift) {
-  if (lift.e1rm == null || lift.effectiveWeightLb == null || lift.reps == null) {
-    return `- ${lift.pattern}: Insufficient Data`;
-  }
-
-  const name = lift.trackDisplayName || lift.exerciseName || "Unknown";
-  const recency = formatAnchorRecencyLabel(lift);
-  return `- ${lift.pattern}: ${name} | effective ${formatValue(lift.effectiveWeightLb, 0, " lb")} x ${formatValue(lift.reps, 0)} | e1RM ${formatValue(lift.e1rm, 0)} | ${formatDate(lift.performedAt)}${recency ? ` | ${recency}` : ""}`;
-}
-
-function formatPerformanceAnchorsSection(metrics: CoachExportMetrics): string[] {
-  if (!metrics.anchorLifts.length) return [];
-
-  return [
-    "Performance Anchors",
-    ...metrics.anchorLifts.map(formatAnchorLift),
-    "",
-  ];
-}
-
-function formatCurrentMovementFocusSection(metrics: CoachExportMetrics): string[] {
-  if (!metrics.currentMovementFocus?.length) return [];
-
-  return [
-    "Current Movement Focus",
-    ...metrics.currentMovementFocus.map(
-      (group) => `- ${group.label}: ${group.exercises.join("; ")}`
-    ),
-    "",
-  ];
-}
-
-function formatPhaseQualityHeading(phase: CurrentPhase) {
-  if (phase === "bulk") return "Bulk / Phase Quality";
-  if (phase === "maintain") return "Maintenance / Phase Quality";
-  return "Cut / Phase Quality";
 }
 
 function normalizeNarrativeLine(value: string) {
@@ -379,38 +164,6 @@ function filterStaleWatchSignals(values: string[], activeWatchKeys: Set<string>)
 }
 
 export function formatCoachExportText(metrics: CoachExportMetrics) {
-  const nextWorkoutFocusHasContent =
-    metrics.nextWorkoutFocus.progressionGuardrails.length ||
-    metrics.nextWorkoutFocus.executionPriorities.length ||
-    metrics.nextWorkoutFocus.adjustmentTriggers.length;
-  const nextWorkoutFocusLines = nextWorkoutFocusHasContent ? [
-      "Next Workout Focus",
-      ...(metrics.nextWorkoutFocus.progressionGuardrails.length
-        ? [
-            "Progression Guardrails",
-            ...metrics.nextWorkoutFocus.progressionGuardrails.map((item) => `- ${item}`),
-            "",
-          ]
-        : []),
-      ...(metrics.nextWorkoutFocus.executionPriorities.length
-        ? [
-            "Execution Priorities",
-            ...metrics.nextWorkoutFocus.executionPriorities.map((item) => `- ${item}`),
-            "",
-          ]
-        : []),
-      ...(metrics.nextWorkoutFocus.adjustmentTriggers.length
-        ? [
-            "Adjustment Triggers",
-            ...metrics.nextWorkoutFocus.adjustmentTriggers.map((item) => `- ${item}`),
-            "",
-          ]
-        : []),
-    ] : [];
-  if (nextWorkoutFocusLines[nextWorkoutFocusLines.length - 1] === "") {
-    nextWorkoutFocusLines.pop();
-  }
-
   const coachingMemory =
     metrics.coachingMemory ??
     buildCoachingMemory({
@@ -469,14 +222,6 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
       ]
     : ["Recent Patterns (Last 4 Sessions)", "- No repeated patterns detected."];
 
-  const phaseQualityDriverLines = metrics.phaseQuality?.drivers?.length
-    ? metrics.phaseQuality.drivers
-        .filter((driver) => (metrics.leanPreservation ? !/^Lean Preservation\s*:/i.test(driver) : true))
-        .filter((driver) => !/^Status\s*:/i.test(driver))
-        .slice(0, 4)
-        .map((driver) => `- ${clarifyCoachExportLine(driver)}`)
-    : ["- Drivers: Insufficient Data"];
-
   const phaseDriverKeys = new Set(
     (metrics.phaseQuality?.drivers ?? []).map((driver) => normalizeNarrativeLine(driver))
   );
@@ -505,36 +250,12 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     ...sharedLines,
     ...formatWaistToHeightSection(metrics),
     ...formatCoachSummarySection(metrics),
-    ...formatLeanPreservationSectionV2(metrics),
-    ...formatVisceralFatSection(metrics),
-    formatPhaseQualityHeading(metrics.currentPhase),
-    `- Status: ${metrics.phaseQuality?.finalStatus ?? "Insufficient Data"}`,
-    `- Confidence: ${metrics.phaseQuality?.confidence ?? "Unknown"}`,
-    ...phaseQualityDriverLines,
-    "",
     "Hydration",
     `- Latest body water %: ${formatValue(metrics.hydration.latestWaterPct, 1, "%")}`,
     `- Confidence: ${metrics.hydration.confidenceLabel}${metrics.hydration.confidenceScore != null ? ` (${Math.round(metrics.hydration.confidenceScore)})` : ""}`,
     ...(hydrationNoteDuplicatesPhase ? [] : [`- Note: ${hydrationNote}`]),
     "",
-    "Strength Signal",
-    "- Primary metric: IronForge's blended strength trend metric.",
-    `- Current: ${formatValue(metrics.strengthSignal.current, 2)}`,
-    `- 14d delta: ${formatSigned(metrics.strengthSignal.delta14d, 2)}`,
-    `- Vs 90d best: ${formatSigned(metrics.strengthSignal.vs90dBestPct, 1, "%")}`,
-    `- Method: Blended strength signal using Epley-based e1RM, allometric normalization (BW^0.67), and weekly snapshots from overlapping 28-day windows.`,
-    `- Relative Strength: Secondary linear bodyweight comparison, distinct from Strength Signal.`,
-        `- Bodyweight used by strength engine: ${formatValue(metrics.strengthSignal.currentBodyweight, 1, " lb")} (${metrics.strengthSignal.bodyweightDaysUsed ?? "Unknown"} day avg sample; missing bodyweight lowers confidence)`,
-        "",
-        "Export Confidence",
-        `- Confidence: ${metrics.exportConfidence.label} (${metrics.exportConfidence.score})`,
-    "",
-    ...formatPerformanceAnchorsSection(metrics),
-    ...formatCurrentMovementFocusSection(metrics),
-    "",
-    ...(nextWorkoutFocusLines.length ? [...nextWorkoutFocusLines, ""] : []),
     ...(trainingSignalLines.length ? [...trainingSignalLines, ""] : []),
-    ...patternSummaryLines,
     ...(readinessNoteLines.length
       ? ["", "Readiness / Confidence Notes", ...readinessNoteLines]
       : []),

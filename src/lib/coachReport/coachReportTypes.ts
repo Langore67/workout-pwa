@@ -8,6 +8,23 @@ export type CoachReportLine = {
   delta?: string;
 };
 
+export type CoachReportSectionBlock = {
+  heading: string;
+  items: string[];
+};
+
+export type CoachReportSection = {
+  title: string;
+  status?: string;
+  confidence?: string;
+  rows?: CoachReportLine[];
+  bullets?: string[];
+  positive?: string[];
+  negative?: string[];
+  note?: string;
+  blocks?: CoachReportSectionBlock[];
+};
+
 export type CoachReportAnchor = {
   label: string;
   text: string;
@@ -66,4 +83,13 @@ export type CoachReport = {
   goals?: CoachReportGoals;
   learnings?: CoachReportLearnings;
   cardio?: CoachReportCardio;
+  exportOnly?: {
+    leanPreservation?: CoachReportSection;
+    visceralFat?: CoachReportSection;
+    phaseQuality?: CoachReportSection;
+    strengthSignalDetails?: CoachReportSection;
+    currentMovementFocus?: CoachReportSection;
+    nextWorkoutFocus?: CoachReportSection;
+    recentPatterns?: CoachReportSection;
+  };
 };

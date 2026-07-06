@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { buildBodyConfidence } from "../src/body/bodyConfidenceEngine";
+import { evaluatePhaseQuality } from "../src/body/phaseQualityModel";
+import { buildLeanPreservationComposite } from "../src/lib/coachExport/leanPreservationComposite";
 import { buildCoachReport } from "../src/lib/coachReport/buildCoachReport";
 
 function buildFixture(overrides: any = {}) {
@@ -211,4 +214,92 @@ test("coach report keeps cardio quiet when no summary exists", async () => {
   expect(report.cardio?.isEmpty).toBe(true);
   expect(report.cardio?.note).toContain("Cardio summary not available yet");
   expect(report.cardio?.rows).toEqual([]);
+});
+
+test("coach report includes structured export-only sections", async () => {
+  const fixture = buildFixture();
+  const leanConfidence = buildBodyConfidence({
+    bodyComp: {
+      weight: fixture.metrics.bodyComp.weight,
+      waist: fixture.metrics.bodyComp.waist,
+      bodyFatPct: fixture.metrics.bodyComp.bodyFatPct,
+      leanMass: fixture.metrics.bodyComp.leanMass,
+      bodyweightDelta7d: fixture.metrics.bodyComp.bodyweightDelta7d,
+      bodyweightDelta14d: fixture.metrics.bodyComp.bodyweightDelta14d,
+    },
+    hydration: fixture.metrics.hydration,
+  });
+
+  fixture.metrics.leanPreservation = buildLeanPreservationComposite({
+    leanMass: fixture.metrics.bodyComp.leanMass,
+    weight: fixture.metrics.bodyComp.weight,
+    waist: fixture.metrics.bodyComp.waist,
+    bodyFatPct: fixture.metrics.bodyComp.bodyFatPct,
+    hydration: fixture.metrics.hydration,
+    bodyConfidence: leanConfidence,
+    strengthSignal: fixture.metrics.strengthSignal,
+    recentPerformanceSignals: ["Pull: strong lat stimulus"],
+  });
+  fixture.metrics.bodyConfidence = leanConfidence;
+  fixture.metrics.phaseQuality = evaluatePhaseQuality("cut", {
+    weightDelta: fixture.metrics.bodyComp.weight.delta14d ?? undefined,
+    waistDelta: fixture.metrics.bodyComp.waist.delta14d ?? undefined,
+    correctedLeanDelta: fixture.metrics.bodyComp.leanMass.delta14d ?? undefined,
+    correctedBodyFatDelta: fixture.metrics.bodyComp.bodyFatPct.delta14d ?? undefined,
+    strengthDelta: fixture.metrics.strengthSignal.delta14d ?? undefined,
+    sampleCount: 4,
+    bodyConfidence: leanConfidence,
+  });
+  fixture.metrics.currentMovementFocus = [
+    { label: "Pull", exercises: ["MTS Row", "Assisted Pull Up"] },
+    { label: "Hinge", exercises: ["Trap Bar Deadlift"] },
+  ];
+  fixture.metrics.anchorLifts = [
+    {
+      pattern: "pull",
+      exerciseName: "Lat Pulldown",
+      trackDisplayName: "Lat Pulldown",
+      effectiveWeightLb: 140,
+      reps: 10,
+      e1rm: 187,
+      performedAt: Date.UTC(2026, 5, 14, 9, 0, 0, 0),
+      ageDays: 22,
+      recency: "historical",
+      isStale: true,
+    },
+  ];
+  fixture.metrics.nextWorkoutFocus = {
+    progressionGuardrails: ["Keep progression conservative given current phase-quality risk."],
+    executionPriorities: ["Preserve known pulling setup constraints when selecting or progressing work."],
+    adjustmentTriggers: ["Reduce volume if later-set fatigue or terminal-rep quality drop appears early."],
+  };
+  fixture.metrics.patternSummary = {
+    movementQuality: ["Lat engagement improving across recent pull work"],
+    stimulus: ["Pull stimulus remains repeatable across recent sessions"],
+    fatigue: ["Fatigue shows up at terminal reps across recent working sets"],
+    constraints: ["Trap compensation remains a carry constraint"],
+    progression: ["Pulling movements show improving consistency"],
+  };
+
+  const report = buildCoachReport(fixture as any);
+
+  expect(report.exportOnly?.leanPreservation?.title).toBe("Lean Preservation");
+  expect(report.exportOnly?.leanPreservation?.rows?.map((row) => row.text ?? "")).toEqual(
+    expect.arrayContaining([expect.stringContaining("Raw Metrics"), expect.stringContaining("Composite")])
+  );
+  expect(report.exportOnly?.leanPreservation?.positive?.join(" ")).toContain("Strength");
+  expect(report.exportOnly?.visceralFat?.title).toBe("Visceral Fat");
+  expect(report.exportOnly?.phaseQuality?.title).toBe("Cut / Phase Quality");
+  expect(report.exportOnly?.phaseQuality?.blocks?.[0].heading).toBe("Drivers");
+  expect(report.exportOnly?.strengthSignalDetails?.title).toBe("Strength Signal");
+  expect(report.exportOnly?.strengthSignalDetails?.blocks?.[0].heading).toBe("Performance Anchors");
+  expect(report.exportOnly?.currentMovementFocus?.rows?.map((row) => row.text)).toEqual(
+    expect.arrayContaining(["- Pull: MTS Row; Assisted Pull Up", "- Hinge: Trap Bar Deadlift"])
+  );
+  expect(report.exportOnly?.nextWorkoutFocus?.blocks?.map((block) => block.heading)).toEqual(
+    expect.arrayContaining(["Progression Guardrails", "Execution Priorities", "Adjustment Triggers"])
+  );
+  expect(report.exportOnly?.recentPatterns?.blocks?.map((block) => block.heading)).toEqual(
+    expect.arrayContaining(["Movement Quality", "Stimulus", "Fatigue / Readiness", "Constraints", "Progression"])
+  );
 });
