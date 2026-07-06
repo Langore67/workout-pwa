@@ -17,6 +17,7 @@ async function seedCoachDashboardData(
     currentSessionNotes?: string[];
     includeCardio?: boolean;
     currentSessionAgeDaysAgo?: number;
+    includePreviousBodyEntry?: boolean;
   } = {}
 ) {
   await page.evaluate(async (args) => {
@@ -32,6 +33,7 @@ async function seedCoachDashboardData(
     const visceralFatEstimate = args.visceralFatEstimate ?? 8.2;
     const currentSessionId = args.currentSessionId ?? "session-coach-dashboard";
     const currentSessionAgeDaysAgo = args.currentSessionAgeDaysAgo ?? 0;
+    const includePreviousBodyEntry = args.includePreviousBodyEntry ?? true;
     const currentSessionNotes =
       args.currentSessionNotes ?? [
         "MTS Row: chest-supported row reinforced Gaz's cues",
@@ -57,32 +59,36 @@ async function seedCoachDashboardData(
       updatedAt: now,
     });
 
-    await db.bodyMetrics.bulkAdd([
-      {
-        id: "body-now",
-        measuredAt: now,
-        takenAt: now,
-        createdAt: now,
-        weightLb,
-        waistIn,
-        bodyFatPct,
-        leanMassLb,
-        visceralFatEstimate,
-        bodyWaterPct: 57.4,
-      },
-      {
-        id: "body-prev",
-        measuredAt: now - twoWeeks,
-        takenAt: now - twoWeeks,
-        createdAt: now - twoWeeks,
-        weightLb: weightLb + 3,
-        waistIn: waistIn + 0.6,
-        bodyFatPct: bodyFatPct + 0.7,
-        leanMassLb: leanMassLb - 0.6,
-        visceralFatEstimate: visceralFatEstimate + 0.3,
-        bodyWaterPct: 56.8,
-      },
-    ] as any[]);
+    await db.bodyMetrics.bulkAdd(
+      [
+        {
+          id: "body-now",
+          measuredAt: now,
+          takenAt: now,
+          createdAt: now,
+          weightLb,
+          waistIn,
+          bodyFatPct,
+          leanMassLb,
+          visceralFatEstimate,
+          bodyWaterPct: 57.4,
+        },
+        includePreviousBodyEntry
+          ? {
+              id: "body-prev",
+              measuredAt: now - twoWeeks,
+              takenAt: now - twoWeeks,
+              createdAt: now - twoWeeks,
+              weightLb: weightLb + 3,
+              waistIn: waistIn + 0.6,
+              bodyFatPct: bodyFatPct + 0.7,
+              leanMassLb: leanMassLb - 0.6,
+              visceralFatEstimate: visceralFatEstimate + 0.3,
+              bodyWaterPct: 56.8,
+            }
+          : null,
+      ].filter(Boolean) as any[]
+    );
 
     const exerciseId = "exercise-mts-row";
     const trackId = "track-mts-row";
@@ -328,6 +334,7 @@ test.describe("Start Coach Dashboard", () => {
 
     const body = page.getByTestId("coach-dashboard-body");
     await expect(body).toContainText("Body Values");
+    await expect(body).toContainText("Body Confidence");
     await expect(body).toContainText("Overall confidence");
     await expect(body).toContainText("Weight trend confidence");
     await expect(body).toContainText("Waist trend confidence");
@@ -336,7 +343,8 @@ test.describe("Start Coach Dashboard", () => {
     await expect(body).toContainText("Hydration confidence");
     await expect(body).toContainText("High confidence");
     await expect(body).toContainText("Confidence reflects how much recent data is available");
-    await expect(body).toContainText("Coach body trends use rolling 5-entry averages except waist");
+    await expect(body).toContainText("Coach trends use rolling 5-entry averages except waist");
+    await expect(body).toContainText("Latest is today's/raw reading");
     await expect(body).toContainText("Weight");
     await expect(body).toContainText("latest");
     await expect(body).toContainText("coach avg");
@@ -372,6 +380,24 @@ test.describe("Start Coach Dashboard", () => {
     await expect(cardio).toContainText("Cardio Note");
     await expect(cardio).toContainText("Walk - MapMyWalk");
     await expect(cardio).toContainText("2 walks");
+  });
+
+  test("renders a clean single-entry body card without duplicate coach average copy", async ({ page }) => {
+    await resetDexieDb(page);
+    await seedCoachDashboardData(page, {
+      includePreviousBodyEntry: false,
+      currentSessionId: "session-coach-dashboard-single-body",
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    await waitForCoachDashboardReady(page);
+    const body = page.getByTestId("coach-dashboard-body");
+    await expect(body).toContainText("Body Values");
+    await expect(body).toContainText("Weight");
+    await expect(body).toContainText("latest/manual");
+    await expect(body).toContainText("Body Confidence");
+    await expect(body).not.toContainText("coach avg · latest");
+    await expect(body).not.toContainText("latest · coach avg");
   });
 
   test("labels stale performance anchors as historical context", async ({ page }) => {

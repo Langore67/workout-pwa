@@ -166,6 +166,9 @@ function fmtCoachBodyTrendDisplay(
   }
 
   if (hasLatest) {
+    if (hasAverage && metric.sampleCount > 1) {
+      return `${fmt(metric.rawLatest)} latest / ${fmt(metric.rolling5)} coach avg`;
+    }
     return `${fmt(metric.rawLatest)} latest/manual`;
   }
 
@@ -967,22 +970,6 @@ export default function StartPage() {
             <div className="card" data-testid="coach-dashboard-body">
               <div style={{ fontWeight: 800, marginBottom: 8 }}>Body Values</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                {coachState.body.confidence ? (
-                  <>
-                    <DashboardLine label="Overall confidence" value={fmtConfidencePhrase(coachState.body.confidence.overall)} />
-                    <DashboardLine label="Weight trend confidence" value={fmtConfidencePhrase(coachState.body.confidence.weight)} />
-                    <DashboardLine label="Waist trend confidence" value={fmtConfidencePhrase(coachState.body.confidence.waist)} />
-                    <DashboardLine label="Lean mass confidence" value={fmtConfidencePhrase(coachState.body.confidence.leanMass)} />
-                    <DashboardLine label="Body fat confidence" value={fmtConfidencePhrase(coachState.body.confidence.bodyFat)} />
-                    <DashboardLine label="Hydration confidence" value={fmtConfidencePhrase(coachState.body.confidence.hydration)} />
-                    <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
-                      Confidence reflects how much recent data is available, not whether the number is high or low.
-                    </div>
-                    <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
-                      Coach body trends use rolling 5-entry averages except waist.
-                    </div>
-                  </>
-                ) : null}
                 {coachMetrics?.bodyTrendInputs?.weight14d ? (
                   <DashboardLine
                     label="Weight"
@@ -1029,6 +1016,26 @@ export default function StartPage() {
                   />
                 ) : coachState.body.latestLeanMassLb != null ? (
                   <DashboardLine label="Lean Mass" value={`${fmtNumber(coachState.body.latestLeanMassLb)} lb`} />
+                ) : null}
+                <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
+                  Coach trends use rolling 5-entry averages except waist. Latest is today&apos;s/raw reading. Coach avg is what Coach uses for trend decisions.
+                </div>
+              </div>
+
+              <div style={{ fontWeight: 800, marginTop: 12, marginBottom: 8 }}>Body Confidence</div>
+              <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                {coachState.body.confidence ? (
+                  <>
+                    <DashboardLine label="Overall confidence" value={fmtConfidencePhrase(coachState.body.confidence.overall)} />
+                    <DashboardLine label="Weight trend confidence" value={fmtConfidencePhrase(coachState.body.confidence.weight)} />
+                    <DashboardLine label="Waist trend confidence" value={fmtConfidencePhrase(coachState.body.confidence.waist)} />
+                    <DashboardLine label="Lean mass confidence" value={fmtConfidencePhrase(coachState.body.confidence.leanMass)} />
+                    <DashboardLine label="Body fat confidence" value={fmtConfidencePhrase(coachState.body.confidence.bodyFat)} />
+                    <DashboardLine label="Hydration confidence" value={fmtConfidencePhrase(coachState.body.confidence.hydration)} />
+                    <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
+                      Confidence reflects how much recent data is available, not whether the number is high or low.
+                    </div>
+                  </>
                 ) : null}
               </div>
             </div>
