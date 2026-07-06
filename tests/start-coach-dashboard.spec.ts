@@ -327,7 +327,7 @@ test.describe("Start Coach Dashboard", () => {
     await expect(snapshot).toContainText("Today");
 
     const body = page.getByTestId("coach-dashboard-body");
-    await expect(body).toContainText("Body");
+    await expect(body).toContainText("Body Values");
     await expect(body).toContainText("Overall confidence");
     await expect(body).toContainText("Weight trend confidence");
     await expect(body).toContainText("Waist trend confidence");
@@ -337,7 +337,13 @@ test.describe("Start Coach Dashboard", () => {
     await expect(body).toContainText("High confidence");
     await expect(body).toContainText("Confidence reflects how much recent data is available");
     await expect(body).toContainText("Coach body trends use rolling 5-entry averages except waist");
-    await expect(body).toContainText("198");
+    await expect(body).toContainText("Weight");
+    await expect(body).toContainText("latest");
+    await expect(body).toContainText("coach avg");
+    await expect(body).toContainText("Waist");
+    await expect(body).toContainText("latest/manual");
+    await expect(body).toContainText("Body Fat");
+    await expect(body).toContainText("Lean Mass");
 
     const performance = page.getByTestId("coach-dashboard-performance");
     await expect(performance).toContainText("Performance Trend");

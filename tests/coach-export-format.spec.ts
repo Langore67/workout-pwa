@@ -305,7 +305,7 @@ test("rolling body metric uses the latest five valid points and ignores missing 
   expect(metric.delta14d).toBeCloseTo(((208 + 201 + 200 + 199 + 198) / 5) - 194, 10);
 });
 
-test("coach export body composition uses rolling averages and keeps waist raw", async ({ page }) => {
+test("coach export body composition shows raw latest and coach average while keeping waist raw", async ({ page }) => {
   const text = await buildCoachExportTextFromSeededBodyRows(
     page,
     [
@@ -319,16 +319,32 @@ test("coach export body composition uses rolling averages and keeps waist raw", 
     { heightIn: 70 }
   );
 
-  const bodySection = getSection(text, "Body Composition (14d trends)", "Waist-to-Height Ratio");
+  const bodySection = getSection(text, "Body Composition — Coach Trend Values", "Waist-to-Height Ratio");
 
   expect(bodySection).toContain("rolling 5-entry average");
   expect(bodySection).toContain("except waist");
   expect(bodySection).toContain("Weight:");
-  expect(bodySection).toContain("rolling avg");
+  expect(bodySection).toContain("coach avg");
+  expect(bodySection).toContain("latest 208");
   expect(bodySection).toContain("201.2 lb");
   expect(bodySection).toContain("Waist:");
   expect(bodySection).toContain("latest/manual");
   expect(bodySection).toContain("Fat Mass:");
+});
+
+test("coach export body composition stays compact with a single body entry", async ({ page }) => {
+  const text = await buildCoachExportTextFromSeededBodyRows(
+    page,
+    [{ measuredAt: Date.UTC(2026, 6, 6, 9, 0, 0, 0), weightLb: 208, waistIn: 35.5, bodyFatPct: 16.2, leanMassLb: 154.1, bodyWaterPct: 57.3 }],
+    { heightIn: 70 }
+  );
+
+  const bodySection = getSection(text, "Body Composition — Coach Trend Values", "Waist-to-Height Ratio");
+
+  expect(bodySection).toContain("Weight:");
+  expect(bodySection).toContain("latest/manual");
+  expect(bodySection).not.toContain("coach avg | latest");
+  expect(bodySection).not.toContain("latest 208");
 });
 
 test("coach body smoothing softens a one-day lean mass outlier", async () => {

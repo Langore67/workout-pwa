@@ -1,4 +1,4 @@
-import type { CoachExportAnchorLift, CoachExportBodyTrendMetric, CoachExportMetrics } from "./types";
+import type { CoachExportAnchorLift, CoachExportMetrics } from "./types";
 import type { CurrentPhase } from "../../config/appConfig";
 import { buildCoachIntelligence, clarifyCoachExportLine } from "./coachIntelligence";
 import {
@@ -39,16 +39,34 @@ function formatMetricLine(
   return `- ${label}: ${formatValue(latest, digits, unit)} (14d ${formatSigned(delta14d, digits, unit)})`;
 }
 
-function formatCoachTrendMetricLine(
+function formatCoachTrendBodyLine(
   label: string,
-  metric: CoachExportBodyTrendMetric | undefined,
+  metric: { rawLatest: number | null; rolling5: number | null; sampleCount: number },
   unit: string,
+  delta14d: number | null | undefined,
   digits = 1
 ) {
-  if (!metric) return `- ${label}: Unknown (coach trend unavailable)`;
-  const value = metric.rolling5 ?? metric.rawLatest;
-  const trendLabel = metric.rolling5 != null ? "rolling avg" : "latest";
-  return `- ${label}: ${formatValue(value, digits, unit)} ${trendLabel} (14d ${formatSigned(metric.delta14d, digits, unit)})`;
+  const hasLatest = metric.rawLatest != null && Number.isFinite(metric.rawLatest);
+  const hasAverage = metric.rolling5 != null && Number.isFinite(metric.rolling5);
+  const distinctAverage =
+    hasLatest &&
+    hasAverage &&
+    metric.sampleCount > 1 &&
+    Math.abs((metric.rolling5 as number) - (metric.rawLatest as number)) > 0.0001;
+
+  let value = "";
+  if (distinctAverage) {
+    value = `${formatValue(metric.rolling5, digits, unit)} coach avg | latest ${formatValue(metric.rawLatest, digits, unit)}`;
+  } else if (hasLatest) {
+    value = `${formatValue(metric.rawLatest, digits, unit)} latest/manual`;
+  } else if (hasAverage) {
+    value = `${formatValue(metric.rolling5, digits, unit)} coach avg`;
+  } else {
+    value = "Unknown";
+  }
+
+  const delta = delta14d != null && Number.isFinite(delta14d) ? ` | 14d ${formatSigned(delta14d, digits, unit)}` : "";
+  return `- ${label}: ${value}${delta}`;
 }
 
 function formatVisceralFatValue(value: number | null | undefined) {
@@ -476,21 +494,23 @@ export function formatCoachExportText(metrics: CoachExportMetrics) {
     "IronForge Coach Export",
     `Generated: ${formatDate(metrics.generatedAt)}`,
     "",
-    "Body Composition (14d trends)",
+    bodyTrendInputs ? "Body Composition — Coach Trend Values" : "Body Composition (14d trends)",
     ...(bodyTrendInputs ? ["- Coach body trends use a rolling 5-entry average for weight, body fat %, lean mass, and fat mass, except waist."] : []),
     bodyTrendInputs
-      ? formatCoachTrendMetricLine("Weight", bodyTrendInputs.weight14d, " lb")
+      ? formatCoachTrendBodyLine("Weight", bodyTrendInputs.weight14d, " lb", bodyTrendInputs.weight14d.delta14d)
       : formatMetricLine("Weight", metrics.bodyComp.weight.latest, metrics.bodyComp.weight.delta14d, " lb"),
     bodyTrendInputs
-      ? `- Waist: ${formatValue(metrics.bodyComp.waist.latest, 1, " in")} latest/manual (14d ${formatSigned(metrics.bodyComp.waist.delta14d, 1, " in")})`
+      ? `- Waist: ${formatValue(metrics.bodyComp.waist.latest, 1, " in")} latest/manual${bodyTrendInputs.waist.delta14d != null ? ` | 14d ${formatSigned(bodyTrendInputs.waist.delta14d, 1, " in")}` : ""}`
       : formatMetricLine("Waist", metrics.bodyComp.waist.latest, metrics.bodyComp.waist.delta14d, " in"),
     bodyTrendInputs
-      ? formatCoachTrendMetricLine("Body Fat %", bodyTrendInputs.bodyFatPct, "%")
+      ? formatCoachTrendBodyLine("Body Fat %", bodyTrendInputs.bodyFatPct, "%", bodyTrendInputs.bodyFatPct.delta14d)
       : formatMetricLine("Body Fat %", metrics.bodyComp.bodyFatPct.latest, metrics.bodyComp.bodyFatPct.delta14d, "%"),
     bodyTrendInputs
-      ? formatCoachTrendMetricLine("Lean Mass", bodyTrendInputs.leanMass, " lb")
+      ? formatCoachTrendBodyLine("Lean Mass", bodyTrendInputs.leanMass, " lb", bodyTrendInputs.leanMass.delta14d)
       : formatMetricLine("Lean Mass", metrics.bodyComp.leanMass.latest, metrics.bodyComp.leanMass.delta14d, " lb"),
-    ...(bodyTrendInputs?.fatMass ? [formatCoachTrendMetricLine("Fat Mass", bodyTrendInputs.fatMass, " lb")] : []),
+    ...(bodyTrendInputs?.fatMass
+      ? [formatCoachTrendBodyLine("Fat Mass", bodyTrendInputs.fatMass, " lb", bodyTrendInputs.fatMass.delta14d)]
+      : []),
     `- Bodyweight delta 7d: ${formatSigned(bodyTrendInputs?.weight7d?.delta14d ?? metrics.bodyComp.bodyweightDelta7d, 1, " lb")}`,
     `- Bodyweight delta 14d: ${formatSigned(bodyTrendInputs?.weight14d?.delta14d ?? metrics.bodyComp.bodyweightDelta14d, 1, " lb")}`,
     "",
