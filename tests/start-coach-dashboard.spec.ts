@@ -261,6 +261,79 @@ async function seedCoachDashboardData(
   }, overrides);
 }
 
+async function seedCoachWeeklyVolumeData(page: Page) {
+  await page.evaluate(async () => {
+    const db = (window as any).__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const now = Date.now();
+    const sessionId = "session-weekly-volume";
+
+    await db.app_meta.put({
+      key: "profile.heightIn",
+      valueJson: JSON.stringify({ heightIn: 70 }),
+      updatedAt: now,
+    });
+
+    const exercises = [
+      { id: "exercise-bench", name: "Bench Press", trackId: "track-bench", trackType: "strength", displayName: "Bench Press" },
+      { id: "exercise-pulldown", name: "Lat Pulldown", trackId: "track-pulldown", trackType: "strength", displayName: "Lat Pulldown" },
+      { id: "exercise-rear", name: "Reverse Pec Deck", trackId: "track-rear", trackType: "strength", displayName: "Reverse Pec Deck" },
+      { id: "exercise-bridge", name: "Glute Bridge", trackId: "track-bridge", trackType: "strength", displayName: "Glute Bridge" },
+      { id: "exercise-wall", name: "Y-Wall Slide", trackId: "track-wall", trackType: "corrective", displayName: "Y-Wall Slide" },
+    ];
+
+    for (const exercise of exercises) {
+      await db.exercises.put({
+        id: exercise.id,
+        name: exercise.name,
+        normalizedName: exercise.name.toLowerCase(),
+        equipmentTags: ["bodyweight"],
+        createdAt: now,
+      });
+
+      await db.tracks.put({
+        id: exercise.trackId,
+        exerciseId: exercise.id,
+        trackType: exercise.trackType,
+        displayName: exercise.displayName,
+        trackingMode: exercise.trackType === "corrective" ? "checkbox" : "weightedReps",
+        warmupSetsDefault: 0,
+        workingSetsDefault: 1,
+        repMin: 1,
+        repMax: 15,
+        restSecondsDefault: 60,
+        weightJumpDefault: 5,
+        createdAt: now,
+      } as any);
+    }
+
+    await db.sessions.put({
+      id: sessionId,
+      templateName: "Weekly Volume",
+      startedAt: now - 90 * 60 * 1000,
+      endedAt: now - 30 * 60 * 1000,
+      notes: "Seeded weekly volume test",
+    } as any);
+
+    await db.sets.bulkPut([
+      { id: "set-bench-1", sessionId, trackId: "track-bench", createdAt: now - 89 * 60 * 1000, completedAt: now - 89 * 60 * 1000, setType: "working", reps: 8 } as any,
+      { id: "set-bench-2", sessionId, trackId: "track-bench", createdAt: now - 88 * 60 * 1000, completedAt: now - 88 * 60 * 1000, setType: "working", reps: 8 } as any,
+      { id: "set-bench-3", sessionId, trackId: "track-bench", createdAt: now - 87 * 60 * 1000, completedAt: now - 87 * 60 * 1000, setType: "working", reps: 8 } as any,
+      { id: "set-pulldown-1", sessionId, trackId: "track-pulldown", createdAt: now - 86 * 60 * 1000, completedAt: now - 86 * 60 * 1000, setType: "working", reps: 10 } as any,
+      { id: "set-pulldown-2", sessionId, trackId: "track-pulldown", createdAt: now - 85 * 60 * 1000, completedAt: now - 85 * 60 * 1000, setType: "working", reps: 10 } as any,
+      { id: "set-pulldown-3", sessionId, trackId: "track-pulldown", createdAt: now - 84 * 60 * 1000, completedAt: now - 84 * 60 * 1000, setType: "working", reps: 10 } as any,
+      { id: "set-pulldown-4", sessionId, trackId: "track-pulldown", createdAt: now - 83 * 60 * 1000, completedAt: now - 83 * 60 * 1000, setType: "working", reps: 10 } as any,
+      { id: "set-rear-1", sessionId, trackId: "track-rear", createdAt: now - 82 * 60 * 1000, completedAt: now - 82 * 60 * 1000, setType: "working", reps: 12 } as any,
+      { id: "set-rear-2", sessionId, trackId: "track-rear", createdAt: now - 81 * 60 * 1000, completedAt: now - 81 * 60 * 1000, setType: "working", reps: 12 } as any,
+      { id: "set-bridge-1", sessionId, trackId: "track-bridge", createdAt: now - 80 * 60 * 1000, completedAt: now - 80 * 60 * 1000, setType: "working", reps: 12 } as any,
+      { id: "set-bridge-2", sessionId, trackId: "track-bridge", createdAt: now - 79 * 60 * 1000, completedAt: now - 79 * 60 * 1000, setType: "working", reps: 12 } as any,
+      { id: "set-wall-1", sessionId, trackId: "track-wall", createdAt: now - 78 * 60 * 1000, completedAt: now - 78 * 60 * 1000, setType: "working", reps: 12 } as any,
+      { id: "set-wall-2", sessionId, trackId: "track-wall", createdAt: now - 77 * 60 * 1000, completedAt: now - 77 * 60 * 1000, setType: "working", reps: 12 } as any,
+    ]);
+  });
+}
+
 async function setCoachDashboardTimeoutOverride(page: Page, timeoutMs: number) {
   await page.evaluate((value) => {
     localStorage.setItem("IRONFORGE_COACH_DASHBOARD_TIMEOUT_MS", String(value));
@@ -353,16 +426,21 @@ test.describe("Start Coach Dashboard", () => {
     await expect(body).toContainText("Body Fat");
     await expect(body).toContainText("Lean Mass");
 
-    const performance = page.getByTestId("coach-dashboard-performance");
-    await expect(performance).toContainText("Performance Trend");
-    await expect(performance).toContainText("Strength Signal");
-    await expect(performance).toContainText("historical anchor");
-    await expect(performance).toContainText("Movement Quality");
-    await expect(performance).toContainText("Performance Read");
+      const performance = page.getByTestId("coach-dashboard-performance");
+      await expect(performance).toContainText("Performance Trend");
+      await expect(performance).toContainText("Strength Signal");
+      await expect(performance).toContainText("historical anchor");
+      await expect(performance).toContainText("Movement Quality");
+      await expect(performance).toContainText("Performance Read");
 
-    const goals = page.getByTestId("coach-dashboard-goals");
-    await expect(goals).toContainText("Goal Trajectory");
-    await expect(goals).toContainText("Goal Read");
+      const volume = page.getByTestId("coach-dashboard-volume");
+      await expect(volume).toContainText("Weekly Volume");
+      await expect(volume).toContainText("Back / Pull");
+      await expect(volume).toContainText("Balance");
+
+      const goals = page.getByTestId("coach-dashboard-goals");
+      await expect(goals).toContainText("Goal Trajectory");
+      await expect(goals).toContainText("Goal Read");
     await expect(goals).toContainText("Weight");
     await expect(goals).toContainText("Waist");
 
@@ -378,8 +456,26 @@ test.describe("Start Coach Dashboard", () => {
     await expect(cardio).toContainText("Last 28 Days");
     await expect(cardio).toContainText("Recent Walk/Cardio");
     await expect(cardio).toContainText("Cardio Note");
-    await expect(cardio).toContainText("Walk - MapMyWalk");
-    await expect(cardio).toContainText("2 walks");
+      await expect(cardio).toContainText("Walk - MapMyWalk");
+      await expect(cardio).toContainText("2 walks");
+    });
+
+  test("renders the weekly volume card from recent strength sessions", async ({ page }) => {
+    await resetDexieDb(page);
+    await seedCoachWeeklyVolumeData(page);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    await waitForCoachDashboardReady(page);
+    const volume = page.getByTestId("coach-dashboard-volume");
+    await expect(volume).toBeVisible();
+    await expect(volume).toContainText("Weekly Volume");
+    await expect(volume).toContainText("Chest / Push");
+    await expect(volume).toContainText("Back / Pull");
+    await expect(volume).toContainText("Shoulders / Scapula");
+    await expect(volume).toContainText("Lower / Glutes");
+    await expect(volume).toContainText("Balance");
+    await expect(volume).toContainText("Push / Pull");
+    await expect(volume).toContainText("Pressing / Scapular");
   });
 
   test("renders a clean single-entry body card without duplicate coach average copy", async ({ page }) => {

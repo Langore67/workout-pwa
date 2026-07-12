@@ -1,3 +1,5 @@
+import type { CoachExportOverallStatus } from "../coachExport/types";
+
 export type CoachReportLine = {
   label: string;
   value: string;
@@ -75,6 +77,16 @@ export type CoachReportCardio = {
   isEmpty?: boolean;
 };
 
+export type CoachReportWeeklyVolume = {
+  title: "Weekly Volume";
+  status?: CoachExportOverallStatus;
+  note?: string;
+  rows: CoachReportLine[];
+  balanceRows: CoachReportLine[];
+  detailRows?: CoachReportLine[];
+  unclassified?: string[];
+};
+
 export type CoachReport = {
   generatedAt?: string;
   snapshot: CoachReportSnapshot;
@@ -86,6 +98,7 @@ export type CoachReport = {
   readinessNotes?: CoachReportSection;
   dataGaps?: CoachReportSection;
   performance?: CoachReportPerformance;
+  weeklyVolume?: CoachReportWeeklyVolume;
   goals?: CoachReportGoals;
   learnings?: CoachReportLearnings;
   cardio?: CoachReportCardio;

@@ -17,6 +17,7 @@ import type {
   CoachReportLearnings,
   CoachReportPerformance,
   CoachReportSection,
+  CoachReportWeeklyVolume,
   CoachReportSnapshot,
 } from "./coachReportTypes";
 
@@ -301,8 +302,61 @@ function formatCardioSection(cardio: CoachState["cardio"]): CoachReportCardio {
   };
 }
 
+function formatWeeklyVolumeSection(volume: CoachState["trainingVolume"]): CoachReportWeeklyVolume | undefined {
+  if (!volume) return undefined;
+
+  const rows: CoachReportLine[] = (volume.rollups ?? []).map((rollup) => {
+    const status = fmtStatus(rollup.status);
+    const valueParts = [`${status} — ${fmtNumber(rollup.totalCredit, 1)} credit`];
+    if ((rollup.exposureCount ?? 0) > 0) {
+      valueParts.push(`${rollup.exposureCount} exposure${rollup.exposureCount === 1 ? "" : "s"}`);
+    }
+    return {
+      label: rollup.label,
+      value: valueParts.join(" | "),
+      text: `- ${rollup.label}: ${valueParts.join(" | ")}`,
+    };
+  });
+
+  const balanceRows: CoachReportLine[] = (volume.balances ?? []).map((balance) => {
+    const ratioText = balance.ratio != null ? ` | ratio ${balance.ratio.toFixed(2)}` : "";
+    const value = `${fmtStatus(balance.status)}${ratioText}`;
+    return {
+      label: balance.label,
+      value,
+      text: `- ${balance.label}: ${value}`,
+    };
+  });
+
+  const detailRows: CoachReportLine[] = (volume.groups ?? []).map((group) => {
+    const parts = [
+      `${fmtNumber(group.primeCredit, 1)} prime`,
+      `${fmtNumber(group.supportCredit, 1)} support`,
+      `${group.exposureCount} exposure${group.exposureCount === 1 ? "" : "s"}`,
+      `${fmtNumber(group.totalCredit, 1)} total`,
+    ];
+    return {
+      label: group.label,
+      value: `${fmtStatus(group.status)} | ${parts.join(" | ")}`,
+      text: `- ${group.label}: ${fmtStatus(group.status)} | ${parts.join(" | ")}`,
+    };
+  });
+
+  const unclassified = (volume.unclassified ?? []).map((item) => `${item.exerciseName}: ${item.setCount} set${item.setCount === 1 ? "" : "s"}`);
+
+  return {
+    title: "Weekly Volume",
+    status: fmtStatus(volume.status),
+    note: volume.summary,
+    rows,
+    balanceRows,
+    detailRows,
+    unclassified: unclassified.length ? unclassified : undefined,
+  };
+}
+
 export function hasCoachReportDashboardContent(
-  report?: Pick<CoachReport, "body" | "performance" | "goals" | "learnings" | "cardio"> | null
+  report?: Pick<CoachReport, "body" | "performance" | "weeklyVolume" | "goals" | "learnings" | "cardio"> | null
 ) {
   if (!report) return false;
   const hasMeaningfulText = (value?: string | null) => {
@@ -320,6 +374,9 @@ export function hasCoachReportDashboardContent(
       hasMeaningfulText(report.goals?.trajectory) ||
       hasMeaningfulText(report.goals?.read) ||
       (report.goals?.targets?.length ?? 0) > 0 ||
+      hasMeaningfulText(report.weeklyVolume?.status) ||
+      (report.weeklyVolume?.rows?.length ?? 0) > 0 ||
+      (report.weeklyVolume?.balanceRows?.length ?? 0) > 0 ||
       (report.learnings?.whatsWorking?.length ?? 0) > 0 ||
       (report.learnings?.watchNow?.length ?? 0) > 0 ||
       (report.cardio?.isEmpty === false &&
@@ -898,6 +955,7 @@ export function buildCoachReport({
     watchNow: coachState.learnings.watchItems.slice(0, 2),
   };
 
+  const weeklyVolume = formatWeeklyVolumeSection(coachState.trainingVolume ?? metrics.weeklyVolume);
   const waistToHeight = buildWaistToHeightReportSection(metrics);
   const summary = buildCoachSummaryReportSection(metrics);
   const hydration = buildHydrationReportSection(metrics);
@@ -938,6 +996,7 @@ export function buildCoachReport({
     readinessNotes,
     dataGaps,
     performance,
+    weeklyVolume,
     goals,
     learnings,
     cardio,

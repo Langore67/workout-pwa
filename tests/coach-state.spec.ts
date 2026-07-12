@@ -208,6 +208,70 @@ function buildMetrics(): CoachExportMetrics {
       executionPriorities: ["Preserve known pulling setup constraints when selecting or progressing work."],
       adjustmentTriggers: ["Reduce volume or progression pressure if later-set fatigue appears earlier than usual."],
     },
+    weeklyVolume: {
+      windowDays: 7,
+      asOf: new Date("2026-04-27T09:00:00-04:00").toISOString(),
+      groups: [
+        {
+          bucket: "chest_pressing",
+          label: "Chest Pressing",
+          primeCredit: 3,
+          supportCredit: 1.5,
+          exposureCount: 0,
+          totalCredit: 4.5,
+          status: "watch",
+          examples: ["Bench Press"],
+        },
+        {
+          bucket: "lats",
+          label: "Lats",
+          primeCredit: 4,
+          supportCredit: 2,
+          exposureCount: 0,
+          totalCredit: 6,
+          status: "solid",
+          examples: ["Lat Pulldown"],
+        },
+      ],
+      rollups: [
+        {
+          id: "chest_push",
+          label: "Chest / Push",
+          totalCredit: 4.5,
+          exposureCount: 0,
+          status: "watch",
+          parts: [
+            { bucket: "chest_pressing", label: "Chest Pressing", credit: 3, exposureCount: 0 },
+          ],
+        },
+        {
+          id: "back_pull",
+          label: "Back / Pull",
+          totalCredit: 6,
+          exposureCount: 0,
+          status: "solid",
+          parts: [
+            { bucket: "lats", label: "Lats", credit: 6, exposureCount: 0 },
+          ],
+        },
+      ],
+      balances: [
+        {
+          id: "push_pull",
+          label: "Push / Pull",
+          leftLabel: "Push",
+          rightLabel: "Pull",
+          leftCredit: 4.5,
+          rightCredit: 6,
+          ratio: 0.75,
+          status: "solid",
+          note: "Push is slightly behind pull.",
+        },
+      ],
+      unclassified: [{ exerciseName: "Mystery Row", setCount: 1 }],
+      status: "watch",
+      summary: "Weekly volume is mixed. Push is slightly behind pull.",
+    },
     exportConfidence: {
       score: 82,
       label: "Strong",
@@ -339,6 +403,9 @@ test("coach state learnings and goals map from export metrics", async () => {
   expect(state.learnings.validated).toContain("MTS Row: chest-supported row reinforced Gaz's cues");
   expect(state.learnings.watchItems).toContain("Bradford Press: stopped due to shoulder twinge");
   expect(state.learnings.resolved).toContain("Substitution worked");
+  expect(state.trainingVolume?.status).toBe("watch");
+  expect(state.trainingVolume?.rollups?.[0].label).toBe("Chest / Push");
+  expect(state.trainingVolume?.balances?.[0].label).toBe("Push / Pull");
 });
 
 test("coach state cardio section maps cardio summary windows and recent walk", async () => {

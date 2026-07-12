@@ -386,6 +386,9 @@ function hasCoachDashboardSourceData(metrics?: CoachExportMetrics | null) {
           anchor.performedAt != null
       ) ||
       (metrics.goalProgress?.rows?.length ?? 0) > 0 ||
+      (metrics.weeklyVolume?.rollups?.length ?? 0) > 0 ||
+      (metrics.weeklyVolume?.balances?.length ?? 0) > 0 ||
+      (metrics.weeklyVolume?.unclassified?.length ?? 0) > 0 ||
       (metrics.coachingMemory?.validatedLearnings?.length ?? 0) > 0 ||
       (metrics.coachingMemory?.activeWatchItems?.length ?? 0) > 0 ||
       (metrics.coachingMemory?.resolvedItems?.length ?? 0) > 0 ||
@@ -1024,6 +1027,32 @@ export default function StartPage() {
                 <DashboardLine label="Movement Quality" value={renderedCoachReport?.performance?.movementQuality ?? "—"} />
                 {renderedCoachReport?.performance?.read ? (
                   <DashboardLine label="Performance Read" value={renderedCoachReport.performance.read} />
+                ) : null}
+              </div>
+            </div>
+
+            <div className="card" data-testid="coach-dashboard-volume">
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>Weekly Volume</div>
+              {renderedCoachReport?.weeklyVolume?.note ? (
+                <div className="muted" style={{ marginBottom: 8, fontSize: 12, lineHeight: 1.35 }}>
+                  {renderedCoachReport.weeklyVolume.note}
+                </div>
+              ) : null}
+              <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                {(renderedCoachReport?.weeklyVolume?.rows ?? []).map((row) => (
+                  <DashboardLine key={row.label} label={row.label} value={row.value} />
+                ))}
+                {(renderedCoachReport?.weeklyVolume?.balanceRows ?? []).length ? (
+                  <div style={{ marginTop: 4 }}>
+                    <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      Balance
+                    </div>
+                    <div style={{ display: "grid", gap: 4, marginTop: 6 }}>
+                      {(renderedCoachReport?.weeklyVolume?.balanceRows ?? []).map((row) => (
+                        <DashboardLine key={row.label} label={row.label} value={row.value} />
+                      ))}
+                    </div>
+                  </div>
                 ) : null}
               </div>
             </div>
