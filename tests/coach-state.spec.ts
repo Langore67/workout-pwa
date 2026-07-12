@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+﻿import { expect, test } from "@playwright/test";
 import { buildBodyConfidence } from "../src/body/bodyConfidenceEngine";
 import { buildCardioWalkSummary } from "../src/lib/cardio/buildCardioWalkSummary";
 import { buildCoachStateFromExportMetrics } from "../src/lib/coachState/buildCoachState";
@@ -265,11 +265,11 @@ function buildMetrics(): CoachExportMetrics {
           rightValue: 6,
           ratio: 0.75,
           status: "solid",
-          statusLabel: "Pull Behind",
+          statusLabel: "Push Behind",
           direction: "right_ahead",
           summary: "Pull volume is ahead of push volume.",
           currentText: "Push: 4.5 effective sets | Pull: 6 effective sets",
-          explanation: "Pull volume is about 0.8x higher than push volume over the recent 7-day window.",
+          explanation: "Pull volume is about 1.3× push volume over the recent 7-day window.",
           action: "Add 3-5 pushing sets over the next 7 days, or hold pull volume steady.",
           ratioText: "Internal ratio: 0.75",
           note: "Push is slightly behind pull.",
@@ -456,3 +456,5 @@ test("coach state builder does not mutate the export metrics input", async () =>
 
   expect(metrics).toEqual(before);
 });
+
+

@@ -231,6 +231,68 @@ test("coach export includes recent training signals section", async () => {
   expect(text).not.toContain("Lower B");
 });
 
+test("coach export weekly volume balance wording uses the larger-over-smaller multiplier and corrected status label", async () => {
+  const metrics = buildMetrics();
+  metrics.weeklyVolume = {
+    windowDays: 7,
+    asOf: new Date("2026-07-06T09:00:00-04:00").toISOString(),
+    groups: [
+      {
+        bucket: "chest_pressing",
+        label: "Chest Pressing",
+        primeCredit: 12.8,
+        supportCredit: 0,
+        exposureCount: 0,
+        totalCredit: 12.8,
+        status: "watch",
+        examples: ["Bench Press"],
+      },
+      {
+        bucket: "lats",
+        label: "Lats",
+        primeCredit: 49,
+        supportCredit: 0,
+        exposureCount: 0,
+        totalCredit: 49,
+        status: "solid",
+        examples: ["Lat Pulldown"],
+      },
+    ],
+    rollups: [],
+    balances: [
+      {
+        id: "push_pull",
+        label: "Push / Pull",
+        leftLabel: "Push",
+        rightLabel: "Pull",
+        leftValue: 12.8,
+        rightValue: 49,
+        ratio: 0.26,
+        status: "watch",
+        statusLabel: "Push Behind",
+        direction: "right_ahead",
+        summary: "Pull volume is ahead of push volume.",
+        currentText: "Push: 12.8 effective sets | Pull: 49 effective sets",
+        explanation: "Pull volume is about 3.8× push volume over the recent 7-day window.",
+        action: "Add 3-5 pushing sets over the next 7 days, or hold pull volume steady.",
+        ratioText: "Internal ratio: 0.26",
+        isContextuallyAcceptable: false,
+        note: "Pull volume is ahead of push volume.",
+      } as any,
+    ],
+    unclassified: [],
+    status: "watch",
+    summary: "Pull volume is ahead of push volume.",
+  } as any;
+
+  const text = formatCoachExportText(metrics as any);
+  expect(text).toContain("Push / Pull: Push Behind");
+  expect(text).toContain("Pull volume is about 3.8× push volume over the recent 7-day window.");
+  expect(text).not.toContain("0.3x higher");
+  expect(text).not.toContain("0.3× higher");
+  expect(text).not.toContain("Infinity");
+});
+
 test("coach export promotes validated learnings and keeps watch items visible", async () => {
   const metrics = buildMetrics();
   metrics.trainingSignals = {
