@@ -448,6 +448,169 @@ function balanceStatus(left: number, right: number): CoachExportOverallStatus {
   return "intervene";
 }
 
+function balanceDirection(left: number, right: number): CoachExportWeeklyVolumeBalance["direction"] {
+  const total = left + right;
+  if (total <= 0) return "not_enough_data";
+  if (Math.abs(left - right) <= 0.5) return "balanced";
+  return left > right ? "left_ahead" : "right_ahead";
+}
+
+function statusLabelForBalance(
+  balanceId: CoachExportWeeklyVolumeBalance["id"],
+  direction: CoachExportWeeklyVolumeBalance["direction"],
+  ratio: number | null
+) {
+  if (direction === "not_enough_data") return "Not Enough Data";
+  if (direction === "balanced") return "Balanced";
+
+  const strong = typeof ratio === "number" && Number.isFinite(ratio) && ratio >= 2;
+
+  switch (balanceId) {
+    case "push_pull":
+      if (direction === "left_ahead") return strong ? "Strong Push Bias" : "Push Behind";
+      return strong ? "Strong Pull Bias" : "Pull Behind";
+    case "pressing_scapular":
+      if (direction === "left_ahead") return strong ? "Strong Pressing Bias" : "Pressing Behind";
+      return "Scapular Support Ahead";
+    case "quad_posterior_chain":
+      if (direction === "left_ahead") return strong ? "Strong Quad Bias" : "Quads Behind";
+      return "Posterior Chain Ahead";
+    case "glute_max_med_min":
+      if (direction === "left_ahead") return strong ? "Strong Hip-Extension Bias" : "Glute Max Lagging";
+      return "Hip Stability Lagging";
+    case "arms":
+      if (direction === "left_ahead") return "Biceps Ahead";
+      return "Triceps Ahead";
+    case "core_carry":
+      if (direction === "left_ahead") return "Core Ahead";
+      return "Carry Ahead";
+    default:
+      return "Balanced";
+  }
+}
+
+function balanceSummaryFor(
+  balanceId: CoachExportWeeklyVolumeBalance["id"],
+  direction: CoachExportWeeklyVolumeBalance["direction"]
+) {
+  if (direction === "not_enough_data") return "Not enough recent training data to judge the balance.";
+  if (direction === "balanced") return "The two sides are well matched over the recent 7-day window.";
+
+  switch (balanceId) {
+    case "push_pull":
+      return direction === "left_ahead"
+        ? "Push volume is ahead of pull volume."
+        : "Pull volume is ahead of push volume.";
+    case "pressing_scapular":
+      return direction === "left_ahead"
+        ? "Pressing volume is ahead of scapular support."
+        : "Scapular support is ahead of pressing volume.";
+    case "quad_posterior_chain":
+      return direction === "left_ahead"
+        ? "Quad volume is ahead of posterior-chain work."
+        : "Posterior-chain work is ahead of quad volume.";
+    case "glute_max_med_min":
+      return direction === "left_ahead"
+        ? "Glute max volume is ahead of hip-stability work."
+        : "Hip-stability work is ahead of glute-max work.";
+    case "arms":
+      return direction === "left_ahead" ? "Biceps volume is ahead of triceps volume." : "Triceps volume is ahead of biceps volume.";
+    case "core_carry":
+      return direction === "left_ahead" ? "Core work is ahead of carry exposure." : "Carry exposure is ahead of core work.";
+    default:
+      return "The balance is still developing.";
+  }
+}
+
+function balanceExplanationFor(
+  balanceId: CoachExportWeeklyVolumeBalance["id"],
+  left: number,
+  right: number,
+  ratio: number | null,
+  direction: CoachExportWeeklyVolumeBalance["direction"]
+) {
+  if (direction === "not_enough_data") return "Complete more recent strength work before adjusting this balance.";
+  if (direction === "balanced") return "Recent weekly volume is within the expected range.";
+
+  const ratioText = ratio != null ? `about ${ratio.toFixed(1)}x` : "materially";
+  switch (balanceId) {
+    case "push_pull":
+      return direction === "left_ahead"
+        ? `Push volume is ${ratioText} higher than pull volume over the recent 7-day window.`
+        : `Pull volume is ${ratioText} higher than push volume over the recent 7-day window.`;
+    case "pressing_scapular":
+      return direction === "left_ahead"
+        ? `Pressing volume is ${ratioText} higher than scapular support.`
+        : `Scapular support is ${ratioText} higher than pressing volume.`;
+    case "quad_posterior_chain":
+      return direction === "left_ahead"
+        ? `Quad volume is ${ratioText} higher than posterior-chain work.`
+        : `Posterior-chain work is ${ratioText} higher than quad volume.`;
+    case "glute_max_med_min":
+      return direction === "left_ahead"
+        ? `Glute max volume is ${ratioText} higher than hip-stability work.`
+        : `Hip-stability work is ${ratioText} lower than glute-max work.`;
+    case "arms":
+      return direction === "left_ahead"
+        ? `Direct biceps volume is ${ratioText} ahead of triceps work.`
+        : `Direct triceps volume is ${ratioText} ahead of biceps work.`;
+    case "core_carry":
+      return direction === "left_ahead"
+        ? `Core work is ${ratioText} higher than carry exposure.`
+        : `Carry exposure is ${ratioText} higher than core work.`;
+    default:
+      return "Recent volume is uneven across the two sides.";
+  }
+}
+
+function balanceActionFor(
+  balanceId: CoachExportWeeklyVolumeBalance["id"],
+  direction: CoachExportWeeklyVolumeBalance["direction"],
+  ratio: number | null,
+  isContextuallyAcceptable: boolean
+) {
+  if (direction === "not_enough_data") return "Complete more recent strength work before adjusting balance.";
+  if (direction === "balanced") return "Maintain the current distribution.";
+  if (isContextuallyAcceptable) return "No immediate change needed. Maintain the current emphasis for now.";
+
+  switch (balanceId) {
+    case "push_pull":
+      return direction === "left_ahead"
+        ? "Add 3-5 pulling sets over the next 7 days, or hold push volume steady."
+        : "Add 3-5 pushing sets over the next 7 days, or hold pull volume steady.";
+    case "pressing_scapular":
+      return direction === "left_ahead"
+        ? "Add 2-4 scapular-support sets before adding more pressing volume."
+        : "Add 2-4 pressing sets before adding more scapular-control volume.";
+    case "quad_posterior_chain":
+      return direction === "left_ahead"
+        ? "Add 2-4 posterior-chain sets before adding more quad work."
+        : "Add one quad-focused exercise or 2-4 quad sets.";
+    case "glute_max_med_min":
+      return direction === "left_ahead"
+        ? "Add 2-4 hip-stability sets or corrective exposures."
+        : "Add 2-4 glute-max-focused sets.";
+    case "arms":
+      return direction === "left_ahead"
+        ? "Add 2-3 direct triceps sets only if direct work is still low."
+        : "Add 2-3 direct biceps sets only if direct work is still low.";
+    case "core_carry":
+      return direction === "left_ahead" ? "Add one carry exposure in the next session." : "Add one core exposure in the next session.";
+    default:
+      return "Maintain the current distribution.";
+  }
+}
+
+function balanceContextAcceptable(
+  balanceId: CoachExportWeeklyVolumeBalance["id"],
+  direction: CoachExportWeeklyVolumeBalance["direction"],
+  ratio: number | null
+) {
+  if (direction === "balanced" || direction === "not_enough_data") return direction === "balanced";
+  if (balanceId === "pressing_scapular" && direction === "right_ahead" && typeof ratio === "number" && ratio < 2) return true;
+  return false;
+}
+
 function formatStatusLabel(status: CoachExportOverallStatus) {
   if (status === "not_enough_data") return "Not Enough Data";
   return status.charAt(0).toUpperCase() + status.slice(1);
@@ -455,6 +618,10 @@ function formatStatusLabel(status: CoachExportOverallStatus) {
 
 function roundCredit(value: number) {
   return Math.round(value * 10) / 10;
+}
+
+function fmtCreditValue(value: number) {
+  return roundCredit(value).toFixed(1).replace(/\.0+$/, "");
 }
 
 function buildBucketLabel(bucket: VolumeBucket) {
@@ -674,28 +841,40 @@ export function buildWeeklyVolume(args: {
       config.rightBuckets.reduce((sum, bucket) => sum + (groups.find((group) => group.bucket === bucket)?.totalCredit ?? 0), 0)
     );
     const ratio = rightCredit > 0 ? roundCredit(leftCredit / rightCredit) : null;
+    const direction = balanceDirection(leftCredit, rightCredit);
     const status = balanceStatus(leftCredit, rightCredit);
-    const note =
-      status === "not_enough_data"
-        ? `No meaningful ${config.leftLabel.toLowerCase()} or ${config.rightLabel.toLowerCase()} volume yet.`
-        : ratio == null
-          ? `${config.leftLabel} is ahead of ${config.rightLabel}.`
-          : ratio >= 1
-            ? `${config.leftLabel} is ahead of ${config.rightLabel}.`
-            : `${config.rightLabel} is ahead of ${config.leftLabel}.`;
+    const statusLabel = statusLabelForBalance(config.id, direction, ratio);
+    const summary = balanceSummaryFor(config.id, direction);
+    const currentText =
+      direction === "not_enough_data"
+        ? "Not enough recent training data."
+        : `${config.leftLabel}: ${fmtCreditValue(leftCredit)} effective sets | ${config.rightLabel}: ${fmtCreditValue(rightCredit)} effective sets`;
+    const explanation = balanceExplanationFor(config.id, leftCredit, rightCredit, ratio, direction);
+    const isContextuallyAcceptable = balanceContextAcceptable(config.id, direction, ratio);
+    const action = balanceActionFor(config.id, direction, ratio, isContextuallyAcceptable);
+    const ratioText = ratio != null ? `Internal ratio: ${ratio.toFixed(2)}` : undefined;
+    const note = summary;
 
     return {
       id: config.id,
       label: config.label,
       leftLabel: config.leftLabel,
       rightLabel: config.rightLabel,
-      leftCredit,
-      rightCredit,
+      leftValue: leftCredit,
+      rightValue: rightCredit,
       ratio,
       status,
+      statusLabel,
+      direction,
+      summary,
+      currentText,
+      explanation,
+      action,
+      ratioText,
+      isContextuallyAcceptable,
       note,
     } satisfies CoachExportWeeklyVolumeBalance;
-  }).filter((balance) => balance.leftCredit > 0 || balance.rightCredit > 0);
+  }).filter((balance) => balance.leftValue > 0 || balance.rightValue > 0);
 
   const topWatchGroups = activeGroups.filter((group) => group.status !== "solid").slice(0, 2);
   const topWatchBalances = balanceRows.filter((balance) => balance.status !== "solid").slice(0, 2);

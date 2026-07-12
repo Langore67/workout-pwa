@@ -223,10 +223,18 @@ export type CoachExportWeeklyVolumeBalance = {
   label: string;
   leftLabel: string;
   rightLabel: string;
-  leftCredit: number;
-  rightCredit: number;
+  leftValue: number;
+  rightValue: number;
   ratio: number | null;
   status: CoachExportOverallStatus;
+  statusLabel: string;
+  direction: "balanced" | "left_ahead" | "right_ahead" | "not_enough_data";
+  summary: string;
+  currentText: string;
+  explanation: string;
+  action: string;
+  ratioText?: string;
+  isContextuallyAcceptable?: boolean;
   note: string;
 };
 

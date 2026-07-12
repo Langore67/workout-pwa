@@ -75,10 +75,18 @@ function buildFixture(overrides: any = {}) {
         label: "Push / Pull",
         leftLabel: "Push",
         rightLabel: "Pull",
-        leftCredit: 4.5,
-        rightCredit: 6,
+        leftValue: 4.5,
+        rightValue: 6,
         ratio: 0.75,
         status: "solid",
+        statusLabel: "Pull Behind",
+        direction: "right_ahead",
+        summary: "Pull volume is ahead of push volume.",
+        currentText: "Push: 4.5 effective sets | Pull: 6 effective sets",
+        explanation: "Pull volume is about 0.8x higher than push volume over the recent 7-day window.",
+        action: "Add 3-5 pushing sets over the next 7 days, or hold pull volume steady.",
+        ratioText: "Internal ratio: 0.75",
+        isContextuallyAcceptable: false,
         note: "Push is slightly behind pull.",
       },
       {
@@ -86,10 +94,17 @@ function buildFixture(overrides: any = {}) {
         label: "Glute Max / Med-Min",
         leftLabel: "Glute Max",
         rightLabel: "Glute Med/Min",
-        leftCredit: 6,
-        rightCredit: 0.5,
+        leftValue: 6,
+        rightValue: 0.5,
         ratio: 12,
         status: "intervene",
+        statusLabel: "Strong Hip-Extension Bias",
+        direction: "left_ahead",
+        summary: "Glute max volume is ahead of hip-stability work.",
+        currentText: "Glute Max: 6 effective sets | Glute Med/Min: 0.5 effective sets",
+        explanation: "Glute max volume is about 12.0x higher than hip-stability work.",
+        action: "Add 2-4 hip-stability sets or corrective exposures.",
+        ratioText: "Internal ratio: 12.00",
         note: "Glute med/min exposure is far behind glute max.",
       },
     ],
@@ -293,7 +308,10 @@ test("coach report maps snapshot, body, performance, goals, learnings, and cardi
   expect(report.weeklyVolume?.rows.map((row) => row.value).join(" ")).toContain("effective sets");
   expect(report.weeklyVolume?.rows.map((row) => row.value).join(" ")).toContain("control exposures");
   expect(report.weeklyVolume?.rows.find((row) => row.label === "Arms")?.value).toContain("indirect support");
-  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.value).toContain("Target");
+  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.statusLabel).toBe("Pull Behind");
+  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.currentText).toContain("Push:");
+  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.currentText).toContain("Pull:");
+  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.action).toContain("pushing sets");
   expect(report.weeklyVolume?.detailRows?.find((row) => row.label === "Chest Pressing")?.value).toContain("Prime");
   expect(report.weeklyVolume?.detailRows?.find((row) => row.label === "Glute Med/Min")?.value).toContain("Exposure");
   expect(report.weeklyVolume?.unclassified).toContain("Mystery Row: 1 set");

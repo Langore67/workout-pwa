@@ -43,7 +43,16 @@ function renderWeeklyVolume(volume: CoachReport["weeklyVolume"]) {
     lines.push("", "Rollups", ...volume.rows.map((row) => row.text));
   }
   if (volume.balanceRows?.length) {
-    lines.push("", "Balance", ...volume.balanceRows.map((row) => row.text));
+    lines.push("", "Antagonistic Balance");
+    for (const row of volume.balanceRows) {
+      lines.push(`- ${row.label}: ${row.statusLabel}`);
+      lines.push(`  - Summary: ${row.summary}`);
+      lines.push(`  - Current: ${row.currentText}`);
+      lines.push(`  - What it means: ${row.explanation}`);
+      lines.push(`  - What to change: ${row.action}`);
+      if (row.ratioText) lines.push(`  - ${row.ratioText}`);
+      if (row.isContextuallyAcceptable) lines.push("  - No immediate change needed.");
+    }
   }
   if (volume.detailRows?.length) {
     lines.push("", "Detailed Buckets", ...volume.detailRows.map((row) => row.text));

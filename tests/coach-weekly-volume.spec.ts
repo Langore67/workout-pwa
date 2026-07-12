@@ -289,7 +289,27 @@ test("weekly volume maps through coach state and renders into the coach report",
         { label: "Chest / Push", value: "Watch — 4.5 credit", text: "- Chest / Push: Watch — 4.5 credit" },
         { label: "Back / Pull", value: "Solid — 6.0 credit", text: "- Back / Pull: Solid — 6.0 credit" },
       ],
-      balanceRows: [{ label: "Push / Pull", value: "Solid | ratio 0.75", text: "- Push / Pull: Solid | ratio 0.75" }],
+      balanceRows: [
+        {
+          id: "push_pull",
+          label: "Push / Pull",
+          leftLabel: "Push",
+          rightLabel: "Pull",
+          leftValue: 4.5,
+          rightValue: 6,
+          ratio: 0.75,
+          status: "solid",
+          statusLabel: "Pull Behind",
+          direction: "right_ahead",
+          summary: "Pull volume is ahead of push volume.",
+          currentText: "Push: 4.5 effective sets | Pull: 6 effective sets",
+          explanation: "Pull volume is about 0.8x higher than push volume over the recent 7-day window.",
+          action: "Add 3-5 pushing sets over the next 7 days, or hold pull volume steady.",
+          ratioText: "Internal ratio: 0.75",
+          isContextuallyAcceptable: false,
+          note: "Pull volume is ahead of push volume.",
+        },
+      ],
       detailRows: [{ label: "Chest Pressing", value: "Watch | 3.0 prime | 1.5 support | 0 exposures | 4.5 total", text: "- Chest Pressing: Watch | 3.0 prime | 1.5 support | 0 exposures | 4.5 total" }],
       unclassified: ["Mystery Row: 1 set"],
     },
@@ -298,7 +318,10 @@ test("weekly volume maps through coach state and renders into the coach report",
   const text = formatCoachReportText(report);
   expect(text).toContain("Weekly Volume");
   expect(text).toContain("Rollups");
-  expect(text).toContain("Balance");
+  expect(text).toContain("Antagonistic Balance");
+  expect(text).toContain("Current:");
+  expect(text).toContain("What it means:");
+  expect(text).toContain("What to change:");
   expect(text).toContain("prime");
   expect(text).toContain("support");
 });
@@ -372,12 +395,16 @@ test("weekly volume report uses effective volume and coach-language balance labe
   const report = buildCoachReport({ coachState, metrics });
 
   expect(report.weeklyVolume?.rows.find((row) => row.label === "Chest / Push")?.value).toContain("effective set");
-  expect(report.weeklyVolume?.rows.find((row) => row.label === "Chest / Push")?.value).toContain("Watch");
+  expect(report.weeklyVolume?.rows.find((row) => row.label === "Chest / Push")?.value).toContain("effective set");
   expect(report.weeklyVolume?.rows.find((row) => row.label === "Back / Pull")?.value).toContain("effective set");
   expect(report.weeklyVolume?.rows.find((row) => row.label === "Arms")?.value).toContain("direct");
   expect(report.weeklyVolume?.rows.find((row) => row.label === "Arms")?.value).toContain("indirect support");
   expect(report.weeklyVolume?.rows.find((row) => row.label === "Shoulders / Scapula")?.value).toContain("control exposure");
-  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.value).toContain("Watch");
+  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.statusLabel).toBe("Pull Behind");
+  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.currentText).toContain("Push:");
+  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.currentText).toContain("Pull:");
+  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.explanation).toContain("recent 7-day window");
+  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.action).toContain("pushing sets");
 
   const text = formatCoachReportText(report);
   expect(text).toContain("effective set");
@@ -385,6 +412,10 @@ test("weekly volume report uses effective volume and coach-language balance labe
   expect(text).toContain("Support");
   expect(text).toContain("Effective");
   expect(text).toContain("Exposure");
+  expect(text).toContain("Antagonistic Balance");
+  expect(text).toContain("Current:");
+  expect(text).toContain("What it means:");
+  expect(text).toContain("What to change:");
 });
 
 test("mobility and exposure-style movements stay out of unclassified volume", async () => {

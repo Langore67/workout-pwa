@@ -82,9 +82,29 @@ export type CoachReportWeeklyVolume = {
   status?: string;
   note?: string;
   rows: CoachReportLine[];
-  balanceRows: CoachReportLine[];
+  balanceRows: CoachReportWeeklyVolumeBalance[];
   detailRows?: CoachReportLine[];
   unclassified?: string[];
+};
+
+export type CoachReportWeeklyVolumeBalance = {
+  id: "push_pull" | "pressing_scapular" | "quad_posterior_chain" | "glute_max_med_min" | "arms" | "core_carry";
+  label: string;
+  leftLabel: string;
+  rightLabel: string;
+  leftValue: number;
+  rightValue: number;
+  ratio: number | null;
+  status: string;
+  statusLabel: string;
+  direction: "balanced" | "left_ahead" | "right_ahead" | "not_enough_data";
+  summary: string;
+  currentText: string;
+  explanation: string;
+  action: string;
+  ratioText?: string;
+  isContextuallyAcceptable?: boolean;
+  note: string;
 };
 
 export type CoachReport = {
