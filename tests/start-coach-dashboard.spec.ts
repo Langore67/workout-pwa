@@ -478,8 +478,30 @@ test.describe("Start Coach Dashboard", () => {
     await expect(volume).toContainText("effective sets");
     await expect(volume).toContainText("control exposure");
     await expect(volume).toContainText("Balance");
-    await expect(volume).toContainText("Push / Pull");
-    await expect(volume).toContainText("Pressing / Scapular");
+
+    const pushPull = volume.getByTestId("coach-volume-balance-push_pull");
+    const gluteBalance = volume.getByTestId("coach-volume-balance-glute_max_med_min");
+
+    await expect(pushPull).toContainText("Push / Pull");
+    await expect(pushPull).toContainText(/Balanced|Push Behind|Pull Behind|Strong Push Bias|Strong Pull Bias/);
+    await expect(pushPull).not.toHaveAttribute("open", "");
+    await pushPull.locator("summary").click();
+    await expect(pushPull).toHaveAttribute("open", "");
+    await expect(pushPull.getByText("Current:")).toBeVisible();
+    await expect(pushPull.getByText("What it means:")).toBeVisible();
+    await expect(pushPull.getByText("What to change:")).toBeVisible();
+    await pushPull.locator("summary").click();
+    await expect(pushPull).not.toHaveAttribute("open", "");
+
+    await expect(gluteBalance).toContainText("Glute Max / Med-Min");
+    await expect(gluteBalance).not.toHaveAttribute("open", "");
+    await gluteBalance.locator("summary").click();
+    await expect(gluteBalance).toHaveAttribute("open", "");
+    await expect(gluteBalance.getByText("Current:")).toBeVisible();
+    await expect(gluteBalance.getByText("What it means:")).toBeVisible();
+    await expect(gluteBalance.getByText("What to change:")).toBeVisible();
+    await gluteBalance.locator("summary").click();
+    await expect(gluteBalance).not.toHaveAttribute("open", "");
   });
 
   test("renders a clean single-entry body card without duplicate coach average copy", async ({ page }) => {

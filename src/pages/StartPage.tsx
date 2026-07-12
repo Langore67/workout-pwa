@@ -1047,9 +1047,48 @@ export default function StartPage() {
                     <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                       Balance
                     </div>
-                    <div style={{ display: "grid", gap: 4, marginTop: 6 }}>
+                    <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
                       {(renderedCoachReport?.weeklyVolume?.balanceRows ?? []).map((row) => (
-                        <DashboardLine key={row.label} label={row.label} value={row.value} />
+                        <details
+                          key={row.label}
+                          data-testid={`coach-volume-balance-${row.id}`}
+                          style={{ borderTop: "1px solid var(--border)", paddingTop: 6 }}
+                        >
+                          <summary
+                            style={{
+                              listStyle: "none",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 12,
+                              fontWeight: 700,
+                            }}
+                          >
+                            <span>{row.label}</span>
+                            <span className="muted" style={{ fontWeight: 700 }}>
+                              {row.statusLabel}
+                            </span>
+                          </summary>
+                          <div style={{ display: "grid", gap: 4, marginTop: 6, paddingLeft: 10, fontSize: 12, lineHeight: 1.35 }}>
+                            <div>
+                              <span className="muted">Summary: </span>
+                              <span>{row.summary}</span>
+                            </div>
+                            <div>
+                              <span className="muted">Current: </span>
+                              <span>{row.currentText}</span>
+                            </div>
+                            <div>
+                              <span className="muted">What it means: </span>
+                              <span>{row.explanation}</span>
+                            </div>
+                            <div>
+                              <span className="muted">What to change: </span>
+                              <span>{row.action}</span>
+                            </div>
+                          </div>
+                        </details>
                       ))}
                     </div>
                   </div>
