@@ -33,6 +33,28 @@ function renderSection(section: CoachReportSection | undefined) {
   return lines;
 }
 
+function renderWeeklyVolume(volume: CoachReport["weeklyVolume"]) {
+  if (!volume) return [] as string[];
+
+  const lines: string[] = [volume.title];
+  if (volume.status) lines.push(`- Status: ${volume.status}`);
+  if (volume.note) lines.push(`- Note: ${volume.note}`);
+  if (volume.rows?.length) {
+    lines.push("", "Rollups", ...volume.rows.map((row) => row.text));
+  }
+  if (volume.balanceRows?.length) {
+    lines.push("", "Balance", ...volume.balanceRows.map((row) => row.text));
+  }
+  if (volume.detailRows?.length) {
+    lines.push("", "Detailed Buckets", ...volume.detailRows.map((row) => row.text));
+  }
+  if (volume.unclassified?.length) {
+    lines.push("", "Unclassified Exercises", ...volume.unclassified.map((item) => `- ${item}`));
+  }
+  lines.push("");
+  return lines;
+}
+
 export function formatCoachReportText(
   report: CoachReport,
   options: {
@@ -47,6 +69,7 @@ export function formatCoachReportText(
   const readinessNotes = report.readinessNotes;
   const dataGaps = report.dataGaps;
   const performance = report.performance;
+  const weeklyVolume = report.weeklyVolume;
   const goals = report.goals;
   const learnings = report.learnings;
   const cardio = report.cardio;
@@ -57,7 +80,7 @@ export function formatCoachReportText(
     "IronForge Coach Export",
     report.generatedAt ? `Generated: ${report.generatedAt}` : "Generated: Unknown",
     "",
-    `Coach Snapshot`,
+    "Coach Snapshot",
     `- Status: ${report.snapshot.status}`,
     `- Confidence: ${report.snapshot.confidence}`,
     `- Why: ${report.snapshot.why}`,
@@ -70,9 +93,7 @@ export function formatCoachReportText(
           bodyHeading,
           ...(body.values.length ? body.values.map((line) => line.text) : ["- No body trend values available."]),
           ...(body.note ? ["", `- ${body.note}`] : []),
-          ...(body.confidenceRows.length
-            ? ["", "Body Confidence", ...body.confidenceRows.map((line) => line.text)]
-            : []),
+          ...(body.confidenceRows.length ? ["", "Body Confidence", ...body.confidenceRows.map((line) => line.text)] : []),
           "",
         ]
       : []),
@@ -90,6 +111,7 @@ export function formatCoachReportText(
           "",
         ]
       : []),
+    ...(weeklyVolume ? [...renderWeeklyVolume(weeklyVolume)] : []),
     ...(trainingSignals ? [...renderSection(trainingSignals)] : []),
     ...(readinessNotes ? [...renderSection(readinessNotes)] : []),
     ...(dataGaps ? [...renderSection(dataGaps)] : []),
@@ -106,9 +128,7 @@ export function formatCoachReportText(
       ? [
           "Learnings",
           "What's Working",
-          ...(learnings.whatsWorking.length
-            ? learnings.whatsWorking.map((item) => `- ${item}`)
-            : ["- No validated learnings yet."]),
+          ...(learnings.whatsWorking.length ? learnings.whatsWorking.map((item) => `- ${item}`) : ["- No validated learnings yet."]),
           "",
           "Watch Now",
           ...(learnings.watchNow.length ? learnings.watchNow.map((item) => `- ${item}`) : ["- No active watch items."]),

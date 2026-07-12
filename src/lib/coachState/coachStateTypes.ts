@@ -3,12 +3,14 @@ import type { CardioWalkSummary } from "../cardio/cardioTypes";
 import type { CoachIntelligence } from "../coachExport/coachIntelligence";
 import type {
   CoachExportAnchorLift,
+  CoachExportOverallStatus,
   CoachExportMetrics,
   CoachExportWaistToHeight,
+  CoachExportWeeklyVolume,
 } from "../coachExport/types";
 import type { GoalProgressRow } from "../coachExport/goalEngine";
 
-export type CoachStateOverallStatus = "solid" | "watch" | "intervene" | "not_enough_data";
+export type CoachStateOverallStatus = CoachExportOverallStatus;
 export type CoachStateConfidence = "low" | "moderate" | "high";
 
 export type CoachStateSnapshot = {
@@ -92,6 +94,8 @@ export type CoachStateLearnings = {
   resolved: string[];
 };
 
+export type CoachStateTrainingVolume = CoachExportWeeklyVolume;
+
 export type CoachStateExport = {
   available: boolean;
   sourceMetrics?: CoachExportMetrics;
@@ -105,5 +109,6 @@ export type CoachState = {
   cardio: CoachStateCardio;
   goals: CoachStateGoals;
   learnings: CoachStateLearnings;
+  trainingVolume?: CoachStateTrainingVolume;
   export: CoachStateExport;
 };

@@ -48,6 +48,7 @@ import { buildExerciseVocabulary } from "./exerciseVocabulary";
 import { buildCurrentMovementFocus } from "./currentMovementFocus";
 import { buildGoalProgress } from "./goalEngine";
 import { buildLeanPreservationComposite } from "./leanPreservationComposite";
+import { buildWeeklyVolume } from "./weeklyVolume";
 import { selectRecentStrengthBuildingSessions } from "./strengthBuildingSessions";
 import type {
   CoachExportAnchorLift,
@@ -711,6 +712,14 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     exercises: exercises ?? [],
     recentLimit: 5,
   });
+  const weeklyVolume = buildWeeklyVolume({
+    sessions: sessions ?? [],
+    sets: sets ?? [],
+    tracks: tracks ?? [],
+    exercises: exercises ?? [],
+    asOf: generatedAt,
+    windowDays: 7,
+  });
   const sharedStrengthTrend = await computeStrengthTrend(12, 28);
   const computedStrength = computeStrengthDeltaFromStrengthTrend(sharedStrengthTrend, currentPhase);
   const phaseQualityInputs = buildPhaseQualityInputsFromBodyRows(
@@ -816,6 +825,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     bodyTrendInputs,
     hydration,
     cardioSummary,
+    weeklyVolume,
     bodyConfidence,
     goalProgress,
     leanPreservation,

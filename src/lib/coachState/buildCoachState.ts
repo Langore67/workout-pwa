@@ -105,6 +105,7 @@ export function buildCoachStateFromExportMetrics(metrics: CoachExportMetrics | n
   const goalProgress = source.goalProgress ?? null;
   const coachingMemory = source.coachingMemory ?? null;
   const nextWorkoutFocus = source.nextWorkoutFocus ?? null;
+  const trainingVolume = source.weeklyVolume ?? undefined;
 
   const todayFocus = firstDefined([
     intelligence?.recommendations?.[0],
@@ -159,6 +160,7 @@ export function buildCoachStateFromExportMetrics(metrics: CoachExportMetrics | n
       watchItems: coachingMemory?.activeWatchItems?.map((item) => item.text) ?? [],
       resolved: coachingMemory?.resolvedItems?.map((item) => item.text) ?? [],
     },
+    trainingVolume,
     export: {
       available: metrics != null,
       sourceMetrics: metrics ?? undefined,

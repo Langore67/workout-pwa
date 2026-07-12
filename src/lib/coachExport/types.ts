@@ -134,6 +134,8 @@ export type CoachingMemory = {
   };
 };
 
+export type CoachExportOverallStatus = "solid" | "watch" | "intervene" | "not_enough_data";
+
 export type CoachExportMovementFocusGroup = {
   label: "Pull" | "Push" | "Hinge" | "Squat / Legs" | "Carry" | "Core";
   exercises: string[];
@@ -145,6 +147,101 @@ export type CoachExportNextWorkoutFocus = {
   progressionGuardrails: string[];
   executionPriorities: string[];
   adjustmentTriggers: string[];
+};
+
+export type VolumeCreditKind = "prime" | "support" | "exposure";
+
+export type VolumeBucket =
+  | "chest_pressing"
+  | "upper_chest"
+  | "chest_isolation"
+  | "lats"
+  | "mid_back_rows"
+  | "rear_delts"
+  | "upper_traps"
+  | "lower_traps_scapular_control"
+  | "spinal_erectors"
+  | "serratus_scapular_control"
+  | "anterior_delts"
+  | "lateral_delts"
+  | "rotator_cuff_external_rotation"
+  | "biceps_pull_support"
+  | "biceps_curl_supinated"
+  | "biceps_hammer_brachialis"
+  | "triceps_press_support"
+  | "triceps_isolation"
+  | "triceps_overhead_long_head"
+  | "quads"
+  | "hamstrings"
+  | "glute_max"
+  | "glute_med_min"
+  | "adductors"
+  | "hip_flexors"
+  | "calves"
+  | "tibialis_anterior"
+  | "anterior_core"
+  | "lateral_core"
+  | "anti_rotation_core"
+  | "carry_grip";
+
+export type ExerciseVolumeContribution = {
+  prime?: VolumeBucket[];
+  support?: VolumeBucket[];
+  exposure?: VolumeBucket[];
+};
+
+export type CoachExportWeeklyVolumeGroup = {
+  bucket: VolumeBucket;
+  label: string;
+  primeCredit: number;
+  supportCredit: number;
+  exposureCount: number;
+  totalCredit: number;
+  status: CoachExportOverallStatus;
+  examples: string[];
+};
+
+export type CoachExportWeeklyVolumeRollupPart = {
+  bucket: VolumeBucket;
+  label: string;
+  credit: number;
+  exposureCount?: number;
+};
+
+export type CoachExportWeeklyVolumeRollup = {
+  id: string;
+  label: string;
+  totalCredit: number;
+  exposureCount?: number;
+  status: CoachExportOverallStatus;
+  parts: CoachExportWeeklyVolumeRollupPart[];
+  note?: string;
+};
+
+export type CoachExportWeeklyVolumeBalance = {
+  id: "push_pull" | "pressing_scapular" | "quad_posterior_chain" | "glute_max_med_min" | "arms" | "core_carry";
+  label: string;
+  leftLabel: string;
+  rightLabel: string;
+  leftCredit: number;
+  rightCredit: number;
+  ratio: number | null;
+  status: CoachExportOverallStatus;
+  note: string;
+};
+
+export type CoachExportWeeklyVolume = {
+  windowDays: number;
+  asOf?: string;
+  groups: CoachExportWeeklyVolumeGroup[];
+  rollups: CoachExportWeeklyVolumeRollup[];
+  balances: CoachExportWeeklyVolumeBalance[];
+  unclassified?: Array<{
+    exerciseName: string;
+    setCount: number;
+  }>;
+  status: CoachExportOverallStatus;
+  summary: string;
 };
 
 export type CoachExportMetrics = {
@@ -177,6 +274,7 @@ export type CoachExportMetrics = {
   patternSummary: PatternSummary;
   nextWorkoutFocus: CoachExportNextWorkoutFocus;
   exportConfidence: CoachExportConfidence;
+  weeklyVolume?: CoachExportWeeklyVolume;
   readinessNotes: string[];
   dataNotes: string[];
 };

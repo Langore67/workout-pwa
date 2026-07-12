@@ -8,6 +8,96 @@ import { formatCoachReportText } from "../src/lib/coachReport/formatCoachReportT
 import { buildCoachStateFromExportMetrics } from "../src/lib/coachState/buildCoachState";
 
 function buildFixture(overrides: any = {}) {
+  const weeklyVolume = {
+    windowDays: 7,
+    asOf: new Date("2026-07-06T09:00:00-04:00").toISOString(),
+    groups: [
+      {
+        bucket: "chest_pressing",
+        label: "Chest Pressing",
+        primeCredit: 3,
+        supportCredit: 1.5,
+        exposureCount: 0,
+        totalCredit: 4.5,
+        status: "watch",
+        examples: ["Bench Press"],
+      },
+      {
+        bucket: "lats",
+        label: "Lats",
+        primeCredit: 4,
+        supportCredit: 2,
+        exposureCount: 0,
+        totalCredit: 6,
+        status: "solid",
+        examples: ["Lat Pulldown"],
+      },
+      {
+        bucket: "glute_med_min",
+        label: "Glute Med/Min",
+        primeCredit: 0,
+        supportCredit: 0,
+        exposureCount: 2,
+        totalCredit: 0.5,
+        status: "watch",
+        examples: ["Locked Clams"],
+      },
+    ],
+    rollups: [
+      {
+        id: "chest_push",
+        label: "Chest / Push",
+        totalCredit: 4.5,
+        exposureCount: 0,
+        status: "watch",
+        parts: [{ bucket: "chest_pressing", label: "Chest Pressing", credit: 3, exposureCount: 0 }],
+      },
+      {
+        id: "back_pull",
+        label: "Back / Pull",
+        totalCredit: 6,
+        exposureCount: 0,
+        status: "solid",
+        parts: [{ bucket: "lats", label: "Lats", credit: 6, exposureCount: 0 }],
+      },
+      {
+        id: "lower_glutes",
+        label: "Lower / Glutes",
+        totalCredit: 0.5,
+        exposureCount: 2,
+        status: "watch",
+        parts: [{ bucket: "glute_med_min", label: "Glute Med/Min", credit: 0.5, exposureCount: 2 }],
+      },
+    ],
+    balances: [
+      {
+        id: "push_pull",
+        label: "Push / Pull",
+        leftLabel: "Push",
+        rightLabel: "Pull",
+        leftCredit: 4.5,
+        rightCredit: 6,
+        ratio: 0.75,
+        status: "solid",
+        note: "Push is slightly behind pull.",
+      },
+      {
+        id: "glute_max_med_min",
+        label: "Glute Max / Med-Min",
+        leftLabel: "Glute Max",
+        rightLabel: "Glute Med/Min",
+        leftCredit: 6,
+        rightCredit: 0.5,
+        ratio: 12,
+        status: "intervene",
+        note: "Glute med/min exposure is far behind glute max.",
+      },
+    ],
+    unclassified: [{ exerciseName: "Mystery Row", setCount: 1 }],
+    status: "watch",
+    summary: "Weekly volume is mixed. Push is slightly behind pull.",
+  };
+
   return {
     coachState: {
       generatedAt: Date.UTC(2026, 6, 6, 9, 0, 0, 0),
@@ -89,6 +179,7 @@ function buildFixture(overrides: any = {}) {
         watchItems: ["Trap compensation remains a carry constraint", "Joint feedback appears under higher-fatigue conditions"],
         resolved: [],
       },
+      trainingVolume: weeklyVolume,
     },
     metrics: {
       generatedAt: Date.UTC(2026, 6, 6, 9, 0, 0, 0),
@@ -163,6 +254,7 @@ function buildFixture(overrides: any = {}) {
       trainingSignals: { movementQuality: [], stimulusCoverage: [], fatigueReadiness: [], nextWorkoutFocus: [], discussWithGaz: [] },
       patternSummary: { movementQuality: [], stimulus: [], fatigue: [], constraints: [], progression: [] },
       nextWorkoutFocus: { progressionGuardrails: [], executionPriorities: [], adjustmentTriggers: [] },
+      weeklyVolume,
       exportConfidence: { score: 80, label: "Strong", components: { waistReadiness: 80, weightDataReady: 80, strengthDataReady: 80, coherenceScore: 80 } },
       readinessNotes: [],
       dataNotes: [],
@@ -195,6 +287,12 @@ test("coach report maps snapshot, body, performance, goals, learnings, and cardi
 
   expect(report.learnings?.whatsWorking).toContain("Pull: strong lat stimulus");
   expect(report.learnings?.watchNow).toContain("Trap compensation remains a carry constraint");
+
+  expect(report.weeklyVolume?.title).toBe("Weekly Volume");
+  expect(report.weeklyVolume?.rows.map((row) => row.label)).toContain("Chest / Push");
+  expect(report.weeklyVolume?.balanceRows.map((row) => row.label)).toContain("Push / Pull");
+  expect(report.weeklyVolume?.detailRows?.map((row) => row.label)).toContain("Chest Pressing");
+  expect(report.weeklyVolume?.unclassified).toContain("Mystery Row: 1 set");
 
   expect(report.cardio?.isEmpty).toBeFalsy();
   expect(report.cardio?.rows.map((line) => line.label)).toContain("Last 7 Days");
