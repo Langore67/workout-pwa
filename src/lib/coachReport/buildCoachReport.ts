@@ -110,6 +110,123 @@ function buildLine(label: string, value: string): CoachReportLine {
   return { label, value, text: `- ${label}: ${value}` };
 }
 
+const WEEKLY_VOLUME_SUPPORT_WEIGHT = 0.25;
+
+function roundOne(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
+function effectiveWeeklyVolume(primeCredit: number, supportCredit: number) {
+  return roundOne(primeCredit + supportCredit * WEEKLY_VOLUME_SUPPORT_WEIGHT);
+}
+
+function fmtEffectiveVolume(value: number) {
+  return `${fmtNumber(value, 1)} effective set${Math.abs(value - 1) < 0.05 ? "" : "s"}`;
+}
+
+function fmtExposureCount(value: number, label = "exposure") {
+  return `${value} ${label}${value === 1 ? "" : "s"}`;
+}
+
+function weeklyVolumeStatusLabel(status: string) {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  if (!normalized || normalized === "not_enough_data") return "Not Enough Data";
+  if (normalized === "solid" || normalized === "target") return "Target";
+  if (normalized === "watch" || normalized === "intervene") return "Watch";
+  return status;
+}
+
+function weeklyVolumeStatusValue(status: string) {
+  return weeklyVolumeStatusLabel(status);
+}
+
+function classifyWeeklyVolumeStatus(effective: number, exposureCount: number, size: "large" | "small" | "exposure") {
+  if (effective <= 0 && exposureCount <= 0) return "not_enough_data";
+
+  if (size === "exposure") {
+    if (exposureCount <= 0 && effective <= 0) return "not_enough_data";
+    if (exposureCount >= 2) return "solid";
+    return "watch";
+  }
+
+  if (effective < 1) return "watch";
+  if (size === "small") {
+    if (effective < 3) return "watch";
+    return "solid";
+  }
+
+  if (effective < 5) return "watch";
+  if (effective < 11) return "watch";
+  return "solid";
+}
+
+function classifyWeeklyBalanceStatus(leftEffective: number, rightEffective: number) {
+  const total = leftEffective + rightEffective;
+  if (total <= 0) return "not_enough_data";
+  if (total < 1) return "watch";
+  if (leftEffective <= 0 || rightEffective <= 0) return total >= 4 ? "intervene" : "watch";
+  const ratio = leftEffective / rightEffective;
+  if (ratio >= 0.67 && ratio <= 1.5) return "solid";
+  if (ratio >= 0.5 && ratio < 0.67) return "watch";
+  if (ratio > 1.5 && ratio <= 2) return "watch";
+  return "intervene";
+}
+
+function isSmallWeeklyVolumeRollup(label: string) {
+  return label === "Shoulders / Scapula" || label === "Arms" || label === "Core / Carry";
+}
+
+function summarizeBuckets(volume: NonNullable<CoachState["trainingVolume"]>, bucketIds: string[]) {
+  const groupsByBucket = new Map(volume.groups.map((group) => [group.bucket, group]));
+  let primeCredit = 0;
+  let supportCredit = 0;
+  let exposureCount = 0;
+  const examples = new Set<string>();
+
+  for (const bucketId of bucketIds) {
+    const group = groupsByBucket.get(bucketId as never);
+    if (!group) continue;
+    primeCredit += group.primeCredit;
+    supportCredit += group.supportCredit;
+    exposureCount += group.exposureCount;
+    for (const example of group.examples ?? []) {
+      if (examples.size < 3) examples.add(example);
+    }
+  }
+
+  const effective = effectiveWeeklyVolume(primeCredit, supportCredit);
+  return {
+    primeCredit: roundOne(primeCredit),
+    supportCredit: roundOne(supportCredit),
+    exposureCount,
+    effective,
+    examples: Array.from(examples),
+  };
+}
+
+function weeklyVolumeRollupValue(args: {
+  label: string;
+  effective: number;
+  exposureCount: number;
+  direct?: number;
+  indirect?: number;
+}) {
+  const status = weeklyVolumeStatusValue(
+    classifyWeeklyVolumeStatus(args.effective, args.exposureCount, isSmallWeeklyVolumeRollup(args.label) ? "small" : "large")
+  );
+  const parts: string[] = [status, fmtEffectiveVolume(args.effective)];
+  if (typeof args.direct === "number") {
+    parts.push(`direct ${fmtNumber(args.direct, 1)}`);
+  }
+  if (typeof args.indirect === "number") {
+    parts.push(`indirect support ${fmtNumber(args.indirect, 1)}`);
+  }
+  if (args.exposureCount > 0) {
+    parts.push(`${fmtExposureCount(args.exposureCount, "control exposure")}`);
+  }
+  return parts.join(" | ");
+}
+
 function buildBodyValueLine(
   label: string,
   metric:
@@ -304,23 +421,131 @@ function formatCardioSection(cardio: CoachState["cardio"]): CoachReportCardio {
 
 function formatWeeklyVolumeSection(volume: CoachState["trainingVolume"]): CoachReportWeeklyVolume | undefined {
   if (!volume) return undefined;
+  const chestPush = summarizeBuckets(volume, ["chest_pressing", "upper_chest", "chest_isolation"]);
+  const backPull = summarizeBuckets(volume, ["lats", "mid_back_rows", "rear_delts", "biceps_pull_support"]);
+  const shouldersScapula = summarizeBuckets(volume, [
+    "anterior_delts",
+    "lateral_delts",
+    "rear_delts",
+    "rotator_cuff_external_rotation",
+    "serratus_scapular_control",
+    "lower_traps_scapular_control",
+    "upper_traps",
+  ]);
+  const arms = summarizeBuckets(volume, [
+    "biceps_pull_support",
+    "biceps_curl_supinated",
+    "biceps_hammer_brachialis",
+    "triceps_press_support",
+    "triceps_isolation",
+    "triceps_overhead_long_head",
+  ]);
+  const lowerGlutes = summarizeBuckets(volume, ["quads", "hamstrings", "glute_max", "glute_med_min", "adductors", "hip_flexors", "calves"]);
+  const coreCarry = summarizeBuckets(volume, ["anterior_core", "lateral_core", "anti_rotation_core", "carry_grip"]);
+  const directArms = summarizeBuckets(volume, ["biceps_curl_supinated", "biceps_hammer_brachialis", "triceps_isolation", "triceps_overhead_long_head"]);
+  const indirectArms = summarizeBuckets(volume, ["biceps_pull_support", "triceps_press_support"]);
 
-  const rows: CoachReportLine[] = (volume.rollups ?? []).map((rollup) => {
-    const status = fmtStatus(rollup.status);
-    const valueParts = [`${status} — ${fmtNumber(rollup.totalCredit, 1)} credit`];
-    if ((rollup.exposureCount ?? 0) > 0) {
-      valueParts.push(`${rollup.exposureCount} exposure${rollup.exposureCount === 1 ? "" : "s"}`);
-    }
-    return {
-      label: rollup.label,
-      value: valueParts.join(" | "),
-      text: `- ${rollup.label}: ${valueParts.join(" | ")}`,
-    };
-  });
+  const rows: CoachReportLine[] = [
+    {
+      label: "Chest / Push",
+      value: weeklyVolumeRollupValue({ label: "Chest / Push", effective: chestPush.effective, exposureCount: chestPush.exposureCount }),
+      text: `- Chest / Push: ${weeklyVolumeRollupValue({ label: "Chest / Push", effective: chestPush.effective, exposureCount: chestPush.exposureCount })}`,
+    },
+    {
+      label: "Back / Pull",
+      value: weeklyVolumeRollupValue({ label: "Back / Pull", effective: backPull.effective, exposureCount: backPull.exposureCount }),
+      text: `- Back / Pull: ${weeklyVolumeRollupValue({ label: "Back / Pull", effective: backPull.effective, exposureCount: backPull.exposureCount })}`,
+    },
+    {
+      label: "Shoulders / Scapula",
+      value: weeklyVolumeRollupValue({
+        label: "Shoulders / Scapula",
+        effective: shouldersScapula.effective,
+        exposureCount: shouldersScapula.exposureCount,
+      }),
+      text: `- Shoulders / Scapula: ${weeklyVolumeRollupValue({
+        label: "Shoulders / Scapula",
+        effective: shouldersScapula.effective,
+        exposureCount: shouldersScapula.exposureCount,
+      })}`,
+    },
+    {
+      label: "Arms",
+      value: weeklyVolumeRollupValue({
+        label: "Arms",
+        effective: arms.effective,
+        exposureCount: arms.exposureCount,
+        direct: directArms.effective,
+        indirect: indirectArms.effective,
+      }),
+      text: `- Arms: ${weeklyVolumeRollupValue({
+        label: "Arms",
+        effective: arms.effective,
+        exposureCount: arms.exposureCount,
+        direct: directArms.effective,
+        indirect: indirectArms.effective,
+      })}`,
+    },
+    {
+      label: "Lower / Glutes",
+      value: weeklyVolumeRollupValue({ label: "Lower / Glutes", effective: lowerGlutes.effective, exposureCount: lowerGlutes.exposureCount }),
+      text: `- Lower / Glutes: ${weeklyVolumeRollupValue({
+        label: "Lower / Glutes",
+        effective: lowerGlutes.effective,
+        exposureCount: lowerGlutes.exposureCount,
+      })}`,
+    },
+    {
+      label: "Core / Carry",
+      value: weeklyVolumeRollupValue({ label: "Core / Carry", effective: coreCarry.effective, exposureCount: coreCarry.exposureCount }),
+      text: `- Core / Carry: ${weeklyVolumeRollupValue({ label: "Core / Carry", effective: coreCarry.effective, exposureCount: coreCarry.exposureCount })}`,
+    },
+  ];
 
   const balanceRows: CoachReportLine[] = (volume.balances ?? []).map((balance) => {
-    const ratioText = balance.ratio != null ? ` | ratio ${balance.ratio.toFixed(2)}` : "";
-    const value = `${fmtStatus(balance.status)}${ratioText}`;
+    const leftBuckets = (() => {
+      switch (balance.id) {
+        case "push_pull":
+          return ["chest_pressing", "upper_chest", "chest_isolation", "anterior_delts", "lateral_delts", "triceps_press_support", "triceps_isolation", "triceps_overhead_long_head"];
+        case "pressing_scapular":
+          return ["chest_pressing", "upper_chest", "anterior_delts", "triceps_press_support"];
+        case "quad_posterior_chain":
+          return ["quads"];
+        case "glute_max_med_min":
+          return ["glute_max"];
+        case "arms":
+          return ["biceps_pull_support", "biceps_curl_supinated", "biceps_hammer_brachialis"];
+        case "core_carry":
+          return ["anterior_core", "lateral_core", "anti_rotation_core"];
+        default:
+          return [];
+      }
+    })();
+    const rightBuckets = (() => {
+      switch (balance.id) {
+        case "push_pull":
+          return ["lats", "mid_back_rows", "rear_delts", "biceps_pull_support", "biceps_curl_supinated", "biceps_hammer_brachialis"];
+        case "pressing_scapular":
+          return ["mid_back_rows", "rear_delts", "lower_traps_scapular_control", "rotator_cuff_external_rotation", "serratus_scapular_control"];
+        case "quad_posterior_chain":
+          return ["hamstrings", "glute_max", "spinal_erectors"];
+        case "glute_max_med_min":
+          return ["glute_med_min"];
+        case "arms":
+          return ["triceps_press_support", "triceps_isolation", "triceps_overhead_long_head"];
+        case "core_carry":
+          return ["carry_grip"];
+        default:
+          return [];
+      }
+    })();
+
+    const left = summarizeBuckets(volume, leftBuckets);
+    const right = summarizeBuckets(volume, rightBuckets);
+    const ratio = right.effective > 0 ? roundOne(left.effective / right.effective) : null;
+    const status = classifyWeeklyBalanceStatus(left.effective, right.effective);
+    const value = `${weeklyVolumeStatusValue(status)}${ratio != null ? ` | ratio ${ratio.toFixed(2)}` : ""}`;
+
     return {
       label: balance.label,
       value,
@@ -329,25 +554,41 @@ function formatWeeklyVolumeSection(volume: CoachState["trainingVolume"]): CoachR
   });
 
   const detailRows: CoachReportLine[] = (volume.groups ?? []).map((group) => {
+    const effective = effectiveWeeklyVolume(group.primeCredit, group.supportCredit);
     const parts = [
-      `${fmtNumber(group.primeCredit, 1)} prime`,
-      `${fmtNumber(group.supportCredit, 1)} support`,
-      `${group.exposureCount} exposure${group.exposureCount === 1 ? "" : "s"}`,
-      `${fmtNumber(group.totalCredit, 1)} total`,
+      `Prime ${fmtNumber(group.primeCredit, 1)}`,
+      `Support ${fmtNumber(group.supportCredit, 1)}`,
+      `Effective ${fmtNumber(effective, 1)}`,
+      `Exposure ${group.exposureCount}`,
     ];
     return {
       label: group.label,
-      value: `${fmtStatus(group.status)} | ${parts.join(" | ")}`,
-      text: `- ${group.label}: ${fmtStatus(group.status)} | ${parts.join(" | ")}`,
+      value: parts.join(" | "),
+      text: `- ${group.label}: ${parts.join(" | ")}`,
     };
   });
 
   const unclassified = (volume.unclassified ?? []).map((item) => `${item.exerciseName}: ${item.setCount} set${item.setCount === 1 ? "" : "s"}`);
 
+  const summaryParts: string[] = [];
+  summaryParts.push(backPull.effective >= chestPush.effective ? "Recent pulling volume exceeds pressing volume." : "Recent pressing volume is keeping pace with pulling volume.");
+  summaryParts.push(shouldersScapula.exposureCount > 0 ? "Scapular control work is strong." : "Scapular control work remains below target.");
+  summaryParts.push(lowerGlutes.effective >= 11 ? "Lower-body volume is on target." : "Hip stability work remains below target.");
+  if (directArms.effective > 0 || indirectArms.effective > 0) {
+    summaryParts.push(
+      directArms.effective >= indirectArms.effective
+        ? "Direct arm work is driving the week."
+        : "Indirect pulling and pressing are providing some arm stimulus."
+    );
+  }
+
+  const totalEffective = roundOne(chestPush.effective + backPull.effective + shouldersScapula.effective + arms.effective + lowerGlutes.effective + coreCarry.effective);
+  const totalExposure = chestPush.exposureCount + backPull.exposureCount + shouldersScapula.exposureCount + arms.exposureCount + lowerGlutes.exposureCount + coreCarry.exposureCount;
+
   return {
     title: "Weekly Volume",
-    status: fmtStatus(volume.status),
-    note: volume.summary,
+    status: weeklyVolumeStatusValue(classifyWeeklyVolumeStatus(totalEffective, totalExposure, "large")),
+    note: summaryParts.slice(0, 3).join(" "),
     rows,
     balanceRows,
     detailRows,

@@ -289,9 +289,13 @@ test("coach report maps snapshot, body, performance, goals, learnings, and cardi
   expect(report.learnings?.watchNow).toContain("Trap compensation remains a carry constraint");
 
   expect(report.weeklyVolume?.title).toBe("Weekly Volume");
-  expect(report.weeklyVolume?.rows.map((row) => row.label)).toContain("Chest / Push");
-  expect(report.weeklyVolume?.balanceRows.map((row) => row.label)).toContain("Push / Pull");
-  expect(report.weeklyVolume?.detailRows?.map((row) => row.label)).toContain("Chest Pressing");
+  expect(report.weeklyVolume?.note).toContain("Recent pulling volume exceeds pressing volume.");
+  expect(report.weeklyVolume?.rows.map((row) => row.value).join(" ")).toContain("effective sets");
+  expect(report.weeklyVolume?.rows.map((row) => row.value).join(" ")).toContain("control exposures");
+  expect(report.weeklyVolume?.rows.find((row) => row.label === "Arms")?.value).toContain("indirect support");
+  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.value).toContain("Target");
+  expect(report.weeklyVolume?.detailRows?.find((row) => row.label === "Chest Pressing")?.value).toContain("Prime");
+  expect(report.weeklyVolume?.detailRows?.find((row) => row.label === "Glute Med/Min")?.value).toContain("Exposure");
   expect(report.weeklyVolume?.unclassified).toContain("Mystery Row: 1 set");
 
   expect(report.cardio?.isEmpty).toBeFalsy();

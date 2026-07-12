@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { buildCoachReport } from "../src/lib/coachReport/buildCoachReport";
 import { formatCoachReportText } from "../src/lib/coachReport/formatCoachReportText";
 import { buildCoachStateFromExportMetrics } from "../src/lib/coachState/buildCoachState";
 import type { Exercise, Session, SetEntry, Track } from "../src/db";
@@ -300,4 +301,109 @@ test("weekly volume maps through coach state and renders into the coach report",
   expect(text).toContain("Balance");
   expect(text).toContain("prime");
   expect(text).toContain("support");
+});
+
+test("weekly volume report uses effective volume and coach-language balance labels", async () => {
+  const bench = makeExercise("bench", "Bench Press", "Chest");
+  const pulldown = makeExercise("pulldown", "Lat Pulldown", "Back");
+  const hammer = makeExercise("hammer", "Hammer Curl", "Arms");
+  const wallSlide = makeExercise("wall", "Wall Slide With Lift", "Shoulders");
+  const benchTrack = makeTrack("bench-track", bench.id, "Bench Press", "strength");
+  const pulldownTrack = makeTrack("pulldown-track", pulldown.id, "Lat Pulldown", "strength");
+  const hammerTrack = makeTrack("hammer-track", hammer.id, "Hammer Curl", "strength");
+  const wallTrack = makeTrack("wall-track", wallSlide.id, "Wall Slide With Lift", "corrective");
+  const session = makeSession("s1", 1);
+  const volume = buildVolume({
+    sessions: [session],
+    tracks: [benchTrack, pulldownTrack, hammerTrack, wallTrack],
+    exercises: [bench, pulldown, hammer, wallSlide],
+    sets: [
+      makeSet("set1", session.id, benchTrack.id),
+      makeSet("set2", session.id, pulldownTrack.id),
+      makeSet("set3", session.id, hammerTrack.id),
+      makeSet("set4", session.id, wallTrack.id, "working", { reps: 12 }),
+    ],
+  });
+
+  const metrics = {
+    generatedAt: AS_OF,
+    currentPhase: "cut",
+    bodyComp: {} as any,
+    hydration: { latestWaterPct: null, confidenceLabel: "Low", confidenceScore: 40, note: "Insufficient Data" },
+    cardioSummary: undefined as any,
+    bodyConfidence: undefined as any,
+    coachIntelligence: {
+      overallStatus: "Watch",
+      confidence: "Moderate",
+      summary: "Weekly volume is mixed.",
+      biggestWin: "Pulling volume is ahead of pressing volume.",
+      biggestRisk: "Hip stability work could improve.",
+      fatLossStatus: "Watch",
+      musclePreservationStatus: "Watch",
+      performanceTrendStatus: "Watch",
+      movementQualityStatus: "Watch",
+      recommendations: ["Keep progression balanced."],
+      narrative: [
+        "Fat Loss: Evidence is incomplete.",
+        "Muscle Preservation: Evidence is incomplete.",
+        "Performance Trend: Evidence is incomplete.",
+        "Movement Quality: Evidence is incomplete.",
+      ],
+      watchItems: [],
+    } as any,
+    goalProgress: null,
+    leanPreservation: null,
+    strengthSignal: { current: null, delta14d: null, vs90dBestPct: null, currentBodyweight: null, bodyweightDaysUsed: null },
+    phaseQuality: null,
+    anchorLifts: [],
+    currentMovementFocus: [],
+    exerciseVocabulary: [],
+    trainingSignals: { movementQuality: [], stimulusCoverage: [], fatigueReadiness: [], nextWorkoutFocus: [], discussWithGaz: [] },
+    coachingMemory: { validatedLearnings: [], activeWatchItems: [], resolvedItems: [], sourceWindow: { sessionCount: 1 } } as any,
+    patternSummary: { movementQuality: [], stimulus: [], fatigue: [], constraints: [], progression: [] },
+    nextWorkoutFocus: { progressionGuardrails: [], executionPriorities: [], adjustmentTriggers: [] },
+    weeklyVolume: volume,
+    exportConfidence: { score: 80, label: "Strong", components: { waistReadiness: 80, weightDataReady: 80, strengthDataReady: 80, coherenceScore: 80 } },
+    readinessNotes: [],
+    dataNotes: [],
+  } as any;
+
+  const coachState = buildCoachStateFromExportMetrics(metrics);
+  const report = buildCoachReport({ coachState, metrics });
+
+  expect(report.weeklyVolume?.rows.find((row) => row.label === "Chest / Push")?.value).toContain("effective set");
+  expect(report.weeklyVolume?.rows.find((row) => row.label === "Chest / Push")?.value).toContain("Watch");
+  expect(report.weeklyVolume?.rows.find((row) => row.label === "Back / Pull")?.value).toContain("effective set");
+  expect(report.weeklyVolume?.rows.find((row) => row.label === "Arms")?.value).toContain("direct");
+  expect(report.weeklyVolume?.rows.find((row) => row.label === "Arms")?.value).toContain("indirect support");
+  expect(report.weeklyVolume?.rows.find((row) => row.label === "Shoulders / Scapula")?.value).toContain("control exposure");
+  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.value).toContain("Watch");
+
+  const text = formatCoachReportText(report);
+  expect(text).toContain("effective set");
+  expect(text).toContain("Prime");
+  expect(text).toContain("Support");
+  expect(text).toContain("Effective");
+  expect(text).toContain("Exposure");
+});
+
+test("mobility and exposure-style movements stay out of unclassified volume", async () => {
+  const wallSlide = makeExercise("wall", "Wall Slide With Lift", "Shoulders");
+  const walk = makeExercise("walk", "Treadmill Walk", "Other");
+  const wallTrack = makeTrack("wall-track", wallSlide.id, "Wall Slide With Lift", "corrective");
+  const walkTrack = makeTrack("walk-track", walk.id, "Treadmill Walk", "mobility");
+  const session = makeSession("s1", 1);
+  const volume = buildVolume({
+    sessions: [session],
+    tracks: [wallTrack, walkTrack],
+    exercises: [wallSlide, walk],
+    sets: [
+      makeSet("set1", session.id, wallTrack.id, "working", { reps: 12 }),
+      makeSet("set2", session.id, walkTrack.id, "working", { reps: 30 }),
+    ],
+  });
+
+  expect(volume.unclassified ?? []).toHaveLength(0);
+  expect(volume.groups.find((group) => group.bucket === "serratus_scapular_control")?.exposureCount).toBeGreaterThan(0);
+  expect(volume.groups.find((group) => group.bucket === "hip_flexors")?.exposureCount).toBeGreaterThan(0);
 });

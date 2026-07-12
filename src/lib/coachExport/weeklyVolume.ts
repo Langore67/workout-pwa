@@ -249,7 +249,10 @@ function buildContribution(name: string, exercise?: Exercise | null, track?: Tra
 
   const isExposureOnly =
     isExposureTrackType(track?.trackType) ||
-    includeIf(text, /\b(?:band pull[- ]?apart|y[- ]?wall slide|reverse y|scapular car|external rotation|cable er|band er|clamshell|hip flexor stretch|copenhagen plank|adductor machine|lateral band walk|hip abduction|march|breathing)\b/);
+    includeIf(
+      text,
+      /\b(?:band pull[- ]?apart|wall slide(?: with lift)?|y[- ]?wall slide|reverse y|scapular car|external rotation|cable er|band er|clamshell|hip flexor stretch|copenhagen plank|adductor machine|lateral band walk|hip abduction|march|breathing|over\s*&\s*up|over and back|mirror hip hinge|heel tap|knee[- ]?to[- ]?wall ankle rocks?|treadmill walk|\bwalk\b)\b/
+    );
 
   const fromBodyPart = (() => {
     const part = String(exercise?.bodyPart ?? "").toLowerCase();
@@ -391,6 +394,27 @@ function buildContribution(name: string, exercise?: Exercise | null, track?: Tra
     }
     if (includeIf(text, /\b(?:hanging knee raise|captain'?s chair)\b/)) {
       return { prime: ["anterior_core"], support: ["hip_flexors"] };
+    }
+    if (
+      includeIf(
+        text,
+        /\b(?:band pull[- ]?apart|wall slide(?: with lift)?|y[- ]?wall slide|reverse y|scapular car|over\s*&\s*up|over and back|mirror hip hinge|heel tap|knee[- ]?to[- ]?wall ankle rocks?|treadmill walk|\bwalk\b)\b/
+      )
+    ) {
+      const exposure: VolumeBucket[] = [];
+      if (includeIf(text, /\b(?:band pull[- ]?apart|wall slide(?: with lift)?|y[- ]?wall slide|reverse y|scapular car|over\s*&\s*up|over and back)\b/)) {
+        exposure.push("serratus_scapular_control", "lower_traps_scapular_control", "rotator_cuff_external_rotation");
+      }
+      if (includeIf(text, /\b(?:mirror hip hinge|heel tap)\b/)) {
+        exposure.push("glute_med_min", "lateral_core");
+      }
+      if (includeIf(text, /\b(?:knee[- ]?to[- ]?wall ankle rocks?)\b/)) {
+        exposure.push("tibialis_anterior", "calves");
+      }
+      if (includeIf(text, /\b(?:treadmill walk|\bwalk\b)\b/)) {
+        exposure.push("hip_flexors", "anterior_core");
+      }
+      if (exposure.length) return { exposure };
     }
     return null;
   })();
