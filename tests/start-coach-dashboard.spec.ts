@@ -436,6 +436,8 @@ test.describe("Start Coach Dashboard", () => {
       const volume = page.getByTestId("coach-dashboard-volume");
       await expect(volume).toContainText("Weekly Volume");
       await expect(volume).toContainText("Back / Pull");
+      await expect(volume).toContainText("effective sets");
+      await expect(volume).toContainText("Scapular control work");
       await expect(volume).toContainText("Balance");
 
       const goals = page.getByTestId("coach-dashboard-goals");
@@ -473,6 +475,8 @@ test.describe("Start Coach Dashboard", () => {
     await expect(volume).toContainText("Back / Pull");
     await expect(volume).toContainText("Shoulders / Scapula");
     await expect(volume).toContainText("Lower / Glutes");
+    await expect(volume).toContainText("effective sets");
+    await expect(volume).toContainText("control exposure");
     await expect(volume).toContainText("Balance");
     await expect(volume).toContainText("Push / Pull");
     await expect(volume).toContainText("Pressing / Scapular");

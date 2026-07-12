@@ -79,7 +79,7 @@ export type CoachReportCardio = {
 
 export type CoachReportWeeklyVolume = {
   title: "Weekly Volume";
-  status?: CoachExportOverallStatus;
+  status?: string;
   note?: string;
   rows: CoachReportLine[];
   balanceRows: CoachReportLine[];
