@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+﻿import { expect, test } from "@playwright/test";
 import { buildCoachReport } from "../src/lib/coachReport/buildCoachReport";
 import { formatCoachReportText } from "../src/lib/coachReport/formatCoachReportText";
 import { buildCoachStateFromExportMetrics } from "../src/lib/coachState/buildCoachState";
@@ -286,8 +286,8 @@ test("weekly volume maps through coach state and renders into the coach report",
       status: "Watch",
       note: volume.summary,
       rows: [
-        { label: "Chest / Push", value: "Watch — 4.5 credit", text: "- Chest / Push: Watch — 4.5 credit" },
-        { label: "Back / Pull", value: "Solid — 6.0 credit", text: "- Back / Pull: Solid — 6.0 credit" },
+        { label: "Chest / Push", value: "Watch â€” 4.5 credit", text: "- Chest / Push: Watch â€” 4.5 credit" },
+        { label: "Back / Pull", value: "Solid â€” 6.0 credit", text: "- Back / Pull: Solid â€” 6.0 credit" },
       ],
       balanceRows: [
         {
@@ -299,11 +299,11 @@ test("weekly volume maps through coach state and renders into the coach report",
           rightValue: 6,
           ratio: 0.75,
           status: "solid",
-          statusLabel: "Pull Behind",
+          statusLabel: "Push Behind",
           direction: "right_ahead",
           summary: "Pull volume is ahead of push volume.",
           currentText: "Push: 4.5 effective sets | Pull: 6 effective sets",
-          explanation: "Pull volume is about 0.8x higher than push volume over the recent 7-day window.",
+          explanation: "Pull volume is about 1.3× push volume over the recent 7-day window.",
           action: "Add 3-5 pushing sets over the next 7 days, or hold pull volume steady.",
           ratioText: "Internal ratio: 0.75",
           isContextuallyAcceptable: false,
@@ -400,11 +400,11 @@ test("weekly volume report uses effective volume and coach-language balance labe
   expect(report.weeklyVolume?.rows.find((row) => row.label === "Arms")?.value).toContain("direct");
   expect(report.weeklyVolume?.rows.find((row) => row.label === "Arms")?.value).toContain("indirect support");
   expect(report.weeklyVolume?.rows.find((row) => row.label === "Shoulders / Scapula")?.value).toContain("control exposure");
-  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.statusLabel).toBe("Pull Behind");
+  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.statusLabel).toBe("Balanced");
   expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.currentText).toContain("Push:");
   expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.currentText).toContain("Pull:");
-  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.explanation).toContain("recent 7-day window");
-  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.action).toContain("pushing sets");
+  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.explanation).toContain("expected range");
+  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.action).toContain("Maintain the current distribution");
 
   const text = formatCoachReportText(report);
   expect(text).toContain("effective set");
@@ -413,6 +413,7 @@ test("weekly volume report uses effective volume and coach-language balance labe
   expect(text).toContain("Effective");
   expect(text).toContain("Exposure");
   expect(text).toContain("Antagonistic Balance");
+  expect(text).toContain("×");
   expect(text).toContain("Current:");
   expect(text).toContain("What it means:");
   expect(text).toContain("What to change:");
@@ -438,3 +439,5 @@ test("mobility and exposure-style movements stay out of unclassified volume", as
   expect(volume.groups.find((group) => group.bucket === "serratus_scapular_control")?.exposureCount).toBeGreaterThan(0);
   expect(volume.groups.find((group) => group.bucket === "hip_flexors")?.exposureCount).toBeGreaterThan(0);
 });
+
+

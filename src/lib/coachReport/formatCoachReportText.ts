@@ -51,7 +51,6 @@ function renderWeeklyVolume(volume: CoachReport["weeklyVolume"]) {
       lines.push(`  - What it means: ${row.explanation}`);
       lines.push(`  - What to change: ${row.action}`);
       if (row.ratioText) lines.push(`  - ${row.ratioText}`);
-      if (row.isContextuallyAcceptable) lines.push("  - No immediate change needed.");
     }
   }
   if (volume.detailRows?.length) {

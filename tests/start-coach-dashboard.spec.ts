@@ -490,6 +490,8 @@ test.describe("Start Coach Dashboard", () => {
     await expect(pushPull.getByText("Current:")).toBeVisible();
     await expect(pushPull.getByText("What it means:")).toBeVisible();
     await expect(pushPull.getByText("What to change:")).toBeVisible();
+    await expect(pushPull).toContainText("×");
+    await expect(pushPull).not.toContainText(/ratio\s+\d/i);
     await pushPull.locator("summary").click();
     await expect(pushPull).not.toHaveAttribute("open", "");
 
@@ -500,6 +502,7 @@ test.describe("Start Coach Dashboard", () => {
     await expect(gluteBalance.getByText("Current:")).toBeVisible();
     await expect(gluteBalance.getByText("What it means:")).toBeVisible();
     await expect(gluteBalance.getByText("What to change:")).toBeVisible();
+    await expect(gluteBalance).toContainText("no recent hip-stability work was recorded");
     await gluteBalance.locator("summary").click();
     await expect(gluteBalance).not.toHaveAttribute("open", "");
   });

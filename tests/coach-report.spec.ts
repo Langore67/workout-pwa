@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+﻿import { expect, test } from "@playwright/test";
 import { buildBodyConfidence } from "../src/body/bodyConfidenceEngine";
 import { evaluatePhaseQuality } from "../src/body/phaseQualityModel";
 import { buildLeanPreservationComposite } from "../src/lib/coachExport/leanPreservationComposite";
@@ -79,11 +79,11 @@ function buildFixture(overrides: any = {}) {
         rightValue: 6,
         ratio: 0.75,
         status: "solid",
-        statusLabel: "Pull Behind",
+        statusLabel: "Push Behind",
         direction: "right_ahead",
         summary: "Pull volume is ahead of push volume.",
         currentText: "Push: 4.5 effective sets | Pull: 6 effective sets",
-        explanation: "Pull volume is about 0.8x higher than push volume over the recent 7-day window.",
+        explanation: "Pull volume is about 1.3× push volume over the recent 7-day window.",
         action: "Add 3-5 pushing sets over the next 7 days, or hold pull volume steady.",
         ratioText: "Internal ratio: 0.75",
         isContextuallyAcceptable: false,
@@ -102,7 +102,7 @@ function buildFixture(overrides: any = {}) {
         direction: "left_ahead",
         summary: "Glute max volume is ahead of hip-stability work.",
         currentText: "Glute Max: 6 effective sets | Glute Med/Min: 0.5 effective sets",
-        explanation: "Glute max volume is about 12.0x higher than hip-stability work.",
+        explanation: "Glute max volume is about 12× hip-stability volume.",
         action: "Add 2-4 hip-stability sets or corrective exposures.",
         ratioText: "Internal ratio: 12.00",
         note: "Glute med/min exposure is far behind glute max.",
@@ -308,7 +308,7 @@ test("coach report maps snapshot, body, performance, goals, learnings, and cardi
   expect(report.weeklyVolume?.rows.map((row) => row.value).join(" ")).toContain("effective sets");
   expect(report.weeklyVolume?.rows.map((row) => row.value).join(" ")).toContain("control exposures");
   expect(report.weeklyVolume?.rows.find((row) => row.label === "Arms")?.value).toContain("indirect support");
-  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.statusLabel).toBe("Pull Behind");
+  expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.statusLabel).toBe("Push Behind");
   expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.currentText).toContain("Push:");
   expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.currentText).toContain("Pull:");
   expect(report.weeklyVolume?.balanceRows.find((row) => row.label === "Push / Pull")?.action).toContain("pushing sets");
@@ -499,6 +499,134 @@ test("coach report includes structured export-only sections", async () => {
   );
 });
 
+test("coach report weekly volume balances use corrected direction labels and multipliers", async () => {
+  const report = {
+    generatedAt: new Date(Date.UTC(2026, 6, 6, 9, 0, 0, 0)).toLocaleString(),
+    snapshot: {
+      status: "Watch",
+      confidence: "Moderate",
+      why: "Weekly volume is mixed.",
+      today: "Keep progression balanced.",
+    },
+    weeklyVolume: {
+      title: "Weekly Volume",
+      status: "Watch",
+      note: "Weekly volume is mixed.",
+      rows: [],
+      balanceRows: [
+        {
+          id: "push_pull",
+          label: "Push / Pull",
+          leftLabel: "Push",
+          rightLabel: "Pull",
+          leftValue: 12.8,
+          rightValue: 49,
+          ratio: 0.26,
+          status: "watch",
+          statusLabel: "Push Behind",
+          direction: "right_ahead",
+          summary: "Pull volume is ahead of push volume.",
+          currentText: "Push: 12.8 effective sets | Pull: 49 effective sets",
+          explanation: "Pull volume is about 3.8× push volume over the recent 7-day window.",
+          action: "Add 3-5 pushing sets over the next 7 days, or hold pull volume steady.",
+          ratioText: "Internal ratio: 0.26",
+          note: "Pull volume is ahead of push volume.",
+        },
+        {
+          id: "pressing_scapular",
+          label: "Pressing / Scapular",
+          leftLabel: "Pressing",
+          rightLabel: "Scapular Support",
+          leftValue: 8.8,
+          rightValue: 25,
+          ratio: 0.35,
+          status: "watch",
+          statusLabel: "Scapular Support Ahead",
+          direction: "right_ahead",
+          summary: "Scapular support is ahead of pressing volume.",
+          currentText: "Pressing: 8.8 effective sets | Scapular Support: 25 effective sets",
+          explanation: "Scapular-support volume is about 2.8× pressing volume over the recent 7-day window.",
+          action: "No immediate change needed. Maintain the current emphasis for now.",
+          ratioText: "Internal ratio: 0.35",
+          isContextuallyAcceptable: true,
+          note: "Scapular support is ahead of pressing volume.",
+        },
+        {
+          id: "quad_posterior_chain",
+          label: "Quads / Posterior Chain",
+          leftLabel: "Quads",
+          rightLabel: "Posterior Chain",
+          leftValue: 7,
+          rightValue: 10.9,
+          ratio: 0.64,
+          status: "watch",
+          statusLabel: "Posterior Chain Ahead",
+          direction: "right_ahead",
+          summary: "Posterior-chain work is ahead of quad volume.",
+          currentText: "Quads: 7 effective sets | Posterior Chain: 10.9 effective sets",
+          explanation: "Posterior-chain volume is about 1.6× quad volume over the recent 7-day window.",
+          action: "Add one quad-focused exercise or 2-4 quad sets.",
+          ratioText: "Internal ratio: 0.64",
+          note: "Posterior-chain work is ahead of quad volume.",
+        },
+        {
+          id: "glute_max_med_min",
+          label: "Glute Max / Med-Min",
+          leftLabel: "Glute Max",
+          rightLabel: "Glute Med/Min",
+          leftValue: 6.4,
+          rightValue: 0.3,
+          ratio: 21.33,
+          status: "intervene",
+          statusLabel: "Strong Hip-Extension Bias",
+          direction: "left_ahead",
+          summary: "Glute max volume is ahead of hip-stability work.",
+          currentText: "Glute Max: 6.4 effective sets | Glute Med/Min: 0.3 effective sets",
+          explanation: "Glute-max volume is about 21.3× hip-stability volume.",
+          action: "Add 2-4 hip-stability sets or corrective exposures.",
+          ratioText: "Internal ratio: 21.33",
+          note: "Glute med/min exposure is far behind glute max.",
+        },
+        {
+          id: "core_carry",
+          label: "Core / Carry",
+          leftLabel: "Core",
+          rightLabel: "Carry",
+          leftValue: 3,
+          rightValue: 0,
+          ratio: null,
+          status: "watch",
+          statusLabel: "Core Ahead",
+          direction: "left_ahead",
+          summary: "Core work is ahead of carry exposure.",
+          currentText: "Core: 3 effective sets | Carry: 0 effective sets",
+          explanation: "Core work is present, while no recent carry exposure was recorded.",
+          action: "Add one carry exposure in the next session.",
+          note: "Core work is ahead of carry exposure.",
+        },
+      ],
+    },
+  } as any;
+
+  const text = formatCoachReportText(report as any);
+  expect(text).toContain("Push / Pull: Push Behind");
+  expect(text).toContain("Pull volume is about 3.8× push volume over the recent 7-day window.");
+  expect(text).toContain("Pressing / Scapular: Scapular Support Ahead");
+  expect(text).toContain("Scapular-support volume is about 2.8× pressing volume over the recent 7-day window.");
+  expect(text).toContain("Quads / Posterior Chain: Posterior Chain Ahead");
+  expect(text).toContain("Posterior-chain volume is about 1.6× quad volume over the recent 7-day window.");
+  expect(text).toContain("Glute Max / Med-Min: Strong Hip-Extension Bias");
+  expect(text).toContain("Glute-max volume is about 21.3× hip-stability volume.");
+  expect(text).toContain("Core / Carry: Core Ahead");
+  expect(text).toContain("Core work is present, while no recent carry exposure was recorded.");
+  expect(text).toContain("No immediate change needed. Maintain the current emphasis for now.");
+  expect((text.match(/No immediate change needed\. Maintain the current emphasis for now\./g) ?? [])).toHaveLength(1);
+  expect(text).not.toContain("0.3x higher");
+  expect(text).not.toContain("0.4x higher");
+  expect(text).not.toContain("0.6x higher");
+  expect(text).not.toContain("Infinity");
+});
+
 test("coach export formatter delegates to coach report rendering", async () => {
   const fixture = buildFixture();
   const coachState = buildCoachStateFromExportMetrics(fixture.metrics as any);
@@ -512,3 +640,6 @@ test("coach export formatter delegates to coach report rendering", async () => {
     formatCoachReportText(report, { bodyHeadingOverride: "Body Composition — Coach Trend Values" })
   );
 });
+
+
+
