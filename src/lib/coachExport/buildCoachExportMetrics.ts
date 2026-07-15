@@ -47,6 +47,7 @@ import { buildCoachIntelligence } from "./coachIntelligence";
 import { buildCoachingMemory } from "./coachingMemory";
 import { buildExerciseVocabulary } from "./exerciseVocabulary";
 import { buildCurrentMovementFocus } from "./currentMovementFocus";
+import { buildMovementCoverage } from "./movementCoverage";
 import { buildGoalProgress } from "./goalEngine";
 import { buildLeanPreservationComposite } from "./leanPreservationComposite";
 import { buildWeeklyVolume } from "./weeklyVolume";
@@ -795,6 +796,20 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     anchorLifts: anchorIntelligence,
     asOf: generatedAt,
   });
+  const movementCoverage = buildMovementCoverage({
+    sessions: sessions ?? [],
+    sets: sets ?? [],
+    tracks: tracks ?? [],
+    exercises: exercises ?? [],
+    weeklyVolume,
+    anchorIntelligence,
+    constraintSignals: [
+      ...trainingSignalBundle.trainingSignals.movementQuality,
+      ...trainingSignalBundle.trainingSignals.stimulusCoverage,
+      ...patternSummary.constraints,
+    ],
+    asOf: generatedAt,
+  });
   const nextWorkoutFocus = buildNextWorkoutFocus({
     trainingSignals: trainingSignalBundle.trainingSignals,
     patternSummary,
@@ -842,6 +857,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     phaseQuality,
     anchorLifts: anchorIntelligence,
     currentMovementFocus,
+    movementCoverage,
     exerciseVocabulary,
     trainingSignals: trainingSignalBundle.trainingSignals,
     coachingMemory,

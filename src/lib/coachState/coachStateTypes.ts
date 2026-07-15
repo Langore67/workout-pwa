@@ -7,6 +7,7 @@ import type {
   CoachExportMetrics,
   CoachExportWaistToHeight,
   CoachExportWeeklyVolume,
+  MovementCoverageSummary,
 } from "../coachExport/types";
 import type { GoalProgressRow } from "../coachExport/goalEngine";
 
@@ -51,6 +52,10 @@ export type CoachStateStrengthAnchor = Pick<
   | "isStale"
   | "movementFamily"
   | "status"
+  | "benchmarkStatus"
+  | "movementStatus"
+  | "latestSameExercise"
+  | "latestFamilyMovement"
   | "currentMovement"
   | "relationship"
   | "interpretation"
@@ -101,6 +106,11 @@ export type CoachStateLearnings = {
 
 export type CoachStateTrainingVolume = CoachExportWeeklyVolume;
 
+export type CoachStateMovementCoverage = Pick<
+  MovementCoverageSummary,
+  "status" | "summary" | "entries" | "missingFamilies" | "developingFamilies" | "coveredFamilies"
+>;
+
 export type CoachStateExport = {
   available: boolean;
   sourceMetrics?: CoachExportMetrics;
@@ -115,5 +125,6 @@ export type CoachState = {
   goals: CoachStateGoals;
   learnings: CoachStateLearnings;
   trainingVolume?: CoachStateTrainingVolume;
+  movementCoverage?: CoachStateMovementCoverage;
   export: CoachStateExport;
 };

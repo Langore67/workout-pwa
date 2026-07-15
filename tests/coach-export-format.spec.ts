@@ -1573,7 +1573,7 @@ test("coach export renames anchor lifts to performance anchors and renders curre
 
   expect(text).toContain("Performance Anchors");
   expect(text).not.toContain("Anchor Lifts");
-  expect(anchors).toContain("- push: Bench Press | effective 225 lb x 5 | e1RM 262 | Apr 24, 2026 | 3d old | recent anchor");
+  expect(anchors).toContain("- push: Bench Press | effective 225 lb x 5 | e1RM 262 | Apr 24, 2026 | 3d old | recent benchmark");
   expect(text).toContain("Current Movement Focus");
   expect(focus).toContain("- Pull: MTS Row; Assisted Pull Up; Straight-Arm Cable Pulldown");
   expect(focus).toContain("- Push: Barbell Bench Press; DB Chest Fly; Cable Tricep Pushdown");
@@ -1599,14 +1599,22 @@ test("coach export performance anchors include current movement, relationship, a
       isStale: true,
       movementFamily: "vertical_pull",
       status: "stale_anchor",
+      benchmarkStatus: "stale",
+      movementStatus: "inactive",
       currentMovement: {
         exerciseName: "Assisted Pull Up",
         movementFamily: "vertical_pull",
         performedAt: new Date("2026-04-25T09:00:00-04:00").getTime(),
         ageDays: 2,
       },
+      latestFamilyMovement: {
+        exerciseName: "Assisted Pull Up",
+        movementFamily: "vertical_pull",
+        performedAt: new Date("2026-04-25T09:00:00-04:00").getTime(),
+        ageDays: 2,
+      },
       relationship: "same_family_different_exercise",
-      interpretation: "Historical vertical pull anchor: Lat Pulldown. Current vertical pull movement: Assisted Pull Up.",
+      interpretation: "The stale benchmark is Lat Pulldown. Current vertical pull work uses Assisted Pull Up.",
     } as any,
   ];
 
@@ -1615,10 +1623,12 @@ test("coach export performance anchors include current movement, relationship, a
 
   expect(anchors).toContain("Vertical Pull");
   expect(anchors).toContain("Lat Pulldown | effective 140 lb x 10 | e1RM 187");
-  expect(anchors).toContain("Status: Stale anchor");
-  expect(anchors).toContain("Current Movement: Assisted Pull Up");
+  expect(anchors).toContain("Movement Status: Inactive");
+  expect(anchors).toContain("Latest Vertical Pull Movement: Assisted Pull Up");
+  expect(anchors).toContain("Benchmark Status: Stale");
   expect(anchors).toContain("Relationship: Same movement family");
-  expect(anchors).toContain("Read: Historical vertical pull anchor: Lat Pulldown. Current vertical pull movement: Assisted Pull Up.");
+  expect(anchors).toContain("Read: The stale benchmark is Lat Pulldown. Current vertical pull work uses Assisted Pull Up.");
+  expect(anchors).not.toContain("Status: Stale anchor");
 });
 
 test("coach export labels stale performance anchors without treating them as current evidence", async () => {
@@ -1643,8 +1653,9 @@ test("coach export labels stale performance anchors without treating them as cur
   const text = formatCoachExportText(metrics);
   const anchors = getSection(text, "Performance Anchors", "Current Movement Focus");
 
-  expect(anchors).toContain("57d old | stale anchor");
+  expect(anchors).toContain("57d old | stale benchmark");
   expect(anchors).toContain("Lat Pulldown");
+  expect(anchors).toContain("Benchmark Status: Stale");
   expect(text).not.toContain("Current Movement Focus");
 });
 

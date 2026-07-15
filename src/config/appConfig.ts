@@ -80,6 +80,22 @@ export function dashboardPhaseToPhase(raw: unknown): CurrentPhase {
   return normalizePhase(raw) ?? DEFAULT_PHASE;
 }
 
+async function setInitialPhaseIfMissing(phase: CurrentPhase): Promise<CurrentPhase> {
+  const now = Date.now();
+  try {
+    await db.app_meta.add({
+      key: CURRENT_PHASE_META_KEY,
+      valueJson: JSON.stringify({ phase, updatedAt: now }),
+      updatedAt: now,
+    });
+    return phase;
+  } catch {
+    const row = await db.app_meta.get(CURRENT_PHASE_META_KEY);
+    const parsed = parseStoredJson(row?.valueJson);
+    return normalizePhase((parsed as any)?.phase) ?? phase;
+  }
+}
+
 export async function setCurrentPhase(phaseRaw: unknown): Promise<CurrentPhase> {
   const phase = normalizePhase(phaseRaw) ?? DEFAULT_PHASE;
   const now = Date.now();
@@ -102,12 +118,19 @@ export async function getCurrentPhase(options: {
 
   const fallbackPhase = normalizePhase(options.fallbackPhase);
   if (fallbackPhase) {
-    await setCurrentPhase(fallbackPhase);
-    return fallbackPhase;
+    const latestRow = await db.app_meta.get(CURRENT_PHASE_META_KEY);
+    const latestParsed = parseStoredJson(latestRow?.valueJson);
+    const latestPhase = normalizePhase((latestParsed as any)?.phase);
+    if (latestPhase) return latestPhase;
+    return setInitialPhaseIfMissing(fallbackPhase);
   }
 
   if (options.persistDefaultIfMissing !== false) {
-    await setCurrentPhase(DEFAULT_PHASE);
+    const latestRow = await db.app_meta.get(CURRENT_PHASE_META_KEY);
+    const latestParsed = parseStoredJson(latestRow?.valueJson);
+    const latestPhase = normalizePhase((latestParsed as any)?.phase);
+    if (latestPhase) return latestPhase;
+    return setInitialPhaseIfMissing(DEFAULT_PHASE);
   }
   return DEFAULT_PHASE;
 }

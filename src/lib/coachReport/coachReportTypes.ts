@@ -4,6 +4,8 @@ import type {
   CoachExportAnchorRelationship,
   CoachExportAnchorStatus,
   CoachExportOverallStatus,
+  MovementCoverageRelationship,
+  MovementCoverageStatus,
 } from "../coachExport/types";
 
 export type CoachReportLine = {
@@ -42,6 +44,11 @@ export type CoachReportAnchor = {
   movementFamily?: AnchorMovementFamily;
   status?: CoachExportAnchorStatus;
   statusLabel?: string;
+  benchmarkStatusLabel?: string;
+  movementStatusLabel?: string;
+  latestSameExerciseText?: string;
+  latestFamilyMovementText?: string;
+  performanceBenchmarkText?: string;
   currentMovement?: CoachExportAnchorCurrentMovement | null;
   relationship?: CoachExportAnchorRelationship;
   interpretation?: string | null;
@@ -123,6 +130,24 @@ export type CoachReportWeeklyVolumeBalance = {
   note: string;
 };
 
+export type CoachReportMovementCoverageRow = {
+  label: string;
+  status: MovementCoverageStatus;
+  statusLabel: string;
+  current?: string;
+  anchor?: string;
+  volume?: string;
+  read: string;
+  relationship?: MovementCoverageRelationship;
+};
+
+export type CoachReportMovementCoverage = {
+  title: "Movement Coverage";
+  status?: string;
+  summary?: string;
+  rows: CoachReportMovementCoverageRow[];
+};
+
 export type CoachReport = {
   generatedAt?: string;
   snapshot: CoachReportSnapshot;
@@ -143,6 +168,7 @@ export type CoachReport = {
     visceralFat?: CoachReportSection;
     phaseQuality?: CoachReportSection;
     strengthSignalDetails?: CoachReportSection;
+    movementCoverage?: CoachReportMovementCoverage;
     currentMovementFocus?: CoachReportSection;
     nextWorkoutFocus?: CoachReportSection;
     recentPatterns?: CoachReportSection;

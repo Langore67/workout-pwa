@@ -86,9 +86,14 @@ test.describe("Anchor Intelligence", () => {
     });
 
     expect(result.status).toBe("current_recent");
+    expect(result.benchmarkStatus).toBe("recent");
+    expect(result.movementStatus).toBe("current");
     expect(result.relationship).toBe("same_exercise");
     expect(result.currentMovement.exerciseName).toBe("Incline Barbell Bench Press");
-    expect(result.interpretation).toContain("Current movement matches the performance anchor");
+    expect(result.latestSameExercise.exerciseName).toBe("Incline Barbell Bench Press");
+    expect(result.latestSameExercise.ageDays).toBe(2);
+    expect(result.interpretation).toContain("Incline Barbell Bench Press is current");
+    expect(result.interpretation).toContain("performance benchmark is recent");
   });
 
   test("keeps historical anchors and same-family current movement distinct", async ({ page }) => {
@@ -126,11 +131,116 @@ test.describe("Anchor Intelligence", () => {
     });
 
     expect(result.status).toBe("stale_anchor");
+    expect(result.benchmarkStatus).toBe("stale");
+    expect(result.movementStatus).toBe("inactive");
     expect(result.relationship).toBe("same_family_different_exercise");
     expect(result.movementFamily).toBe("vertical_pull");
     expect(result.currentMovement.exerciseName).toBe("Assisted Pull Up");
-    expect(result.interpretation).toContain("Historical vertical pull anchor: Lat Pulldown");
-    expect(result.interpretation).toContain("Current vertical pull movement: Assisted Pull Up");
+    expect(result.latestSameExercise).toBeUndefined();
+    expect(result.latestFamilyMovement.exerciseName).toBe("Assisted Pull Up");
+    expect(result.interpretation).toContain("stale benchmark is Lat Pulldown");
+    expect(result.interpretation).toContain("Current vertical pull work uses Assisted Pull Up");
+    expect(result.interpretation).not.toContain("replaced");
+  });
+
+  test("separates current same exercise from a stale performance benchmark", async ({ page }) => {
+    await goto(page);
+    const result = await page.evaluate(async () => {
+      const AS_OF = Date.UTC(2026, 6, 14, 9, 0, 0, 0);
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      const { buildAnchorIntelligence } = await import("/src/lib/coachExport/anchorIntelligence.ts");
+      const currentCompletedAt = AS_OF - DAY_MS;
+
+      const anchors = buildAnchorIntelligence({
+        anchors: [
+          {
+            pattern: "hinge",
+            exerciseId: "exercise-trap-bar-deadlift",
+            exerciseName: "Trap Bar Deadlift",
+            trackDisplayName: "Trap Bar Deadlift",
+            effectiveWeightLb: 225,
+            reps: 11,
+            e1rm: 308,
+            performedAt: AS_OF - 40 * DAY_MS,
+            ageDays: 40,
+            recency: "stale",
+            isStale: true,
+          },
+        ] as any,
+        sessions: [{ id: "session-current-trap", startedAt: currentCompletedAt - 45 * 60 * 1000, endedAt: currentCompletedAt }] as any,
+        sets: [{ id: "set-current-trap", sessionId: "session-current-trap", trackId: "track-trap-bar-deadlift", createdAt: currentCompletedAt, completedAt: currentCompletedAt, setType: "working", weight: 185, reps: 6 }] as any,
+        tracks: [{ id: "track-trap-bar-deadlift", exerciseId: "exercise-trap-bar-deadlift", displayName: "Trap Bar Deadlift", trackType: "strength", trackingMode: "weightedReps", warmupSetsDefault: 0, workingSetsDefault: 1, repMin: 1, repMax: 15, restSecondsDefault: 90, weightJumpDefault: 5, createdAt: AS_OF }] as any,
+        exercises: [{ id: "exercise-trap-bar-deadlift", name: "Trap Bar Deadlift", normalizedName: "trap bar deadlift", equipmentTags: [], createdAt: AS_OF }] as any,
+        asOf: AS_OF,
+      });
+
+      return anchors[0];
+    });
+
+    expect(result.benchmarkStatus).toBe("stale");
+    expect(result.movementStatus).toBe("current");
+    expect(result.latestSameExercise.exerciseName).toBe("Trap Bar Deadlift");
+    expect(result.latestSameExercise.ageDays).toBe(1);
+    expect(result.latestFamilyMovement.exerciseName).toBe("Trap Bar Deadlift");
+    expect(result.interpretation).toContain("Trap Bar Deadlift is current");
+    expect(result.interpretation).toContain("performance benchmark is stale");
+    expect(result.interpretation).not.toContain("stale anchor");
+  });
+
+  test("tracks latest same exercise separately from latest same-family variation", async ({ page }) => {
+    await goto(page);
+    const result = await page.evaluate(async () => {
+      const AS_OF = Date.UTC(2026, 6, 14, 9, 0, 0, 0);
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      const { buildAnchorIntelligence } = await import("/src/lib/coachExport/anchorIntelligence.ts");
+      const trapAt = AS_OF - DAY_MS;
+      const rdlAt = AS_OF;
+
+      const anchors = buildAnchorIntelligence({
+        anchors: [
+          {
+            pattern: "hinge",
+            exerciseId: "exercise-trap-bar-deadlift",
+            exerciseName: "Trap Bar Deadlift",
+            trackDisplayName: "Trap Bar Deadlift",
+            effectiveWeightLb: 225,
+            reps: 11,
+            e1rm: 308,
+            performedAt: AS_OF - 40 * DAY_MS,
+            ageDays: 40,
+            recency: "stale",
+            isStale: true,
+          },
+        ] as any,
+        sessions: [
+          { id: "session-trap", startedAt: trapAt - 45 * 60 * 1000, endedAt: trapAt },
+          { id: "session-rdl", startedAt: rdlAt - 45 * 60 * 1000, endedAt: rdlAt },
+        ] as any,
+        sets: [
+          { id: "set-trap", sessionId: "session-trap", trackId: "track-trap", createdAt: trapAt, completedAt: trapAt, setType: "working", weight: 185, reps: 6 },
+          { id: "set-rdl", sessionId: "session-rdl", trackId: "track-rdl", createdAt: rdlAt, completedAt: rdlAt, setType: "working", weight: 80, reps: 10 },
+        ] as any,
+        tracks: [
+          { id: "track-trap", exerciseId: "exercise-trap-bar-deadlift", displayName: "Trap Bar Deadlift", trackType: "strength", trackingMode: "weightedReps", warmupSetsDefault: 0, workingSetsDefault: 1, repMin: 1, repMax: 15, restSecondsDefault: 90, weightJumpDefault: 5, createdAt: AS_OF },
+          { id: "track-rdl", exerciseId: "exercise-single-leg-rdl", displayName: "Single-Leg RDL Right", trackType: "strength", trackingMode: "weightedReps", warmupSetsDefault: 0, workingSetsDefault: 1, repMin: 1, repMax: 15, restSecondsDefault: 90, weightJumpDefault: 5, createdAt: AS_OF },
+        ] as any,
+        exercises: [
+          { id: "exercise-trap-bar-deadlift", name: "Trap Bar Deadlift", normalizedName: "trap bar deadlift", equipmentTags: [], createdAt: AS_OF },
+          { id: "exercise-single-leg-rdl", name: "Single-Leg RDL Right", normalizedName: "single leg rdl right", equipmentTags: [], createdAt: AS_OF },
+        ] as any,
+        asOf: AS_OF,
+      });
+
+      return anchors[0];
+    });
+
+    expect(result.movementStatus).toBe("current");
+    expect(result.latestSameExercise.exerciseName).toBe("Trap Bar Deadlift");
+    expect(result.latestSameExercise.ageDays).toBe(1);
+    expect(result.latestFamilyMovement.exerciseName).toBe("Single-Leg RDL Right");
+    expect(result.latestFamilyMovement.ageDays).toBe(0);
+    expect(result.interpretation).toContain("Trap Bar Deadlift remains current");
+    expect(result.interpretation).toContain("Single-Leg RDL Right is the latest hinge variation");
     expect(result.interpretation).not.toContain("replaced");
   });
 
@@ -211,7 +321,9 @@ test.describe("Anchor Intelligence", () => {
     });
 
     expect(result.status).toBe("missing_date");
-    expect(result.interpretation).toBe("Anchor recency could not be confirmed.");
+    expect(result.benchmarkStatus).toBe("missing_date");
+    expect(result.movementStatus).toBe("inactive");
+    expect(result.interpretation).toBe("Performance benchmark recency could not be confirmed.");
     expect(result.currentMovement).toBeUndefined();
   });
 
@@ -253,14 +365,22 @@ test.describe("Anchor Intelligence", () => {
             isStale: true,
             movementFamily: "vertical_pull",
             status: "stale_anchor",
+            benchmarkStatus: "stale",
+            movementStatus: "inactive",
             currentMovement: {
               exerciseName: "Assisted Pull Up",
               movementFamily: "vertical_pull",
               performedAt: AS_OF - 2 * DAY_MS,
               ageDays: 2,
             },
+            latestFamilyMovement: {
+              exerciseName: "Assisted Pull Up",
+              movementFamily: "vertical_pull",
+              performedAt: AS_OF - 2 * DAY_MS,
+              ageDays: 2,
+            },
             relationship: "same_family_different_exercise",
-            interpretation: "Historical vertical pull anchor: Lat Pulldown. Current vertical pull movement: Assisted Pull Up.",
+            interpretation: "The stale benchmark is Lat Pulldown. Current vertical pull work uses Assisted Pull Up.",
           },
         ],
         exerciseVocabulary: [],
@@ -284,17 +404,23 @@ test.describe("Anchor Intelligence", () => {
     expect(result.coachState.movementFamily).toBe("vertical_pull");
     expect(result.coachState.status).toBe("stale_anchor");
     expect(result.coachState.currentMovement.exerciseName).toBe("Assisted Pull Up");
+    expect(result.coachState.benchmarkStatus).toBe("stale");
+    expect(result.coachState.movementStatus).toBe("inactive");
+    expect(result.coachState.latestFamilyMovement.exerciseName).toBe("Assisted Pull Up");
     expect(result.coachState.relationship).toBe("same_family_different_exercise");
 
     expect(result.report.familyLabel).toBe("Vertical Pull");
-    expect(result.report.statusLabel).toBe("Stale anchor");
-    expect(result.report.currentMovementText).toContain("Assisted Pull Up");
+    expect(result.report.benchmarkStatusLabel).toBe("Stale");
+    expect(result.report.movementStatusLabel).toBe("Inactive");
+    expect(result.report.latestFamilyMovementText).toContain("Assisted Pull Up");
     expect(result.report.relationshipText).toBe("Same movement family");
-    expect(result.report.read).toContain("Historical vertical pull anchor");
+    expect(result.report.read).toContain("stale benchmark");
 
     expect(result.text).toContain("Performance Anchor: Vertical Pull");
-    expect(result.text).toContain("Anchor Status: Stale anchor");
-    expect(result.text).toContain("Current Movement: Assisted Pull Up");
+    expect(result.text).toContain("Movement Status: Inactive");
+    expect(result.text).toContain("Benchmark Status: Stale");
+    expect(result.text).toContain("Latest Family Movement: Assisted Pull Up");
     expect(result.text).toContain("Relationship: Same movement family");
+    expect(result.text).not.toContain("Anchor Status: Stale anchor");
   });
 });

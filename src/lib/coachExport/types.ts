@@ -61,10 +61,18 @@ export type CoachExportAnchorStatus =
   | "stale_anchor"
   | "missing_date";
 
+export type PerformanceBenchmarkStatus = "recent" | "historical" | "stale" | "missing_date";
+
+export type AnchorMovementStatus = "current" | "recent" | "inactive" | "unknown";
+
 export type CoachExportAnchorRelationship =
   | "same_exercise"
   | "same_family_different_exercise"
   | "different_family"
+  | "same_exercise_current"
+  | "same_exercise_and_family_current"
+  | "benchmark_only"
+  | "family_only"
   | "unknown";
 
 export type CoachExportAnchorCurrentMovement = {
@@ -94,6 +102,10 @@ export type CoachExportAnchorLift = {
   isStale?: boolean;
   movementFamily?: AnchorMovementFamily;
   status?: CoachExportAnchorStatus;
+  benchmarkStatus?: PerformanceBenchmarkStatus;
+  movementStatus?: AnchorMovementStatus;
+  latestSameExercise?: CoachExportAnchorCurrentMovement | null;
+  latestFamilyMovement?: CoachExportAnchorCurrentMovement | null;
   currentMovement?: CoachExportAnchorCurrentMovement | null;
   relationship?: CoachExportAnchorRelationship;
   interpretation?: string | null;
@@ -289,6 +301,72 @@ export type CoachExportWeeklyVolume = {
   summary: string;
 };
 
+export type MovementCoverageFamily = Exclude<AnchorMovementFamily, "unknown"> | "hip_stability";
+
+export type MovementCoverageStatus =
+  | "missing"
+  | "developing"
+  | "covered"
+  | "strong"
+  | "not_enough_data";
+
+export type MovementCoverageRelationship =
+  | "same_exercise"
+  | "same_family_different_exercise"
+  | "anchor_only"
+  | "current_only"
+  | "none"
+  | "unknown";
+
+export type MovementCoverageEntry = {
+  family: MovementCoverageFamily;
+  label: string;
+  status: MovementCoverageStatus;
+  lastPerformedDate?: string;
+  ageDays?: number;
+  currentMovement?: {
+    exerciseName: string;
+    performedAt?: string;
+    ageDays?: number;
+  };
+  performanceAnchor?: {
+    legacyCategory?: StrengthPattern;
+    exerciseName: string;
+    date?: string;
+    ageDays?: number;
+    status?: string;
+    e1rm?: number;
+  };
+  relationship: MovementCoverageRelationship;
+  effectiveSets7d: number;
+  directEffectiveSets7d?: number;
+  supportEffectiveSets7d?: number;
+  controlExposures7d: number;
+  sessionCount7d: number;
+  contributingExercises: Array<{
+    exerciseName: string;
+    effectiveSets: number;
+    controlExposures: number;
+    lastPerformedDate?: string;
+  }>;
+  summary: string;
+  interpretation: string;
+  context?: string;
+  isContextuallyAcceptable?: boolean;
+};
+
+export type MovementCoverageSummary = {
+  asOf?: string;
+  volumeWindowDays: 7;
+  recencyWindowDays: number;
+  status: "solid" | "watch" | "intervene" | "not_enough_data";
+  entries: MovementCoverageEntry[];
+  missingFamilies: string[];
+  developingFamilies: string[];
+  coveredFamilies: string[];
+  summary: string;
+};
+
 export type CoachExportMetrics = {
   generatedAt: number;
   currentPhase: CurrentPhase;
@@ -313,6 +391,7 @@ export type CoachExportMetrics = {
   phaseQuality: PhaseQualityResult | null;
   anchorLifts: CoachExportAnchorLift[];
   currentMovementFocus?: CoachExportCurrentMovementFocus;
+  movementCoverage?: MovementCoverageSummary;
   exerciseVocabulary: string[];
   trainingSignals: CoachExportTrainingSignals;
   coachingMemory?: CoachingMemory;
