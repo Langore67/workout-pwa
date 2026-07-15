@@ -1,4 +1,10 @@
-import type { CoachExportOverallStatus } from "../coachExport/types";
+import type {
+  AnchorMovementFamily,
+  CoachExportAnchorCurrentMovement,
+  CoachExportAnchorRelationship,
+  CoachExportAnchorStatus,
+  CoachExportOverallStatus,
+} from "../coachExport/types";
 
 export type CoachReportLine = {
   label: string;
@@ -33,6 +39,16 @@ export type CoachReportAnchor = {
   recency?: string;
   ageText?: string;
   isStale?: boolean;
+  movementFamily?: AnchorMovementFamily;
+  status?: CoachExportAnchorStatus;
+  statusLabel?: string;
+  currentMovement?: CoachExportAnchorCurrentMovement | null;
+  relationship?: CoachExportAnchorRelationship;
+  interpretation?: string | null;
+  familyLabel?: string;
+  currentMovementText?: string;
+  relationshipText?: string;
+  read?: string;
 };
 
 export type CoachReportSnapshot = {

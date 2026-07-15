@@ -1171,6 +1171,9 @@ declare global {
   }
 }
 
-if (import.meta.env.DEV) {
+const isDevRuntime =
+  typeof window !== "undefined" && Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV);
+
+if (isDevRuntime) {
   window.__db = db;
 }

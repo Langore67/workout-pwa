@@ -33,6 +33,7 @@ import {
 import { buildBodyConfidence } from "../../body/bodyConfidenceEngine";
 import { buildRollingBodyMetric } from "../../body/bodyTrendAverages";
 import { buildCardioWalkSummary } from "../cardio/buildCardioWalkSummary";
+import { buildAnchorIntelligence } from "./anchorIntelligence";
 import {
   buildSessionCoachingSignals,
   type SessionSnapshotTrackSummary,
@@ -736,12 +737,20 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
   const phaseQuality =
     (phaseQualityInputs.sampleCount ?? 0) > 0 ? evaluatePhaseQuality(currentPhase, phaseQualityInputs) : null;
   const anchorLifts = await buildAnchorLifts(generatedAt);
+  const anchorIntelligence = buildAnchorIntelligence({
+    anchors: anchorLifts,
+    sessions: sessions ?? [],
+    sets: sets ?? [],
+    tracks: tracks ?? [],
+    exercises: exercises ?? [],
+    asOf: generatedAt,
+  });
   const exerciseVocabulary = buildExerciseVocabulary({
     sessions: sessions ?? [],
     sets: sets ?? [],
     tracks: tracks ?? [],
     exercises: exercises ?? [],
-    anchorLifts,
+    anchorLifts: anchorIntelligence,
     asOf: generatedAt,
     limit: 25,
   });
@@ -783,7 +792,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     exercises: exercises ?? [],
     exerciseVocabulary,
     coachingMemory,
-    anchorLifts,
+    anchorLifts: anchorIntelligence,
     asOf: generatedAt,
   });
   const nextWorkoutFocus = buildNextWorkoutFocus({
@@ -831,7 +840,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     leanPreservation,
     strengthSignal,
     phaseQuality,
-    anchorLifts,
+    anchorLifts: anchorIntelligence,
     currentMovementFocus,
     exerciseVocabulary,
     trainingSignals: trainingSignalBundle.trainingSignals,

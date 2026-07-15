@@ -7,6 +7,11 @@ import {
   isGenericStaleDiscussPrompt,
   normalizeCoachingMemoryText,
 } from "../coachExport/coachingMemory";
+import {
+  formatAnchorMovementFamilyLabel,
+  formatAnchorRelationshipLabel,
+  formatAnchorStatusLabel,
+} from "../coachExport/anchorIntelligence";
 import type {
   CoachReport,
   CoachReportAnchor,
@@ -322,12 +327,46 @@ function fmtSnapshotWhy(state: CoachState) {
   return state.snapshot.narrative ?? state.snapshot.biggestRisk ?? state.snapshot.biggestWin ?? "—";
 }
 
+function selectPerformanceAnchor(state: CoachState) {
+  const anchors = state.strength.anchors ?? [];
+  return (
+    anchors.find(
+      (anchor) =>
+        anchor.currentMovement ||
+        anchor.e1rm != null ||
+        anchor.effectiveWeightLb != null ||
+        anchor.reps != null ||
+        anchor.performedAt != null
+    ) ?? anchors[0]
+  );
+}
+
 function fmtPerformanceRead(state: CoachState) {
   const trend = String(state.strength.performanceTrend ?? "").trim();
   const movement = String(state.strength.movementQuality ?? "").trim();
-  const anchor = state.strength.anchors?.[0];
+  const anchor = selectPerformanceAnchor(state);
   const hasHistoricalAnchor =
-    anchor?.recency === "historical" || anchor?.recency === "stale" || anchor?.isStale;
+    anchor?.recency === "historical" ||
+    anchor?.recency === "stale" ||
+    anchor?.isStale ||
+    (anchor?.status != null && anchor.status !== "current_recent");
+
+  if (anchor?.status === "missing_date") {
+    return "Anchor recency could not be confirmed.";
+  }
+
+  if (anchor?.currentMovement && anchor?.relationship === "same_exercise" && anchor.status === "current_recent") {
+    return "Current movement matches the performance anchor.";
+  }
+
+  if (anchor?.currentMovement && anchor?.relationship === "same_exercise") {
+    return "Current work matches the anchor exercise, but the recorded performance anchor is historical.";
+  }
+
+  if (anchor?.currentMovement && anchor?.relationship === "same_family_different_exercise") {
+    const familyLabel = formatAnchorMovementFamilyLabel(anchor.movementFamily);
+    return `Historical ${familyLabel.toLowerCase()} anchor remains useful while current ${familyLabel.toLowerCase()} work is establishing the active pattern.`;
+  }
 
   if (trend === "Regressing" || trend === "Mixed" || movement === "Watch" || movement === "Mixed") {
     return hasHistoricalAnchor
@@ -852,12 +891,65 @@ function formatAnchorRecencyLabel(lift: NonNullable<CoachExportMetrics["anchorLi
 
 function formatAnchorLiftText(lift: NonNullable<CoachExportMetrics["anchorLifts"]>[number]) {
   if (lift.e1rm == null || lift.effectiveWeightLb == null || lift.reps == null) {
-    return `- ${lift.pattern}: Insufficient Data`;
+    return `${lift.pattern}: Insufficient Data`;
   }
 
   const name = lift.trackDisplayName || lift.exerciseName || "Unknown";
   const recency = formatAnchorRecencyLabel(lift);
-  return `- ${lift.pattern}: ${name} | effective ${fmtNumber(lift.effectiveWeightLb, 0)} lb x ${fmtNumber(lift.reps, 0)} | e1RM ${fmtNumber(lift.e1rm, 0)} | ${formatDate(lift.performedAt)}${recency ? ` | ${recency}` : ""}`;
+  return `${lift.pattern}: ${name} | effective ${fmtNumber(lift.effectiveWeightLb, 0)} lb x ${fmtNumber(lift.reps, 0)} | e1RM ${fmtNumber(lift.e1rm, 0)} | ${formatDate(lift.performedAt)}${recency ? ` | ${recency}` : ""}`;
+}
+
+function formatAnchorStatusText(lift: NonNullable<CoachExportMetrics["anchorLifts"]>[number]) {
+  return formatAnchorStatusLabel(lift.status, lift.recency);
+}
+
+function formatAnchorCurrentMovementText(lift: NonNullable<CoachExportMetrics["anchorLifts"]>[number]) {
+  if (!lift.currentMovement) return null;
+  const dateText =
+    typeof lift.currentMovement.performedAt === "number" && Number.isFinite(lift.currentMovement.performedAt)
+      ? `${formatDate(lift.currentMovement.performedAt)}${typeof lift.currentMovement.ageDays === "number" && Number.isFinite(lift.currentMovement.ageDays) ? ` | ${Math.max(0, Math.floor(lift.currentMovement.ageDays))}d old` : ""}`
+      : null;
+  return [
+    lift.currentMovement.exerciseName,
+    dateText,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+}
+
+function buildAnchorReadText(lift: NonNullable<CoachExportMetrics["anchorLifts"]>[number]) {
+  if (lift.interpretation) return lift.interpretation;
+  if (lift.currentMovement && lift.relationship === "same_exercise" && lift.status === "current_recent") {
+    return "Current movement matches the performance anchor.";
+  }
+  if (lift.currentMovement && lift.relationship === "same_exercise") {
+    return "Current work matches the anchor exercise, but the recorded performance anchor is historical.";
+  }
+  if (lift.currentMovement && lift.relationship === "same_family_different_exercise") {
+    const familyLabel = formatAnchorMovementFamilyLabel(lift.movementFamily);
+    return `Current work remains in the same ${familyLabel.toLowerCase()} family.`;
+  }
+  if (lift.status === "missing_date") {
+    return "Anchor recency could not be confirmed.";
+  }
+  if (lift.status === "stale_anchor" || lift.status === "historical_anchor") {
+    return "Historical anchor remains useful context.";
+  }
+  return "Current anchor remains the active benchmark.";
+}
+
+function buildAnchorReportLines(lift: NonNullable<CoachExportMetrics["anchorLifts"]>[number]) {
+  const familyLabel = formatAnchorMovementFamilyLabel(lift.movementFamily);
+  const statusLabel = formatAnchorStatusText(lift);
+  const summary = formatAnchorLiftText(lift).replace(/^- /, "");
+  const lines = [`Status: ${statusLabel}`, `Performance Anchor: ${summary}`];
+  const currentMovementText = formatAnchorCurrentMovementText(lift);
+  if (currentMovementText) {
+    lines.push(`Current Movement: ${currentMovementText}`);
+  }
+  lines.push(`Relationship: ${formatAnchorRelationshipLabel(lift.relationship)}`);
+  lines.push(`Read: ${buildAnchorReadText(lift)}`);
+  return { heading: familyLabel, items: lines };
 }
 
 function buildLeanPreservationReportSection(metrics: CoachExportMetrics): CoachReportSection | undefined {
@@ -982,6 +1074,7 @@ function buildStrengthSignalReportSection(metrics: CoachExportMetrics): CoachRep
           heading: "Performance Anchors",
           items: metrics.anchorLifts.map(formatAnchorLiftText),
         },
+        ...metrics.anchorLifts.map((lift) => buildAnchorReportLines(lift)),
       ]
     : undefined;
 
@@ -1120,6 +1213,7 @@ export function buildCoachReport({
       ]
     : [];
 
+  const performanceAnchor = selectPerformanceAnchor(coachState);
   const performance: CoachReportPerformance = {
     trend: fmtStatus(coachState.strength.performanceTrend),
     strengthSignal:
@@ -1133,34 +1227,56 @@ export function buildCoachReport({
             .join(" | ")
         : undefined,
     movementQuality: fmtStatus(coachState.strength.movementQuality),
-    anchor: coachState.strength.anchors?.[0]
+    anchor: performanceAnchor
       ? {
           label: "Anchor",
           text:
             [
-              coachState.strength.anchors[0].pattern
-                ? `${String(coachState.strength.anchors[0].pattern).charAt(0).toUpperCase()}${String(coachState.strength.anchors[0].pattern).slice(1)}`
-                : "",
-              coachState.strength.anchors[0].exerciseName ?? coachState.strength.anchors[0].trackDisplayName ?? "",
+              performanceAnchor.exerciseName ?? performanceAnchor.trackDisplayName ?? "",
+              performanceAnchor.effectiveWeightLb != null ? `${fmtNumber(performanceAnchor.effectiveWeightLb)} lb` : null,
+              performanceAnchor.reps != null ? `${fmtNumber(performanceAnchor.reps, 0)} reps` : null,
+              performanceAnchor.e1rm != null ? `e1RM ${fmtNumber(performanceAnchor.e1rm)} lb` : null,
+              typeof performanceAnchor.ageDays === "number" && Number.isFinite(performanceAnchor.ageDays)
+                ? `${Math.max(0, Math.floor(performanceAnchor.ageDays))}d old`
+                : null,
+              performanceAnchor.status
+                ? formatAnchorStatusLabel(performanceAnchor.status, performanceAnchor.recency)
+                : performanceAnchor.recency === "stale"
+                  ? "Stale anchor"
+                  : performanceAnchor.recency === "historical"
+                    ? "Historical anchor"
+                    : performanceAnchor.recency === "recent"
+                      ? "Current"
+                      : null,
             ]
               .filter(Boolean)
-              .join(": ") +
-            " | " +
-            [
-              coachState.strength.anchors[0].effectiveWeightLb != null ? `${fmtNumber(coachState.strength.anchors[0].effectiveWeightLb)} lb` : null,
-              coachState.strength.anchors[0].reps != null ? `${fmtNumber(coachState.strength.anchors[0].reps, 0)} reps` : null,
-            ]
-              .filter(Boolean)
-              .join(" x ") +
-            `${coachState.strength.anchors[0].e1rm != null ? ` | e1RM ${fmtNumber(coachState.strength.anchors[0].e1rm)} lb` : ""}` +
-            `${typeof coachState.strength.anchors[0].ageDays === "number" && Number.isFinite(coachState.strength.anchors[0].ageDays) ? ` | ${Math.max(0, Math.floor(coachState.strength.anchors[0].ageDays))}d old` : ""}` +
-            `${coachState.strength.anchors[0].recency === "stale" ? " | stale anchor" : coachState.strength.anchors[0].recency === "historical" ? " | historical anchor" : coachState.strength.anchors[0].recency === "recent" ? " | recent anchor" : ""}`,
-          recency: coachState.strength.anchors[0].recency,
+              .join(" | "),
+          recency: performanceAnchor.recency,
           ageText:
-            typeof coachState.strength.anchors[0].ageDays === "number" && Number.isFinite(coachState.strength.anchors[0].ageDays)
-              ? `${Math.max(0, Math.floor(coachState.strength.anchors[0].ageDays))}d old`
+            typeof performanceAnchor.ageDays === "number" && Number.isFinite(performanceAnchor.ageDays)
+              ? `${Math.max(0, Math.floor(performanceAnchor.ageDays))}d old`
               : undefined,
-          isStale: coachState.strength.anchors[0].isStale,
+          isStale: performanceAnchor.isStale,
+          movementFamily: performanceAnchor.movementFamily,
+          status: performanceAnchor.status,
+          statusLabel: formatAnchorStatusLabel(performanceAnchor.status, performanceAnchor.recency),
+          currentMovement: performanceAnchor.currentMovement ?? undefined,
+          relationship: performanceAnchor.relationship,
+          interpretation: performanceAnchor.interpretation ?? undefined,
+          familyLabel: formatAnchorMovementFamilyLabel(performanceAnchor.movementFamily),
+          currentMovementText: performanceAnchor.currentMovement
+            ? [
+                performanceAnchor.currentMovement.exerciseName,
+                typeof performanceAnchor.currentMovement.ageDays === "number" &&
+                Number.isFinite(performanceAnchor.currentMovement.ageDays)
+                  ? `${Math.max(0, Math.floor(performanceAnchor.currentMovement.ageDays))}d old`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" | ")
+            : undefined,
+          relationshipText: formatAnchorRelationshipLabel(performanceAnchor.relationship),
+          read: performanceAnchor.interpretation ?? undefined,
         }
       : undefined,
     read: fmtPerformanceRead(coachState),

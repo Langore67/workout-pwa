@@ -186,6 +186,16 @@ function buildMetrics(): CoachExportMetrics {
         ageDays: 3,
         recency: "recent",
         isStale: false,
+        movementFamily: "horizontal_push",
+        status: "current_recent",
+        currentMovement: {
+          exerciseName: "Bench Press",
+          movementFamily: "horizontal_push",
+          performedAt: new Date("2026-04-24T09:00:00-04:00").getTime(),
+          ageDays: 3,
+        },
+        relationship: "same_exercise",
+        interpretation: "Current movement matches the performance anchor.",
       },
     ],
     exerciseVocabulary: ["Bench Press", "Lat Pulldown", "Romanian Deadlift"],
@@ -400,6 +410,11 @@ test("coach state strength section maps trend, signal, and anchors", async () =>
   expect(state.strength.anchors?.[0].ageDays).toBe(3);
   expect(state.strength.anchors?.[0].recency).toBe("recent");
   expect(state.strength.anchors?.[0].isStale).toBe(false);
+  expect(state.strength.anchors?.[0].movementFamily).toBe("horizontal_push");
+  expect(state.strength.anchors?.[0].status).toBe("current_recent");
+  expect(state.strength.anchors?.[0].currentMovement?.exerciseName).toBe("Bench Press");
+  expect(state.strength.anchors?.[0].relationship).toBe("same_exercise");
+  expect(state.strength.anchors?.[0].interpretation).toContain("Current movement matches the performance anchor.");
 });
 
 test("coach state learnings and goals map from export metrics", async () => {

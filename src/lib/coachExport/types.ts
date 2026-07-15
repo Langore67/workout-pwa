@@ -42,6 +42,38 @@ export type CoachExportBodyTrendInputs = {
 
 export type CoachExportRecency = "recent" | "historical" | "stale";
 
+export type AnchorMovementFamily =
+  | "horizontal_push"
+  | "vertical_push"
+  | "horizontal_pull"
+  | "vertical_pull"
+  | "hinge"
+  | "squat"
+  | "single_leg"
+  | "glute_extension"
+  | "carry"
+  | "core"
+  | "unknown";
+
+export type CoachExportAnchorStatus =
+  | "current_recent"
+  | "historical_anchor"
+  | "stale_anchor"
+  | "missing_date";
+
+export type CoachExportAnchorRelationship =
+  | "same_exercise"
+  | "same_family_different_exercise"
+  | "different_family"
+  | "unknown";
+
+export type CoachExportAnchorCurrentMovement = {
+  exerciseName: string;
+  movementFamily: AnchorMovementFamily;
+  performedAt?: number | null;
+  ageDays?: number | null;
+};
+
 export type CoachExportWaistToHeight = CoachExportMetric & {
   status: "Very Lean" | "Healthy" | "Elevated" | "High Risk";
   healthyWaistTargetIn: number;
@@ -60,6 +92,11 @@ export type CoachExportAnchorLift = {
   ageDays?: number | null;
   recency?: CoachExportRecency;
   isStale?: boolean;
+  movementFamily?: AnchorMovementFamily;
+  status?: CoachExportAnchorStatus;
+  currentMovement?: CoachExportAnchorCurrentMovement | null;
+  relationship?: CoachExportAnchorRelationship;
+  interpretation?: string | null;
 };
 
 export type CoachExportHydration = {

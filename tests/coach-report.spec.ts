@@ -158,6 +158,16 @@ function buildFixture(overrides: any = {}) {
             ageDays: 22,
             recency: "historical",
             isStale: true,
+            movementFamily: "vertical_pull",
+            status: "historical_anchor",
+            currentMovement: {
+              exerciseName: "Assisted Pull Up",
+              movementFamily: "vertical_pull",
+              performedAt: Date.UTC(2026, 6, 4, 9, 0, 0, 0),
+              ageDays: 2,
+            },
+            relationship: "same_family_different_exercise",
+            interpretation: "Historical vertical pull anchor: Lat Pulldown. Current vertical pull movement: Assisted Pull Up.",
           },
         ],
       },
@@ -293,9 +303,14 @@ test("coach report maps snapshot, body, performance, goals, learnings, and cardi
   expect(report.body?.values[1].value).toContain("latest/manual");
   expect(report.body?.note).toContain("rolling 5-entry averages except waist");
 
-  expect(report.performance?.anchor?.text).toContain("historical anchor");
+  expect(report.performance?.anchor?.text).toContain("Historical anchor");
   expect(report.performance?.anchor?.text).toContain("22d old");
-  expect(report.performance?.read).toContain("Historical anchors remain useful");
+  expect(report.performance?.anchor?.familyLabel).toBe("Vertical Pull");
+  expect(report.performance?.anchor?.statusLabel).toBe("Historical anchor");
+  expect(report.performance?.anchor?.currentMovementText).toContain("Assisted Pull Up");
+  expect(report.performance?.anchor?.relationshipText).toBe("Same movement family");
+  expect(report.performance?.anchor?.read).toContain("Historical vertical pull anchor");
+  expect(report.performance?.read).toContain("Historical vertical pull anchor remains useful");
 
   expect(report.goals?.trajectory).toBe("Watch");
   expect(report.goals?.read).toContain("Weight goal is close");
