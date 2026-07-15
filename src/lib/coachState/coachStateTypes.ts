@@ -49,6 +49,11 @@ export type CoachStateStrengthAnchor = Pick<
   | "ageDays"
   | "recency"
   | "isStale"
+  | "movementFamily"
+  | "status"
+  | "currentMovement"
+  | "relationship"
+  | "interpretation"
 >;
 
 export type CoachStateStrength = {

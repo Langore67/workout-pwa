@@ -334,6 +334,156 @@ async function seedCoachWeeklyVolumeData(page: Page) {
   });
 }
 
+async function seedCoachAnchorTransitionData(page: Page) {
+  await page.evaluate(async () => {
+    const db = (window as any).__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const { setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
+    const now = Date.now();
+    const oldAnchorSessionId = "session-anchor-old-pull";
+    const recentMovementSessionId = "session-anchor-current-pull";
+    const oldAnchorExerciseId = "exercise-anchor-lat-pulldown";
+    const currentExerciseId = "exercise-anchor-assisted-pull-up";
+    const oldAnchorTrackId = "track-anchor-lat-pulldown";
+    const currentTrackId = "track-anchor-assisted-pull-up";
+
+    await setCurrentPhase("cut");
+    await setStrengthSignalConfig({
+      activeVersion: "v2",
+      strengthSignalV2Config: {
+        phases: {
+          cut: {
+            pull: oldAnchorExerciseId,
+          },
+        },
+      },
+    });
+
+    await db.app_meta.put({
+      key: "profile.heightIn",
+      valueJson: JSON.stringify({ heightIn: 70 }),
+      updatedAt: now,
+    });
+
+    await db.app_meta.put({
+      key: "profile.goals.v1",
+      valueJson: JSON.stringify({
+        targetWeightLb: 180,
+        targetBodyFatPct: 15,
+        targetWaistIn: 35,
+        targetVisceralFatEstimate: 7,
+      }),
+      updatedAt: now,
+    });
+
+    await db.bodyMetrics.put({
+      id: "body-anchor-now",
+      measuredAt: now,
+      takenAt: now,
+      createdAt: now,
+      weightLb: 198,
+      waistIn: 35.5,
+      bodyFatPct: 16.2,
+      leanMassLb: 154.2,
+      visceralFatEstimate: 8.2,
+      bodyWaterPct: 57.4,
+    } as any);
+
+    await db.exercises.bulkPut([
+      {
+        id: oldAnchorExerciseId,
+        name: "Lat Pulldown",
+        normalizedName: "lat pulldown",
+        equipmentTags: ["machine"],
+        anchorEligibility: "conditional",
+        anchorSubtypes: ["verticalPull"],
+        createdAt: now - 60 * 24 * 60 * 60 * 1000,
+      },
+      {
+        id: currentExerciseId,
+        name: "Assisted Pull Up",
+        normalizedName: "assisted pull up",
+        equipmentTags: ["bodyweight"],
+        anchorEligibility: "conditional",
+        anchorSubtypes: ["verticalPull"],
+        createdAt: now,
+      },
+    ] as any[]);
+
+    await db.tracks.bulkPut([
+      {
+        id: oldAnchorTrackId,
+        exerciseId: oldAnchorExerciseId,
+        trackType: "strength",
+        displayName: "Lat Pulldown",
+        trackingMode: "weightedReps",
+        warmupSetsDefault: 0,
+        workingSetsDefault: 1,
+        repMin: 6,
+        repMax: 12,
+        restSecondsDefault: 90,
+        weightJumpDefault: 5,
+        createdAt: now - 60 * 24 * 60 * 60 * 1000,
+      },
+      {
+        id: currentTrackId,
+        exerciseId: currentExerciseId,
+        trackType: "strength",
+        displayName: "Assisted Pull Up",
+        trackingMode: "weightedReps",
+        warmupSetsDefault: 0,
+        workingSetsDefault: 1,
+        repMin: 6,
+        repMax: 12,
+        restSecondsDefault: 90,
+        weightJumpDefault: 5,
+        createdAt: now,
+      },
+    ] as any[]);
+
+    await db.sessions.bulkPut([
+      {
+        id: oldAnchorSessionId,
+        templateName: "Pull A",
+        startedAt: now - 59 * 24 * 60 * 60 * 1000 - 90 * 60 * 1000,
+        endedAt: now - 59 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000,
+      } as any,
+      {
+        id: recentMovementSessionId,
+        templateName: "Pull B",
+        startedAt: now - 2 * 24 * 60 * 60 * 1000 - 90 * 60 * 1000,
+        endedAt: now - 2 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000,
+      } as any,
+    ]);
+
+    await db.sets.bulkPut([
+      {
+        id: "set-old-anchor",
+        sessionId: oldAnchorSessionId,
+        trackId: oldAnchorTrackId,
+        createdAt: now - 59 * 24 * 60 * 60 * 1000 - 88 * 60 * 1000,
+        completedAt: now - 59 * 24 * 60 * 60 * 1000 - 88 * 60 * 1000,
+        setType: "working",
+        weight: 140,
+        reps: 10,
+      } as any,
+      {
+        id: "set-recent-current",
+        sessionId: recentMovementSessionId,
+        trackId: currentTrackId,
+        createdAt: now - 2 * 24 * 60 * 60 * 1000 - 88 * 60 * 1000,
+        completedAt: now - 2 * 24 * 60 * 60 * 1000 - 88 * 60 * 1000,
+        setType: "working",
+        weight: 35,
+        reps: 8,
+      } as any,
+    ]);
+
+    window.dispatchEvent(new CustomEvent("ironforge:coach-dashboard-refresh", { detail: { reason: "anchor:test" } }));
+  });
+}
+
 async function setCoachDashboardTimeoutOverride(page: Page, timeoutMs: number) {
   await page.evaluate((value) => {
     localStorage.setItem("IRONFORGE_COACH_DASHBOARD_TIMEOUT_MS", String(value));
@@ -429,7 +579,8 @@ test.describe("Start Coach Dashboard", () => {
       const performance = page.getByTestId("coach-dashboard-performance");
       await expect(performance).toContainText("Performance Trend");
       await expect(performance).toContainText("Strength Signal");
-      await expect(performance).toContainText("historical anchor");
+      await expect(performance).toContainText("Date unavailable");
+      await expect(performance).toContainText("Anchor recency could not be confirmed.");
       await expect(performance).toContainText("Movement Quality");
       await expect(performance).toContainText("Performance Read");
 
@@ -536,7 +687,25 @@ test.describe("Start Coach Dashboard", () => {
     await waitForCoachDashboardReady(page);
     const performance = page.getByTestId("coach-dashboard-performance");
     await expect(performance).toContainText("Anchor");
-    await expect(performance).toContainText("historical anchor");
+    await expect(performance).toContainText("Date unavailable");
+    await expect(performance).toContainText("Anchor recency could not be confirmed.");
+  });
+
+  test("shows historical anchors alongside the current movement family", async ({ page }) => {
+    await resetDexieDb(page);
+    await seedCoachAnchorTransitionData(page);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    await waitForCoachDashboardReady(page);
+    const performance = page.getByTestId("coach-dashboard-performance");
+    await expect(performance).toContainText("Performance Anchor");
+    await expect(performance).toContainText("Vertical Pull");
+    await expect(performance).toContainText("Stale anchor");
+    await expect(performance).toContainText("Lat Pulldown");
+    await expect(performance).toContainText("Current Movement");
+    await expect(performance).toContainText("Assisted Pull Up");
+    await expect(performance).toContainText("Same movement family");
+    await expect(performance).not.toContainText("replaced");
   });
 
   test("refreshes the dashboard after body data changes without reload", async ({ page }) => {

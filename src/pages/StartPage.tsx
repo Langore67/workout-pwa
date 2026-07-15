@@ -1018,8 +1018,23 @@ export default function StartPage() {
               <div style={{ fontWeight: 800, marginBottom: 8 }}>Performance</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
                 <DashboardLine label="Performance Trend" value={renderedCoachReport?.performance?.trend ?? "—"} />
+                {renderedCoachReport?.performance?.anchor?.familyLabel ? (
+                  <DashboardLine label="Performance Anchor" value={renderedCoachReport.performance.anchor.familyLabel} />
+                ) : null}
+                {renderedCoachReport?.performance?.anchor?.statusLabel ? (
+                  <DashboardLine label="Anchor Status" value={renderedCoachReport.performance.anchor.statusLabel} />
+                ) : null}
                 {renderedCoachReport?.performance?.anchor ? (
-                  <DashboardLine label={renderedCoachReport.performance.anchor.label} value={renderedCoachReport.performance.anchor.text} />
+                  <DashboardLine label="Anchor" value={renderedCoachReport.performance.anchor.text} />
+                ) : null}
+                {renderedCoachReport?.performance?.anchor?.currentMovementText ? (
+                  <DashboardLine
+                    label="Current Movement"
+                    value={renderedCoachReport.performance.anchor.currentMovementText}
+                  />
+                ) : null}
+                {renderedCoachReport?.performance?.anchor?.relationshipText ? (
+                  <DashboardLine label="Relationship" value={renderedCoachReport.performance.anchor.relationshipText} />
                 ) : null}
                 {renderedCoachReport?.performance?.strengthSignal ? (
                   <DashboardLine label="Strength Signal" value={renderedCoachReport.performance.strengthSignal} />

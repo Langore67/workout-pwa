@@ -113,7 +113,16 @@ export function formatCoachReportText(
           "Performance",
           `- Performance Trend: ${performance.trend ?? "—"}`,
           ...(performance.strengthSignal ? [`- Strength Signal: ${performance.strengthSignal}`] : []),
-          ...(performance.anchor ? [`- ${performance.anchor.label}: ${performance.anchor.text}`] : []),
+          ...(performance.anchor
+            ? [
+                `- Performance Anchor: ${performance.anchor.familyLabel ?? performance.anchor.label}`,
+                ...(performance.anchor.statusLabel ? [`- Anchor Status: ${performance.anchor.statusLabel}`] : []),
+                `- Anchor: ${performance.anchor.text}`,
+                ...(performance.anchor.currentMovementText ? [`- Current Movement: ${performance.anchor.currentMovementText}`] : []),
+                ...(performance.anchor.relationshipText ? [`- Relationship: ${performance.anchor.relationshipText}`] : []),
+                ...(performance.anchor.read ? [`- Read: ${performance.anchor.read}`] : []),
+              ]
+            : []),
           `- Movement Quality: ${performance.movementQuality ?? "—"}`,
           ...(performance.read ? [`- Performance Read: ${performance.read}`] : []),
           "",

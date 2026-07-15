@@ -1582,6 +1582,45 @@ test("coach export renames anchor lifts to performance anchors and renders curre
   expect(focus).toContain("- Carry: Farmer Carry");
 });
 
+test("coach export performance anchors include current movement, relationship, and read text", async () => {
+  const metrics = buildMetrics();
+  metrics.anchorLifts = [
+    {
+      pattern: "pull",
+      exerciseId: "lat",
+      exerciseName: "Lat Pulldown",
+      trackDisplayName: "Lat Pulldown",
+      effectiveWeightLb: 140,
+      reps: 10,
+      e1rm: 187,
+      performedAt: new Date("2026-03-01T09:00:00-04:00").getTime(),
+      ageDays: 59,
+      recency: "stale",
+      isStale: true,
+      movementFamily: "vertical_pull",
+      status: "stale_anchor",
+      currentMovement: {
+        exerciseName: "Assisted Pull Up",
+        movementFamily: "vertical_pull",
+        performedAt: new Date("2026-04-25T09:00:00-04:00").getTime(),
+        ageDays: 2,
+      },
+      relationship: "same_family_different_exercise",
+      interpretation: "Historical vertical pull anchor: Lat Pulldown. Current vertical pull movement: Assisted Pull Up.",
+    } as any,
+  ];
+
+  const text = formatCoachExportText(metrics as any);
+  const anchors = getSection(text, "Performance Anchors", "Current Movement Focus");
+
+  expect(anchors).toContain("Vertical Pull");
+  expect(anchors).toContain("Lat Pulldown | effective 140 lb x 10 | e1RM 187");
+  expect(anchors).toContain("Status: Stale anchor");
+  expect(anchors).toContain("Current Movement: Assisted Pull Up");
+  expect(anchors).toContain("Relationship: Same movement family");
+  expect(anchors).toContain("Read: Historical vertical pull anchor: Lat Pulldown. Current vertical pull movement: Assisted Pull Up.");
+});
+
 test("coach export labels stale performance anchors without treating them as current evidence", async () => {
   const metrics = buildMetrics();
   metrics.anchorLifts = [

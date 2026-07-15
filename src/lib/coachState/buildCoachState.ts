@@ -95,6 +95,18 @@ function buildStrengthAnchors(metrics: CoachExportMetrics): CoachStateStrengthAn
     ageDays: lift.ageDays,
     recency: lift.recency,
     isStale: lift.isStale,
+    movementFamily: lift.movementFamily,
+    status: lift.status,
+    currentMovement: lift.currentMovement
+      ? {
+          exerciseName: lift.currentMovement.exerciseName,
+          movementFamily: lift.currentMovement.movementFamily,
+          performedAt: lift.currentMovement.performedAt,
+          ageDays: lift.currentMovement.ageDays,
+        }
+      : undefined,
+    relationship: lift.relationship,
+    interpretation: lift.interpretation ?? undefined,
   }));
 }
 
