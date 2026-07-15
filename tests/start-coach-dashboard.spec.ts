@@ -580,7 +580,7 @@ test.describe("Start Coach Dashboard", () => {
       await expect(performance).toContainText("Performance Trend");
       await expect(performance).toContainText("Strength Signal");
       await expect(performance).toContainText("Date unavailable");
-      await expect(performance).toContainText("Anchor recency could not be confirmed.");
+      await expect(performance).toContainText("Performance benchmark recency could not be confirmed.");
       await expect(performance).toContainText("Movement Quality");
       await expect(performance).toContainText("Performance Read");
 
@@ -688,7 +688,7 @@ test.describe("Start Coach Dashboard", () => {
     const performance = page.getByTestId("coach-dashboard-performance");
     await expect(performance).toContainText("Anchor");
     await expect(performance).toContainText("Date unavailable");
-    await expect(performance).toContainText("Anchor recency could not be confirmed.");
+    await expect(performance).toContainText("Performance benchmark recency could not be confirmed.");
   });
 
   test("shows historical anchors alongside the current movement family", async ({ page }) => {
@@ -700,11 +700,13 @@ test.describe("Start Coach Dashboard", () => {
     const performance = page.getByTestId("coach-dashboard-performance");
     await expect(performance).toContainText("Performance Anchor");
     await expect(performance).toContainText("Vertical Pull");
-    await expect(performance).toContainText("Stale anchor");
+    await expect(performance).toContainText("Benchmark");
+    await expect(performance).toContainText("Stale");
     await expect(performance).toContainText("Lat Pulldown");
-    await expect(performance).toContainText("Current Movement");
+    await expect(performance).toContainText("Family Movement");
     await expect(performance).toContainText("Assisted Pull Up");
     await expect(performance).toContainText("Same movement family");
+    await expect(performance).toContainText("historical vertical pull benchmark");
     await expect(performance).not.toContainText("replaced");
   });
 

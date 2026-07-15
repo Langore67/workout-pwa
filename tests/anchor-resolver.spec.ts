@@ -997,7 +997,7 @@ test.describe("Strength Signal v2 anchor resolver", () => {
       const db = window.__db;
       if (!db) throw new Error("__db missing on window.");
 
-      const { setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
+      const { getCurrentPhase, setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
       const strengthV2 = await import("/src/strength/v2/computeStrengthSignalV2.ts");
 
       const now = Date.now();
@@ -1017,6 +1017,7 @@ test.describe("Strength Signal v2 anchor resolver", () => {
         strengthSignalV2Config: { phases: {} },
       });
       await setCurrentPhase("bulk");
+      const phaseBeforeCompute = await getCurrentPhase();
 
       await db.sessions.add({
         id: sessionId,
@@ -1070,11 +1071,15 @@ test.describe("Strength Signal v2 anchor resolver", () => {
       const bulk = await strengthV2.computeStrengthSignalV2({ now });
 
       return {
+        phaseBeforeCompute,
+        resultPhase: bulk.phase,
         bulkKeys: Object.keys(bulk.anchors).sort(),
         carryName: bulk.anchors.carry?.exerciseName ?? null,
       };
     });
 
+    expect(result.phaseBeforeCompute).toBe("bulk");
+    expect(result.resultPhase).toBe("bulk");
     expect(result.bulkKeys).toEqual([
       "carry",
       "hinge",
@@ -1085,6 +1090,55 @@ test.describe("Strength Signal v2 anchor resolver", () => {
       "verticalPush",
     ]);
     expect(result.carryName).toBe("Farmer Carry");
+  });
+
+  test("phase switching is observed immediately by Strength Signal v2", async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const { getCurrentPhase, setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
+      const strengthV2 = await import("/src/strength/v2/computeStrengthSignalV2.ts");
+      const now = Date.now();
+
+      await setStrengthSignalConfig({
+        activeVersion: "v2",
+        strengthSignalV2Config: { phases: {} },
+      });
+
+      await setCurrentPhase("cut");
+      const cutPhase = await getCurrentPhase();
+      const cut = await strengthV2.computeStrengthSignalV2({ now });
+
+      await setCurrentPhase("bulk");
+      const bulkPhase = await getCurrentPhase();
+      const bulk = await strengthV2.computeStrengthSignalV2({ now });
+
+      await setCurrentPhase("maintain");
+      const maintainPhase = await getCurrentPhase();
+      const maintain = await strengthV2.computeStrengthSignalV2({ now });
+
+      return {
+        cutPhase,
+        cutKeys: Object.keys(cut.anchors).sort(),
+        bulkPhase,
+        bulkKeys: Object.keys(bulk.anchors).sort(),
+        maintainPhase,
+        maintainKeys: Object.keys(maintain.anchors).sort(),
+      };
+    });
+
+    expect(result.cutPhase).toBe("cut");
+    expect(result.cutKeys).toEqual(["hinge", "pull", "push", "squat"]);
+    expect(result.bulkPhase).toBe("bulk");
+    expect(result.bulkKeys).toEqual([
+      "carry",
+      "hinge",
+      "horizontalPull",
+      "horizontalPush",
+      "squat",
+      "verticalPull",
+      "verticalPush",
+    ]);
+    expect(result.maintainPhase).toBe("maintain");
+    expect(result.maintainKeys).toEqual(["hinge", "pull", "push", "squat"]);
   });
 
   test("a BULK-only anchor does not appear in CUT or MAINTAIN full-path results", async ({ page }) => {
@@ -1303,7 +1357,7 @@ test.describe("Strength Signal v2 anchor resolver", () => {
       const db = window.__db;
       if (!db) throw new Error("__db missing on window.");
 
-      const { setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
+      const { getCurrentPhase, setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
       const strengthV2 = await import("/src/strength/v2/computeStrengthSignalV2.ts");
       const performanceAnchors = await import("/src/strength/performanceAnchorContext.ts");
 
@@ -1321,6 +1375,7 @@ test.describe("Strength Signal v2 anchor resolver", () => {
         strengthSignalV2Config: { phases: {} },
       });
       await setCurrentPhase("bulk");
+      const phaseBeforeCompute = await getCurrentPhase();
 
       await db.sessions.add({
         id: sessionId,
@@ -1376,6 +1431,8 @@ test.describe("Strength Signal v2 anchor resolver", () => {
         performanceAnchors.getPerformanceAnchorIdsFromStrengthSignalV2(v2Result);
 
       return {
+        phaseBeforeCompute,
+        resultPhase: v2Result.phase,
         v2PushAnchorIds: [
           v2Result.anchors.horizontalPush?.anchorId ?? null,
           v2Result.anchors.verticalPush?.anchorId ?? null,
@@ -1389,7 +1446,11 @@ test.describe("Strength Signal v2 anchor resolver", () => {
       };
     });
 
+    expect(result.phaseBeforeCompute).toBe("bulk");
+    expect(result.resultPhase).toBe("bulk");
     expect(result).toEqual({
+      phaseBeforeCompute: "bulk",
+      resultPhase: "bulk",
       v2PushAnchorIds: ["horizontal-push-id", "vertical-push-id"],
       performancePushAnchorIds: ["horizontal-push-id", "vertical-push-id"],
       v2PullAnchorIds: ["horizontal-pull-id", "vertical-pull-id"],

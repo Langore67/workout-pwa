@@ -276,11 +276,11 @@ function fmtAnchorSummary(anchor?: CoachStateAnchor | null) {
       : null;
   const recency =
     anchor.recency === "stale"
-      ? "stale anchor"
+      ? "stale benchmark"
       : anchor.recency === "historical"
-        ? "historical anchor"
+        ? "historical benchmark"
         : anchor.recency === "recent"
-          ? "recent anchor"
+          ? "recent benchmark"
           : null;
   return [parts.join(": "), load, e1rm, age, recency].filter(Boolean).join(" | ");
 }
@@ -1021,16 +1021,25 @@ export default function StartPage() {
                 {renderedCoachReport?.performance?.anchor?.familyLabel ? (
                   <DashboardLine label="Performance Anchor" value={renderedCoachReport.performance.anchor.familyLabel} />
                 ) : null}
-                {renderedCoachReport?.performance?.anchor?.statusLabel ? (
-                  <DashboardLine label="Anchor Status" value={renderedCoachReport.performance.anchor.statusLabel} />
+                {renderedCoachReport?.performance?.anchor?.movementStatusLabel ? (
+                  <DashboardLine label="Movement" value={renderedCoachReport.performance.anchor.movementStatusLabel} />
+                ) : null}
+                {renderedCoachReport?.performance?.anchor?.benchmarkStatusLabel ? (
+                  <DashboardLine label="Benchmark" value={renderedCoachReport.performance.anchor.benchmarkStatusLabel} />
                 ) : null}
                 {renderedCoachReport?.performance?.anchor ? (
-                  <DashboardLine label="Anchor" value={renderedCoachReport.performance.anchor.text} />
+                  <DashboardLine label="Anchor" value={renderedCoachReport.performance.anchor.performanceBenchmarkText ?? renderedCoachReport.performance.anchor.text} />
                 ) : null}
-                {renderedCoachReport?.performance?.anchor?.currentMovementText ? (
+                {renderedCoachReport?.performance?.anchor?.latestSameExerciseText ? (
                   <DashboardLine
-                    label="Current Movement"
-                    value={renderedCoachReport.performance.anchor.currentMovementText}
+                    label="Same Exercise"
+                    value={renderedCoachReport.performance.anchor.latestSameExerciseText}
+                  />
+                ) : null}
+                {renderedCoachReport?.performance?.anchor?.latestFamilyMovementText ? (
+                  <DashboardLine
+                    label="Family Movement"
+                    value={renderedCoachReport.performance.anchor.latestFamilyMovementText}
                   />
                 ) : null}
                 {renderedCoachReport?.performance?.anchor?.relationshipText ? (

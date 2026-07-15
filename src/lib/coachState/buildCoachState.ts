@@ -97,6 +97,24 @@ function buildStrengthAnchors(metrics: CoachExportMetrics): CoachStateStrengthAn
     isStale: lift.isStale,
     movementFamily: lift.movementFamily,
     status: lift.status,
+    benchmarkStatus: lift.benchmarkStatus,
+    movementStatus: lift.movementStatus,
+    latestSameExercise: lift.latestSameExercise
+      ? {
+          exerciseName: lift.latestSameExercise.exerciseName,
+          movementFamily: lift.latestSameExercise.movementFamily,
+          performedAt: lift.latestSameExercise.performedAt,
+          ageDays: lift.latestSameExercise.ageDays,
+        }
+      : undefined,
+    latestFamilyMovement: lift.latestFamilyMovement
+      ? {
+          exerciseName: lift.latestFamilyMovement.exerciseName,
+          movementFamily: lift.latestFamilyMovement.movementFamily,
+          performedAt: lift.latestFamilyMovement.performedAt,
+          ageDays: lift.latestFamilyMovement.ageDays,
+        }
+      : undefined,
     currentMovement: lift.currentMovement
       ? {
           exerciseName: lift.currentMovement.exerciseName,
@@ -118,6 +136,16 @@ export function buildCoachStateFromExportMetrics(metrics: CoachExportMetrics | n
   const coachingMemory = source.coachingMemory ?? null;
   const nextWorkoutFocus = source.nextWorkoutFocus ?? null;
   const trainingVolume = source.weeklyVolume ?? undefined;
+  const movementCoverage = source.movementCoverage
+    ? {
+        status: source.movementCoverage.status,
+        summary: source.movementCoverage.summary,
+        entries: source.movementCoverage.entries,
+        missingFamilies: source.movementCoverage.missingFamilies,
+        developingFamilies: source.movementCoverage.developingFamilies,
+        coveredFamilies: source.movementCoverage.coveredFamilies,
+      }
+    : undefined;
 
   const todayFocus = firstDefined([
     intelligence?.recommendations?.[0],
@@ -173,6 +201,7 @@ export function buildCoachStateFromExportMetrics(metrics: CoachExportMetrics | n
       resolved: coachingMemory?.resolvedItems?.map((item) => item.text) ?? [],
     },
     trainingVolume,
+    movementCoverage,
     export: {
       available: metrics != null,
       sourceMetrics: metrics ?? undefined,

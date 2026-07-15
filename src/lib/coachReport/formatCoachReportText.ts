@@ -63,6 +63,23 @@ function renderWeeklyVolume(volume: CoachReport["weeklyVolume"]) {
   return lines;
 }
 
+function renderMovementCoverage(coverage: NonNullable<CoachReport["exportOnly"]>["movementCoverage"]) {
+  if (!coverage) return [] as string[];
+
+  const lines: string[] = [coverage.title];
+  if (coverage.status) lines.push(`- Status: ${coverage.status}`);
+  if (coverage.summary) lines.push(`- Summary: ${coverage.summary}`);
+  for (const row of coverage.rows) {
+    lines.push(`- ${row.label}: ${row.statusLabel}`);
+    lines.push(`  - Current: ${row.current ?? "None"}`);
+    if (row.anchor) lines.push(`  - Historical Anchor: ${row.anchor}`);
+    if (row.volume) lines.push(`  - Recent Work: ${row.volume}`);
+    lines.push(`  - Read: ${row.read}`);
+  }
+  lines.push("");
+  return lines;
+}
+
 export function formatCoachReportText(
   report: CoachReport,
   options: {
@@ -116,9 +133,13 @@ export function formatCoachReportText(
           ...(performance.anchor
             ? [
                 `- Performance Anchor: ${performance.anchor.familyLabel ?? performance.anchor.label}`,
-                ...(performance.anchor.statusLabel ? [`- Anchor Status: ${performance.anchor.statusLabel}`] : []),
-                `- Anchor: ${performance.anchor.text}`,
-                ...(performance.anchor.currentMovementText ? [`- Current Movement: ${performance.anchor.currentMovementText}`] : []),
+                ...(performance.anchor.movementStatusLabel ? [`- Movement Status: ${performance.anchor.movementStatusLabel}`] : []),
+                ...(performance.anchor.latestSameExerciseText ? [`- Latest Same Exercise: ${performance.anchor.latestSameExerciseText}`] : []),
+                ...(performance.anchor.latestFamilyMovementText && performance.anchor.latestFamilyMovementText !== performance.anchor.latestSameExerciseText
+                  ? [`- Latest Family Movement: ${performance.anchor.latestFamilyMovementText}`]
+                  : []),
+                ...(performance.anchor.benchmarkStatusLabel ? [`- Benchmark Status: ${performance.anchor.benchmarkStatusLabel}`] : []),
+                `- Performance Benchmark: ${performance.anchor.performanceBenchmarkText ?? performance.anchor.text}`,
                 ...(performance.anchor.relationshipText ? [`- Relationship: ${performance.anchor.relationshipText}`] : []),
                 ...(performance.anchor.read ? [`- Read: ${performance.anchor.read}`] : []),
               ]
@@ -169,6 +190,7 @@ export function formatCoachReportText(
           ...renderSection(exportOnly.visceralFat),
           ...renderSection(exportOnly.phaseQuality),
           ...renderSection(exportOnly.strengthSignalDetails),
+          ...renderMovementCoverage(exportOnly.movementCoverage),
           ...renderSection(exportOnly.currentMovementFocus),
           ...renderSection(exportOnly.nextWorkoutFocus),
           ...renderSection(exportOnly.recentPatterns),

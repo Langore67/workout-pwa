@@ -20,6 +20,7 @@ import type {
   CoachReportGoals,
   CoachReportLine,
   CoachReportLearnings,
+  CoachReportMovementCoverage,
   CoachReportPerformance,
   CoachReportSection,
   CoachReportWeeklyVolumeBalance,
@@ -352,20 +353,23 @@ function fmtPerformanceRead(state: CoachState) {
     (anchor?.status != null && anchor.status !== "current_recent");
 
   if (anchor?.status === "missing_date") {
-    return "Anchor recency could not be confirmed.";
+    return "Performance benchmark recency could not be confirmed.";
   }
 
-  if (anchor?.currentMovement && anchor?.relationship === "same_exercise" && anchor.status === "current_recent") {
-    return "Current movement matches the performance anchor.";
+  if (anchor?.latestSameExercise) {
+    const benchmarkStatus =
+      anchor.benchmarkStatus === "stale"
+        ? "stale"
+        : anchor.benchmarkStatus === "historical"
+          ? "historical"
+          : "recent";
+    return `${anchor.latestSameExercise.exerciseName} remains ${anchor.movementStatus === "current" ? "current" : "recently trained"}, while the recorded performance benchmark is ${benchmarkStatus}.`;
   }
 
-  if (anchor?.currentMovement && anchor?.relationship === "same_exercise") {
-    return "Current work matches the anchor exercise, but the recorded performance anchor is historical.";
-  }
-
-  if (anchor?.currentMovement && anchor?.relationship === "same_family_different_exercise") {
+  if ((anchor?.latestFamilyMovement ?? anchor?.currentMovement) && anchor?.relationship === "same_family_different_exercise") {
     const familyLabel = formatAnchorMovementFamilyLabel(anchor.movementFamily);
-    return `Historical ${familyLabel.toLowerCase()} anchor remains useful while current ${familyLabel.toLowerCase()} work is establishing the active pattern.`;
+    const currentName = (anchor.latestFamilyMovement ?? anchor.currentMovement)?.exerciseName;
+    return `The historical ${familyLabel.toLowerCase()} benchmark remains useful while current ${familyLabel.toLowerCase()} work uses ${currentName}.`;
   }
 
   if (trend === "Regressing" || trend === "Mixed" || movement === "Watch" || movement === "Mixed") {
@@ -857,17 +861,18 @@ function formatGoalTargetRow(row: CoachState["goals"]["targets"][number]): Coach
   };
 }
 
-function hasSectionContent(section?: CoachReportSection | null) {
+function hasSectionContent(section?: (CoachReportSection | CoachReportMovementCoverage) | null) {
   if (!section) return false;
+  if ("rows" in section && Array.isArray(section.rows) && section.rows.length > 0) return true;
   return Boolean(
     section.status ||
-      section.confidence ||
-      (section.rows?.length ?? 0) > 0 ||
-      (section.bullets?.length ?? 0) > 0 ||
-      (section.positive?.length ?? 0) > 0 ||
-      (section.negative?.length ?? 0) > 0 ||
-      section.note ||
-      (section.blocks?.length ?? 0) > 0
+      ("confidence" in section && section.confidence) ||
+      ("bullets" in section && (section.bullets?.length ?? 0) > 0) ||
+      ("positive" in section && (section.positive?.length ?? 0) > 0) ||
+      ("negative" in section && (section.negative?.length ?? 0) > 0) ||
+      ("note" in section && section.note) ||
+      ("blocks" in section && (section.blocks?.length ?? 0) > 0) ||
+      ("summary" in section && section.summary)
   );
 }
 
@@ -883,9 +888,9 @@ function formatVisceralFatValue(value: number | null | undefined) {
 function formatAnchorRecencyLabel(lift: NonNullable<CoachExportMetrics["anchorLifts"]>[number]) {
   if (lift.ageDays == null || !Number.isFinite(lift.ageDays)) return null;
   const age = Math.max(0, Math.floor(lift.ageDays));
-  if (lift.recency === "stale") return `${age}d old | stale anchor`;
-  if (lift.recency === "historical") return `${age}d old | historical anchor`;
-  if (lift.recency === "recent") return `${age}d old | recent anchor`;
+  if (lift.recency === "stale") return `${age}d old | stale benchmark`;
+  if (lift.recency === "historical") return `${age}d old | historical benchmark`;
+  if (lift.recency === "recent") return `${age}d old | recent benchmark`;
   return `${age}d old`;
 }
 
@@ -903,14 +908,33 @@ function formatAnchorStatusText(lift: NonNullable<CoachExportMetrics["anchorLift
   return formatAnchorStatusLabel(lift.status, lift.recency);
 }
 
-function formatAnchorCurrentMovementText(lift: NonNullable<CoachExportMetrics["anchorLifts"]>[number]) {
-  if (!lift.currentMovement) return null;
+function formatBenchmarkStatusLabel(lift: NonNullable<CoachExportMetrics["anchorLifts"]>[number]) {
+  if (lift.benchmarkStatus === "missing_date") return "Date unavailable";
+  if (lift.benchmarkStatus === "recent") return "Recent";
+  if (lift.benchmarkStatus === "historical") return "Historical";
+  if (lift.benchmarkStatus === "stale") return "Stale";
+  if (lift.status === "missing_date") return "Date unavailable";
+  if (lift.status === "current_recent" || lift.recency === "recent") return "Recent";
+  if (lift.status === "historical_anchor" || lift.recency === "historical") return "Historical";
+  if (lift.status === "stale_anchor" || lift.recency === "stale") return "Stale";
+  return formatAnchorStatusText(lift).replace(/\s*anchor$/i, "");
+}
+
+function formatMovementStatusLabel(status?: string) {
+  if (status === "current") return "Current";
+  if (status === "recent") return "Recent";
+  if (status === "inactive") return "Inactive";
+  return "Unknown";
+}
+
+function formatAnchorMovementText(movement?: NonNullable<CoachExportMetrics["anchorLifts"]>[number]["currentMovement"] | null) {
+  if (!movement) return null;
   const dateText =
-    typeof lift.currentMovement.performedAt === "number" && Number.isFinite(lift.currentMovement.performedAt)
-      ? `${formatDate(lift.currentMovement.performedAt)}${typeof lift.currentMovement.ageDays === "number" && Number.isFinite(lift.currentMovement.ageDays) ? ` | ${Math.max(0, Math.floor(lift.currentMovement.ageDays))}d old` : ""}`
+    typeof movement.performedAt === "number" && Number.isFinite(movement.performedAt)
+      ? `${formatDate(movement.performedAt)}${typeof movement.ageDays === "number" && Number.isFinite(movement.ageDays) ? ` | ${Math.max(0, Math.floor(movement.ageDays))}d old` : ""}`
       : null;
   return [
-    lift.currentMovement.exerciseName,
+    movement.exerciseName,
     dateText,
   ]
     .filter(Boolean)
@@ -919,34 +943,42 @@ function formatAnchorCurrentMovementText(lift: NonNullable<CoachExportMetrics["a
 
 function buildAnchorReadText(lift: NonNullable<CoachExportMetrics["anchorLifts"]>[number]) {
   if (lift.interpretation) return lift.interpretation;
-  if (lift.currentMovement && lift.relationship === "same_exercise" && lift.status === "current_recent") {
-    return "Current movement matches the performance anchor.";
-  }
-  if (lift.currentMovement && lift.relationship === "same_exercise") {
-    return "Current work matches the anchor exercise, but the recorded performance anchor is historical.";
+  if (lift.latestSameExercise) {
+    const benchmarkStatus =
+      lift.benchmarkStatus === "stale"
+        ? "stale"
+        : lift.benchmarkStatus === "historical"
+          ? "historical"
+          : "recent";
+    return `${lift.latestSameExercise.exerciseName} remains ${lift.movementStatus === "current" ? "current" : "recently trained"}, while the recorded performance benchmark is ${benchmarkStatus}.`;
   }
   if (lift.currentMovement && lift.relationship === "same_family_different_exercise") {
     const familyLabel = formatAnchorMovementFamilyLabel(lift.movementFamily);
     return `Current work remains in the same ${familyLabel.toLowerCase()} family.`;
   }
   if (lift.status === "missing_date") {
-    return "Anchor recency could not be confirmed.";
+    return "Performance benchmark recency could not be confirmed.";
   }
-  if (lift.status === "stale_anchor" || lift.status === "historical_anchor") {
-    return "Historical anchor remains useful context.";
+  if (lift.status === "stale_anchor" || lift.status === "historical_anchor" || lift.recency === "stale" || lift.recency === "historical") {
+    return "Historical performance benchmark remains useful context.";
   }
-  return "Current anchor remains the active benchmark.";
+  return "Recent performance benchmark remains active.";
 }
 
 function buildAnchorReportLines(lift: NonNullable<CoachExportMetrics["anchorLifts"]>[number]) {
   const familyLabel = formatAnchorMovementFamilyLabel(lift.movementFamily);
-  const statusLabel = formatAnchorStatusText(lift);
   const summary = formatAnchorLiftText(lift).replace(/^- /, "");
-  const lines = [`Status: ${statusLabel}`, `Performance Anchor: ${summary}`];
-  const currentMovementText = formatAnchorCurrentMovementText(lift);
-  if (currentMovementText) {
-    lines.push(`Current Movement: ${currentMovementText}`);
+  const lines = [
+    `Movement Status: ${formatMovementStatusLabel(lift.movementStatus)}`,
+  ];
+  const sameExerciseText = formatAnchorMovementText(lift.latestSameExercise);
+  if (sameExerciseText) lines.push(`Latest Same Exercise: ${sameExerciseText}`);
+  const familyMovementText = formatAnchorMovementText(lift.latestFamilyMovement ?? lift.currentMovement);
+  if (familyMovementText && familyMovementText !== sameExerciseText) {
+    lines.push(`Latest ${familyLabel} Movement: ${familyMovementText}`);
   }
+  lines.push(`Benchmark Status: ${formatBenchmarkStatusLabel(lift)}`);
+  lines.push(`Performance Benchmark: ${summary}`);
   lines.push(`Relationship: ${formatAnchorRelationshipLabel(lift.relationship)}`);
   lines.push(`Read: ${buildAnchorReadText(lift)}`);
   return { heading: familyLabel, items: lines };
@@ -1098,6 +1130,65 @@ function buildCurrentMovementFocusReportSection(metrics: CoachExportMetrics): Co
   };
 }
 
+function formatMovementCoverageStatus(status: string | undefined) {
+  if (!status) return "Unknown";
+  return status
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function buildMovementCoverageReportSection(metrics: CoachExportMetrics): CoachReportMovementCoverage | undefined {
+  const coverage = metrics.movementCoverage;
+  if (!coverage?.entries?.length) return undefined;
+
+  return {
+    title: "Movement Coverage",
+    status: formatMovementCoverageStatus(coverage.status),
+    summary: coverage.summary,
+    rows: coverage.entries.map((entry) => {
+      const current = entry.currentMovement
+        ? [
+            entry.currentMovement.exerciseName,
+            typeof entry.currentMovement.ageDays === "number" && Number.isFinite(entry.currentMovement.ageDays)
+              ? `${Math.max(0, Math.floor(entry.currentMovement.ageDays))}d old`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" | ")
+        : "None";
+      const anchor = entry.performanceAnchor
+        ? [
+            entry.performanceAnchor.exerciseName,
+            typeof entry.performanceAnchor.ageDays === "number" && Number.isFinite(entry.performanceAnchor.ageDays)
+              ? `${Math.max(0, Math.floor(entry.performanceAnchor.ageDays))}d old`
+              : null,
+            entry.performanceAnchor.status,
+          ]
+            .filter(Boolean)
+            .join(" | ")
+        : undefined;
+      const volumeParts = [
+        `${entry.directEffectiveSets7d ?? entry.effectiveSets7d} direct set${(entry.directEffectiveSets7d ?? entry.effectiveSets7d) === 1 ? "" : "s"}`,
+        (entry.supportEffectiveSets7d ?? 0) > 0 ? `${entry.supportEffectiveSets7d} support set${entry.supportEffectiveSets7d === 1 ? "" : "s"}` : null,
+        entry.sessionCount7d > 0 ? `across ${entry.sessionCount7d} session${entry.sessionCount7d === 1 ? "" : "s"}` : null,
+        entry.controlExposures7d > 0 ? `${entry.controlExposures7d} control exposure${entry.controlExposures7d === 1 ? "" : "s"}` : null,
+      ].filter(Boolean);
+
+      return {
+        label: entry.label,
+        status: entry.status,
+        statusLabel: formatMovementCoverageStatus(entry.status),
+        current,
+        anchor,
+        volume: volumeParts.join(" | "),
+        read: entry.context ? `${entry.interpretation} Context: ${entry.context}` : entry.interpretation,
+        relationship: entry.relationship,
+      };
+    }),
+  };
+}
+
 function buildNextWorkoutFocusReportSection(metrics: CoachExportMetrics): CoachReportSection | undefined {
   const focus = metrics.nextWorkoutFocus;
   const hasContent =
@@ -1239,14 +1330,14 @@ export function buildCoachReport({
               typeof performanceAnchor.ageDays === "number" && Number.isFinite(performanceAnchor.ageDays)
                 ? `${Math.max(0, Math.floor(performanceAnchor.ageDays))}d old`
                 : null,
-              performanceAnchor.status
-                ? formatAnchorStatusLabel(performanceAnchor.status, performanceAnchor.recency)
+              performanceAnchor.benchmarkStatus
+                ? `${fmtStatus(performanceAnchor.benchmarkStatus)} benchmark`
                 : performanceAnchor.recency === "stale"
-                  ? "Stale anchor"
+                  ? "Stale benchmark"
                   : performanceAnchor.recency === "historical"
-                    ? "Historical anchor"
+                    ? "Historical benchmark"
                     : performanceAnchor.recency === "recent"
-                      ? "Current"
+                      ? "Recent benchmark"
                       : null,
             ]
               .filter(Boolean)
@@ -1260,6 +1351,47 @@ export function buildCoachReport({
           movementFamily: performanceAnchor.movementFamily,
           status: performanceAnchor.status,
           statusLabel: formatAnchorStatusLabel(performanceAnchor.status, performanceAnchor.recency),
+          benchmarkStatusLabel:
+            performanceAnchor.benchmarkStatus === "missing_date"
+              ? "Date unavailable"
+              : performanceAnchor.benchmarkStatus
+                ? fmtStatus(performanceAnchor.benchmarkStatus)
+                : formatAnchorStatusLabel(performanceAnchor.status, performanceAnchor.recency).replace(/\s*anchor$/i, ""),
+          movementStatusLabel: formatMovementStatusLabel(performanceAnchor.movementStatus),
+          latestSameExerciseText: performanceAnchor.latestSameExercise
+            ? [
+                performanceAnchor.latestSameExercise.exerciseName,
+                typeof performanceAnchor.latestSameExercise.ageDays === "number" &&
+                Number.isFinite(performanceAnchor.latestSameExercise.ageDays)
+                  ? `${Math.max(0, Math.floor(performanceAnchor.latestSameExercise.ageDays))}d old`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" | ")
+            : undefined,
+          latestFamilyMovementText: performanceAnchor.latestFamilyMovement
+            ? [
+                performanceAnchor.latestFamilyMovement.exerciseName,
+                typeof performanceAnchor.latestFamilyMovement.ageDays === "number" &&
+                Number.isFinite(performanceAnchor.latestFamilyMovement.ageDays)
+                  ? `${Math.max(0, Math.floor(performanceAnchor.latestFamilyMovement.ageDays))}d old`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" | ")
+            : undefined,
+          performanceBenchmarkText:
+            [
+              performanceAnchor.exerciseName ?? performanceAnchor.trackDisplayName ?? "",
+              performanceAnchor.effectiveWeightLb != null ? `${fmtNumber(performanceAnchor.effectiveWeightLb)} lb` : null,
+              performanceAnchor.reps != null ? `${fmtNumber(performanceAnchor.reps, 0)} reps` : null,
+              performanceAnchor.e1rm != null ? `e1RM ${fmtNumber(performanceAnchor.e1rm)} lb` : null,
+              typeof performanceAnchor.ageDays === "number" && Number.isFinite(performanceAnchor.ageDays)
+                ? `${Math.max(0, Math.floor(performanceAnchor.ageDays))}d old`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" | "),
           currentMovement: performanceAnchor.currentMovement ?? undefined,
           relationship: performanceAnchor.relationship,
           interpretation: performanceAnchor.interpretation ?? undefined,
@@ -1307,6 +1439,7 @@ export function buildCoachReport({
     visceralFat: buildVisceralFatReportSection(metrics),
     phaseQuality: buildPhaseQualityReportSection(metrics),
     strengthSignalDetails: buildStrengthSignalReportSection(metrics),
+    movementCoverage: buildMovementCoverageReportSection(metrics),
     currentMovementFocus: buildCurrentMovementFocusReportSection(metrics),
     nextWorkoutFocus: buildNextWorkoutFocusReportSection(metrics),
     recentPatterns: buildRecentPatternsReportSection(metrics),

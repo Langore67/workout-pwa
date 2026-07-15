@@ -8,6 +8,8 @@ import type {
   CoachExportAnchorLift,
   CoachExportAnchorRelationship,
   CoachExportAnchorStatus,
+  PerformanceBenchmarkStatus,
+  AnchorMovementStatus,
 } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -125,6 +127,13 @@ export function formatAnchorRelationshipLabel(
       return "Same movement family";
     case "different_family":
       return "Different family";
+    case "benchmark_only":
+      return "Benchmark only";
+    case "family_only":
+      return "Family movement only";
+    case "same_exercise_current":
+    case "same_exercise_and_family_current":
+      return "Same exercise";
     default:
       return "Relationship unknown";
   }
@@ -164,6 +173,7 @@ function buildRecentMovementLookup(args: {
   const tracksById = new Map((args.tracks ?? []).map((track) => [track.id, track]));
   const exercisesById = new Map((args.exercises ?? []).map((exercise) => [exercise.id, exercise]));
   const byFamily = new Map<AnchorMovementFamily, MovementOccurrence>();
+  const byExercise = new Map<string, MovementOccurrence>();
 
   for (const session of recentSessions) {
     const sessionSets = (args.sets ?? [])
@@ -207,18 +217,42 @@ function buildRecentMovementLookup(args: {
       if (!existing || (candidatePerformedAt != null && (existingPerformedAt == null || candidatePerformedAt > existingPerformedAt))) {
         byFamily.set(movementFamily, candidate);
       }
+      const existingExercise = byExercise.get(candidate.canonicalName);
+      const existingExerciseAt =
+        typeof existingExercise?.performedAt === "number" && Number.isFinite(existingExercise.performedAt)
+          ? existingExercise.performedAt
+          : null;
+      if (!existingExercise || (candidatePerformedAt != null && (existingExerciseAt == null || candidatePerformedAt > existingExerciseAt))) {
+        byExercise.set(candidate.canonicalName, candidate);
+      }
     }
   }
 
-  return byFamily;
+  return { byFamily, byExercise };
 }
 
-function resolveStatus(ageDays: number | null | undefined): CoachExportAnchorStatus {
+function resolveBenchmarkStatus(ageDays: number | null | undefined): PerformanceBenchmarkStatus {
   if (!Number.isFinite(ageDays as number)) return "missing_date";
   const days = Math.max(0, Math.floor(Number(ageDays)));
-  if (days <= 21) return "current_recent";
-  if (days <= 28) return "historical_anchor";
+  if (days <= 21) return "recent";
+  if (days <= 28) return "historical";
+  return "stale";
+}
+
+function legacyStatusFromBenchmarkStatus(status: PerformanceBenchmarkStatus): CoachExportAnchorStatus {
+  if (status === "missing_date") return "missing_date";
+  if (status === "recent") return "current_recent";
+  if (status === "historical") return "historical_anchor";
   return "stale_anchor";
+}
+
+function movementStatusFromSameExercise(latestSameExercise?: MovementOccurrence | null): AnchorMovementStatus {
+  if (!latestSameExercise) return "inactive";
+  const days = Number(latestSameExercise.ageDays);
+  if (!Number.isFinite(days)) return "unknown";
+  if (days <= 7) return "current";
+  if (days <= RECENT_WINDOW_DAYS) return "recent";
+  return "inactive";
 }
 
 function relationshipForAnchor(args: {
@@ -237,26 +271,35 @@ function interpretationForAnchor(args: {
   anchor: CoachExportAnchorLift;
   familyLabel: string;
   status: CoachExportAnchorStatus;
-  currentMovement?: MovementOccurrence | null;
+  benchmarkStatus: PerformanceBenchmarkStatus;
+  movementStatus: AnchorMovementStatus;
+  latestSameExercise?: MovementOccurrence | null;
+  latestFamilyMovement?: MovementOccurrence | null;
   relationship: CoachExportAnchorRelationship;
 }) {
   const anchorName = normalizeText(args.anchor.exerciseName ?? args.anchor.trackDisplayName ?? "Unknown");
-  if (args.status === "missing_date") {
-    return "Anchor recency could not be confirmed.";
+  const familyName = args.familyLabel.toLowerCase();
+  const benchmarkText =
+    args.benchmarkStatus === "stale"
+      ? "stale"
+      : args.benchmarkStatus === "historical"
+        ? "historical"
+        : args.benchmarkStatus === "recent"
+          ? "recent"
+          : "date-unconfirmed";
+  if (args.benchmarkStatus === "missing_date") {
+    return "Performance benchmark recency could not be confirmed.";
   }
-  if (args.currentMovement && args.relationship === "same_exercise" && args.status === "current_recent") {
-    return "Current movement matches the performance anchor.";
+  if (args.latestSameExercise && args.latestFamilyMovement && args.latestSameExercise.exerciseName !== args.latestFamilyMovement.exerciseName) {
+    return `${anchorName} remains ${args.movementStatus === "current" ? "current" : "recently trained"}. ${args.latestFamilyMovement.exerciseName} is the latest ${familyName} variation. The recorded performance benchmark is ${benchmarkText}.`;
   }
-  if (args.currentMovement && args.relationship === "same_exercise") {
-    return "Current work matches the anchor exercise, but the recorded performance anchor is historical.";
+  if (args.latestSameExercise) {
+    return `${anchorName} is ${args.movementStatus === "current" ? "current" : "recently trained"}, while the recorded performance benchmark is ${benchmarkText}.`;
   }
-  if (args.currentMovement && args.relationship === "same_family_different_exercise") {
-    return `Historical ${args.familyLabel.toLowerCase()} anchor: ${anchorName}. Current ${args.familyLabel.toLowerCase()} movement: ${args.currentMovement.exerciseName}.`;
+  if (args.latestFamilyMovement) {
+    return `The ${benchmarkText} benchmark is ${anchorName}. Current ${familyName} work uses ${args.latestFamilyMovement.exerciseName}.`;
   }
-  if (args.status === "current_recent") {
-    return "Current movement remains the active benchmark.";
-  }
-  return `Historical ${args.familyLabel.toLowerCase()} anchor remains useful context.`;
+  return `The performance benchmark is ${benchmarkText}, and no recent movement in this family was found.`;
 }
 
 export function buildAnchorIntelligence(args: {
@@ -267,15 +310,19 @@ export function buildAnchorIntelligence(args: {
   exercises: Exercise[];
   asOf: number;
 }): CoachExportAnchorLift[] {
-  const currentMovementsByFamily = buildRecentMovementLookup(args);
+  const currentMovements = buildRecentMovementLookup(args);
 
   return (args.anchors ?? []).map((anchor) => {
     const movementFamily = classifyAnchorMovementFamily(anchor.exerciseName ?? anchor.trackDisplayName ?? "", anchor.pattern);
-    const status = resolveStatus(anchor.ageDays);
-    const currentMovement = currentMovementsByFamily.get(movementFamily) ?? null;
+    const benchmarkStatus = resolveBenchmarkStatus(anchor.ageDays);
+    const status = legacyStatusFromBenchmarkStatus(benchmarkStatus);
+    const latestFamilyMovement = currentMovements.byFamily.get(movementFamily) ?? null;
+    const latestSameExercise = currentMovements.byExercise.get(normalizeLookupKey(anchor.exerciseName ?? anchor.trackDisplayName)) ?? null;
+    const movementStatus = movementStatusFromSameExercise(latestSameExercise);
+    const currentMovement = latestFamilyMovement;
     const relationship = relationshipForAnchor({
       anchorName: anchor.exerciseName ?? anchor.trackDisplayName,
-      currentMovement,
+      currentMovement: latestFamilyMovement,
       movementFamily,
     });
     const familyLabel = formatAnchorMovementFamilyLabel(movementFamily);
@@ -284,6 +331,26 @@ export function buildAnchorIntelligence(args: {
       ...anchor,
       movementFamily,
       status,
+      benchmarkStatus,
+      movementStatus,
+      latestSameExercise:
+        latestSameExercise
+          ? {
+              exerciseName: latestSameExercise.exerciseName,
+              movementFamily: latestSameExercise.movementFamily,
+              performedAt: latestSameExercise.performedAt,
+              ageDays: latestSameExercise.ageDays,
+            }
+          : undefined,
+      latestFamilyMovement:
+        latestFamilyMovement
+          ? {
+              exerciseName: latestFamilyMovement.exerciseName,
+              movementFamily: latestFamilyMovement.movementFamily,
+              performedAt: latestFamilyMovement.performedAt,
+              ageDays: latestFamilyMovement.ageDays,
+            }
+          : undefined,
       currentMovement:
         currentMovement && relationship !== "unknown"
           ? {
@@ -298,7 +365,10 @@ export function buildAnchorIntelligence(args: {
         anchor,
         familyLabel,
         status,
-        currentMovement,
+        benchmarkStatus,
+        movementStatus,
+        latestSameExercise,
+        latestFamilyMovement,
         relationship,
       }),
     };
