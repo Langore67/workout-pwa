@@ -21,6 +21,7 @@ import type {
   CoachReportLine,
   CoachReportLearnings,
   CoachReportMovementCoverage,
+  CoachReportMovementIntelligence,
   CoachReportPerformance,
   CoachReportSection,
   CoachReportWeeklyVolumeBalance,
@@ -861,9 +862,10 @@ function formatGoalTargetRow(row: CoachState["goals"]["targets"][number]): Coach
   };
 }
 
-function hasSectionContent(section?: (CoachReportSection | CoachReportMovementCoverage) | null) {
+function hasSectionContent(section?: (CoachReportSection | CoachReportMovementCoverage | CoachReportMovementIntelligence) | null) {
   if (!section) return false;
   if ("rows" in section && Array.isArray(section.rows) && section.rows.length > 0) return true;
+  if ("entries" in section && Array.isArray(section.entries) && section.entries.length > 0) return true;
   return Boolean(
     section.status ||
       ("confidence" in section && section.confidence) ||
@@ -927,6 +929,13 @@ function formatMovementStatusLabel(status?: string) {
   return "Unknown";
 }
 
+function movementStatusFromAgeDays(ageDays?: number | null) {
+  if (typeof ageDays !== "number" || !Number.isFinite(ageDays)) return "Inactive";
+  if (ageDays <= 7) return "Current";
+  if (ageDays <= 28) return "Recent";
+  return "Inactive";
+}
+
 function formatAnchorMovementText(movement?: NonNullable<CoachExportMetrics["anchorLifts"]>[number]["currentMovement"] | null) {
   if (!movement) return null;
   const dateText =
@@ -969,7 +978,7 @@ function buildAnchorReportLines(lift: NonNullable<CoachExportMetrics["anchorLift
   const familyLabel = formatAnchorMovementFamilyLabel(lift.movementFamily);
   const summary = formatAnchorLiftText(lift).replace(/^- /, "");
   const lines = [
-    `Movement Status: ${formatMovementStatusLabel(lift.movementStatus)}`,
+    `Anchor Exercise Status: ${formatMovementStatusLabel(lift.movementStatus)}`,
   ];
   const sameExerciseText = formatAnchorMovementText(lift.latestSameExercise);
   if (sameExerciseText) lines.push(`Latest Same Exercise: ${sameExerciseText}`);
@@ -982,6 +991,146 @@ function buildAnchorReportLines(lift: NonNullable<CoachExportMetrics["anchorLift
   lines.push(`Relationship: ${formatAnchorRelationshipLabel(lift.relationship)}`);
   lines.push(`Read: ${buildAnchorReadText(lift)}`);
   return { heading: familyLabel, items: lines };
+}
+
+function findAnchorForCoverageEntry(
+  metrics: CoachExportMetrics,
+  family: NonNullable<CoachExportMetrics["movementCoverage"]>["entries"][number]["family"]
+) {
+  if (family === "hip_stability") return undefined;
+  return metrics.anchorLifts.find((anchor) => anchor.movementFamily === family);
+}
+
+function formatIsoDateShort(value?: string) {
+  if (!value) return undefined;
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) return undefined;
+  return formatDate(time);
+}
+
+function formatCoverageMovementText(movement?: NonNullable<CoachExportMetrics["movementCoverage"]>["entries"][number]["currentMovement"]) {
+  if (!movement) return undefined;
+  return [
+    movement.exerciseName,
+    typeof movement.ageDays === "number" && Number.isFinite(movement.ageDays)
+      ? `${Math.max(0, Math.floor(movement.ageDays))}d old`
+      : formatIsoDateShort(movement.performedAt),
+  ].filter(Boolean).join(" | ");
+}
+
+function formatAnchorSameExerciseText(anchor?: NonNullable<CoachExportMetrics["anchorLifts"]>[number]) {
+  const same = formatAnchorMovementText(anchor?.latestSameExercise);
+  if (same) return same;
+  if (!anchor?.exerciseName) return undefined;
+  const fallbackDate =
+    typeof anchor.performedAt === "number" && Number.isFinite(anchor.performedAt)
+      ? `${formatDate(anchor.performedAt)}${typeof anchor.ageDays === "number" && Number.isFinite(anchor.ageDays) ? ` | ${Math.max(0, Math.floor(anchor.ageDays))}d old` : ""}`
+      : typeof anchor.ageDays === "number" && Number.isFinite(anchor.ageDays)
+        ? `${Math.max(0, Math.floor(anchor.ageDays))}d old`
+        : null;
+  return [anchor.exerciseName, fallbackDate].filter(Boolean).join(" | ");
+}
+
+function formatMovementWorkText(entry: NonNullable<CoachExportMetrics["movementCoverage"]>["entries"][number]) {
+  const directSets = entry.directEffectiveSets7d ?? entry.effectiveSets7d;
+  const parts = [
+    `${directSets} direct set${directSets === 1 ? "" : "s"}`,
+    (entry.supportEffectiveSets7d ?? 0) > 0 ? `${entry.supportEffectiveSets7d} support set${entry.supportEffectiveSets7d === 1 ? "" : "s"}` : null,
+    entry.sessionCount7d > 0 ? `across ${entry.sessionCount7d} session${entry.sessionCount7d === 1 ? "" : "s"}` : null,
+    entry.controlExposures7d > 0 ? `${entry.controlExposures7d} control exposure${entry.controlExposures7d === 1 ? "" : "s"}` : null,
+  ];
+  return parts.filter(Boolean).join(" | ");
+}
+
+function movementCoverageRead(entry: NonNullable<CoachExportMetrics["movementCoverage"]>["entries"][number]) {
+  const directSets = entry.directEffectiveSets7d ?? entry.effectiveSets7d;
+  const supportSets = entry.supportEffectiveSets7d ?? 0;
+  if (entry.family === "hip_stability") {
+    if (directSets > 0 && entry.controlExposures7d > 0) {
+      return "Hip stability is adequately covered through recent direct strength and control work.";
+    }
+    if (entry.controlExposures7d >= 2 && supportSets > 0) {
+      return "Hip stability is adequately covered through control work and supported by recent single-leg training.";
+    }
+    if (supportSets > 0 || entry.controlExposures7d > 0) {
+      return "Hip-stability support is present, but direct/control work remains limited.";
+    }
+  }
+  return entry.interpretation;
+}
+
+function buildMovementIntelligenceRead(args: {
+  entry: NonNullable<CoachExportMetrics["movementCoverage"]>["entries"][number];
+  anchor?: NonNullable<CoachExportMetrics["anchorLifts"]>[number];
+  latestFamilyText?: string;
+}) {
+  const base = movementCoverageRead(args.entry);
+  if (!args.anchor) return base;
+  const anchorName = args.anchor.exerciseName ?? args.anchor.trackDisplayName ?? "The benchmark exercise";
+  const benchmarkStatus = formatBenchmarkStatusLabel(args.anchor).toLowerCase();
+  const familyName = args.entry.label.toLowerCase();
+  const latestFamilyName = args.latestFamilyText?.split("|")[0]?.trim();
+  if (args.anchor.latestSameExercise && latestFamilyName && latestFamilyName !== anchorName) {
+    return `${args.entry.label} work is ${args.entry.status === "strong" ? "strongly covered" : args.entry.status === "covered" ? "covered" : "present"}. ${anchorName} remains ${formatMovementStatusLabel(args.anchor.movementStatus).toLowerCase()}, while ${latestFamilyName} is the latest ${familyName} variation. The benchmark is ${benchmarkStatus.toLowerCase()}.`;
+  }
+  if (latestFamilyName && latestFamilyName !== anchorName) {
+    return `${base} The ${benchmarkStatus.toLowerCase()} benchmark is ${anchorName}; latest ${familyName} work uses ${latestFamilyName}.`;
+  }
+  return `${base} The benchmark is ${benchmarkStatus.toLowerCase()}.`;
+}
+
+function buildMovementIntelligenceReportSection(metrics: CoachExportMetrics): CoachReportMovementIntelligence | undefined {
+  const coverage = metrics.movementCoverage;
+  if (!coverage?.entries?.length) return undefined;
+
+  return {
+    title: "Movement Intelligence",
+    status: formatMovementCoverageStatus(coverage.status),
+    summary: coverage.summary,
+    entries: coverage.entries.map((entry) => {
+      const anchor = findAnchorForCoverageEntry(metrics, entry.family);
+      const familyMovementText =
+        formatAnchorMovementText(anchor?.latestFamilyMovement ?? anchor?.currentMovement) ??
+        formatCoverageMovementText(entry.currentMovement);
+      const familyAge =
+        anchor?.latestFamilyMovement?.ageDays ??
+        anchor?.currentMovement?.ageDays ??
+        entry.currentMovement?.ageDays ??
+        null;
+      const sameExerciseText = formatAnchorSameExerciseText(anchor);
+      const benchmarkText = anchor
+        ? [
+            anchor.exerciseName ?? anchor.trackDisplayName ?? "",
+            anchor.effectiveWeightLb != null ? `${fmtNumber(anchor.effectiveWeightLb)} lb` : null,
+            anchor.reps != null ? `${fmtNumber(anchor.reps, 0)} reps` : null,
+            anchor.e1rm != null ? `e1RM ${fmtNumber(anchor.e1rm)} lb` : null,
+            typeof anchor.ageDays === "number" && Number.isFinite(anchor.ageDays)
+              ? `${Math.max(0, Math.floor(anchor.ageDays))}d old`
+              : null,
+          ].filter(Boolean).join(" | ")
+        : undefined;
+      return {
+        family: entry.family,
+        label: entry.label,
+        benchmark: anchor?.exerciseName
+          ? {
+              exerciseName: anchor.exerciseName,
+              performanceText: benchmarkText ?? anchor.exerciseName,
+              ageText: typeof anchor.ageDays === "number" && Number.isFinite(anchor.ageDays) ? `${Math.max(0, Math.floor(anchor.ageDays))}d old` : undefined,
+              status: formatBenchmarkStatusLabel(anchor),
+            }
+          : undefined,
+        anchorExerciseStatus: anchor ? formatMovementStatusLabel(anchor.movementStatus) : undefined,
+        latestSameExercise: sameExerciseText,
+        movementFamilyStatus: movementStatusFromAgeDays(familyAge),
+        latestFamilyMovement: familyMovementText,
+        coverageStatus: formatMovementCoverageStatus(entry.status),
+        recentWork: formatMovementWorkText(entry),
+        context: entry.context,
+        read: buildMovementIntelligenceRead({ entry, anchor, latestFamilyText: familyMovementText }),
+      };
+    }),
+  };
 }
 
 function buildLeanPreservationReportSection(metrics: CoachExportMetrics): CoachReportSection | undefined {
@@ -1100,7 +1249,7 @@ function buildStrengthSignalReportSection(metrics: CoachExportMetrics): CoachRep
     },
   ];
 
-  const performanceAnchors = metrics.anchorLifts.length
+  const performanceAnchors = metrics.anchorLifts.length && !metrics.movementCoverage?.entries?.length
     ? [
         {
           heading: "Performance Anchors",
@@ -1439,6 +1588,7 @@ export function buildCoachReport({
     visceralFat: buildVisceralFatReportSection(metrics),
     phaseQuality: buildPhaseQualityReportSection(metrics),
     strengthSignalDetails: buildStrengthSignalReportSection(metrics),
+    movementIntelligence: buildMovementIntelligenceReportSection(metrics),
     movementCoverage: buildMovementCoverageReportSection(metrics),
     currentMovementFocus: buildCurrentMovementFocusReportSection(metrics),
     nextWorkoutFocus: buildNextWorkoutFocusReportSection(metrics),

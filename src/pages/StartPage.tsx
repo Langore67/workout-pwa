@@ -1022,7 +1022,7 @@ export default function StartPage() {
                   <DashboardLine label="Performance Anchor" value={renderedCoachReport.performance.anchor.familyLabel} />
                 ) : null}
                 {renderedCoachReport?.performance?.anchor?.movementStatusLabel ? (
-                  <DashboardLine label="Movement" value={renderedCoachReport.performance.anchor.movementStatusLabel} />
+                  <DashboardLine label="Anchor Exercise" value={renderedCoachReport.performance.anchor.movementStatusLabel} />
                 ) : null}
                 {renderedCoachReport?.performance?.anchor?.benchmarkStatusLabel ? (
                   <DashboardLine label="Benchmark" value={renderedCoachReport.performance.anchor.benchmarkStatusLabel} />
@@ -1038,7 +1038,7 @@ export default function StartPage() {
                 ) : null}
                 {renderedCoachReport?.performance?.anchor?.latestFamilyMovementText ? (
                   <DashboardLine
-                    label="Family Movement"
+                    label="Current Family Movement"
                     value={renderedCoachReport.performance.anchor.latestFamilyMovementText}
                   />
                 ) : null}

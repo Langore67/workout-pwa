@@ -148,6 +148,32 @@ export type CoachReportMovementCoverage = {
   rows: CoachReportMovementCoverageRow[];
 };
 
+export type CoachReportMovementIntelligenceEntry = {
+  family: string;
+  label: string;
+  benchmark?: {
+    exerciseName: string;
+    performanceText: string;
+    ageText?: string;
+    status: string;
+  };
+  anchorExerciseStatus?: string;
+  latestSameExercise?: string;
+  movementFamilyStatus: string;
+  latestFamilyMovement?: string;
+  coverageStatus: string;
+  recentWork?: string;
+  context?: string;
+  read: string;
+};
+
+export type CoachReportMovementIntelligence = {
+  title: "Movement Intelligence";
+  status?: string;
+  summary?: string;
+  entries: CoachReportMovementIntelligenceEntry[];
+};
+
 export type CoachReport = {
   generatedAt?: string;
   snapshot: CoachReportSnapshot;
@@ -168,6 +194,7 @@ export type CoachReport = {
     visceralFat?: CoachReportSection;
     phaseQuality?: CoachReportSection;
     strengthSignalDetails?: CoachReportSection;
+    movementIntelligence?: CoachReportMovementIntelligence;
     movementCoverage?: CoachReportMovementCoverage;
     currentMovementFocus?: CoachReportSection;
     nextWorkoutFocus?: CoachReportSection;

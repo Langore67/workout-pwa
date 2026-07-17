@@ -383,16 +383,19 @@ test.describe("Movement Coverage", () => {
       return {
         state: coachState.movementCoverage,
         report: report.exportOnly?.movementCoverage,
+        movementIntelligence: report.exportOnly?.movementIntelligence,
         text: formatCoachReportText(report),
       };
     }, { asOf: AS_OF });
 
     expect(result.state.entries[0].label).toBe("Horizontal Push");
     expect(result.report.rows[0].current).toContain("Plate Loaded Chest Press");
-    expect(result.text).toContain("Movement Coverage");
-    expect(result.text.indexOf("Movement Coverage")).toBeGreaterThan(result.text.indexOf("Performance Anchors"));
-    expect(result.text.indexOf("Movement Coverage")).toBeLessThan(result.text.indexOf("Current Movement Focus"));
-    expect(result.text).toContain("Vertical Push: Missing");
+    expect(result.movementIntelligence.entries[0].label).toBe("Horizontal Push");
+    expect(result.text).toContain("Movement Intelligence");
+    expect(result.text.indexOf("Movement Intelligence")).toBeGreaterThan(result.text.indexOf("Performance Anchors"));
+    expect(result.text).not.toContain("\nCurrent Movement Focus\n");
+    expect(result.text).toContain("Vertical Push");
+    expect(result.text).toContain("Coverage: Missing");
     expect(result.text).not.toContain("replacement");
   });
 

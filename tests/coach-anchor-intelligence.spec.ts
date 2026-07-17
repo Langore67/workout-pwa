@@ -417,9 +417,9 @@ test.describe("Anchor Intelligence", () => {
     expect(result.report.read).toContain("stale benchmark");
 
     expect(result.text).toContain("Performance Anchor: Vertical Pull");
-    expect(result.text).toContain("Movement Status: Inactive");
+    expect(result.text).toContain("Anchor Exercise Status: Inactive");
     expect(result.text).toContain("Benchmark Status: Stale");
-    expect(result.text).toContain("Latest Family Movement: Assisted Pull Up");
+    expect(result.text).toContain("Current Family Movement: Assisted Pull Up");
     expect(result.text).toContain("Relationship: Same movement family");
     expect(result.text).not.toContain("Anchor Status: Stale anchor");
   });

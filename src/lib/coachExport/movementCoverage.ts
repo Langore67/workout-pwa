@@ -217,7 +217,17 @@ function interpretationFor(entry: MovementCoverageEntry) {
   }
   if (entry.label === "Hip Stability") {
     if (entry.status === "strong") return "Hip-stability control work is repeated across recent sessions.";
-    if (entry.status === "covered") return "Hip-stability work is adequately covered through recent direct and control exposure.";
+    if (entry.status === "covered") {
+      const directSets = entry.directEffectiveSets7d ?? entry.effectiveSets7d;
+      const supportSets = entry.supportEffectiveSets7d ?? 0;
+      if (directSets > 0 && entry.controlExposures7d > 0) {
+        return "Hip-stability work is adequately covered through recent direct strength and control exposure.";
+      }
+      if (entry.controlExposures7d > 0 && supportSets > 0) {
+        return "Hip-stability work is adequately covered through control exposure and supported by recent single-leg training.";
+      }
+      return "Hip-stability work is adequately covered through recent control exposure.";
+    }
     return "Hip-stability work is present but remains a developing control pattern.";
   }
   if (entry.relationship === "same_exercise" && entry.performanceAnchor?.status && entry.performanceAnchor.status !== "Current") {
