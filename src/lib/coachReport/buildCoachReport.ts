@@ -1366,19 +1366,10 @@ function buildNextWorkoutFocusReportSection(metrics: CoachExportMetrics): CoachR
   };
 }
 
-const programmingPriorityRank: Record<CoachProgrammingPriority["priority"], number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-};
-
-const programmingCategoryRank: Record<CoachProgrammingPriority["category"], number> = {
-  movement: 0,
-  recovery: 1,
-  performance: 2,
-  volume: 3,
-  goals: 4,
+type ProgrammingPriorityCandidate = CoachProgrammingPriority & {
+  severity: number;
+  concernKey: string;
+  order: number;
 };
 
 function titleCaseStatus(value: string) {
@@ -1401,17 +1392,61 @@ function hasConstraintSignal(metrics: CoachExportMetrics, pattern: RegExp) {
   return values.some((value) => pattern.test(value));
 }
 
-function buildProgrammingIntelligence(metrics: CoachExportMetrics, coachState: CoachState): CoachProgrammingSummary {
-  const priorities: CoachProgrammingPriority[] = [];
+function normalizePriorityEvidence(value: string) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (/shoulder|overhead|behind-head/i.test(normalized)) return "Shoulder sensitivity remains active.";
+  if (/trap compensation/i.test(normalized)) return "Trap compensation remains active.";
+  return normalized;
+}
+
+function dedupePriorityEvidence(values: string[]) {
   const seen = new Set<string>();
-  const addPriority = (priority: CoachProgrammingPriority) => {
-    const key = `${priority.category}:${priority.title}`.toLowerCase();
-    if (seen.has(key)) return;
+  const result: string[] = [];
+  for (const value of values) {
+    const normalized = normalizePriorityEvidence(value);
+    const key = normalized.toLowerCase();
+    if (!normalized || seen.has(key)) continue;
     seen.add(key);
-    priorities.push(priority);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function priorityFromSeverity(severity: number): CoachProgrammingPriority["priority"] {
+  if (severity >= 105) return "critical";
+  if (severity >= 90) return "high";
+  if (severity >= 40) return "medium";
+  return "low";
+}
+
+function buildProgrammingIntelligence(metrics: CoachExportMetrics, coachState: CoachState): CoachProgrammingSummary {
+  const candidates: ProgrammingPriorityCandidate[] = [];
+  let order = 0;
+  const addPriority = (priority: Omit<ProgrammingPriorityCandidate, "order">) => {
+    const candidate: ProgrammingPriorityCandidate = {
+      ...priority,
+      priority: priorityFromSeverity(priority.severity),
+      evidence: dedupePriorityEvidence(priority.evidence),
+      order: order++,
+    };
+    const existing = candidates.find((item) => item.concernKey === candidate.concernKey);
+    if (!existing) {
+      candidates.push(candidate);
+      return;
+    }
+    existing.severity = Math.max(existing.severity, candidate.severity);
+    existing.priority = priorityFromSeverity(existing.severity);
+    existing.evidence = dedupePriorityEvidence([...existing.evidence, ...candidate.evidence]);
+    if (existing.concernKey === "recovery_performance_preservation") {
+      existing.title = "Recovery & Performance Preservation";
+      existing.category = "recovery";
+      existing.reason = "Recovery and performance pressure are elevated.";
+      existing.coachAction = "Protect lean mass while reducing performance pressure.";
+    }
   };
 
   const shoulderContext = hasConstraintSignal(metrics, /shoulder|overhead|behind-head|pressing pain|joint feedback/i);
+  const trapContext = hasConstraintSignal(metrics, /trap compensation/i);
 
   for (const entry of metrics.movementCoverage?.entries ?? []) {
     const statusLabel = titleCaseStatus(entry.status);
@@ -1420,13 +1455,16 @@ function buildProgrammingIntelligence(metrics: CoachExportMetrics, coachState: C
       const isCarry = entry.family === "carry";
       addPriority({
         title: entry.label,
-        priority: isVerticalPush && shoulderContext ? "high" : isCarry ? "medium" : "medium",
+        priority: "medium",
         category: "movement",
+        concernKey: `movement:${entry.family}`,
+        severity: isCarry ? 70 : 100,
         reason: "Movement family missing.",
         evidence: [
           `${entry.label} ${statusLabel}`,
           ...(entry.context ? [entry.context] : []),
-          ...(isVerticalPush && shoulderContext ? ["Shoulder sensitivity"] : []),
+          ...(isVerticalPush && shoulderContext ? ["Shoulder sensitivity remains active."] : []),
+          ...(isCarry && trapContext ? ["Trap compensation remains active."] : []),
         ],
         coachAction: isVerticalPush && shoulderContext
           ? "Resume vertical pressing only within pain-free range."
@@ -1441,6 +1479,8 @@ function buildProgrammingIntelligence(metrics: CoachExportMetrics, coachState: C
         title: entry.label,
         priority: "medium",
         category: "movement",
+        concernKey: `movement:${entry.family}`,
+        severity: 50,
         reason: "Movement pattern is developing.",
         evidence: [`${entry.label} ${statusLabel}`, entry.interpretation].filter(Boolean),
         coachAction: `Add direct ${entry.label.toLowerCase()} work before calling it covered.`,
@@ -1457,6 +1497,8 @@ function buildProgrammingIntelligence(metrics: CoachExportMetrics, coachState: C
         title: "Hip Stability",
         priority: "medium",
         category: "movement",
+        concernKey: "movement:hip_stability",
+        severity: 50,
         reason: "Coverage is driven by support or control exposure.",
         evidence: [
           `${entry.supportEffectiveSets7d ?? 0} support sets`,
@@ -1476,6 +1518,10 @@ function buildProgrammingIntelligence(metrics: CoachExportMetrics, coachState: C
       title: "Aggressive Cut",
       priority: metrics.leanPreservation.status === "Poor" ? "critical" : "high",
       category: "recovery",
+      concernKey: typeof metrics.strengthSignal.delta14d === "number" && metrics.strengthSignal.delta14d < -0.03
+        ? "recovery_performance_preservation"
+        : "recovery:lean_preservation",
+      severity: metrics.leanPreservation.status === "Poor" ? 110 : 95,
       reason: "Muscle preservation risk elevated.",
       evidence: [
         `Coach Snapshot ${titleCaseStatus(coachState.snapshot.overallStatus)}`,
@@ -1491,6 +1537,11 @@ function buildProgrammingIntelligence(metrics: CoachExportMetrics, coachState: C
       title: "Performance Pressure",
       priority: metrics.strengthSignal.delta14d < -0.08 ? "high" : "medium",
       category: "performance",
+      concernKey: coachState.snapshot.overallStatus === "intervene" &&
+        (metrics.leanPreservation?.status === "Watch" || metrics.leanPreservation?.status === "Poor")
+          ? "recovery_performance_preservation"
+          : "performance:strength_regression",
+      severity: 90,
       reason: "Strength Signal is trending down.",
       evidence: [`14d Strength Signal ${fmtSigned(metrics.strengthSignal.delta14d, 2)}`],
       coachAction: "Keep progression conservative until performance stabilizes.",
@@ -1499,10 +1550,16 @@ function buildProgrammingIntelligence(metrics: CoachExportMetrics, coachState: C
 
   for (const row of metrics.weeklyVolume?.balances ?? []) {
     if (/balanced|not enough data/i.test(row.statusLabel) || row.status === "not_enough_data" || row.isContextuallyAcceptable) continue;
+    const isMajorImbalance =
+      row.status === "intervene" ||
+      /strong|major/i.test(row.statusLabel) ||
+      (typeof row.ratio === "number" && Number.isFinite(row.ratio) && (row.ratio < 0.5 || row.ratio > 2));
     addPriority({
       title: row.statusLabel,
       priority: "medium",
       category: "volume",
+      concernKey: `volume:${row.id}`,
+      severity: isMajorImbalance ? 80 : 40,
       reason: row.summary,
       evidence: [row.statusLabel, row.currentText],
       coachAction: row.action,
@@ -1514,32 +1571,35 @@ function buildProgrammingIntelligence(metrics: CoachExportMetrics, coachState: C
       title: "Goal Trajectory",
       priority: "medium",
       category: "goals",
+      concernKey: "goals:trajectory",
+      severity: 60,
       reason: metrics.goalProgress.read,
       evidence: [`Goal Trajectory ${metrics.goalProgress.status}`],
       coachAction: "Keep the next training block aligned with the current goal pressure.",
     });
   }
 
-  if (!priorities.length && metrics.cardioSummary?.last7d) {
+  if (!candidates.length && metrics.cardioSummary?.last7d) {
     addPriority({
       title: "Cardio",
       priority: "low",
       category: "recovery",
+      concernKey: "cardio:maintenance",
+      severity: 25,
       reason: "Cardio is not creating a current programming constraint.",
       evidence: ["Cardio available"],
       coachAction: "No action.",
     });
   }
 
-  const ranked = priorities
+  const ranked = candidates
     .sort((a, b) => {
-      const priorityDiff = programmingPriorityRank[a.priority] - programmingPriorityRank[b.priority];
-      if (priorityDiff !== 0) return priorityDiff;
-      const categoryDiff = programmingCategoryRank[a.category] - programmingCategoryRank[b.category];
-      if (categoryDiff !== 0) return categoryDiff;
-      return a.title.localeCompare(b.title);
+      const severityDiff = b.severity - a.severity;
+      if (severityDiff !== 0) return severityDiff;
+      return a.order - b.order;
     })
-    .slice(0, 5);
+    .slice(0, 5)
+    .map(({ severity: _severity, concernKey: _concernKey, order: _order, ...priority }) => priority);
 
   const topPriority = ranked[0]?.priority ?? "low";
   const overallStatus =
@@ -1552,7 +1612,7 @@ function buildProgrammingIntelligence(metrics: CoachExportMetrics, coachState: C
   return {
     overallStatus,
     summary: actionCount
-      ? `Coach identified ${actionCount} area${actionCount === 1 ? "" : "s"} likely to improve training quality.`
+      ? `Coach identified the ${actionCount} highest-impact coaching priorit${actionCount === 1 ? "y" : "ies"} based on current training, recovery, and movement data.`
       : "No urgent programming priorities were identified from current Coach signals.",
     priorities: ranked,
   };
@@ -1565,6 +1625,7 @@ function actionConfidence(priority: CoachProgrammingPriority) {
 }
 
 function transformProgrammingPriorityToAction(priority: CoachProgrammingPriority): CoachAction {
+  const hasEvidence = (pattern: RegExp) => priority.evidence.some((item) => pattern.test(item));
   const fallback: CoachAction = {
     title: priority.title,
     category: priority.category,
@@ -1572,7 +1633,7 @@ function transformProgrammingPriorityToAction(priority: CoachProgrammingPriority
     objective: "Clarify the next coaching target.",
     reason: priority.reason,
     expectedBenefit: "Improve training decision quality.",
-    constraints: ["Stay within current recovery and joint-feedback constraints."],
+    constraints: [],
     confidence: actionConfidence(priority),
   };
 
@@ -1581,12 +1642,12 @@ function transformProgrammingPriorityToAction(priority: CoachProgrammingPriority
       ...fallback,
       objective: "Reintroduce vertical pressing.",
       expectedBenefit: "Restore balanced movement coverage.",
-      constraints: ["Pain-free range of motion.", "Avoid aggravating shoulder sensitivity."],
+      constraints: hasEvidence(/shoulder/i) ? ["Pain-free range of motion.", "Avoid aggravating shoulder sensitivity."] : [],
       confidence: "High",
     };
   }
 
-  if (priority.title === "Aggressive Cut") {
+  if (priority.title === "Aggressive Cut" || priority.title === "Recovery & Performance Preservation") {
     return {
       ...fallback,
       objective: "Protect lean mass.",
@@ -1594,7 +1655,7 @@ function transformProgrammingPriorityToAction(priority: CoachProgrammingPriority
         ? "Performance pressure and rapid weight-loss context are elevated."
         : priority.reason,
       expectedBenefit: "Improve recovery and preserve strength.",
-      constraints: ["Avoid aggressive progression.", "Keep recovery constraints visible."],
+      constraints: ["Avoid aggressive progression."],
       confidence: "High",
     };
   }
@@ -1604,7 +1665,7 @@ function transformProgrammingPriorityToAction(priority: CoachProgrammingPriority
       ...fallback,
       objective: "Restore loaded carry exposure.",
       expectedBenefit: "Improve grip, trunk, and scapular integration.",
-      constraints: ["Keep exposure symptom-free.", "Respect current grip and joint feedback."],
+      constraints: hasEvidence(/trap compensation/i) ? ["Avoid trap compensation."] : [],
       confidence: "High",
     };
   }
@@ -1615,7 +1676,7 @@ function transformProgrammingPriorityToAction(priority: CoachProgrammingPriority
       title: "Push Volume",
       objective: "Restore push/pull balance.",
       expectedBenefit: "Reduce weekly imbalance.",
-      constraints: ["Stay within current shoulder tolerance.", "Do not chase volume through pain."],
+      constraints: hasEvidence(/shoulder/i) ? ["Stay within current shoulder tolerance."] : [],
       confidence: "Medium",
     };
   }
@@ -1625,7 +1686,7 @@ function transformProgrammingPriorityToAction(priority: CoachProgrammingPriority
       ...fallback,
       objective: "Increase direct stability work.",
       expectedBenefit: "Improve frontal-plane control.",
-      constraints: ["Keep control work deliberate.", "Avoid compensating through discomfort."],
+      constraints: [],
       confidence: "Medium",
     };
   }
@@ -1635,7 +1696,7 @@ function transformProgrammingPriorityToAction(priority: CoachProgrammingPriority
       ...fallback,
       objective: "Restore direct glute-extension coverage.",
       expectedBenefit: "Improve posterior-chain movement balance.",
-      constraints: ["Keep movement quality ahead of loading pressure."],
+      constraints: [],
       confidence: "Medium",
     };
   }
@@ -1645,7 +1706,7 @@ function transformProgrammingPriorityToAction(priority: CoachProgrammingPriority
       ...fallback,
       objective: "Stabilize the performance trend.",
       expectedBenefit: "Improve recovery and preserve strength.",
-      constraints: ["Avoid aggressive progression.", "Respect fatigue and joint-feedback signals."],
+      constraints: [],
       confidence: priority.priority === "high" ? "High" : "Medium",
     };
   }
@@ -1655,7 +1716,7 @@ function transformProgrammingPriorityToAction(priority: CoachProgrammingPriority
       ...fallback,
       objective: "Align training choices with current goal pressure.",
       expectedBenefit: "Keep training supportive of the body-composition target.",
-      constraints: ["Do not override recovery or joint constraints."],
+      constraints: [],
       confidence: "Medium",
     };
   }
