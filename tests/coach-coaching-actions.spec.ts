@@ -124,7 +124,7 @@ test("aggressive cut and carry priorities transform without exercise or workout 
   const { report, text } = reportFor(metrics, "intervene");
   const actions = report.coachingActions?.actions ?? [];
 
-  expect(actions.map((action) => action.title)).toEqual(["Aggressive Cut", "Carry", "Performance Pressure"]);
+  expect(actions.map((action) => action.title)).toEqual(["Recovery & Performance Preservation", "Carry"]);
   expect(actions[0]).toEqual(expect.objectContaining({
     objective: "Protect lean mass.",
     expectedBenefit: "Improve recovery and preserve strength.",
@@ -135,8 +135,32 @@ test("aggressive cut and carry priorities transform without exercise or workout 
     expectedBenefit: "Improve grip, trunk, and scapular integration.",
     confidence: "High",
   }));
+  expect(actions[1].constraints).toEqual([]);
   expect(text).toContain("Coaching Actions");
   expect(section(text, "Coaching Actions", "Lean Preservation")).not.toMatch(/workout|schedule|sets|reps|farmer|suitcase/i);
+});
+
+test("carry action constraints come only from actual trap-compensation evidence", () => {
+  const metrics = baseMetrics({
+    strengthSignal: { current: 1.9, delta14d: 0.01, vs90dBestPct: -1, currentBodyweight: 190, bodyweightDaysUsed: 5 },
+    movementCoverage: {
+      ...baseMetrics().movementCoverage!,
+      entries: [entry({ family: "carry", label: "Carry" })],
+      missingFamilies: ["Carry"],
+    },
+    patternSummary: {
+      movementQuality: ["Trap compensation shows up under fatigue."],
+      stimulus: [],
+      fatigue: [],
+      constraints: ["Trap compensation remains active."],
+      progression: [],
+    },
+  });
+
+  const { report } = reportFor(metrics);
+  const carry = report.coachingActions?.actions.find((action) => action.title === "Carry");
+
+  expect(carry?.constraints).toEqual(["Avoid trap compensation."]);
 });
 
 test("push volume and hip stability actions are medium-confidence principle targets", () => {
@@ -175,18 +199,19 @@ test("push volume and hip stability actions are medium-confidence principle targ
   const { report } = reportFor(metrics);
   const actions = report.coachingActions?.actions ?? [];
 
-  expect(actions.map((action) => action.title)).toEqual(["Hip Stability", "Push Volume"]);
+  expect(actions.map((action) => action.title)).toEqual(["Push Volume", "Hip Stability"]);
   expect(actions[0]).toEqual(expect.objectContaining({
-    objective: "Increase direct stability work.",
-    expectedBenefit: "Improve frontal-plane control.",
-    confidence: "Medium",
-  }));
-  expect(actions[1]).toEqual(expect.objectContaining({
     objective: "Restore push/pull balance.",
     expectedBenefit: "Reduce weekly imbalance.",
     confidence: "Medium",
   }));
-  expect(actions[1].objective).not.toMatch(/\d|sets|reps/i);
+  expect(actions[1]).toEqual(expect.objectContaining({
+    objective: "Increase direct stability work.",
+    expectedBenefit: "Improve frontal-plane control.",
+    confidence: "Medium",
+  }));
+  expect(actions[0].objective).not.toMatch(/\d|sets|reps/i);
+  expect(actions[0].constraints).toEqual([]);
 });
 
 test("actions preserve programming order and remove duplicate transformed titles", () => {
@@ -211,10 +236,9 @@ test("actions preserve programming order and remove duplicate transformed titles
   const { report } = reportFor(metrics, "intervene");
 
   const expectedOrder = [
-    "Aggressive Cut",
-    "Hip Stability",
     "Vertical Push",
-    "Performance Pressure",
+    "Recovery & Performance Preservation",
+    "Hip Stability",
   ];
   expect(report.programming?.priorities.map((priority) => priority.title)).toEqual(expectedOrder);
   expect(report.coachingActions?.actions.map((action) => action.title)).toEqual(expectedOrder);

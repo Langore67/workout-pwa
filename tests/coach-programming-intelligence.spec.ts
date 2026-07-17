@@ -103,7 +103,8 @@ test("missing vertical push with shoulder sensitivity becomes a high movement pr
   expect(verticalPush?.priority).toBe("high");
   expect(verticalPush?.category).toBe("movement");
   expect(verticalPush?.evidence).toContain("Vertical Push Missing");
-  expect(verticalPush?.evidence).toContain("Shoulder sensitivity");
+  expect(verticalPush?.evidence).toContain("Shoulder sensitivity remains active.");
+  expect(verticalPush?.evidence.filter((item) => /shoulder/i.test(item))).toHaveLength(1);
   expect(verticalPush?.coachAction).toBe("Resume vertical pressing only within pain-free range.");
 });
 
@@ -128,7 +129,7 @@ test("missing carry is medium priority and does not choose a specific exercise",
   expect(carry?.coachAction).not.toContain("Suitcase");
 });
 
-test("aggressive cut and push-behind volume become ranked priorities", () => {
+test("recovery and performance pressure merge while push-behind volume remains ranked", () => {
   const metrics = baseMetrics({
     strengthSignal: { current: 1.9, delta14d: -0.04, vs90dBestPct: -4, currentBodyweight: 190, bodyweightDaysUsed: 5 },
     leanPreservation: {
@@ -168,8 +169,15 @@ test("aggressive cut and push-behind volume become ranked priorities", () => {
   const titles = report.programming?.priorities.map((priority) => priority.title);
 
   expect(report.programming?.overallStatus).toBe("High Focus");
-  expect(titles).toEqual(["Aggressive Cut", "Performance Pressure", "Push Behind"]);
-  expect(report.programming?.priorities.find((priority) => priority.title === "Aggressive Cut")?.priority).toBe("high");
+  expect(titles).toEqual(["Recovery & Performance Preservation", "Push Behind"]);
+  const merged = report.programming?.priorities.find((priority) => priority.title === "Recovery & Performance Preservation");
+  expect(merged?.priority).toBe("high");
+  expect(merged?.evidence).toEqual([
+    "Coach Snapshot Intervene",
+    "Lean Preservation Watch",
+    "Strength Signal down",
+    "14d Strength Signal -0.04",
+  ]);
   expect(report.programming?.priorities.find((priority) => priority.title === "Push Behind")?.coachAction).toBe("Add 3-5 pushing sets this week.");
 });
 
@@ -225,12 +233,13 @@ test("priority list is deterministic, deduped, and capped at five", () => {
 
   expect(report.programming?.priorities).toHaveLength(5);
   expect(report.programming?.priorities.map((priority) => priority.title)).toEqual([
-    "Aggressive Cut",
-    "Performance Pressure",
+    "Vertical Push",
+    "Recovery & Performance Preservation",
+    "Push Behind",
     "Carry",
-    "Glute Extension",
-    "Hip Stability",
+    "Goal Trajectory",
   ]);
+  expect(report.programming?.priorities.map((priority) => priority.title)).not.toContain("Glute Extension");
 });
 
 test("balanced athlete produces low focus with no action", () => {
@@ -269,6 +278,7 @@ test("export renders Programming Intelligence with evidence and coach action", (
 
   expect(programmingIndex).toBeGreaterThan(-1);
   expect(text).toContain("Status: Medium Focus");
+  expect(text).toContain("Coach identified the 1 highest-impact coaching priority based on current training, recovery, and movement data.");
   expect(text).toContain("1. Carry");
   expect(text).toContain("Priority: Medium");
   expect(text).toContain("Evidence");
