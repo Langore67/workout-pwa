@@ -554,6 +554,7 @@ test.describe("Start Coach Dashboard", () => {
     await expect(snapshot).toContainText("Confidence");
     await expect(snapshot).toContainText("Why");
     await expect(snapshot).toContainText("Today");
+    await expect(snapshot).toContainText("Programming Priorities");
 
     const body = page.getByTestId("coach-dashboard-body");
     await expect(body).toContainText("Body Values");

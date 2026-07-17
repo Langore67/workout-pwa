@@ -109,6 +109,31 @@ function renderMovementIntelligence(intelligence: NonNullable<CoachReport["expor
   return lines;
 }
 
+function formatPriorityLabel(priority: string) {
+  return priority.charAt(0).toUpperCase() + priority.slice(1);
+}
+
+function renderProgrammingIntelligence(programming: CoachReport["programming"]) {
+  if (!programming) return [] as string[];
+
+  const lines: string[] = [
+    "Programming Intelligence",
+    `- Status: ${programming.overallStatus}`,
+    `- Summary: ${programming.summary}`,
+  ];
+  programming.priorities.forEach((priority, index) => {
+    lines.push("", `${index + 1}. ${priority.title}`);
+    lines.push(`- Priority: ${formatPriorityLabel(priority.priority)}`);
+    lines.push(`- Why: ${priority.reason}`);
+    if (priority.evidence.length) {
+      lines.push("- Evidence", ...priority.evidence.map((item) => `  - ${item}`));
+    }
+    lines.push(`- Coach Action: ${priority.coachAction}`);
+  });
+  lines.push("");
+  return lines;
+}
+
 export function formatCoachReportText(
   report: CoachReport,
   options: {
@@ -213,6 +238,7 @@ export function formatCoachReportText(
             "",
           ]
       : []),
+    ...renderProgrammingIntelligence(report.programming),
     ...(exportOnly
       ? [
           ...renderSection(exportOnly.leanPreservation),
