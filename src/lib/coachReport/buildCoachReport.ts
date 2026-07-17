@@ -23,6 +23,8 @@ import type {
   CoachReportMovementCoverage,
   CoachReportMovementIntelligence,
   CoachReportPerformance,
+  CoachProgrammingPriority,
+  CoachProgrammingSummary,
   CoachReportSection,
   CoachReportWeeklyVolumeBalance,
   CoachReportWeeklyVolume,
@@ -1362,6 +1364,198 @@ function buildNextWorkoutFocusReportSection(metrics: CoachExportMetrics): CoachR
   };
 }
 
+const programmingPriorityRank: Record<CoachProgrammingPriority["priority"], number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
+
+const programmingCategoryRank: Record<CoachProgrammingPriority["category"], number> = {
+  movement: 0,
+  recovery: 1,
+  performance: 2,
+  volume: 3,
+  goals: 4,
+};
+
+function titleCaseStatus(value: string) {
+  return value
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function hasConstraintSignal(metrics: CoachExportMetrics, pattern: RegExp) {
+  const values = [
+    ...(metrics.patternSummary?.movementQuality ?? []),
+    ...(metrics.patternSummary?.constraints ?? []),
+    ...(metrics.patternSummary?.fatigue ?? []),
+    ...(metrics.trainingSignals?.movementQuality ?? []),
+    ...(metrics.trainingSignals?.fatigueReadiness ?? []),
+    ...(metrics.readinessNotes ?? []),
+  ];
+  return values.some((value) => pattern.test(value));
+}
+
+function buildProgrammingIntelligence(metrics: CoachExportMetrics, coachState: CoachState): CoachProgrammingSummary {
+  const priorities: CoachProgrammingPriority[] = [];
+  const seen = new Set<string>();
+  const addPriority = (priority: CoachProgrammingPriority) => {
+    const key = `${priority.category}:${priority.title}`.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    priorities.push(priority);
+  };
+
+  const shoulderContext = hasConstraintSignal(metrics, /shoulder|overhead|behind-head|pressing pain|joint feedback/i);
+
+  for (const entry of metrics.movementCoverage?.entries ?? []) {
+    const statusLabel = titleCaseStatus(entry.status);
+    if (entry.status === "missing") {
+      const isVerticalPush = entry.family === "vertical_push";
+      const isCarry = entry.family === "carry";
+      addPriority({
+        title: entry.label,
+        priority: isVerticalPush && shoulderContext ? "high" : isCarry ? "medium" : "medium",
+        category: "movement",
+        reason: "Movement family missing.",
+        evidence: [
+          `${entry.label} ${statusLabel}`,
+          ...(entry.context ? [entry.context] : []),
+          ...(isVerticalPush && shoulderContext ? ["Shoulder sensitivity"] : []),
+        ],
+        coachAction: isVerticalPush && shoulderContext
+          ? "Resume vertical pressing only within pain-free range."
+          : isCarry
+            ? "Add one loaded-carry exposure."
+            : `Add direct ${entry.label.toLowerCase()} pattern exposure.`,
+      });
+    }
+
+    if (entry.status === "developing" && (entry.family === "glute_extension" || entry.family === "hip_stability")) {
+      addPriority({
+        title: entry.label,
+        priority: "medium",
+        category: "movement",
+        reason: "Movement pattern is developing.",
+        evidence: [`${entry.label} ${statusLabel}`, entry.interpretation].filter(Boolean),
+        coachAction: `Add direct ${entry.label.toLowerCase()} work before calling it covered.`,
+      });
+    }
+
+    if (
+      entry.family === "hip_stability" &&
+      (entry.status === "covered" || entry.status === "developing") &&
+      (entry.directEffectiveSets7d ?? entry.effectiveSets7d) === 0 &&
+      ((entry.supportEffectiveSets7d ?? 0) > 0 || entry.controlExposures7d > 0)
+    ) {
+      addPriority({
+        title: "Hip Stability",
+        priority: "medium",
+        category: "movement",
+        reason: "Coverage is driven by support or control exposure.",
+        evidence: [
+          `${entry.supportEffectiveSets7d ?? 0} support sets`,
+          `${entry.controlExposures7d} control exposures`,
+          "0 direct sets",
+        ],
+        coachAction: "Add direct hip-stability work.",
+      });
+    }
+  }
+
+  if (
+    coachState.snapshot.overallStatus === "intervene" &&
+    (metrics.leanPreservation?.status === "Watch" || metrics.leanPreservation?.status === "Poor")
+  ) {
+    addPriority({
+      title: "Aggressive Cut",
+      priority: metrics.leanPreservation.status === "Poor" ? "critical" : "high",
+      category: "recovery",
+      reason: "Muscle preservation risk elevated.",
+      evidence: [
+        `Coach Snapshot ${titleCaseStatus(coachState.snapshot.overallStatus)}`,
+        `Lean Preservation ${metrics.leanPreservation.status}`,
+        ...(typeof metrics.strengthSignal.delta14d === "number" && metrics.strengthSignal.delta14d < 0 ? ["Strength Signal down"] : []),
+      ],
+      coachAction: "Hold progression conservative.",
+    });
+  }
+
+  if (typeof metrics.strengthSignal.delta14d === "number" && Number.isFinite(metrics.strengthSignal.delta14d) && metrics.strengthSignal.delta14d < -0.03) {
+    addPriority({
+      title: "Performance Pressure",
+      priority: metrics.strengthSignal.delta14d < -0.08 ? "high" : "medium",
+      category: "performance",
+      reason: "Strength Signal is trending down.",
+      evidence: [`14d Strength Signal ${fmtSigned(metrics.strengthSignal.delta14d, 2)}`],
+      coachAction: "Keep progression conservative until performance stabilizes.",
+    });
+  }
+
+  for (const row of metrics.weeklyVolume?.balances ?? []) {
+    if (/balanced|not enough data/i.test(row.statusLabel) || row.status === "not_enough_data" || row.isContextuallyAcceptable) continue;
+    addPriority({
+      title: row.statusLabel,
+      priority: "medium",
+      category: "volume",
+      reason: row.summary,
+      evidence: [row.statusLabel, row.currentText],
+      coachAction: row.action,
+    });
+  }
+
+  if (metrics.goalProgress?.status === "Watch" || metrics.goalProgress?.status === "Off Track") {
+    addPriority({
+      title: "Goal Trajectory",
+      priority: "medium",
+      category: "goals",
+      reason: metrics.goalProgress.read,
+      evidence: [`Goal Trajectory ${metrics.goalProgress.status}`],
+      coachAction: "Keep the next training block aligned with the current goal pressure.",
+    });
+  }
+
+  if (!priorities.length && metrics.cardioSummary?.last7d) {
+    addPriority({
+      title: "Cardio",
+      priority: "low",
+      category: "recovery",
+      reason: "Cardio is not creating a current programming constraint.",
+      evidence: ["Cardio available"],
+      coachAction: "No action.",
+    });
+  }
+
+  const ranked = priorities
+    .sort((a, b) => {
+      const priorityDiff = programmingPriorityRank[a.priority] - programmingPriorityRank[b.priority];
+      if (priorityDiff !== 0) return priorityDiff;
+      const categoryDiff = programmingCategoryRank[a.category] - programmingCategoryRank[b.category];
+      if (categoryDiff !== 0) return categoryDiff;
+      return a.title.localeCompare(b.title);
+    })
+    .slice(0, 5);
+
+  const topPriority = ranked[0]?.priority ?? "low";
+  const overallStatus =
+    topPriority === "critical" ? "Critical Focus" :
+    topPriority === "high" ? "High Focus" :
+    topPriority === "medium" ? "Medium Focus" :
+    "Low Focus";
+  const actionCount = ranked.filter((priority) => priority.priority !== "low").length;
+
+  return {
+    overallStatus,
+    summary: actionCount
+      ? `Coach identified ${actionCount} area${actionCount === 1 ? "" : "s"} likely to improve training quality.`
+      : "No urgent programming priorities were identified from current Coach signals.",
+    priorities: ranked,
+  };
+}
+
 function buildRecentPatternsReportSection(metrics: CoachExportMetrics): CoachReportSection | undefined {
   const summary = metrics.patternSummary;
   const blocks = [
@@ -1583,6 +1777,7 @@ export function buildCoachReport({
   const readinessNotes = buildReadinessNotesReportSection(metrics);
   const dataGaps = buildDataGapsReportSection(metrics);
   const cardio = formatCardioSection(coachState.cardio);
+  const programming = buildProgrammingIntelligence(metrics, coachState);
   const exportOnly = {
     leanPreservation: buildLeanPreservationReportSection(metrics),
     visceralFat: buildVisceralFatReportSection(metrics),
@@ -1622,6 +1817,7 @@ export function buildCoachReport({
     goals,
     learnings,
     cardio,
+    programming,
     exportOnly: Object.fromEntries(Object.entries(exportOnly).filter(([, section]) => hasSectionContent(section))) as NonNullable<
       CoachReport["exportOnly"]
     >,

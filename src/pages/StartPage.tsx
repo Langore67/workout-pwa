@@ -985,6 +985,26 @@ export default function StartPage() {
                 <DashboardLine label="Confidence" value={renderedCoachReport?.snapshot.confidence ?? "—"} />
                 <DashboardLine label="Why" value={renderedCoachReport?.snapshot.why ?? "—"} />
                 <DashboardLine label="Today" value={renderedCoachReport?.snapshot.today ?? "—"} />
+                {renderedCoachReport?.programming?.priorities.length ? (
+                  <div style={{ marginTop: 4 }}>
+                    <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      Programming Priorities
+                    </div>
+                    <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+                      {renderedCoachReport.programming.priorities.slice(0, 3).map((priority) => (
+                        <div key={`${priority.category}-${priority.title}`} style={{ display: "grid", gap: 2 }}>
+                          <div style={{ fontWeight: 800 }}>
+                            {priority.priority.charAt(0).toUpperCase() + priority.priority.slice(1)} | {priority.title}
+                          </div>
+                          <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
+                            {priority.reason}
+                          </div>
+                          <div style={{ fontSize: 12, lineHeight: 1.35 }}>{priority.coachAction}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
 
