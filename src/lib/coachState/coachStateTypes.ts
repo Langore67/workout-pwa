@@ -44,6 +44,7 @@ export type CoachStateStrengthAnchor = Pick<
   | "exerciseName"
   | "trackDisplayName"
   | "effectiveWeightLb"
+  | "assistedBodyweight"
   | "reps"
   | "e1rm"
   | "performedAt"

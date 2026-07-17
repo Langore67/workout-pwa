@@ -1631,6 +1631,57 @@ test("coach export performance anchors include current movement, relationship, a
   expect(anchors).not.toContain("Status: Stale anchor");
 });
 
+test("coach export formats assisted pull-up benchmarks without inflated load or e1RM", async () => {
+  const metrics = buildMetrics();
+  metrics.anchorLifts = [
+    {
+      pattern: "pull",
+      exerciseId: "assisted-pull-up",
+      exerciseName: "Assisted Pull Up",
+      trackDisplayName: "Assisted Pull Up",
+      effectiveWeightLb: 143.4,
+      assistedBodyweight: {
+        bodyweightLb: 183.4,
+        assistanceLb: 40,
+        effectiveResistanceLb: 143.4,
+      },
+      reps: 10,
+      e1rm: null,
+      performedAt: new Date("2026-03-28T09:00:00-04:00").getTime(),
+      ageDays: 30,
+      recency: "stale",
+      isStale: true,
+      movementFamily: "vertical_pull",
+      status: "stale_anchor",
+      benchmarkStatus: "stale",
+      movementStatus: "current",
+      latestSameExercise: {
+        exerciseName: "Assisted Pull Up",
+        movementFamily: "vertical_pull",
+        performedAt: new Date("2026-04-27T09:00:00-04:00").getTime(),
+        ageDays: 0,
+      },
+      latestFamilyMovement: {
+        exerciseName: "Assisted Pull Up",
+        movementFamily: "vertical_pull",
+        performedAt: new Date("2026-04-27T09:00:00-04:00").getTime(),
+        ageDays: 0,
+      },
+      relationship: "same_exercise",
+    } as any,
+  ];
+  metrics.currentMovementFocus = [];
+
+  const text = formatCoachExportText(metrics as any);
+  const anchors = getSection(text, "Performance Anchors", "Lean Preservation");
+
+  expect(anchors).toContain("- pull: Assisted Pull Up | BW 183.4 lb | Assistance 40 lb | Effective Resistance 143.4 lb | 10 reps");
+  expect(anchors).toContain("Performance Benchmark: Assisted Pull Up | BW 183.4 lb | Assistance 40 lb | Effective Resistance 143.4 lb | 10 reps");
+  expect(anchors).not.toContain("236.7");
+  expect(anchors).not.toContain("315.6");
+  expect(anchors).not.toMatch(/Assisted Pull Up \| (?:effective )?143\.4 lb x 10 \| e1RM/i);
+});
+
 test("coach export labels stale performance anchors without treating them as current evidence", async () => {
   const metrics = buildMetrics();
   metrics.anchorLifts = [
