@@ -1623,7 +1623,7 @@ test("coach export performance anchors include current movement, relationship, a
 
   expect(anchors).toContain("Vertical Pull");
   expect(anchors).toContain("Lat Pulldown | effective 140 lb x 10 | e1RM 187");
-  expect(anchors).toContain("Movement Status: Inactive");
+  expect(anchors).toContain("Anchor Exercise Status: Inactive");
   expect(anchors).toContain("Latest Vertical Pull Movement: Assisted Pull Up");
   expect(anchors).toContain("Benchmark Status: Stale");
   expect(anchors).toContain("Relationship: Same movement family");

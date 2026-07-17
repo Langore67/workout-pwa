@@ -80,6 +80,35 @@ function renderMovementCoverage(coverage: NonNullable<CoachReport["exportOnly"]>
   return lines;
 }
 
+function renderMovementIntelligence(intelligence: NonNullable<CoachReport["exportOnly"]>["movementIntelligence"]) {
+  if (!intelligence?.entries?.length) return [] as string[];
+
+  const lines: string[] = [intelligence.title];
+  if (intelligence.status) lines.push(`- Status: ${intelligence.status}`);
+  if (intelligence.summary) lines.push(`- Summary: ${intelligence.summary}`);
+  for (const entry of intelligence.entries) {
+    lines.push("", entry.label);
+    lines.push(`- Coverage: ${entry.coverageStatus}`);
+    lines.push(`- Movement Family Status: ${entry.movementFamilyStatus}`);
+    if (entry.anchorExerciseStatus) lines.push(`- Anchor Exercise Status: ${entry.anchorExerciseStatus}`);
+    if (entry.latestSameExercise && entry.latestSameExercise === entry.latestFamilyMovement) {
+      lines.push(`- Latest Exercise / Family Movement: ${entry.latestSameExercise}`);
+    } else {
+      lines.push(`- Latest ${entry.label} Movement: ${entry.latestFamilyMovement ?? "None"}`);
+    }
+    if (entry.latestSameExercise && entry.latestSameExercise !== entry.latestFamilyMovement) {
+      lines.push(`- Latest Same Exercise: ${entry.latestSameExercise}`);
+    }
+    lines.push(`- Benchmark Status: ${entry.benchmark?.status ?? "None"}`);
+    lines.push(`- Performance Benchmark: ${entry.benchmark?.performanceText ?? "None"}`);
+    if (entry.recentWork) lines.push(`- Recent Work: ${entry.recentWork}`);
+    lines.push(`- Read: ${entry.read}`);
+    if (entry.context) lines.push(`- Context: ${entry.context}`);
+  }
+  lines.push("");
+  return lines;
+}
+
 export function formatCoachReportText(
   report: CoachReport,
   options: {
@@ -133,10 +162,10 @@ export function formatCoachReportText(
           ...(performance.anchor
             ? [
                 `- Performance Anchor: ${performance.anchor.familyLabel ?? performance.anchor.label}`,
-                ...(performance.anchor.movementStatusLabel ? [`- Movement Status: ${performance.anchor.movementStatusLabel}`] : []),
+                ...(performance.anchor.movementStatusLabel ? [`- Anchor Exercise Status: ${performance.anchor.movementStatusLabel}`] : []),
                 ...(performance.anchor.latestSameExerciseText ? [`- Latest Same Exercise: ${performance.anchor.latestSameExerciseText}`] : []),
                 ...(performance.anchor.latestFamilyMovementText && performance.anchor.latestFamilyMovementText !== performance.anchor.latestSameExerciseText
-                  ? [`- Latest Family Movement: ${performance.anchor.latestFamilyMovementText}`]
+                  ? [`- Current Family Movement: ${performance.anchor.latestFamilyMovementText}`]
                   : []),
                 ...(performance.anchor.benchmarkStatusLabel ? [`- Benchmark Status: ${performance.anchor.benchmarkStatusLabel}`] : []),
                 `- Performance Benchmark: ${performance.anchor.performanceBenchmarkText ?? performance.anchor.text}`,
@@ -190,8 +219,9 @@ export function formatCoachReportText(
           ...renderSection(exportOnly.visceralFat),
           ...renderSection(exportOnly.phaseQuality),
           ...renderSection(exportOnly.strengthSignalDetails),
-          ...renderMovementCoverage(exportOnly.movementCoverage),
-          ...renderSection(exportOnly.currentMovementFocus),
+          ...renderMovementIntelligence(exportOnly.movementIntelligence),
+          ...(exportOnly.movementIntelligence?.entries?.length ? [] : renderMovementCoverage(exportOnly.movementCoverage)),
+          ...(exportOnly.movementIntelligence?.entries?.length ? [] : renderSection(exportOnly.currentMovementFocus)),
           ...renderSection(exportOnly.nextWorkoutFocus),
           ...renderSection(exportOnly.recentPatterns),
         ]
