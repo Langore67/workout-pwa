@@ -89,6 +89,7 @@ function buildStrengthAnchors(metrics: CoachExportMetrics): CoachStateStrengthAn
     exerciseName: lift.exerciseName,
     trackDisplayName: lift.trackDisplayName,
     effectiveWeightLb: lift.effectiveWeightLb,
+    assistedBodyweight: lift.assistedBodyweight,
     reps: lift.reps,
     e1rm: lift.e1rm,
     performedAt: lift.performedAt,

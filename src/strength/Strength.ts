@@ -157,9 +157,38 @@ export function isExplicitlyAssistedBodyweightExerciseName(name: string) {
   );
 }
 
+export type AssistedBodyweightLoadSemantics = {
+  bodyweightLb: number;
+  assistanceLb: number;
+  effectiveResistanceLb: number;
+};
+
+export function getAssistedBodyweightLoadSemantics(params: {
+  rawWeight: number;
+  exerciseName: string;
+  bodyweight: number;
+}): AssistedBodyweightLoadSemantics | null {
+  if (!isExplicitlyAssistedBodyweightExerciseName(params.exerciseName)) return null;
+  const rawWeight = Number(params.rawWeight);
+  if (!Number.isFinite(rawWeight)) return null;
+
+  const bodyweightLb = Number.isFinite(params.bodyweight) && params.bodyweight > 0 ? params.bodyweight : 0;
+  const assistanceLb = Math.abs(rawWeight);
+  const effectiveResistanceLb = Math.max(0, bodyweightLb - assistanceLb);
+
+  return {
+    bodyweightLb,
+    assistanceLb,
+    effectiveResistanceLb,
+  };
+}
+
 export function calcEffectiveStrengthWeightLb(rawWeight: number, exerciseName: string, bodyweight: number): number {
   const w = Number(rawWeight);
   if (!Number.isFinite(w)) return 0;
+
+  const assisted = getAssistedBodyweightLoadSemantics({ rawWeight: w, exerciseName, bodyweight });
+  if (assisted) return assisted.effectiveResistanceLb;
 
   if (!isBodyweightEffectiveLoadExerciseName(exerciseName)) {
     return w > 0 ? w : 0;
@@ -659,6 +688,9 @@ export async function computeStrengthIndexAt(
           if (!pattern) continue;
      
      const effectiveWeight = calcEffectiveStrengthWeightLb(s.weight, exerciseName, bodyweight);
+     // Assisted bodyweight work has useful movement evidence, but its resistance
+     // is not a conventional external load suitable for Epley-based scoring.
+     if (getAssistedBodyweightLoadSemantics({ rawWeight: s.weight, exerciseName, bodyweight })) continue;
      const scored = computeScoredE1RM(effectiveWeight, s.reps);
      if (scored <= 0) continue;
  

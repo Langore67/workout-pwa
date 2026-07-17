@@ -1092,6 +1092,110 @@ test.describe("Strength Signal v2 anchor resolver", () => {
     expect(result.carryName).toBe("Farmer Carry");
   });
 
+  test("assisted pull-up resolves as vertical pull without conventional e1RM", async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      // @ts-ignore
+      const db = window.__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const { setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
+      const strengthV2 = await import("/src/strength/v2/computeStrengthSignalV2.ts");
+
+      const now = Date.now();
+      const sessionId = crypto.randomUUID();
+      const exerciseId = "assisted-pull-up-anchor";
+      const trackId = "assisted-pull-up-track";
+
+      await setStrengthSignalConfig({
+        activeVersion: "v2",
+        strengthSignalV2Config: { phases: { bulk: { verticalPull: exerciseId } } },
+      });
+      await setCurrentPhase("bulk");
+
+      await db.bodyMetrics.add({
+        id: crypto.randomUUID(),
+        measuredAt: now - 60_000,
+        takenAt: now - 60_000,
+        createdAt: now - 60_000,
+        weightLb: 183.4,
+      });
+
+      await db.sessions.add({
+        id: sessionId,
+        startedAt: now - 60_000,
+        endedAt: now,
+      });
+
+      await db.exercises.add({
+        id: exerciseId,
+        name: "Assisted Pull Up",
+        normalizedName: "assisted pull up",
+        anchorEligibility: "primary",
+        anchorSubtypes: ["verticalPull"],
+        equipmentTags: ["bodyweight"],
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await db.tracks.add({
+        id: trackId,
+        exerciseId,
+        displayName: "Assisted Pull Up",
+        trackType: "hypertrophy",
+        trackingMode: "weightedReps",
+        createdAt: now,
+      });
+
+      await db.sets.add({
+        id: crypto.randomUUID(),
+        sessionId,
+        trackId,
+        setType: "working",
+        weight: 40,
+        reps: 10,
+        createdAt: now - 1000,
+        completedAt: now - 1000,
+      });
+
+      const first = await strengthV2.computeStrengthSignalV2({ now });
+      const second = await strengthV2.computeStrengthSignalV2({ now });
+      const anchor = first.anchors.verticalPull;
+
+      return {
+        first: {
+          exerciseName: anchor?.exerciseName ?? null,
+          e1RM: anchor?.e1RM ?? null,
+          capacityE1RM: anchor?.capacity.e1RM ?? null,
+          latestEffective: anchor?.latestSet?.effectiveWeightLb ?? null,
+          latestAssisted: anchor?.latestSet?.assistedBodyweight ?? null,
+          aggregateAverage: first.aggregate.averageE1RM ?? null,
+        },
+        second: {
+          exerciseName: second.anchors.verticalPull?.exerciseName ?? null,
+          e1RM: second.anchors.verticalPull?.e1RM ?? null,
+          capacityE1RM: second.anchors.verticalPull?.capacity.e1RM ?? null,
+          latestEffective: second.anchors.verticalPull?.latestSet?.effectiveWeightLb ?? null,
+          latestAssisted: second.anchors.verticalPull?.latestSet?.assistedBodyweight ?? null,
+          aggregateAverage: second.aggregate.averageE1RM ?? null,
+        },
+      };
+    });
+
+    expect(result.first).toEqual({
+      exerciseName: "Assisted Pull Up",
+      e1RM: null,
+      capacityE1RM: null,
+      latestEffective: 143.4,
+      latestAssisted: {
+        bodyweightLb: 183.4,
+        assistanceLb: 40,
+        effectiveResistanceLb: 143.4,
+      },
+      aggregateAverage: null,
+    });
+    expect(result.second).toEqual(result.first);
+  });
+
   test("phase switching is observed immediately by Strength Signal v2", async ({ page }) => {
     const result = await page.evaluate(async () => {
       const { getCurrentPhase, setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");

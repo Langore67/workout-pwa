@@ -82,6 +82,12 @@ export type CoachExportAnchorCurrentMovement = {
   ageDays?: number | null;
 };
 
+export type CoachExportAssistedBodyweightLoad = {
+  bodyweightLb: number;
+  assistanceLb: number;
+  effectiveResistanceLb: number;
+};
+
 export type CoachExportWaistToHeight = CoachExportMetric & {
   status: "Very Lean" | "Healthy" | "Elevated" | "High Risk";
   healthyWaistTargetIn: number;
@@ -94,6 +100,7 @@ export type CoachExportAnchorLift = {
   exerciseName: string | null;
   trackDisplayName: string | null;
   effectiveWeightLb: number | null;
+  assistedBodyweight?: CoachExportAssistedBodyweightLoad | null;
   reps: number | null;
   e1rm: number | null;
   performedAt: number | null;
