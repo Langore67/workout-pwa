@@ -189,6 +189,23 @@ export type CoachProgrammingSummary = {
   priorities: CoachProgrammingPriority[];
 };
 
+export type CoachAction = {
+  title: string;
+  category: CoachProgrammingPriority["category"];
+  priority: CoachProgrammingPriority["priority"];
+  objective: string;
+  reason: string;
+  expectedBenefit: string;
+  constraints: string[];
+  confidence: "High" | "Medium" | "Low";
+};
+
+export type CoachActionSummary = {
+  status: string;
+  summary: string;
+  actions: CoachAction[];
+};
+
 export type CoachReport = {
   generatedAt?: string;
   snapshot: CoachReportSnapshot;
@@ -205,6 +222,7 @@ export type CoachReport = {
   learnings?: CoachReportLearnings;
   cardio?: CoachReportCardio;
   programming?: CoachProgrammingSummary;
+  coachingActions?: CoachActionSummary;
   exportOnly?: {
     leanPreservation?: CoachReportSection;
     visceralFat?: CoachReportSection;

@@ -23,6 +23,8 @@ import type {
   CoachReportMovementCoverage,
   CoachReportMovementIntelligence,
   CoachReportPerformance,
+  CoachAction,
+  CoachActionSummary,
   CoachProgrammingPriority,
   CoachProgrammingSummary,
   CoachReportSection,
@@ -1556,6 +1558,142 @@ function buildProgrammingIntelligence(metrics: CoachExportMetrics, coachState: C
   };
 }
 
+function actionConfidence(priority: CoachProgrammingPriority) {
+  if (priority.evidence.length >= 2 && (priority.priority === "critical" || priority.priority === "high")) return "High";
+  if (priority.evidence.length >= 1 && priority.priority !== "low") return "Medium";
+  return "Low";
+}
+
+function transformProgrammingPriorityToAction(priority: CoachProgrammingPriority): CoachAction {
+  const fallback: CoachAction = {
+    title: priority.title,
+    category: priority.category,
+    priority: priority.priority,
+    objective: "Clarify the next coaching target.",
+    reason: priority.reason,
+    expectedBenefit: "Improve training decision quality.",
+    constraints: ["Stay within current recovery and joint-feedback constraints."],
+    confidence: actionConfidence(priority),
+  };
+
+  if (priority.title === "Vertical Push") {
+    return {
+      ...fallback,
+      objective: "Reintroduce vertical pressing.",
+      expectedBenefit: "Restore balanced movement coverage.",
+      constraints: ["Pain-free range of motion.", "Avoid aggravating shoulder sensitivity."],
+      confidence: "High",
+    };
+  }
+
+  if (priority.title === "Aggressive Cut") {
+    return {
+      ...fallback,
+      objective: "Protect lean mass.",
+      reason: priority.evidence.some((item) => /strength signal down/i.test(item))
+        ? "Performance pressure and rapid weight-loss context are elevated."
+        : priority.reason,
+      expectedBenefit: "Improve recovery and preserve strength.",
+      constraints: ["Avoid aggressive progression.", "Keep recovery constraints visible."],
+      confidence: "High",
+    };
+  }
+
+  if (priority.title === "Carry") {
+    return {
+      ...fallback,
+      objective: "Restore loaded carry exposure.",
+      expectedBenefit: "Improve grip, trunk, and scapular integration.",
+      constraints: ["Keep exposure symptom-free.", "Respect current grip and joint feedback."],
+      confidence: "High",
+    };
+  }
+
+  if (/push behind|push volume/i.test(priority.title)) {
+    return {
+      ...fallback,
+      title: "Push Volume",
+      objective: "Restore push/pull balance.",
+      expectedBenefit: "Reduce weekly imbalance.",
+      constraints: ["Stay within current shoulder tolerance.", "Do not chase volume through pain."],
+      confidence: "Medium",
+    };
+  }
+
+  if (priority.title === "Hip Stability") {
+    return {
+      ...fallback,
+      objective: "Increase direct stability work.",
+      expectedBenefit: "Improve frontal-plane control.",
+      constraints: ["Keep control work deliberate.", "Avoid compensating through discomfort."],
+      confidence: "Medium",
+    };
+  }
+
+  if (priority.title === "Glute Extension") {
+    return {
+      ...fallback,
+      objective: "Restore direct glute-extension coverage.",
+      expectedBenefit: "Improve posterior-chain movement balance.",
+      constraints: ["Keep movement quality ahead of loading pressure."],
+      confidence: "Medium",
+    };
+  }
+
+  if (priority.title === "Performance Pressure") {
+    return {
+      ...fallback,
+      objective: "Stabilize the performance trend.",
+      expectedBenefit: "Improve recovery and preserve strength.",
+      constraints: ["Avoid aggressive progression.", "Respect fatigue and joint-feedback signals."],
+      confidence: priority.priority === "high" ? "High" : "Medium",
+    };
+  }
+
+  if (priority.title === "Goal Trajectory") {
+    return {
+      ...fallback,
+      objective: "Align training choices with current goal pressure.",
+      expectedBenefit: "Keep training supportive of the body-composition target.",
+      constraints: ["Do not override recovery or joint constraints."],
+      confidence: "Medium",
+    };
+  }
+
+  if (priority.title === "Cardio") {
+    return {
+      ...fallback,
+      objective: "Maintain the current cardio approach.",
+      expectedBenefit: "Preserve conditioning support without creating interference.",
+      constraints: ["No extra action required from current evidence."],
+      confidence: "Low",
+    };
+  }
+
+  return fallback;
+}
+
+function buildCoachingActions(programming: CoachProgrammingSummary): CoachActionSummary {
+  const seen = new Set<string>();
+  const actions = programming.priorities
+    .map(transformProgrammingPriorityToAction)
+    .filter((action) => {
+      const key = `${action.category}:${action.title}`.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  const nonLowCount = actions.filter((action) => action.priority !== "low").length;
+
+  return {
+    status: programming.overallStatus,
+    summary: nonLowCount
+      ? `Coach converted ${nonLowCount} programming priorit${nonLowCount === 1 ? "y" : "ies"} into principle-based actions.`
+      : "No urgent coaching actions were identified from current priorities.",
+    actions,
+  };
+}
+
 function buildRecentPatternsReportSection(metrics: CoachExportMetrics): CoachReportSection | undefined {
   const summary = metrics.patternSummary;
   const blocks = [
@@ -1778,6 +1916,7 @@ export function buildCoachReport({
   const dataGaps = buildDataGapsReportSection(metrics);
   const cardio = formatCardioSection(coachState.cardio);
   const programming = buildProgrammingIntelligence(metrics, coachState);
+  const coachingActions = buildCoachingActions(programming);
   const exportOnly = {
     leanPreservation: buildLeanPreservationReportSection(metrics),
     visceralFat: buildVisceralFatReportSection(metrics),
@@ -1818,6 +1957,7 @@ export function buildCoachReport({
     learnings,
     cardio,
     programming,
+    coachingActions,
     exportOnly: Object.fromEntries(Object.entries(exportOnly).filter(([, section]) => hasSectionContent(section))) as NonNullable<
       CoachReport["exportOnly"]
     >,

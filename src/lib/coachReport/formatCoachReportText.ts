@@ -134,6 +134,28 @@ function renderProgrammingIntelligence(programming: CoachReport["programming"]) 
   return lines;
 }
 
+function renderCoachingActions(actions: CoachReport["coachingActions"]) {
+  if (!actions) return [] as string[];
+
+  const lines: string[] = [
+    "Coaching Actions",
+    `- Status: ${actions.status}`,
+    `- Summary: ${actions.summary}`,
+  ];
+  actions.actions.forEach((action, index) => {
+    lines.push("", `Action ${index + 1}: ${action.title}`);
+    lines.push(`- Objective: ${action.objective}`);
+    lines.push(`- Reason: ${action.reason}`);
+    lines.push(`- Expected Benefit: ${action.expectedBenefit}`);
+    if (action.constraints.length) {
+      lines.push("- Constraints", ...action.constraints.map((constraint) => `  - ${constraint}`));
+    }
+    lines.push(`- Confidence: ${action.confidence}`);
+  });
+  lines.push("");
+  return lines;
+}
+
 export function formatCoachReportText(
   report: CoachReport,
   options: {
@@ -239,6 +261,7 @@ export function formatCoachReportText(
           ]
       : []),
     ...renderProgrammingIntelligence(report.programming),
+    ...renderCoachingActions(report.coachingActions),
     ...(exportOnly
       ? [
           ...renderSection(exportOnly.leanPreservation),

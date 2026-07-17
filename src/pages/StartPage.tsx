@@ -1005,6 +1005,19 @@ export default function StartPage() {
                     </div>
                   </div>
                 ) : null}
+                {renderedCoachReport?.coachingActions?.actions[0] ? (
+                  <div style={{ marginTop: 4 }}>
+                    <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      Today&apos;s Coaching Focus
+                    </div>
+                    <div style={{ display: "grid", gap: 3, marginTop: 6 }}>
+                      <div style={{ fontWeight: 800 }}>{renderedCoachReport.coachingActions.actions[0].objective}</div>
+                      <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
+                        {renderedCoachReport.coachingActions.actions[0].reason}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
 
