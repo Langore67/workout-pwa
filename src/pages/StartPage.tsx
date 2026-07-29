@@ -44,19 +44,13 @@ import { db, Template, TemplateItem, Track, Folder, Session } from "../db";
 import { uuid } from "../utils";
 import { Page, Section } from "../components/Page.tsx";
 import { ActionMenu, MenuIcons, MenuItem } from "../components/ActionMenu";
-import {
-  formatCardioDuration,
-  formatCardioPace,
-  formatCardioWalkDateTime,
-  formatDistanceMiKm,
-  pluralizeWalk,
-} from "../lib/cardio/formatCardioWalk";
 import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetrics";
 import type { CoachExportMetrics } from "../lib/coachExport/types";
 import { buildCoachStateFromExportMetrics } from "../lib/coachState/buildCoachState";
 import type { CoachState } from "../lib/coachState/coachStateTypes";
 import { buildCoachReport } from "../lib/coachReport/buildCoachReport";
 import type { CoachReport } from "../lib/coachReport/coachReportTypes";
+import { buildCoachDashboardModel } from "../lib/coachDashboard/buildCoachDashboardModel";
 import {
   COACH_DASHBOARD_REFRESH_EVENT,
   dispatchCoachDashboardRefresh,
@@ -95,120 +89,6 @@ function fmtDurationSince(ms?: number) {
   if (rem === 0) return `${hrs} hr`;
   return `${hrs} hr ${rem} min`;
 }
-
-function fmtCoachStatus(value?: string) {
-  const normalized = String(value ?? "").trim();
-  if (!normalized) return "—";
-  if (normalized === "not_enough_data") return "Not Enough Data";
-  return normalized
-    .split(/[_\s-]+/)
-    .filter(Boolean)
-    .map((part) => part[0].toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function fmtCoachConfidence(value?: string) {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  if (normalized === "high") return "High";
-  if (normalized === "moderate" || normalized === "medium") return "Moderate";
-  if (normalized === "low") return "Low";
-  return "—";
-}
-
-function fmtConfidencePhrase(value?: string) {
-  const label = fmtCoachConfidence(value);
-  return label === "—" ? "—" : `${label} confidence`;
-}
-
-function fmtNumber(value?: number | null, decimals = 1) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
-  const fixed = value.toFixed(decimals);
-  return fixed.replace(/\.0+$/, "");
-}
-
-function fmtSignedNumber(value?: number | null, decimals = 1) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
-  const fixed = value.toFixed(decimals).replace(/\.0+$/, "");
-  return value > 0 ? `+${fixed}` : fixed;
-}
-
-function fmtCoachBodyTrendDisplay(
-  metric:
-    | {
-        rawLatest: number | null;
-        rolling5: number | null;
-        sampleCount: number;
-      }
-    | null
-    | undefined,
-  unit: string,
-  options: {
-    order?: "latest-first" | "average-first";
-    decimals?: number;
-  } = {}
-) {
-  if (!metric) return "—";
-
-  const decimals = options.decimals ?? 1;
-  const hasLatest = metric.rawLatest != null && Number.isFinite(metric.rawLatest);
-  const hasAverage = metric.rolling5 != null && Number.isFinite(metric.rolling5);
-  const distinctAverage =
-    hasLatest &&
-    hasAverage &&
-    metric.sampleCount > 1 &&
-    Math.abs((metric.rolling5 as number) - (metric.rawLatest as number)) > 0.0001;
-
-  const fmt = (value: number | null | undefined) =>
-    typeof value === "number" && Number.isFinite(value) ? `${fmtNumber(value, decimals)}${unit}` : "—";
-
-  if (distinctAverage) {
-    const latest = `latest ${fmt(metric.rawLatest)}`;
-    const average = `${fmt(metric.rolling5)} coach avg`;
-    return options.order === "average-first" ? `${average} · ${latest}` : `${latest} · ${average}`;
-  }
-
-  if (hasLatest) {
-    if (hasAverage && metric.sampleCount > 1) {
-      return `${fmt(metric.rawLatest)} latest / ${fmt(metric.rolling5)} coach avg`;
-    }
-    return `${fmt(metric.rawLatest)} latest/manual`;
-  }
-
-  if (hasAverage) {
-    return `${fmt(metric.rolling5)} coach avg`;
-  }
-
-  return "—";
-}
-
-function fmtCardioWindowSummary(
-  count?: number,
-  durationSeconds?: number,
-  distanceMeters?: number
-) {
-  const parts = [count != null ? pluralizeWalk(count) : null];
-  if (typeof durationSeconds === "number" && Number.isFinite(durationSeconds) && durationSeconds > 0) {
-    parts.push(formatCardioDuration(durationSeconds) || null);
-  }
-  if (typeof distanceMeters === "number" && Number.isFinite(distanceMeters) && distanceMeters > 0) {
-    parts.push(formatDistanceMiKm(distanceMeters));
-  }
-  return parts.filter(Boolean).join(" | ") || "—";
-}
-
-function fmtCardioRecentSummary(recent?: NonNullable<CoachState["cardio"]["recent"]> | null) {
-  if (!recent) return "—";
-  const parts = [
-    formatCardioWalkDateTime(recent.startedAt),
-    recent.name,
-    formatCardioDuration(recent.durationSeconds) || null,
-    formatDistanceMiKm(recent.distanceMeters) || null,
-    formatCardioPace(recent.paceSecondsPerMile) || null,
-  ].filter(Boolean);
-  return parts.join(" | ") || "—";
-}
-
-type CoachStateAnchor = NonNullable<CoachState["strength"]["anchors"]>[number];
 
 const COACH_DASHBOARD_LOAD_TIMEOUT_MS = 4500;
 const COACH_DASHBOARD_LOAD_TIMEOUT_OVERRIDE_KEY = "IRONFORGE_COACH_DASHBOARD_TIMEOUT_MS";
@@ -253,104 +133,6 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
       window.clearTimeout(timeoutId);
     }
   }
-}
-
-function fmtAnchorSummary(anchor?: CoachStateAnchor | null) {
-  if (!anchor) return "—";
-  const parts = [
-    anchor.pattern
-      ? `${String(anchor.pattern).charAt(0).toUpperCase()}${String(anchor.pattern).slice(1)}`
-      : "",
-    anchor.exerciseName ?? anchor.trackDisplayName ?? "",
-  ].filter(Boolean);
-  const load = [
-    anchor.effectiveWeightLb != null ? `${fmtNumber(anchor.effectiveWeightLb)} lb` : null,
-    anchor.reps != null ? `${fmtNumber(anchor.reps, 0)} reps` : null,
-  ]
-    .filter(Boolean)
-    .join(" x ");
-  const e1rm = anchor.e1rm != null ? `e1RM ${fmtNumber(anchor.e1rm)} lb` : "";
-  const age =
-    typeof anchor.ageDays === "number" && Number.isFinite(anchor.ageDays)
-      ? `${Math.max(0, Math.floor(anchor.ageDays))}d old`
-      : null;
-  const recency =
-    anchor.recency === "stale"
-      ? "stale benchmark"
-      : anchor.recency === "historical"
-        ? "historical benchmark"
-        : anchor.recency === "recent"
-          ? "recent benchmark"
-          : null;
-  return [parts.join(": "), load, e1rm, age, recency].filter(Boolean).join(" | ");
-}
-
-function fmtSnapshotWhy(state: CoachState) {
-  return state.snapshot.narrative ?? state.snapshot.biggestRisk ?? state.snapshot.biggestWin ?? "—";
-}
-
-function fmtPerformanceRead(state: CoachState) {
-  const trend = String(state.strength.performanceTrend ?? "").trim();
-  const movement = String(state.strength.movementQuality ?? "").trim();
-  const anchor = state.strength.anchors?.[0];
-  const hasHistoricalAnchor =
-    anchor?.recency === "historical" || anchor?.recency === "stale" || anchor?.isStale;
-
-  if (trend === "Regressing" || trend === "Mixed" || movement === "Watch" || movement === "Mixed") {
-    return hasHistoricalAnchor
-      ? "Historical anchors remain useful, but recent strength signal is pressured."
-      : "Recent strength signal is pressured.";
-  }
-
-  if (trend === "Improving") {
-    return "Recent strength trend is improving, with cleaner movement noted in recent sessions.";
-  }
-
-  if (trend === "Stable") {
-    return "Strength is holding steady, with no major movement-quality limiter in recent sessions.";
-  }
-
-  return hasHistoricalAnchor
-    ? "Historical anchors are still useful context."
-    : "Recent performance evidence is still building.";
-}
-
-function fmtGoalRead(state: CoachState) {
-  const rows = state.goals.targets ?? [];
-  if (!rows.length) return "—";
-
-  const findRow = (pattern: RegExp) => rows.find((row) => pattern.test(row.label));
-  const weight = findRow(/^Weight$/i);
-  const waist = findRow(/waist/i);
-  const bodyFat = findRow(/body fat/i);
-  const status = String(state.goals.trajectoryStatus ?? "").trim().toLowerCase();
-
-  const weightClose =
-    weight != null &&
-    typeof weight.remaining === "number" &&
-    Number.isFinite(weight.remaining) &&
-    weight.remaining <= Math.max(5, Math.abs(weight.target) * 0.08);
-  const bodyCompNeedsConfirmation =
-    [waist, bodyFat].filter(
-      (row) => row != null && typeof row.remaining === "number" && Number.isFinite(row.remaining) && row.remaining > 0
-    ).length > 0;
-
-  if (status === "watch") {
-    if (weightClose && bodyCompNeedsConfirmation) {
-      return "Weight goal is close, but waist/body-fat goals need cleaner confirmation.";
-    }
-    return "Trajectory is watchable; keep the cut conservative and confirm the body-composition trend.";
-  }
-
-  if (status === "intervene") {
-    return "Body-composition trend is not yet close enough to relax progression.";
-  }
-
-  if (status === "solid") {
-    return "Goal trajectory is moving in the right direction.";
-  }
-
-  return "Goal trajectory still needs more data before it can be called clearly.";
 }
 
 type TemplatePreviewRow = {
@@ -665,6 +447,11 @@ export default function StartPage() {
       generatedAt: coachMetrics.generatedAt,
     });
   }, [coachReport, coachMetrics, coachState]);
+
+  const coachDashboardModel = useMemo(
+    () => buildCoachDashboardModel(renderedCoachReport),
+    [renderedCoachReport]
+  );
 
   const hasCoachDashboardContent = useMemo(() => hasCoachDashboardSourceData(coachMetrics), [coachMetrics]);
 
@@ -981,17 +768,17 @@ export default function StartPage() {
             <div className="card" data-testid="coach-dashboard-snapshot">
               <div style={{ fontWeight: 800, marginBottom: 8 }}>Coach Snapshot</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                <DashboardLine label="Status" value={renderedCoachReport?.snapshot.status ?? "—"} />
-                <DashboardLine label="Confidence" value={renderedCoachReport?.snapshot.confidence ?? "—"} />
-                <DashboardLine label="Why" value={renderedCoachReport?.snapshot.why ?? "—"} />
-                <DashboardLine label="Today" value={renderedCoachReport?.snapshot.today ?? "—"} />
-                {renderedCoachReport?.programming?.priorities.length ? (
+                <DashboardLine label="Status" value={coachDashboardModel.snapshot.status} />
+                <DashboardLine label="Confidence" value={coachDashboardModel.snapshot.confidence} />
+                <DashboardLine label="Why" value={coachDashboardModel.snapshot.why} />
+                <DashboardLine label="Today" value={coachDashboardModel.snapshot.today} />
+                {coachDashboardModel.snapshot.programmingPriorities.length ? (
                   <div style={{ marginTop: 4 }}>
                     <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                       Programming Priorities
                     </div>
                     <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
-                      {renderedCoachReport.programming.priorities.slice(0, 3).map((priority) => (
+                      {coachDashboardModel.snapshot.programmingPriorities.map((priority) => (
                         <div key={`${priority.category}-${priority.title}`} style={{ display: "grid", gap: 2 }}>
                           <div style={{ fontWeight: 800 }}>
                             {priority.priority.charAt(0).toUpperCase() + priority.priority.slice(1)} | {priority.title}
@@ -1005,15 +792,15 @@ export default function StartPage() {
                     </div>
                   </div>
                 ) : null}
-                {renderedCoachReport?.coachingActions?.actions[0] ? (
+                {coachDashboardModel.actions?.primaryFocus ? (
                   <div style={{ marginTop: 4 }}>
                     <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                       Today&apos;s Coaching Focus
                     </div>
                     <div style={{ display: "grid", gap: 3, marginTop: 6 }}>
-                      <div style={{ fontWeight: 800 }}>{renderedCoachReport.coachingActions.actions[0].objective}</div>
+                      <div style={{ fontWeight: 800 }}>{coachDashboardModel.actions.primaryFocus.objective}</div>
                       <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
-                        {renderedCoachReport.coachingActions.actions[0].reason}
+                        {coachDashboardModel.actions.primaryFocus.reason}
                       </div>
                     </div>
                   </div>
@@ -1022,27 +809,26 @@ export default function StartPage() {
             </div>
 
             <div className="card" data-testid="coach-dashboard-body">
-              <div style={{ fontWeight: 800, marginBottom: 8 }}>{renderedCoachReport?.body?.heading ?? "Body Values"}</div>
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>{coachDashboardModel.body.heading}</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                {renderedCoachReport?.body?.values
-                  .filter((line) => line.label !== "Fat Mass")
+                {coachDashboardModel.body.values
                   .map((line) => (
                     <DashboardLine key={line.label} label={line.label} value={line.value} />
                   ))}
-                {renderedCoachReport?.body?.note ? (
+                {coachDashboardModel.body.note ? (
                   <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
-                    {renderedCoachReport.body.note}
+                    {coachDashboardModel.body.note}
                   </div>
                 ) : null}
               </div>
 
               <div style={{ fontWeight: 800, marginTop: 12, marginBottom: 8 }}>Body Confidence</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                {renderedCoachReport?.body?.confidenceRows.map((line) => (
+                {coachDashboardModel.body.confidenceRows.map((line) => (
                   <DashboardLine key={line.label} label={line.label} value={line.value} />
                 ))}
                 <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
-                  Confidence reflects how much recent data is available, not whether the number is high or low.
+                  {coachDashboardModel.body.confidenceNote}
                 </div>
               </div>
             </div>
@@ -1050,62 +836,62 @@ export default function StartPage() {
             <div className="card" data-testid="coach-dashboard-performance">
               <div style={{ fontWeight: 800, marginBottom: 8 }}>Performance</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                <DashboardLine label="Performance Trend" value={renderedCoachReport?.performance?.trend ?? "—"} />
-                {renderedCoachReport?.performance?.anchor?.familyLabel ? (
-                  <DashboardLine label="Performance Anchor" value={renderedCoachReport.performance.anchor.familyLabel} />
+                <DashboardLine label="Performance Trend" value={coachDashboardModel.performance.trend} />
+                {coachDashboardModel.performance.anchorFamilyLabel ? (
+                  <DashboardLine label="Performance Anchor" value={coachDashboardModel.performance.anchorFamilyLabel} />
                 ) : null}
-                {renderedCoachReport?.performance?.anchor?.movementStatusLabel ? (
-                  <DashboardLine label="Anchor Exercise" value={renderedCoachReport.performance.anchor.movementStatusLabel} />
+                {coachDashboardModel.performance.anchorMovementStatusLabel ? (
+                  <DashboardLine label="Anchor Exercise" value={coachDashboardModel.performance.anchorMovementStatusLabel} />
                 ) : null}
-                {renderedCoachReport?.performance?.anchor?.benchmarkStatusLabel ? (
-                  <DashboardLine label="Benchmark" value={renderedCoachReport.performance.anchor.benchmarkStatusLabel} />
+                {coachDashboardModel.performance.benchmarkStatusLabel ? (
+                  <DashboardLine label="Benchmark" value={coachDashboardModel.performance.benchmarkStatusLabel} />
                 ) : null}
-                {renderedCoachReport?.performance?.anchor ? (
-                  <DashboardLine label="Anchor" value={renderedCoachReport.performance.anchor.performanceBenchmarkText ?? renderedCoachReport.performance.anchor.text} />
+                {coachDashboardModel.performance.anchorText ? (
+                  <DashboardLine label="Anchor" value={coachDashboardModel.performance.anchorText} />
                 ) : null}
-                {renderedCoachReport?.performance?.anchor?.latestSameExerciseText ? (
+                {coachDashboardModel.performance.latestSameExerciseText ? (
                   <DashboardLine
                     label="Same Exercise"
-                    value={renderedCoachReport.performance.anchor.latestSameExerciseText}
+                    value={coachDashboardModel.performance.latestSameExerciseText}
                   />
                 ) : null}
-                {renderedCoachReport?.performance?.anchor?.latestFamilyMovementText ? (
+                {coachDashboardModel.performance.latestFamilyMovementText ? (
                   <DashboardLine
                     label="Current Family Movement"
-                    value={renderedCoachReport.performance.anchor.latestFamilyMovementText}
+                    value={coachDashboardModel.performance.latestFamilyMovementText}
                   />
                 ) : null}
-                {renderedCoachReport?.performance?.anchor?.relationshipText ? (
-                  <DashboardLine label="Relationship" value={renderedCoachReport.performance.anchor.relationshipText} />
+                {coachDashboardModel.performance.relationshipText ? (
+                  <DashboardLine label="Relationship" value={coachDashboardModel.performance.relationshipText} />
                 ) : null}
-                {renderedCoachReport?.performance?.strengthSignal ? (
-                  <DashboardLine label="Strength Signal" value={renderedCoachReport.performance.strengthSignal} />
+                {coachDashboardModel.performance.strengthSignal ? (
+                  <DashboardLine label="Strength Signal" value={coachDashboardModel.performance.strengthSignal} />
                 ) : null}
-                <DashboardLine label="Movement Quality" value={renderedCoachReport?.performance?.movementQuality ?? "—"} />
-                {renderedCoachReport?.performance?.read ? (
-                  <DashboardLine label="Performance Read" value={renderedCoachReport.performance.read} />
+                <DashboardLine label="Movement Quality" value={coachDashboardModel.performance.movementQuality} />
+                {coachDashboardModel.performance.read ? (
+                  <DashboardLine label="Performance Read" value={coachDashboardModel.performance.read} />
                 ) : null}
               </div>
             </div>
 
             <div className="card" data-testid="coach-dashboard-volume">
               <div style={{ fontWeight: 800, marginBottom: 8 }}>Weekly Volume</div>
-              {renderedCoachReport?.weeklyVolume?.note ? (
+              {coachDashboardModel.weeklyVolume.note ? (
                 <div className="muted" style={{ marginBottom: 8, fontSize: 12, lineHeight: 1.35 }}>
-                  {renderedCoachReport.weeklyVolume.note}
+                  {coachDashboardModel.weeklyVolume.note}
                 </div>
               ) : null}
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                {(renderedCoachReport?.weeklyVolume?.rows ?? []).map((row) => (
+                {coachDashboardModel.weeklyVolume.rows.map((row) => (
                   <DashboardLine key={row.label} label={row.label} value={row.value} />
                 ))}
-                {(renderedCoachReport?.weeklyVolume?.balanceRows ?? []).length ? (
+                {coachDashboardModel.weeklyVolume.balanceRows.length ? (
                   <div style={{ marginTop: 4 }}>
                     <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                       Balance
                     </div>
                     <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
-                      {(renderedCoachReport?.weeklyVolume?.balanceRows ?? []).map((row) => (
+                      {coachDashboardModel.weeklyVolume.balanceRows.map((row) => (
                         <details
                           key={row.label}
                           data-testid={`coach-volume-balance-${row.id}`}
@@ -1156,9 +942,9 @@ export default function StartPage() {
             <div className="card" data-testid="coach-dashboard-goals">
               <div style={{ fontWeight: 800, marginBottom: 8 }}>Goals</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                <DashboardLine label="Goal Trajectory" value={renderedCoachReport?.goals?.trajectory ?? "—"} />
-                {renderedCoachReport?.goals?.read ? <DashboardLine label="Goal Read" value={renderedCoachReport.goals.read} /> : null}
-                {(renderedCoachReport?.goals?.targets ?? []).slice(0, 3).map((row) => (
+                <DashboardLine label="Goal Trajectory" value={coachDashboardModel.goals.trajectory} />
+                {coachDashboardModel.goals.read ? <DashboardLine label="Goal Read" value={coachDashboardModel.goals.read} /> : null}
+                {coachDashboardModel.goals.targets.map((row) => (
                   <DashboardLine key={row.label} label={row.label} value={row.value} />
                 ))}
               </div>
@@ -1172,10 +958,10 @@ export default function StartPage() {
                     What&apos;s Working
                   </div>
                   <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
-                    {renderedCoachReport?.learnings?.whatsWorking.length ? (
-                      renderedCoachReport.learnings.whatsWorking.map((item) => <div key={item}>- {item}</div>)
+                    {coachDashboardModel.learnings.whatsWorking.length ? (
+                      coachDashboardModel.learnings.whatsWorking.map((item) => <div key={item}>- {item}</div>)
                     ) : (
-                      <div className="muted">No validated learnings yet.</div>
+                      <div className="muted">{coachDashboardModel.learnings.whatsWorkingEmptyText}</div>
                     )}
                   </div>
                 </div>
@@ -1184,10 +970,10 @@ export default function StartPage() {
                     Watch Now
                   </div>
                   <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
-                    {renderedCoachReport?.learnings?.watchNow.length ? (
-                      renderedCoachReport.learnings.watchNow.map((item) => <div key={item}>- {item}</div>)
+                    {coachDashboardModel.learnings.watchNow.length ? (
+                      coachDashboardModel.learnings.watchNow.map((item) => <div key={item}>- {item}</div>)
                     ) : (
-                      <div className="muted">No active watch items.</div>
+                      <div className="muted">{coachDashboardModel.learnings.watchNowEmptyText}</div>
                     )}
                   </div>
                 </div>
@@ -1197,15 +983,15 @@ export default function StartPage() {
             <div className="card" data-testid="coach-dashboard-cardio">
               <div style={{ fontWeight: 800, marginBottom: 8 }}>Cardio</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                {renderedCoachReport?.cardio?.isEmpty ? (
-                  <div className="muted">{renderedCoachReport.cardio.note ?? "Cardio summary not available yet."}</div>
+                {coachDashboardModel.cardio.isEmpty ? (
+                  <div className="muted">{coachDashboardModel.cardio.emptyText}</div>
                 ) : (
                   <>
-                    {renderedCoachReport?.cardio?.status ? <DashboardLine label="Cardio Status" value={renderedCoachReport.cardio.status} /> : null}
-                    {renderedCoachReport?.cardio?.rows.map((line) => (
+                    {coachDashboardModel.cardio.status ? <DashboardLine label="Cardio Status" value={coachDashboardModel.cardio.status} /> : null}
+                    {coachDashboardModel.cardio.rows.map((line) => (
                       <DashboardLine key={line.label} label={line.label} value={line.value} />
                     ))}
-                    {renderedCoachReport?.cardio?.note ? <DashboardLine label="Cardio Note" value={renderedCoachReport.cardio.note} /> : null}
+                    {coachDashboardModel.cardio.note ? <DashboardLine label="Cardio Note" value={coachDashboardModel.cardio.note} /> : null}
                   </>
                 )}
               </div>
