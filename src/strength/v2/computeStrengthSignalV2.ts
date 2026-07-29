@@ -6,6 +6,8 @@ import {
   bodyweightFromRowsAt,
   calcEffectiveStrengthWeightLb,
   computeScoredE1RM,
+  getAssistedBodyweightLoadSemantics,
+  type AssistedBodyweightLoadSemantics,
 } from "../Strength";
 import {
   anchorMatchRank,
@@ -41,6 +43,7 @@ export type StrengthSignalV2LatestSet = {
   completedAt: number | null;
   distance: number | null;
   distanceUnit: string | null;
+  assistedBodyweight?: AssistedBodyweightLoadSemantics | null;
 };
 
 export type StrengthSignalV2AnchorMeasurement = {
@@ -88,7 +91,9 @@ type CandidateSet = {
   exercise: Exercise;
   at: number;
   effectiveWeightLb: number;
-  e1RM: number;
+  e1RM: number | null;
+  supportsE1RM: boolean;
+  assistedBodyweight?: AssistedBodyweightLoadSemantics | null;
   matchRank: number;
 };
 
@@ -150,6 +155,19 @@ function bestSetText(candidate: CandidateSet | null): string | null {
   const weight = finiteNumber(candidate.set.weight);
   const reps = finiteNumber(candidate.set.reps);
   if (weight == null || reps == null) return null;
+  if (candidate.assistedBodyweight) {
+    const bodyweightText = Number.isInteger(candidate.assistedBodyweight.bodyweightLb)
+      ? String(candidate.assistedBodyweight.bodyweightLb)
+      : candidate.assistedBodyweight.bodyweightLb.toFixed(1);
+    const assistanceText = Number.isInteger(candidate.assistedBodyweight.assistanceLb)
+      ? String(candidate.assistedBodyweight.assistanceLb)
+      : candidate.assistedBodyweight.assistanceLb.toFixed(1);
+    const effectiveText = Number.isInteger(candidate.assistedBodyweight.effectiveResistanceLb)
+      ? String(candidate.assistedBodyweight.effectiveResistanceLb)
+      : candidate.assistedBodyweight.effectiveResistanceLb.toFixed(1);
+    const repsText = Number.isInteger(reps) ? String(reps) : reps.toFixed(1);
+    return `BW ${bodyweightText} | assistance ${assistanceText} | effective ${effectiveText} x ${repsText}`;
+  }
   const weightText = Number.isInteger(weight) ? String(weight) : weight.toFixed(1);
   const repsText = Number.isInteger(reps) ? String(reps) : reps.toFixed(1);
   return `${weightText} x ${repsText}`;
@@ -178,7 +196,7 @@ function buildAnchorMeasurement(
   const latest = windowCandidates.slice().sort((a, b) => b.at - a.at)[0];
   const best = supportsE1RM
     ? windowCandidates.reduce(
-        (winner, candidate) => (candidate.e1RM > winner.e1RM ? candidate : winner),
+        (winner, candidate) => ((candidate.e1RM ?? 0) > (winner.e1RM ?? 0) ? candidate : winner),
         windowCandidates[0]
       )
     : null;
@@ -202,8 +220,8 @@ function bestScoredCandidateInWindow(
   if (!windowCandidates.length) return null;
 
   return windowCandidates.reduce((winner, candidate) => {
-    if (candidate.e1RM > winner.e1RM) return candidate;
-    if (candidate.e1RM === winner.e1RM && candidate.at > winner.at) return candidate;
+    if ((candidate.e1RM ?? 0) > (winner.e1RM ?? 0)) return candidate;
+    if ((candidate.e1RM ?? 0) === (winner.e1RM ?? 0) && candidate.at > winner.at) return candidate;
     return winner;
   }, windowCandidates[0]);
 }
@@ -219,6 +237,7 @@ function latestSetPayload(candidate: CandidateSet): StrengthSignalV2LatestSet {
     completedAt: candidate.at,
     distance: finiteNumber(candidate.set.distance),
     distanceUnit: candidate.set.distanceUnit ?? null,
+    assistedBodyweight: candidate.assistedBodyweight ?? null,
   };
 }
 
@@ -324,12 +343,22 @@ function buildScoredAnchorResult(
     const weight = finiteNumber(set.weight);
     if (!Number.isFinite(at) || reps == null || weight == null) continue;
 
+    const exerciseName = exercise.name || track.displayName || "";
     const bodyweight = bodyweightFromRowsAt(bodyRows, at) ?? 0;
-    const effectiveWeightLb = calcEffectiveStrengthWeightLb(weight, exercise.name, bodyweight);
-    const e1RM = computeScoredE1RM(effectiveWeightLb, reps);
-    if (!Number.isFinite(e1RM) || e1RM <= 0) continue;
+    const assistedBodyweight = getAssistedBodyweightLoadSemantics({
+      rawWeight: weight,
+      exerciseName,
+      bodyweight,
+    });
+    const effectiveWeightLb = assistedBodyweight?.effectiveResistanceLb ?? calcEffectiveStrengthWeightLb(weight, exerciseName, bodyweight);
+    const supportsE1RM = !assistedBodyweight;
+    // Assisted bodyweight anchors stay selectable as movement/benchmark context,
+    // but are excluded from conventional Epley e1RM scoring.
+    const e1RM = supportsE1RM ? computeScoredE1RM(effectiveWeightLb, reps) : null;
+    if (supportsE1RM && (!Number.isFinite(e1RM) || (e1RM ?? 0) <= 0)) continue;
+    if (!supportsE1RM && (!Number.isFinite(effectiveWeightLb) || reps <= 0)) continue;
 
-    candidates.push({ set, track, exercise, at, effectiveWeightLb, e1RM, matchRank });
+    candidates.push({ set, track, exercise, at, effectiveWeightLb, e1RM, supportsE1RM, assistedBodyweight, matchRank });
   }
 
   if (!candidates.length) return emptyAnchorResult();
@@ -350,10 +379,11 @@ function buildScoredAnchorResult(
 
   const selectionSource = latest.matchRank === 1 ? "CONFIGURED" : "AUTO_SELECTED";
   const selectedExerciseCandidates = candidates.filter((candidate) => sameSelectedExercise(candidate, latest));
+  const selectedSupportsE1RM = selectedExerciseCandidates.some((candidate) => candidate.supportsE1RM);
   // Slice 5A separates long-memory capacity (90d) from short-memory current state (28d)
   // while leaving the existing slot-level fields wired to capacity for compatibility.
-  const capacity = buildAnchorMeasurement(selectedExerciseCandidates, now, CAPACITY_WINDOW_DAYS, true);
-  const state = buildAnchorMeasurement(selectedExerciseCandidates, now, STATE_WINDOW_DAYS, true);
+  const capacity = buildAnchorMeasurement(selectedExerciseCandidates, now, CAPACITY_WINDOW_DAYS, selectedSupportsE1RM);
+  const state = buildAnchorMeasurement(selectedExerciseCandidates, now, STATE_WINDOW_DAYS, selectedSupportsE1RM);
   const bestCapacityCandidate = bestScoredCandidateInWindow(selectedExerciseCandidates, now, CAPACITY_WINDOW_DAYS);
 
   return {
@@ -402,6 +432,7 @@ function buildCarryAnchorResult(
       at,
       effectiveWeightLb: Math.max(0, weight),
       e1RM: 0,
+      supportsE1RM: false,
       matchRank,
     });
   }

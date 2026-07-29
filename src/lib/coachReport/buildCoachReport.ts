@@ -900,7 +900,25 @@ function formatAnchorRecencyLabel(lift: NonNullable<CoachExportMetrics["anchorLi
   return `${age}d old`;
 }
 
+function formatAssistedBodyweightBenchmark(lift: NonNullable<CoachExportMetrics["anchorLifts"]>[number]) {
+  if (!lift.assistedBodyweight || lift.reps == null) return null;
+  const name = lift.trackDisplayName || lift.exerciseName || "Unknown";
+  const recency = formatAnchorRecencyLabel(lift);
+  return [
+    name,
+    `BW ${fmtNumber(lift.assistedBodyweight.bodyweightLb)} lb`,
+    `Assistance ${fmtNumber(lift.assistedBodyweight.assistanceLb)} lb`,
+    `Effective Resistance ${fmtNumber(lift.assistedBodyweight.effectiveResistanceLb)} lb`,
+    `${fmtNumber(lift.reps, 0)} reps`,
+    formatDate(lift.performedAt),
+    recency,
+  ].filter(Boolean).join(" | ");
+}
+
 function formatAnchorLiftText(lift: NonNullable<CoachExportMetrics["anchorLifts"]>[number]) {
+  const assistedText = formatAssistedBodyweightBenchmark(lift);
+  if (assistedText) return `${lift.pattern}: ${assistedText}`;
+
   if (lift.e1rm == null || lift.effectiveWeightLb == null || lift.reps == null) {
     return `${lift.pattern}: Insufficient Data`;
   }
@@ -980,7 +998,9 @@ function buildAnchorReadText(lift: NonNullable<CoachExportMetrics["anchorLifts"]
 
 function buildAnchorReportLines(lift: NonNullable<CoachExportMetrics["anchorLifts"]>[number]) {
   const familyLabel = formatAnchorMovementFamilyLabel(lift.movementFamily);
-  const summary = formatAnchorLiftText(lift).replace(/^- /, "");
+  const summary = formatAnchorLiftText(lift)
+    .replace(/^- /, "")
+    .replace(new RegExp(`^${lift.pattern}:\\s*`), "");
   const lines = [
     `Anchor Exercise Status: ${formatMovementStatusLabel(lift.movementStatus)}`,
   ];
@@ -1103,15 +1123,16 @@ function buildMovementIntelligenceReportSection(metrics: CoachExportMetrics): Co
         null;
       const sameExerciseText = formatAnchorSameExerciseText(anchor);
       const benchmarkText = anchor
-        ? [
-            anchor.exerciseName ?? anchor.trackDisplayName ?? "",
-            anchor.effectiveWeightLb != null ? `${fmtNumber(anchor.effectiveWeightLb)} lb` : null,
-            anchor.reps != null ? `${fmtNumber(anchor.reps, 0)} reps` : null,
-            anchor.e1rm != null ? `e1RM ${fmtNumber(anchor.e1rm)} lb` : null,
-            typeof anchor.ageDays === "number" && Number.isFinite(anchor.ageDays)
-              ? `${Math.max(0, Math.floor(anchor.ageDays))}d old`
-              : null,
-          ].filter(Boolean).join(" | ")
+        ? formatAssistedBodyweightBenchmark(anchor) ??
+          [
+              anchor.exerciseName ?? anchor.trackDisplayName ?? "",
+              anchor.effectiveWeightLb != null ? `${fmtNumber(anchor.effectiveWeightLb)} lb` : null,
+              anchor.reps != null ? `${fmtNumber(anchor.reps, 0)} reps` : null,
+              anchor.e1rm != null ? `e1RM ${fmtNumber(anchor.e1rm)} lb` : null,
+              typeof anchor.ageDays === "number" && Number.isFinite(anchor.ageDays)
+                ? `${Math.max(0, Math.floor(anchor.ageDays))}d old`
+                : null,
+            ].filter(Boolean).join(" | ")
         : undefined;
       return {
         family: entry.family,
@@ -1847,6 +1868,20 @@ export function buildCoachReport({
     : [];
 
   const performanceAnchor = selectPerformanceAnchor(coachState);
+  const performanceBenchmarkText = performanceAnchor
+    ? formatAssistedBodyweightBenchmark(performanceAnchor) ??
+      [
+        performanceAnchor.exerciseName ?? performanceAnchor.trackDisplayName ?? "",
+        performanceAnchor.effectiveWeightLb != null ? `${fmtNumber(performanceAnchor.effectiveWeightLb)} lb` : null,
+        performanceAnchor.reps != null ? `${fmtNumber(performanceAnchor.reps, 0)} reps` : null,
+        performanceAnchor.e1rm != null ? `e1RM ${fmtNumber(performanceAnchor.e1rm)} lb` : null,
+        typeof performanceAnchor.ageDays === "number" && Number.isFinite(performanceAnchor.ageDays)
+          ? `${Math.max(0, Math.floor(performanceAnchor.ageDays))}d old`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" | ")
+    : undefined;
   const performance: CoachReportPerformance = {
     trend: fmtStatus(coachState.strength.performanceTrend),
     strengthSignal:
@@ -1863,27 +1898,20 @@ export function buildCoachReport({
     anchor: performanceAnchor
       ? {
           label: "Anchor",
-          text:
-            [
-              performanceAnchor.exerciseName ?? performanceAnchor.trackDisplayName ?? "",
-              performanceAnchor.effectiveWeightLb != null ? `${fmtNumber(performanceAnchor.effectiveWeightLb)} lb` : null,
-              performanceAnchor.reps != null ? `${fmtNumber(performanceAnchor.reps, 0)} reps` : null,
-              performanceAnchor.e1rm != null ? `e1RM ${fmtNumber(performanceAnchor.e1rm)} lb` : null,
-              typeof performanceAnchor.ageDays === "number" && Number.isFinite(performanceAnchor.ageDays)
-                ? `${Math.max(0, Math.floor(performanceAnchor.ageDays))}d old`
-                : null,
-              performanceAnchor.benchmarkStatus
-                ? `${fmtStatus(performanceAnchor.benchmarkStatus)} benchmark`
-                : performanceAnchor.recency === "stale"
-                  ? "Stale benchmark"
-                  : performanceAnchor.recency === "historical"
-                    ? "Historical benchmark"
-                    : performanceAnchor.recency === "recent"
-                      ? "Recent benchmark"
-                      : null,
-            ]
-              .filter(Boolean)
-              .join(" | "),
+          text: [
+            performanceBenchmarkText,
+            performanceAnchor.benchmarkStatus
+              ? `${fmtStatus(performanceAnchor.benchmarkStatus)} benchmark`
+              : performanceAnchor.recency === "stale"
+                ? "Stale benchmark"
+                : performanceAnchor.recency === "historical"
+                  ? "Historical benchmark"
+                  : performanceAnchor.recency === "recent"
+                    ? "Recent benchmark"
+                    : null,
+          ]
+            .filter(Boolean)
+            .join(" | "),
           recency: performanceAnchor.recency,
           ageText:
             typeof performanceAnchor.ageDays === "number" && Number.isFinite(performanceAnchor.ageDays)
@@ -1922,18 +1950,7 @@ export function buildCoachReport({
                 .filter(Boolean)
                 .join(" | ")
             : undefined,
-          performanceBenchmarkText:
-            [
-              performanceAnchor.exerciseName ?? performanceAnchor.trackDisplayName ?? "",
-              performanceAnchor.effectiveWeightLb != null ? `${fmtNumber(performanceAnchor.effectiveWeightLb)} lb` : null,
-              performanceAnchor.reps != null ? `${fmtNumber(performanceAnchor.reps, 0)} reps` : null,
-              performanceAnchor.e1rm != null ? `e1RM ${fmtNumber(performanceAnchor.e1rm)} lb` : null,
-              typeof performanceAnchor.ageDays === "number" && Number.isFinite(performanceAnchor.ageDays)
-                ? `${Math.max(0, Math.floor(performanceAnchor.ageDays))}d old`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(" | "),
+          performanceBenchmarkText,
           currentMovement: performanceAnchor.currentMovement ?? undefined,
           relationship: performanceAnchor.relationship,
           interpretation: performanceAnchor.interpretation ?? undefined,

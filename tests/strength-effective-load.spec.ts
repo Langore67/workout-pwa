@@ -21,7 +21,7 @@ test.describe("shared effective-load helpers", () => {
     expect(result).toEqual({ effective: 138, e1rm: 184 });
   });
 
-  test("explicit assisted names use bodyweight plus signed load consistently", async ({ page }) => {
+  test("explicit assisted names subtract assistance from bodyweight", async ({ page }) => {
     await goto(page, "/");
 
     const result = await page.evaluate(async () => {
@@ -29,15 +29,147 @@ test.describe("shared effective-load helpers", () => {
       return {
         assistedPullUpPositive: strength.calcEffectiveStrengthWeightLb(65, "Assisted Pull Up", 203),
         assistedPullUpNegative: strength.calcEffectiveStrengthWeightLb(-65, "Assisted Pull Up", 203),
+        assistedSemantics: strength.getAssistedBodyweightLoadSemantics({
+          rawWeight: 40,
+          exerciseName: "Assisted Pull Up",
+          bodyweight: 183.4,
+        }),
+        malformedAssistance: strength.getAssistedBodyweightLoadSemantics({
+          rawWeight: 240,
+          exerciseName: "Machine Assisted Chin Up",
+          bodyweight: 183.4,
+        }),
         weightedPullUp: strength.calcEffectiveStrengthWeightLb(25, "Pull Up", 203),
       };
     });
 
     expect(result).toEqual({
-      assistedPullUpPositive: 268,
+      assistedPullUpPositive: 138,
       assistedPullUpNegative: 138,
+      assistedSemantics: {
+        bodyweightLb: 183.4,
+        assistanceLb: 40,
+        effectiveResistanceLb: 143.4,
+      },
+      malformedAssistance: {
+        bodyweightLb: 183.4,
+        assistanceLb: 240,
+        effectiveResistanceLb: 0,
+      },
       weightedPullUp: 228,
     });
+  });
+
+  test("assisted bodyweight sets do not enter conventional e1RM strength index scoring", async ({ page }) => {
+    await goto(page, "/");
+    await resetDexieDb(page);
+
+    const result = await page.evaluate(async () => {
+      // @ts-ignore
+      const db = window.__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const now = Date.now();
+      const sessionId = crypto.randomUUID();
+      const assistedExerciseId = crypto.randomUUID();
+      const assistedTrackId = crypto.randomUUID();
+      const rowExerciseId = crypto.randomUUID();
+      const rowTrackId = crypto.randomUUID();
+
+      await db.bodyMetrics.add({
+        id: crypto.randomUUID(),
+        measuredAt: now - 60_000,
+        takenAt: now - 60_000,
+        createdAt: now - 60_000,
+        weightLb: 183.4,
+      });
+
+      await db.sessions.add({
+        id: sessionId,
+        startedAt: now - 60_000,
+        endedAt: now,
+        templateName: "Pull Day",
+      });
+
+      await db.exercises.bulkAdd([
+        {
+          id: assistedExerciseId,
+          name: "Assisted Pull Up",
+          normalizedName: "assisted pull up",
+          movementPattern: "pull",
+          anchorEligibility: "primary",
+          anchorSubtypes: ["verticalPull"],
+          equipmentTags: ["bodyweight"],
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: rowExerciseId,
+          name: "Seated Cable Row",
+          normalizedName: "seated cable row",
+          movementPattern: "pull",
+          anchorEligibility: "primary",
+          anchorSubtypes: ["horizontalPull"],
+          equipmentTags: ["cable"],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]);
+
+      await db.tracks.bulkAdd([
+        {
+          id: assistedTrackId,
+          exerciseId: assistedExerciseId,
+          displayName: "Assisted Pull Up",
+          trackType: "hypertrophy",
+          trackingMode: "weightedReps",
+          createdAt: now,
+        },
+        {
+          id: rowTrackId,
+          exerciseId: rowExerciseId,
+          displayName: "Seated Cable Row",
+          trackType: "hypertrophy",
+          trackingMode: "weightedReps",
+          createdAt: now,
+        },
+      ]);
+
+      await db.sets.bulkAdd([
+        {
+          id: crypto.randomUUID(),
+          sessionId,
+          trackId: assistedTrackId,
+          setType: "working",
+          weight: 40,
+          reps: 10,
+          createdAt: now - 2000,
+          completedAt: now - 2000,
+        },
+        {
+          id: crypto.randomUUID(),
+          sessionId,
+          trackId: rowTrackId,
+          setType: "working",
+          weight: 120,
+          reps: 10,
+          createdAt: now - 1000,
+          completedAt: now - 1000,
+        },
+      ]);
+
+      const strength = await import("/src/strength/Strength.ts");
+      const snapshot = await strength.computeStrengthIndexAt(now, 28);
+      const pullPattern = snapshot.patterns.find((pattern: any) => pattern.pattern === "pull");
+
+      return {
+        pullCompletedWorkingSets: pullPattern?.completedWorkingSets ?? null,
+        pullTopSet: pullPattern?.topSet ?? null,
+      };
+    });
+
+    expect(result.pullCompletedWorkingSets).toBe(1);
+    expect(result.pullTopSet).toBe(160);
   });
 
   test("bodyweight compound effective load still handles unassisted and non-bodyweight cases", async ({ page }) => {

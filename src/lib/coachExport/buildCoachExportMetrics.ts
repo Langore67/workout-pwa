@@ -236,6 +236,7 @@ async function buildAnchorLifts(generatedAt: number): Promise<CoachExportAnchorL
       exerciseName: anchor?.exerciseName ?? null,
       trackDisplayName: anchor?.exerciseName ?? null,
       effectiveWeightLb: anchor?.latestSet?.effectiveWeightLb ?? null,
+      assistedBodyweight: anchor?.latestSet?.assistedBodyweight ?? null,
       reps: anchor?.latestSet?.reps ?? null,
       e1rm: anchor?.capacity?.e1RM ?? null,
       performedAt: anchor?.latestSet?.completedAt ?? null,
