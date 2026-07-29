@@ -1,18 +1,19 @@
 import React from "react";
 import type { CoachDashboardWeeklyVolume } from "../../lib/coachDashboard/coachDashboardTypes";
 import { CoachCardHeader } from "./shared/CoachCardHeader";
+import { CoachDashboardCard } from "./shared/CoachDashboardCard";
 import { MetricRow } from "./shared/MetricRow";
 
 export function WeeklyVolumeCard({ weeklyVolume }: { weeklyVolume: CoachDashboardWeeklyVolume }) {
   return (
-    <div className="card" data-testid="coach-dashboard-volume">
+    <CoachDashboardCard testId="coach-dashboard-volume">
       <CoachCardHeader title="Weekly Volume" />
       {weeklyVolume.note ? (
         <div className="muted" style={{ marginBottom: 8, fontSize: 12, lineHeight: 1.35 }}>
           {weeklyVolume.note}
         </div>
       ) : null}
-      <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
+      <div style={{ display: "grid", gap: 7, fontSize: 13 }}>
         {weeklyVolume.rows.map((row) => (
           <MetricRow key={row.label} label={row.label} value={row.value} />
         ))}
@@ -68,6 +69,6 @@ export function WeeklyVolumeCard({ weeklyVolume }: { weeklyVolume: CoachDashboar
           </div>
         ) : null}
       </div>
-    </div>
+    </CoachDashboardCard>
   );
 }

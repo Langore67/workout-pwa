@@ -1,6 +1,7 @@
 import React from "react";
 import type { CoachDashboardActions, CoachDashboardSnapshot } from "../../lib/coachDashboard/coachDashboardTypes";
 import { CoachCardHeader } from "./shared/CoachCardHeader";
+import { CoachDashboardCard } from "./shared/CoachDashboardCard";
 import { MetricRow } from "./shared/MetricRow";
 
 export function CoachSnapshotCard({
@@ -11,15 +12,19 @@ export function CoachSnapshotCard({
   actions?: CoachDashboardActions;
 }) {
   return (
-    <div className="card" data-testid="coach-dashboard-snapshot">
-      <CoachCardHeader title="Coach Snapshot" />
-      <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-        <MetricRow label="Status" value={snapshot.status} />
-        <MetricRow label="Confidence" value={snapshot.confidence} />
-        <MetricRow label="Why" value={snapshot.why} />
-        <MetricRow label="Today" value={snapshot.today} />
+    <CoachDashboardCard testId="coach-dashboard-snapshot" variant="hero">
+      <CoachCardHeader title="Coach Snapshot" level={2} />
+      <div style={{ display: "grid", gap: 12, fontSize: 13 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(132px, 1fr))", gap: 10 }}>
+          <MetricRow label="Status" value={snapshot.status} emphasis="strong" />
+          <MetricRow label="Confidence" value={snapshot.confidence} emphasis="strong" />
+        </div>
+        <div style={{ display: "grid", gap: 8 }}>
+          <MetricRow label="Why" value={snapshot.why} emphasis="strong" />
+          <MetricRow label="Today" value={snapshot.today} emphasis="strong" />
+        </div>
         {snapshot.programmingPriorities.length ? (
-          <div style={{ marginTop: 4 }}>
+          <div style={{ marginTop: 2, borderTop: "1px solid var(--line)", paddingTop: 10 }}>
             <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
               Programming Priorities
             </div>
@@ -39,7 +44,7 @@ export function CoachSnapshotCard({
           </div>
         ) : null}
         {actions?.primaryFocus ? (
-          <div style={{ marginTop: 4 }}>
+          <div style={{ marginTop: 2, borderTop: "1px solid var(--line)", paddingTop: 10 }}>
             <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
               Today&apos;s Coaching Focus
             </div>
@@ -52,6 +57,6 @@ export function CoachSnapshotCard({
           </div>
         ) : null}
       </div>
-    </div>
+    </CoachDashboardCard>
   );
 }
