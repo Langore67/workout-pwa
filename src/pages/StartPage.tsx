@@ -50,6 +50,7 @@ import { CoachSnapshotCard } from "../components/coachDashboard/CoachSnapshotCar
 import { GoalsCard } from "../components/coachDashboard/GoalsCard";
 import { LearningsCard } from "../components/coachDashboard/LearningsCard";
 import { PerformanceCard } from "../components/coachDashboard/PerformanceCard";
+import { ProgrammingIntelligenceCard } from "../components/coachDashboard/ProgrammingIntelligenceCard";
 import { WeeklyVolumeCard } from "../components/coachDashboard/WeeklyVolumeCard";
 import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetrics";
 import type { CoachExportMetrics } from "../lib/coachExport/types";
@@ -793,6 +794,7 @@ export default function StartPage() {
                 alignItems: "start",
               }}
             >
+              <ProgrammingIntelligenceCard programming={coachDashboardModel.programming} />
               <WeeklyVolumeCard weeklyVolume={coachDashboardModel.weeklyVolume} />
               <GoalsCard goals={coachDashboardModel.goals} />
               <CardioCard cardio={coachDashboardModel.cardio} />

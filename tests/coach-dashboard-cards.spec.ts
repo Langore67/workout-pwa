@@ -5,6 +5,7 @@ import { CoachSnapshotCard } from "../src/components/coachDashboard/CoachSnapsho
 import { GoalsCard } from "../src/components/coachDashboard/GoalsCard";
 import { LearningsCard } from "../src/components/coachDashboard/LearningsCard";
 import { PerformanceCard } from "../src/components/coachDashboard/PerformanceCard";
+import { ProgrammingIntelligenceCard } from "../src/components/coachDashboard/ProgrammingIntelligenceCard";
 import { WeeklyVolumeCard } from "../src/components/coachDashboard/WeeklyVolumeCard";
 import type {
   CoachDashboardActions,
@@ -13,6 +14,7 @@ import type {
   CoachDashboardGoals,
   CoachDashboardLearnings,
   CoachDashboardPerformance,
+  CoachDashboardProgramming,
   CoachDashboardSnapshot,
   CoachDashboardWeeklyVolume,
 } from "../src/lib/coachDashboard/coachDashboardTypes";
@@ -195,4 +197,96 @@ test("WeeklyVolumeCard renders rows and balance details", () => {
   expect(text).toContain("Balance");
   expect(text).toContain("Push Behind");
   expect(text).toContain("What to change:");
+});
+
+test("ProgrammingIntelligenceCard renders status, summary, priority, rationale, and direction", () => {
+  const programming: CoachDashboardProgramming = {
+    status: "High Focus",
+    summary: "Coach identified the highest-impact coaching priority.",
+    emptyState: "No programming changes are currently recommended.",
+    priorities: [
+      {
+        id: "1-performance-high-performance-pressure",
+        title: "Performance Pressure",
+        priority: "high",
+        priorityLabel: "High",
+        rationale: "Strength Signal is trending down.",
+        direction: "Keep progression conservative until performance stabilizes.",
+      },
+    ],
+  };
+
+  const text = textFrom(ProgrammingIntelligenceCard({ programming }));
+
+  expect(text).toContain("Programming Intelligence");
+  expect(text).toContain("High Focus");
+  expect(text).toContain("Coach identified the highest-impact coaching priority.");
+  expect(text).toContain("Performance Pressure");
+  expect(text).toContain("High");
+  expect(text).toContain("Why");
+  expect(text).toContain("Strength Signal is trending down.");
+  expect(text).toContain("Direction");
+  expect(text).toContain("Keep progression conservative until performance stabilizes.");
+});
+
+test("ProgrammingIntelligenceCard renders multiple priorities in model order", () => {
+  const programming: CoachDashboardProgramming = {
+    status: "Medium Focus",
+    summary: "Multiple priorities.",
+    emptyState: "No programming changes are currently recommended.",
+    priorities: [
+      {
+        id: "1-movement-medium-carry",
+        title: "Carry",
+        priority: "medium",
+        priorityLabel: "Medium",
+        rationale: "Movement family missing.",
+        direction: "Add one loaded-carry exposure.",
+      },
+      {
+        id: "2-volume-medium-push-behind",
+        title: "Push Behind",
+        priority: "medium",
+        priorityLabel: "Medium",
+        rationale: "Pull volume is ahead of push volume.",
+        direction: "Add 3-5 pushing sets this week.",
+      },
+    ],
+  };
+
+  const text = textFrom(ProgrammingIntelligenceCard({ programming }));
+
+  expect(text.indexOf("Carry")).toBeLessThan(text.indexOf("Push Behind"));
+});
+
+test("ProgrammingIntelligenceCard renders empty and partial states cleanly", () => {
+  const empty: CoachDashboardProgramming = {
+    status: null,
+    summary: "",
+    priorities: [],
+    emptyState: "No programming changes are currently recommended.",
+  };
+  const partial: CoachDashboardProgramming = {
+    status: "Low Focus",
+    summary: "Partial data.",
+    emptyState: "No programming changes are currently recommended.",
+    priorities: [
+      {
+        id: "1-recovery-low-cardio",
+        title: "Cardio",
+        priority: "low",
+        priorityLabel: "Low",
+      },
+    ],
+  };
+
+  const emptyText = textFrom(ProgrammingIntelligenceCard({ programming: empty }));
+  const partialText = textFrom(ProgrammingIntelligenceCard({ programming: partial }));
+
+  expect(emptyText).toContain("No programming changes are currently recommended.");
+  expect(partialText).toContain("Cardio");
+  expect(partialText).not.toContain("Why");
+  expect(partialText).not.toContain("Direction");
+  expect(partialText).not.toContain("undefined");
+  expect(partialText).not.toContain("null");
 });
