@@ -586,6 +586,14 @@ test.describe("Start Coach Dashboard", () => {
       await expect(performance).toContainText("Movement Quality");
       await expect(performance).toContainText("Performance Read");
 
+      const secondary = page.getByLabel("Secondary coach dashboard insights");
+      const programming = page.getByTestId("coach-dashboard-programming");
+      await expect(secondary).toContainText("Programming Intelligence");
+      await expect(programming).toContainText("Programming Intelligence");
+      await expect(programming).toContainText("Status");
+      await expect(programming).toContainText("Summary");
+      await expect(programming).toContainText("Direction");
+
       const volume = page.getByTestId("coach-dashboard-volume");
       await expect(volume).toContainText("Weekly Volume");
       await expect(volume).toContainText("Back / Pull");
@@ -613,6 +621,27 @@ test.describe("Start Coach Dashboard", () => {
     await expect(cardio).toContainText("Cardio Note");
       await expect(cardio).toContainText("Walk - MapMyWalk");
       await expect(cardio).toContainText("2 walks");
+
+      const cardOrder = await dashboard.evaluate((root) =>
+        Array.from(
+          root.querySelectorAll(
+            [
+              '[data-testid="coach-dashboard-snapshot"]',
+              '[data-testid="coach-dashboard-body"]',
+              '[data-testid="coach-dashboard-performance"]',
+              '[data-testid="coach-dashboard-programming"]',
+              '[data-testid="coach-dashboard-volume"]',
+            ].join(",")
+          )
+        ).map((node) => node.getAttribute("data-testid"))
+      );
+      expect(cardOrder).toEqual([
+        "coach-dashboard-snapshot",
+        "coach-dashboard-body",
+        "coach-dashboard-performance",
+        "coach-dashboard-programming",
+        "coach-dashboard-volume",
+      ]);
     });
 
   test("renders the weekly volume card from recent strength sessions", async ({ page }) => {

@@ -68,10 +68,27 @@ export type CoachDashboardCardio = Readonly<{
   note?: string;
 }>;
 
+export type CoachDashboardProgrammingPriority = Readonly<{
+  id: string;
+  title: string;
+  priority: CoachProgrammingPriority["priority"];
+  priorityLabel: string;
+  rationale?: string;
+  direction?: string;
+}>;
+
+export type CoachDashboardProgramming = Readonly<{
+  status: string | null;
+  summary: string;
+  priorities: readonly CoachDashboardProgrammingPriority[];
+  emptyState: string;
+}>;
+
 export type CoachDashboardModel = Readonly<{
   snapshot: CoachDashboardSnapshot;
   body: CoachDashboardBody;
   performance: CoachDashboardPerformance;
+  programming: CoachDashboardProgramming;
   weeklyVolume: CoachDashboardWeeklyVolume;
   goals: CoachDashboardGoals;
   learnings: CoachDashboardLearnings;

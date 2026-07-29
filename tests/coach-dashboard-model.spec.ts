@@ -157,6 +157,120 @@ test("maps snapshot, programming focus, and coaching focus", () => {
   expect(model.actions?.primaryFocus?.reason).toBe("Recent strength signal is pressured.");
 });
 
+test("maps programming section from CoachReport programming intelligence", () => {
+  const model = buildCoachDashboardModel(buildReport());
+
+  expect(model.programming.status).toBe("Watch");
+  expect(model.programming.summary).toBe("Programming needs attention.");
+  expect(model.programming.emptyState).toBe("No programming changes are currently recommended.");
+  expect(model.programming.priorities[0]).toEqual({
+    id: "1-performance-high-strength-signal-down",
+    title: "Strength Signal down",
+    priority: "high",
+    priorityLabel: "High",
+    rationale: "14d Strength Signal -0.03.",
+    direction: "Keep progression conservative.",
+  });
+});
+
+test("programming priorities preserve report order and limit to three", () => {
+  const report = buildReport({
+    programming: {
+      overallStatus: "High Focus",
+      summary: "Coach identified priorities.",
+      priorities: [
+        {
+          title: "First",
+          priority: "medium",
+          category: "movement",
+          reason: "First reason.",
+          evidence: [],
+          coachAction: "First action.",
+        },
+        {
+          title: "Second",
+          priority: "critical",
+          category: "recovery",
+          reason: "Second reason.",
+          evidence: [],
+          coachAction: "Second action.",
+        },
+        {
+          title: "Third",
+          priority: "low",
+          category: "goals",
+          reason: "Third reason.",
+          evidence: [],
+          coachAction: "Third action.",
+        },
+        {
+          title: "Fourth",
+          priority: "high",
+          category: "volume",
+          reason: "Fourth reason.",
+          evidence: [],
+          coachAction: "Fourth action.",
+        },
+      ],
+    },
+  });
+
+  const model = buildCoachDashboardModel(report);
+
+  expect(model.programming.priorities.map((priority) => priority.title)).toEqual(["First", "Second", "Third"]);
+  expect(model.programming.priorities.map((priority) => priority.priorityLabel)).toEqual(["Medium", "Critical", "Low"]);
+});
+
+test("missing programming intelligence returns a safe empty state", () => {
+  const model = buildCoachDashboardModel(buildReport({ programming: undefined }));
+
+  expect(model.programming.status).toBeNull();
+  expect(model.programming.summary).toBe("");
+  expect(model.programming.priorities).toEqual([]);
+  expect(model.programming.emptyState).toBe("No programming changes are currently recommended.");
+});
+
+test("partial programming priorities omit unavailable rationale and direction", () => {
+  const model = buildCoachDashboardModel(
+    buildReport({
+      programming: {
+        overallStatus: "Medium Focus",
+        summary: "Partial programming data.",
+        priorities: [
+          {
+            title: "Partial",
+            priority: "medium",
+            category: "movement",
+            reason: "",
+            evidence: [],
+            coachAction: "",
+          },
+        ],
+      },
+    })
+  );
+
+  expect(model.programming.priorities[0]).toEqual({
+    id: "1-movement-medium-partial",
+    title: "Partial",
+    priority: "medium",
+    priorityLabel: "Medium",
+    rationale: undefined,
+    direction: undefined,
+  });
+});
+
+test("programming model is deterministic and frozen", () => {
+  const report = buildReport();
+  const first = buildCoachDashboardModel(report).programming;
+  const second = buildCoachDashboardModel(report).programming;
+
+  expect(first).toEqual(second);
+  expect(Object.isFrozen(first)).toBe(true);
+  expect(Object.isFrozen(first.priorities)).toBe(true);
+  expect(Object.isFrozen(first.priorities[0])).toBe(true);
+});
+
 test("maps body latest values, coach averages, trends, and confidence", () => {
   const model = buildCoachDashboardModel(buildReport());
 
@@ -257,6 +371,8 @@ test("missing sections return presentation-ready empty states", () => {
   expect(model.body.values).toEqual([]);
   expect(model.performance.trend).toBe("—");
   expect(model.performance.movementQuality).toBe("—");
+  expect(model.programming.status).toBeNull();
+  expect(model.programming.priorities).toEqual([]);
   expect(model.weeklyVolume.rows).toEqual([]);
   expect(model.goals.trajectory).toBe("—");
   expect(model.learnings.whatsWorkingEmptyText).toBe("No validated learnings yet.");

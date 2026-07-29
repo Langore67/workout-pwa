@@ -1,5 +1,9 @@
 import type { CoachReport } from "../coachReport/coachReportTypes";
-import type { CoachDashboardLine, CoachDashboardModel } from "./coachDashboardTypes";
+import type {
+  CoachDashboardLine,
+  CoachDashboardModel,
+  CoachDashboardProgrammingPriority,
+} from "./coachDashboardTypes";
 
 const DASH = "—";
 
@@ -15,6 +19,39 @@ function firstThree<T>(values?: readonly T[] | null): readonly T[] {
   return Object.freeze([...(values ?? [])].slice(0, 3));
 }
 
+function cleanText(value?: string | null) {
+  const text = String(value ?? "").trim();
+  return text || undefined;
+}
+
+function priorityLabel(value: string) {
+  const normalized = String(value ?? "").trim();
+  return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : "";
+}
+
+function slug(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "priority";
+}
+
+function buildProgrammingPriorities(report?: CoachReport | null): readonly CoachDashboardProgrammingPriority[] {
+  return Object.freeze(
+    (report?.programming?.priorities ?? []).slice(0, 3).map((priority, index) =>
+      Object.freeze({
+        id: `${index + 1}-${priority.category}-${priority.priority}-${slug(priority.title)}`,
+        title: priority.title,
+        priority: priority.priority,
+        priorityLabel: priorityLabel(priority.priority),
+        rationale: cleanText(priority.reason),
+        direction: cleanText(priority.coachAction),
+      })
+    )
+  );
+}
+
 /**
  * Coach Dashboard data flow:
  * buildCoachExportMetrics() gathers persisted workout/body/cardio/goal data.
@@ -27,6 +64,7 @@ export function buildCoachDashboardModel(report?: CoachReport | null): CoachDash
   const bodyValues = readonlyLines((report?.body?.values ?? []).filter((line) => line.label !== "Fat Mass"));
   const performanceAnchor = report?.performance?.anchor;
   const cardio = report?.cardio;
+  const programmingPriorities = buildProgrammingPriorities(report);
   const primaryFocus = report?.coachingActions?.actions[0]
     ? Object.freeze({
         objective: report.coachingActions.actions[0].objective,
@@ -61,6 +99,12 @@ export function buildCoachDashboardModel(report?: CoachReport | null): CoachDash
       strengthSignal: report?.performance?.strengthSignal,
       movementQuality: report?.performance?.movementQuality ?? DASH,
       read: report?.performance?.read,
+    }),
+    programming: Object.freeze({
+      status: cleanText(report?.programming?.overallStatus) ?? null,
+      summary: cleanText(report?.programming?.summary) ?? "",
+      priorities: programmingPriorities,
+      emptyState: "No programming changes are currently recommended.",
     }),
     weeklyVolume: Object.freeze({
       note: report?.weeklyVolume?.note,
