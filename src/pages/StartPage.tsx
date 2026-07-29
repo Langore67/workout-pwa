@@ -44,6 +44,13 @@ import { db, Template, TemplateItem, Track, Folder, Session } from "../db";
 import { uuid } from "../utils";
 import { Page, Section } from "../components/Page.tsx";
 import { ActionMenu, MenuIcons, MenuItem } from "../components/ActionMenu";
+import { BodyCard } from "../components/coachDashboard/BodyCard";
+import { CardioCard } from "../components/coachDashboard/CardioCard";
+import { CoachSnapshotCard } from "../components/coachDashboard/CoachSnapshotCard";
+import { GoalsCard } from "../components/coachDashboard/GoalsCard";
+import { LearningsCard } from "../components/coachDashboard/LearningsCard";
+import { PerformanceCard } from "../components/coachDashboard/PerformanceCard";
+import { WeeklyVolumeCard } from "../components/coachDashboard/WeeklyVolumeCard";
 import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetrics";
 import type { CoachExportMetrics } from "../lib/coachExport/types";
 import { buildCoachStateFromExportMetrics } from "../lib/coachState/buildCoachState";
@@ -765,237 +772,13 @@ export default function StartPage() {
               gap: 10,
             }}
           >
-            <div className="card" data-testid="coach-dashboard-snapshot">
-              <div style={{ fontWeight: 800, marginBottom: 8 }}>Coach Snapshot</div>
-              <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                <DashboardLine label="Status" value={coachDashboardModel.snapshot.status} />
-                <DashboardLine label="Confidence" value={coachDashboardModel.snapshot.confidence} />
-                <DashboardLine label="Why" value={coachDashboardModel.snapshot.why} />
-                <DashboardLine label="Today" value={coachDashboardModel.snapshot.today} />
-                {coachDashboardModel.snapshot.programmingPriorities.length ? (
-                  <div style={{ marginTop: 4 }}>
-                    <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      Programming Priorities
-                    </div>
-                    <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
-                      {coachDashboardModel.snapshot.programmingPriorities.map((priority) => (
-                        <div key={`${priority.category}-${priority.title}`} style={{ display: "grid", gap: 2 }}>
-                          <div style={{ fontWeight: 800 }}>
-                            {priority.priority.charAt(0).toUpperCase() + priority.priority.slice(1)} | {priority.title}
-                          </div>
-                          <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
-                            {priority.reason}
-                          </div>
-                          <div style={{ fontSize: 12, lineHeight: 1.35 }}>{priority.coachAction}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                {coachDashboardModel.actions?.primaryFocus ? (
-                  <div style={{ marginTop: 4 }}>
-                    <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      Today&apos;s Coaching Focus
-                    </div>
-                    <div style={{ display: "grid", gap: 3, marginTop: 6 }}>
-                      <div style={{ fontWeight: 800 }}>{coachDashboardModel.actions.primaryFocus.objective}</div>
-                      <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
-                        {coachDashboardModel.actions.primaryFocus.reason}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="card" data-testid="coach-dashboard-body">
-              <div style={{ fontWeight: 800, marginBottom: 8 }}>{coachDashboardModel.body.heading}</div>
-              <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                {coachDashboardModel.body.values
-                  .map((line) => (
-                    <DashboardLine key={line.label} label={line.label} value={line.value} />
-                  ))}
-                {coachDashboardModel.body.note ? (
-                  <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
-                    {coachDashboardModel.body.note}
-                  </div>
-                ) : null}
-              </div>
-
-              <div style={{ fontWeight: 800, marginTop: 12, marginBottom: 8 }}>Body Confidence</div>
-              <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                {coachDashboardModel.body.confidenceRows.map((line) => (
-                  <DashboardLine key={line.label} label={line.label} value={line.value} />
-                ))}
-                <div className="muted" style={{ fontSize: 12, lineHeight: 1.35 }}>
-                  {coachDashboardModel.body.confidenceNote}
-                </div>
-              </div>
-            </div>
-
-            <div className="card" data-testid="coach-dashboard-performance">
-              <div style={{ fontWeight: 800, marginBottom: 8 }}>Performance</div>
-              <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                <DashboardLine label="Performance Trend" value={coachDashboardModel.performance.trend} />
-                {coachDashboardModel.performance.anchorFamilyLabel ? (
-                  <DashboardLine label="Performance Anchor" value={coachDashboardModel.performance.anchorFamilyLabel} />
-                ) : null}
-                {coachDashboardModel.performance.anchorMovementStatusLabel ? (
-                  <DashboardLine label="Anchor Exercise" value={coachDashboardModel.performance.anchorMovementStatusLabel} />
-                ) : null}
-                {coachDashboardModel.performance.benchmarkStatusLabel ? (
-                  <DashboardLine label="Benchmark" value={coachDashboardModel.performance.benchmarkStatusLabel} />
-                ) : null}
-                {coachDashboardModel.performance.anchorText ? (
-                  <DashboardLine label="Anchor" value={coachDashboardModel.performance.anchorText} />
-                ) : null}
-                {coachDashboardModel.performance.latestSameExerciseText ? (
-                  <DashboardLine
-                    label="Same Exercise"
-                    value={coachDashboardModel.performance.latestSameExerciseText}
-                  />
-                ) : null}
-                {coachDashboardModel.performance.latestFamilyMovementText ? (
-                  <DashboardLine
-                    label="Current Family Movement"
-                    value={coachDashboardModel.performance.latestFamilyMovementText}
-                  />
-                ) : null}
-                {coachDashboardModel.performance.relationshipText ? (
-                  <DashboardLine label="Relationship" value={coachDashboardModel.performance.relationshipText} />
-                ) : null}
-                {coachDashboardModel.performance.strengthSignal ? (
-                  <DashboardLine label="Strength Signal" value={coachDashboardModel.performance.strengthSignal} />
-                ) : null}
-                <DashboardLine label="Movement Quality" value={coachDashboardModel.performance.movementQuality} />
-                {coachDashboardModel.performance.read ? (
-                  <DashboardLine label="Performance Read" value={coachDashboardModel.performance.read} />
-                ) : null}
-              </div>
-            </div>
-
-            <div className="card" data-testid="coach-dashboard-volume">
-              <div style={{ fontWeight: 800, marginBottom: 8 }}>Weekly Volume</div>
-              {coachDashboardModel.weeklyVolume.note ? (
-                <div className="muted" style={{ marginBottom: 8, fontSize: 12, lineHeight: 1.35 }}>
-                  {coachDashboardModel.weeklyVolume.note}
-                </div>
-              ) : null}
-              <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                {coachDashboardModel.weeklyVolume.rows.map((row) => (
-                  <DashboardLine key={row.label} label={row.label} value={row.value} />
-                ))}
-                {coachDashboardModel.weeklyVolume.balanceRows.length ? (
-                  <div style={{ marginTop: 4 }}>
-                    <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      Balance
-                    </div>
-                    <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
-                      {coachDashboardModel.weeklyVolume.balanceRows.map((row) => (
-                        <details
-                          key={row.label}
-                          data-testid={`coach-volume-balance-${row.id}`}
-                          style={{ borderTop: "1px solid var(--border)", paddingTop: 6 }}
-                        >
-                          <summary
-                            style={{
-                              listStyle: "none",
-                              cursor: "pointer",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 12,
-                              fontWeight: 700,
-                            }}
-                          >
-                            <span>{row.label}</span>
-                            <span className="muted" style={{ fontWeight: 700 }}>
-                              {row.statusLabel}
-                            </span>
-                          </summary>
-                          <div style={{ display: "grid", gap: 4, marginTop: 6, paddingLeft: 10, fontSize: 12, lineHeight: 1.35 }}>
-                            <div>
-                              <span className="muted">Summary: </span>
-                              <span>{row.summary}</span>
-                            </div>
-                            <div>
-                              <span className="muted">Current: </span>
-                              <span>{row.currentText}</span>
-                            </div>
-                            <div>
-                              <span className="muted">What it means: </span>
-                              <span>{row.explanation}</span>
-                            </div>
-                            <div>
-                              <span className="muted">What to change: </span>
-                              <span>{row.action}</span>
-                            </div>
-                          </div>
-                        </details>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="card" data-testid="coach-dashboard-goals">
-              <div style={{ fontWeight: 800, marginBottom: 8 }}>Goals</div>
-              <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                <DashboardLine label="Goal Trajectory" value={coachDashboardModel.goals.trajectory} />
-                {coachDashboardModel.goals.read ? <DashboardLine label="Goal Read" value={coachDashboardModel.goals.read} /> : null}
-                {coachDashboardModel.goals.targets.map((row) => (
-                  <DashboardLine key={row.label} label={row.label} value={row.value} />
-                ))}
-              </div>
-            </div>
-
-            <div className="card" data-testid="coach-dashboard-learnings">
-              <div style={{ fontWeight: 800, marginBottom: 8 }}>Learnings</div>
-              <div style={{ display: "grid", gap: 10, fontSize: 13 }}>
-                <div>
-                  <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                    What&apos;s Working
-                  </div>
-                  <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
-                    {coachDashboardModel.learnings.whatsWorking.length ? (
-                      coachDashboardModel.learnings.whatsWorking.map((item) => <div key={item}>- {item}</div>)
-                    ) : (
-                      <div className="muted">{coachDashboardModel.learnings.whatsWorkingEmptyText}</div>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                    Watch Now
-                  </div>
-                  <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
-                    {coachDashboardModel.learnings.watchNow.length ? (
-                      coachDashboardModel.learnings.watchNow.map((item) => <div key={item}>- {item}</div>)
-                    ) : (
-                      <div className="muted">{coachDashboardModel.learnings.watchNowEmptyText}</div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="card" data-testid="coach-dashboard-cardio">
-              <div style={{ fontWeight: 800, marginBottom: 8 }}>Cardio</div>
-              <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                {coachDashboardModel.cardio.isEmpty ? (
-                  <div className="muted">{coachDashboardModel.cardio.emptyText}</div>
-                ) : (
-                  <>
-                    {coachDashboardModel.cardio.status ? <DashboardLine label="Cardio Status" value={coachDashboardModel.cardio.status} /> : null}
-                    {coachDashboardModel.cardio.rows.map((line) => (
-                      <DashboardLine key={line.label} label={line.label} value={line.value} />
-                    ))}
-                    {coachDashboardModel.cardio.note ? <DashboardLine label="Cardio Note" value={coachDashboardModel.cardio.note} /> : null}
-                  </>
-                )}
-              </div>
-            </div>
+            <CoachSnapshotCard snapshot={coachDashboardModel.snapshot} actions={coachDashboardModel.actions} />
+            <BodyCard body={coachDashboardModel.body} />
+            <PerformanceCard performance={coachDashboardModel.performance} />
+            <WeeklyVolumeCard weeklyVolume={coachDashboardModel.weeklyVolume} />
+            <GoalsCard goals={coachDashboardModel.goals} />
+            <LearningsCard learnings={coachDashboardModel.learnings} />
+            <CardioCard cardio={coachDashboardModel.cardio} />
           </div>
         )}
       </Section>
@@ -1249,17 +1032,6 @@ export default function StartPage() {
         </div>
       )}
     </Page>
-  );
-}
-
-function DashboardLine({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "110px minmax(0, 1fr)", gap: 8, alignItems: "start" }}>
-      <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-        {label}
-      </div>
-      <div style={{ minWidth: 0, wordBreak: "break-word" }}>{value}</div>
-    </div>
   );
 }
 
