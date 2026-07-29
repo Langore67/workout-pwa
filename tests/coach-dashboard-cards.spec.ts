@@ -208,10 +208,26 @@ test("ProgrammingIntelligenceCard renders status, summary, priority, rationale, 
       {
         id: "1-performance-high-performance-pressure",
         title: "Performance Pressure",
+        category: "performance",
+        categoryLabel: "Performance",
         priority: "high",
         priorityLabel: "High",
         rationale: "Strength Signal is trending down.",
         direction: "Keep progression conservative until performance stabilizes.",
+        evidence: ["14d Strength Signal -0.03"],
+      },
+    ],
+    detailPriorities: [
+      {
+        id: "1-performance-high-performance-pressure",
+        title: "Performance Pressure",
+        category: "performance",
+        categoryLabel: "Performance",
+        priority: "high",
+        priorityLabel: "High",
+        rationale: "Strength Signal is trending down.",
+        direction: "Keep progression conservative until performance stabilizes.",
+        evidence: ["14d Strength Signal -0.03"],
       },
     ],
   };
@@ -227,6 +243,8 @@ test("ProgrammingIntelligenceCard renders status, summary, priority, rationale, 
   expect(text).toContain("Strength Signal is trending down.");
   expect(text).toContain("Direction");
   expect(text).toContain("Keep progression conservative until performance stabilizes.");
+  expect(text).toContain("Evidence");
+  expect(text).toContain("14d Strength Signal -0.03");
 });
 
 test("ProgrammingIntelligenceCard renders multiple priorities in model order", () => {
@@ -238,18 +256,48 @@ test("ProgrammingIntelligenceCard renders multiple priorities in model order", (
       {
         id: "1-movement-medium-carry",
         title: "Carry",
+        category: "movement",
+        categoryLabel: "Movement",
         priority: "medium",
         priorityLabel: "Medium",
         rationale: "Movement family missing.",
         direction: "Add one loaded-carry exposure.",
+        evidence: ["Carry Missing"],
       },
       {
         id: "2-volume-medium-push-behind",
         title: "Push Behind",
+        category: "volume",
+        categoryLabel: "Volume",
         priority: "medium",
         priorityLabel: "Medium",
         rationale: "Pull volume is ahead of push volume.",
         direction: "Add 3-5 pushing sets this week.",
+        evidence: ["Push Behind"],
+      },
+    ],
+    detailPriorities: [
+      {
+        id: "1-movement-medium-carry",
+        title: "Carry",
+        category: "movement",
+        categoryLabel: "Movement",
+        priority: "medium",
+        priorityLabel: "Medium",
+        rationale: "Movement family missing.",
+        direction: "Add one loaded-carry exposure.",
+        evidence: ["Carry Missing"],
+      },
+      {
+        id: "2-volume-medium-push-behind",
+        title: "Push Behind",
+        category: "volume",
+        categoryLabel: "Volume",
+        priority: "medium",
+        priorityLabel: "Medium",
+        rationale: "Pull volume is ahead of push volume.",
+        direction: "Add 3-5 pushing sets this week.",
+        evidence: ["Push Behind"],
       },
     ],
   };
@@ -264,6 +312,7 @@ test("ProgrammingIntelligenceCard renders empty and partial states cleanly", () 
     status: null,
     summary: "",
     priorities: [],
+    detailPriorities: [],
     emptyState: "No programming changes are currently recommended.",
   };
   const partial: CoachDashboardProgramming = {
@@ -274,8 +323,22 @@ test("ProgrammingIntelligenceCard renders empty and partial states cleanly", () 
       {
         id: "1-recovery-low-cardio",
         title: "Cardio",
+        category: "recovery",
+        categoryLabel: "Recovery",
         priority: "low",
         priorityLabel: "Low",
+        evidence: [],
+      },
+    ],
+    detailPriorities: [
+      {
+        id: "1-recovery-low-cardio",
+        title: "Cardio",
+        category: "recovery",
+        categoryLabel: "Recovery",
+        priority: "low",
+        priorityLabel: "Low",
+        evidence: [],
       },
     ],
   };

@@ -166,14 +166,18 @@ test("maps programming section from CoachReport programming intelligence", () =>
   expect(model.programming.priorities[0]).toEqual({
     id: "1-performance-high-strength-signal-down",
     title: "Strength Signal down",
+    category: "performance",
+    categoryLabel: "Performance",
     priority: "high",
     priorityLabel: "High",
     rationale: "14d Strength Signal -0.03.",
     direction: "Keep progression conservative.",
+    evidence: ["Strength Signal"],
   });
+  expect(model.programming.detailPriorities).toEqual(model.programming.priorities);
 });
 
-test("programming priorities preserve report order and limit to three", () => {
+test("programming preview priorities preserve report order and limit to three", () => {
   const report = buildReport({
     programming: {
       overallStatus: "High Focus",
@@ -218,7 +222,32 @@ test("programming priorities preserve report order and limit to three", () => {
   const model = buildCoachDashboardModel(report);
 
   expect(model.programming.priorities.map((priority) => priority.title)).toEqual(["First", "Second", "Third"]);
+  expect(model.programming.detailPriorities.map((priority) => priority.title)).toEqual(["First", "Second", "Third", "Fourth"]);
   expect(model.programming.priorities.map((priority) => priority.priorityLabel)).toEqual(["Medium", "Critical", "Low"]);
+});
+
+test("programming detail priorities include all evidence in source order", () => {
+  const model = buildCoachDashboardModel(
+    buildReport({
+      programming: {
+        overallStatus: "High Focus",
+        summary: "Evidence included.",
+        priorities: [
+          {
+            title: "Carry",
+            priority: "medium",
+            category: "movement",
+            reason: "Movement family missing.",
+            evidence: ["Carry Missing", "Trap compensation remains active."],
+            coachAction: "Add one loaded-carry exposure.",
+          },
+        ],
+      },
+    })
+  );
+
+  expect(model.programming.detailPriorities[0].evidence).toEqual(["Carry Missing", "Trap compensation remains active."]);
+  expect(Object.isFrozen(model.programming.detailPriorities[0].evidence)).toBe(true);
 });
 
 test("missing programming intelligence returns a safe empty state", () => {
@@ -227,6 +256,7 @@ test("missing programming intelligence returns a safe empty state", () => {
   expect(model.programming.status).toBeNull();
   expect(model.programming.summary).toBe("");
   expect(model.programming.priorities).toEqual([]);
+  expect(model.programming.detailPriorities).toEqual([]);
   expect(model.programming.emptyState).toBe("No programming changes are currently recommended.");
 });
 
@@ -253,10 +283,13 @@ test("partial programming priorities omit unavailable rationale and direction", 
   expect(model.programming.priorities[0]).toEqual({
     id: "1-movement-medium-partial",
     title: "Partial",
+    category: "movement",
+    categoryLabel: "Movement",
     priority: "medium",
     priorityLabel: "Medium",
     rationale: undefined,
     direction: undefined,
+    evidence: [],
   });
 });
 
@@ -269,6 +302,8 @@ test("programming model is deterministic and frozen", () => {
   expect(Object.isFrozen(first)).toBe(true);
   expect(Object.isFrozen(first.priorities)).toBe(true);
   expect(Object.isFrozen(first.priorities[0])).toBe(true);
+  expect(Object.isFrozen(first.detailPriorities)).toBe(true);
+  expect(Object.isFrozen(first.detailPriorities[0])).toBe(true);
 });
 
 test("maps body latest values, coach averages, trends, and confidence", () => {
@@ -373,6 +408,7 @@ test("missing sections return presentation-ready empty states", () => {
   expect(model.performance.movementQuality).toBe("—");
   expect(model.programming.status).toBeNull();
   expect(model.programming.priorities).toEqual([]);
+  expect(model.programming.detailPriorities).toEqual([]);
   expect(model.weeklyVolume.rows).toEqual([]);
   expect(model.goals.trajectory).toBe("—");
   expect(model.learnings.whatsWorkingEmptyText).toBe("No validated learnings yet.");

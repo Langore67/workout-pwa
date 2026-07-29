@@ -593,6 +593,26 @@ test.describe("Start Coach Dashboard", () => {
       await expect(programming).toContainText("Status");
       await expect(programming).toContainText("Summary");
       await expect(programming).toContainText("Direction");
+      const detailsTrigger = programming.getByRole("button", { name: "View details" });
+      await expect(detailsTrigger).toBeVisible();
+      await detailsTrigger.click();
+      const programmingDialog = page.getByRole("dialog", { name: "Programming Intelligence" });
+      await expect(programmingDialog).toBeVisible();
+      await expect(programmingDialog).toContainText("Summary");
+      await expect(programmingDialog).toContainText("Priority 1");
+      await expect(programmingDialog).toContainText("Why");
+      await expect(programmingDialog).toContainText("Direction");
+      await expect(programmingDialog).toContainText("Evidence");
+      const closeProgrammingDetails = programmingDialog.getByRole("button", { name: "Close Programming Intelligence" });
+      await expect(closeProgrammingDetails).toBeFocused();
+      await closeProgrammingDetails.click();
+      await expect(programmingDialog).toBeHidden();
+      await expect(detailsTrigger).toBeFocused();
+      await detailsTrigger.click();
+      await expect(programmingDialog).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(programmingDialog).toBeHidden();
+      await expect(detailsTrigger).toBeFocused();
 
       const volume = page.getByTestId("coach-dashboard-volume");
       await expect(volume).toContainText("Weekly Volume");
