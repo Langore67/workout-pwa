@@ -71,16 +71,20 @@ export type CoachDashboardCardio = Readonly<{
 export type CoachDashboardProgrammingPriority = Readonly<{
   id: string;
   title: string;
+  category: CoachProgrammingPriority["category"];
+  categoryLabel: string;
   priority: CoachProgrammingPriority["priority"];
   priorityLabel: string;
   rationale?: string;
   direction?: string;
+  evidence: readonly string[];
 }>;
 
 export type CoachDashboardProgramming = Readonly<{
   status: string | null;
   summary: string;
   priorities: readonly CoachDashboardProgrammingPriority[];
+  detailPriorities: readonly CoachDashboardProgrammingPriority[];
   emptyState: string;
 }>;
 

@@ -29,6 +29,16 @@ function priorityLabel(value: string) {
   return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : "";
 }
 
+function categoryLabel(value: string) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return "";
+  return normalized
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function slug(value: string) {
   return value
     .trim()
@@ -39,14 +49,17 @@ function slug(value: string) {
 
 function buildProgrammingPriorities(report?: CoachReport | null): readonly CoachDashboardProgrammingPriority[] {
   return Object.freeze(
-    (report?.programming?.priorities ?? []).slice(0, 3).map((priority, index) =>
+    (report?.programming?.priorities ?? []).map((priority, index) =>
       Object.freeze({
         id: `${index + 1}-${priority.category}-${priority.priority}-${slug(priority.title)}`,
         title: priority.title,
+        category: priority.category,
+        categoryLabel: categoryLabel(priority.category),
         priority: priority.priority,
         priorityLabel: priorityLabel(priority.priority),
         rationale: cleanText(priority.reason),
         direction: cleanText(priority.coachAction),
+        evidence: readonlyStrings((priority.evidence ?? []).map((item) => cleanText(item)).filter((item): item is string => Boolean(item))),
       })
     )
   );
@@ -64,7 +77,7 @@ export function buildCoachDashboardModel(report?: CoachReport | null): CoachDash
   const bodyValues = readonlyLines((report?.body?.values ?? []).filter((line) => line.label !== "Fat Mass"));
   const performanceAnchor = report?.performance?.anchor;
   const cardio = report?.cardio;
-  const programmingPriorities = buildProgrammingPriorities(report);
+  const programmingDetailPriorities = buildProgrammingPriorities(report);
   const primaryFocus = report?.coachingActions?.actions[0]
     ? Object.freeze({
         objective: report.coachingActions.actions[0].objective,
@@ -103,7 +116,8 @@ export function buildCoachDashboardModel(report?: CoachReport | null): CoachDash
     programming: Object.freeze({
       status: cleanText(report?.programming?.overallStatus) ?? null,
       summary: cleanText(report?.programming?.summary) ?? "",
-      priorities: programmingPriorities,
+      priorities: firstThree(programmingDetailPriorities),
+      detailPriorities: programmingDetailPriorities,
       emptyState: "No programming changes are currently recommended.",
     }),
     weeklyVolume: Object.freeze({
