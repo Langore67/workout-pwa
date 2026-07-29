@@ -768,17 +768,36 @@ export default function StartPage() {
             style={{
               marginTop: 12,
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-              gap: 10,
+              gap: 12,
             }}
           >
             <CoachSnapshotCard snapshot={coachDashboardModel.snapshot} actions={coachDashboardModel.actions} />
-            <BodyCard body={coachDashboardModel.body} />
-            <PerformanceCard performance={coachDashboardModel.performance} />
-            <WeeklyVolumeCard weeklyVolume={coachDashboardModel.weeklyVolume} />
-            <GoalsCard goals={coachDashboardModel.goals} />
-            <LearningsCard learnings={coachDashboardModel.learnings} />
-            <CardioCard cardio={coachDashboardModel.cardio} />
+            <div
+              aria-label="Primary coach dashboard metrics"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                gap: 12,
+                alignItems: "start",
+              }}
+            >
+              <BodyCard body={coachDashboardModel.body} />
+              <PerformanceCard performance={coachDashboardModel.performance} />
+            </div>
+            <div
+              aria-label="Secondary coach dashboard insights"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                gap: 10,
+                alignItems: "start",
+              }}
+            >
+              <WeeklyVolumeCard weeklyVolume={coachDashboardModel.weeklyVolume} />
+              <GoalsCard goals={coachDashboardModel.goals} />
+              <CardioCard cardio={coachDashboardModel.cardio} />
+              <LearningsCard learnings={coachDashboardModel.learnings} />
+            </div>
           </div>
         )}
       </Section>
