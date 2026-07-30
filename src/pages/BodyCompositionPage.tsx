@@ -75,6 +75,14 @@ import { useNavigate } from "react-router-dom";
 import { db } from "../db";
 import { Page, Section } from "../components/Page.tsx";
 import VisxTrendChartCard from "../components/charts/VisxTrendChartCard";
+import ChartRangeSelector from "../components/charts/ChartRangeSelector";
+import {
+  buildAverageChartRangeSeries,
+  CHART_TIME_RANGES,
+  DEFAULT_CHART_TIME_RANGE,
+  WEEK_MONTH_CHART_TIME_RANGES,
+  type ChartTimeRange,
+} from "../components/charts/chartRange";
 import PhaseQualityCard from "../components/phase/PhaseQualityCard";
 import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTypes";
 import { formatInches, formatLbs } from "../components/charts/chartFormatters";
@@ -119,6 +127,7 @@ import {
 import { getProfileGoals } from "../profile/profileGoals";
 
 type Mode = CurrentPhase;
+type WeekMonthChartTimeRange = Extract<ChartTimeRange, "W" | "M">;
 
 type BodyMetricRow = {
   id: string;
@@ -263,6 +272,58 @@ function loadLegacyMode(): Mode {
     if (raw === "cut" || raw === "maintain" || raw === "bulk") return raw;
   } catch {}
   return "cut";
+}
+
+function buildBodyCompositionRangeChartData(
+  rows: readonly BodyMetricRow[],
+  range: ChartTimeRange,
+  pickValue: (row: BodyMetricRow) => number | null | undefined
+): ChartDatum[] {
+  return buildAverageChartRangeSeries(
+    rows
+      .map((row) => ({
+        at: sharedPickTime(row),
+        value: Number(pickValue(row)),
+      }))
+      .filter((row) => row.at > 0 && Number.isFinite(row.value)),
+    range
+  );
+}
+
+export function buildBodyCompositionWeightRangeChartData(rows: readonly BodyMetricRow[], range: ChartTimeRange): ChartDatum[] {
+  return buildBodyCompositionRangeChartData(rows, range, (row) => sharedPickWeightLb(row));
+}
+
+export function buildBodyCompositionWaistRangeChartData(rows: readonly BodyMetricRow[], range: ChartTimeRange): ChartDatum[] {
+  return buildBodyCompositionRangeChartData(rows, range, (row) => sharedPickWaistIn(row));
+}
+
+export function buildBodyCompositionBodyFatRangeChartData(rows: readonly BodyMetricRow[], range: ChartTimeRange): ChartDatum[] {
+  return buildBodyCompositionRangeChartData(rows, range, (row) => sharedPickBodyFatPct(row));
+}
+
+export function buildBodyCompositionCorrectedBodyFatRangeChartData(rows: readonly BodyMetricRow[], range: ChartTimeRange): ChartDatum[] {
+  return buildBodyCompositionRangeChartData(rows, range, (row) => getCorrectedBodyFatPct(row as any));
+}
+
+export function buildBodyCompositionFatMassRangeChartData(rows: readonly BodyMetricRow[], range: ChartTimeRange): ChartDatum[] {
+  return buildBodyCompositionRangeChartData(rows, range, (row) => getFatMassLb(row as any));
+}
+
+export function buildBodyCompositionLeanMassRangeChartData(rows: readonly BodyMetricRow[], range: ChartTimeRange): ChartDatum[] {
+  return buildBodyCompositionRangeChartData(rows, range, (row) => getLeanMassLb(row as any));
+}
+
+export function buildBodyCompositionCorrectedLeanMassRangeChartData(rows: readonly BodyMetricRow[], range: ChartTimeRange): ChartDatum[] {
+  return buildBodyCompositionRangeChartData(rows, range, (row) => getCorrectedLeanMassLb(row as any));
+}
+
+export function buildBodyCompositionTbwRangeChartData(rows: readonly BodyMetricRow[], range: WeekMonthChartTimeRange): ChartDatum[] {
+  return buildBodyCompositionRangeChartData(rows, range, (row) => getTBW(row as any));
+}
+
+export function buildBodyCompositionFluidRatioRangeChartData(rows: readonly BodyMetricRow[], range: WeekMonthChartTimeRange): ChartDatum[] {
+  return buildBodyCompositionRangeChartData(rows, range, (row) => getFluidRatio(row as any));
 }
 
 function saveMode(mode: Mode) {
@@ -439,6 +500,15 @@ export default function BodyCompositionPage() {
   const [mode, setMode] = useState<Mode>(() => loadLegacyMode());
   const [phaseLoaded, setPhaseLoaded] = useState(false);
   const [strengthTrend, setStrengthTrend] = useState<StrengthTrendRow[]>([]);
+  const [weightRange, setWeightRange] = useState<ChartTimeRange>(DEFAULT_CHART_TIME_RANGE);
+  const [waistRange, setWaistRange] = useState<ChartTimeRange>(DEFAULT_CHART_TIME_RANGE);
+  const [bodyFatRange, setBodyFatRange] = useState<ChartTimeRange>(DEFAULT_CHART_TIME_RANGE);
+  const [correctedBodyFatRange, setCorrectedBodyFatRange] = useState<ChartTimeRange>(DEFAULT_CHART_TIME_RANGE);
+  const [fatMassRange, setFatMassRange] = useState<ChartTimeRange>(DEFAULT_CHART_TIME_RANGE);
+  const [leanMassRange, setLeanMassRange] = useState<ChartTimeRange>(DEFAULT_CHART_TIME_RANGE);
+  const [correctedLeanMassRange, setCorrectedLeanMassRange] = useState<ChartTimeRange>(DEFAULT_CHART_TIME_RANGE);
+  const [tbwRange, setTbwRange] = useState<WeekMonthChartTimeRange>(DEFAULT_CHART_TIME_RANGE as WeekMonthChartTimeRange);
+  const [fluidRatioRange, setFluidRatioRange] = useState<WeekMonthChartTimeRange>(DEFAULT_CHART_TIME_RANGE as WeekMonthChartTimeRange);
 
   const rows = useLiveQuery(async () => {
     try {
@@ -653,78 +723,6 @@ export default function BodyCompositionPage() {
      ========================================================================== */
 
   const chartConfigs = useMemo(() => {
-    const weightData: ChartDatum[] = chartRows
-      .filter((r) => sharedPickWeightLb(r) != null)
-      .map((r) => ({
-        label: fmtShortDate(sharedPickTime(r)),
-        value: sharedPickWeightLb(r) ?? null,
-        date: fmtShortDate(sharedPickTime(r)),
-      }));
-
-    const waistData: ChartDatum[] = chartRows
-      .filter((r) => sharedPickWaistIn(r) != null)
-      .map((r) => ({
-        label: fmtShortDate(sharedPickTime(r)),
-        value: sharedPickWaistIn(r) ?? null,
-        date: fmtShortDate(sharedPickTime(r)),
-      }));
-
-    const bodyFatPctData: ChartDatum[] = chartRows
-      .filter((r) => sharedPickBodyFatPct(r) != null)
-      .map((r) => ({
-        label: fmtShortDate(sharedPickTime(r)),
-        value: sharedPickBodyFatPct(r) ?? null,
-        date: fmtShortDate(sharedPickTime(r)),
-      }));
-
-    const correctedBodyFatPctData: ChartDatum[] = chartRows
-      .filter((r) => getCorrectedBodyFatPct(r as any) != null)
-      .map((r) => ({
-        label: fmtShortDate(sharedPickTime(r)),
-        value: getCorrectedBodyFatPct(r as any) ?? null,
-        date: fmtShortDate(sharedPickTime(r)),
-      }));
-
-    const fatMassData: ChartDatum[] = chartRows
-      .filter((r) => getFatMassLb(r as any) != null)
-      .map((r) => ({
-        label: fmtShortDate(sharedPickTime(r)),
-        value: getFatMassLb(r as any) ?? null,
-        date: fmtShortDate(sharedPickTime(r)),
-      }));
-
-    const leanMassData: ChartDatum[] = chartRows
-      .filter((r) => getLeanMassLb(r as any) != null)
-      .map((r) => ({
-        label: fmtShortDate(sharedPickTime(r)),
-        value: getLeanMassLb(r as any) ?? null,
-        date: fmtShortDate(sharedPickTime(r)),
-      }));
-
-    const correctedLeanMassData: ChartDatum[] = chartRows
-      .filter((r) => getCorrectedLeanMassLb(r as any) != null)
-      .map((r) => ({
-        label: fmtShortDate(sharedPickTime(r)),
-        value: getCorrectedLeanMassLb(r as any) ?? null,
-        date: fmtShortDate(sharedPickTime(r)),
-      }));
-
-    const tbwData: ChartDatum[] = chartRows
-      .filter((r) => getTBW(r as any) != null)
-      .map((r) => ({
-        label: fmtShortDate(sharedPickTime(r)),
-        value: getTBW(r as any) ?? null,
-        date: fmtShortDate(sharedPickTime(r)),
-      }));
-
-    const fluidRatioData: ChartDatum[] = chartRows
-      .filter((r) => getFluidRatio(r as any) != null)
-      .map((r) => ({
-        label: fmtShortDate(sharedPickTime(r)),
-        value: getFluidRatio(r as any) ?? null,
-        date: fmtShortDate(sharedPickTime(r)),
-      }));
-
     const confidenceData: ChartDatum[] = chartRows
       .map((r) => ({
         label: fmtShortDate(sharedPickTime(r)),
@@ -738,7 +736,10 @@ export default function BodyCompositionPage() {
         title: "Weight Trend",
         infoKey: "weightTrend",
         subtitle: "Recent bodyweight snapshots",
-        data: weightData,
+        data: buildBodyCompositionWeightRangeChartData(chartRows, weightRange),
+        range: weightRange,
+        rangeOptions: CHART_TIME_RANGES,
+        onRangeChange: setWeightRange,
         series: [
           {
             key: "value",
@@ -755,7 +756,10 @@ export default function BodyCompositionPage() {
         title: "Waist Trend",
         infoKey: "waistTrend",
         subtitle: "Recent waist snapshots",
-        data: waistData,
+        data: buildBodyCompositionWaistRangeChartData(chartRows, waistRange),
+        range: waistRange,
+        rangeOptions: CHART_TIME_RANGES,
+        onRangeChange: setWaistRange,
         series: [
           {
             key: "value",
@@ -772,7 +776,10 @@ export default function BodyCompositionPage() {
         title: "Body Fat % Trend",
         infoKey: "bodyFatTrend",
         subtitle: "Recent body fat percentage snapshots",
-        data: bodyFatPctData,
+        data: buildBodyCompositionBodyFatRangeChartData(chartRows, bodyFatRange),
+        range: bodyFatRange,
+        rangeOptions: CHART_TIME_RANGES,
+        onRangeChange: setBodyFatRange,
         series: [
           {
             key: "value",
@@ -789,7 +796,10 @@ export default function BodyCompositionPage() {
         title: "Corrected Body Fat % Trend",
         infoKey: "correctedBodyFatTrend",
         subtitle: "Fluid-aware body fat interpretation",
-        data: correctedBodyFatPctData,
+        data: buildBodyCompositionCorrectedBodyFatRangeChartData(chartRows, correctedBodyFatRange),
+        range: correctedBodyFatRange,
+        rangeOptions: CHART_TIME_RANGES,
+        onRangeChange: setCorrectedBodyFatRange,
         series: [
           {
             key: "value",
@@ -806,7 +816,10 @@ export default function BodyCompositionPage() {
         title: "Fat Mass Trend",
         infoKey: "fatMassTrend",
         subtitle: "Estimated fat mass from weight and body fat %",
-        data: fatMassData,
+        data: buildBodyCompositionFatMassRangeChartData(chartRows, fatMassRange),
+        range: fatMassRange,
+        rangeOptions: CHART_TIME_RANGES,
+        onRangeChange: setFatMassRange,
         series: [
           {
             key: "value",
@@ -823,7 +836,10 @@ export default function BodyCompositionPage() {
         title: "Lean Mass Trend",
         infoKey: "leanMassTrend",
         subtitle: "Estimated lean mass from weight and body fat %",
-        data: leanMassData,
+        data: buildBodyCompositionLeanMassRangeChartData(chartRows, leanMassRange),
+        range: leanMassRange,
+        rangeOptions: CHART_TIME_RANGES,
+        onRangeChange: setLeanMassRange,
         series: [
           {
             key: "value",
@@ -840,7 +856,10 @@ export default function BodyCompositionPage() {
         title: "Corrected Lean Mass Trend",
         infoKey: "correctedLeanMassTrend",
         subtitle: "Fluid-aware lean mass interpretation",
-        data: correctedLeanMassData,
+        data: buildBodyCompositionCorrectedLeanMassRangeChartData(chartRows, correctedLeanMassRange),
+        range: correctedLeanMassRange,
+        rangeOptions: CHART_TIME_RANGES,
+        onRangeChange: setCorrectedLeanMassRange,
         series: [
           {
             key: "value",
@@ -858,7 +877,10 @@ export default function BodyCompositionPage() {
         title: "TBW Trend",
         infoKey: "tbwTrend",
         subtitle: "Total body water from ECW + ICW",
-        data: tbwData,
+        data: buildBodyCompositionTbwRangeChartData(chartRows, tbwRange),
+        range: tbwRange,
+        rangeOptions: WEEK_MONTH_CHART_TIME_RANGES,
+        onRangeChange: setTbwRange,
         series: [
           {
             key: "value",
@@ -875,7 +897,10 @@ export default function BodyCompositionPage() {
         title: "Fluid Ratio Trend",
         infoKey: "fluidRatioTrend",
         subtitle: "ECW / TBW fluid balance",
-        data: fluidRatioData,
+        data: buildBodyCompositionFluidRatioRangeChartData(chartRows, fluidRatioRange),
+        range: fluidRatioRange,
+        rangeOptions: WEEK_MONTH_CHART_TIME_RANGES,
+        onRangeChange: setFluidRatioRange,
         series: [
           {
             key: "value",
@@ -910,7 +935,18 @@ export default function BodyCompositionPage() {
         emptyMessage: "Add body composition entries to see confidence trend.",
       },
     ];
-  }, [chartRows]);
+  }, [
+    bodyFatRange,
+    correctedBodyFatRange,
+    correctedLeanMassRange,
+    fatMassRange,
+    fluidRatioRange,
+    leanMassRange,
+    tbwRange,
+    waistRange,
+    weightRange,
+    chartRows,
+  ]);
 
   /* ==========================================================================
      Breadcrumb 4 — Render
@@ -1409,6 +1445,15 @@ export default function BodyCompositionPage() {
               dragScrollEnabled={true}
               yAxisSide="right"
               yDomainMode={chart.yDomainMode}
+              headerControls={
+                chart.range && chart.rangeOptions && chart.onRangeChange ? (
+                  <ChartRangeSelector
+                    value={chart.range}
+                    options={chart.rangeOptions}
+                    onChange={chart.onRangeChange}
+                  />
+                ) : undefined
+              }
               valueFormatter={chart.valueFormatter}
               tooltipLabelFormatter={(label, datum) => {
                 if (typeof datum?.date === "string" && datum.date.trim()) return datum.date;

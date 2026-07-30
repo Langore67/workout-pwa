@@ -47,6 +47,13 @@ import { db, type BodyMeasurementEntry, type BodyMeasurementKey } from "../db";
 import { uuid } from "../utils";
 import { Page, Section } from "../components/Page.tsx";
 import VisxTrendChartCard from "../components/charts/VisxTrendChartCard";
+import ChartRangeSelector from "../components/charts/ChartRangeSelector";
+import {
+  buildAverageChartRangeSeries,
+  CHART_TIME_RANGES,
+  DEFAULT_CHART_TIME_RANGE,
+  type ChartTimeRange,
+} from "../components/charts/chartRange";
 import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTypes";
 import { formatInches, formatLbs } from "../components/charts/chartFormatters";
 import { dispatchCoachDashboardRefresh } from "../lib/coachDashboardEvents";
@@ -260,6 +267,36 @@ function formatMeasurementHistoryValue(
   return formatMeasurementValueInches(valueIn);
 }
 
+export function buildBodyWeightRangeChartData(
+  rows: readonly BodyMetricRow[],
+  range: ChartTimeRange
+): ChartDatum[] {
+  return buildAverageChartRangeSeries(
+    rows
+      .map((row) => ({
+        at: pickTime(row),
+        value: Number(pickWeightLb(row)),
+      }))
+      .filter((row) => row.at > 0 && Number.isFinite(row.value)),
+    range
+  );
+}
+
+export function buildBodyWaistRangeChartData(
+  rows: readonly BodyMetricRow[],
+  range: ChartTimeRange
+): ChartDatum[] {
+  return buildAverageChartRangeSeries(
+    rows
+      .map((row) => ({
+        at: pickTime(row),
+        value: Number(pickWaistIn(row)),
+      }))
+      .filter((row) => row.at > 0 && Number.isFinite(row.value)),
+    range
+  );
+}
+
 function getMeasurementDef(key: BodyMeasurementKey) {
   return (
     MEASUREMENT_DEFS.find((item) => item.key === key) ?? {
@@ -438,6 +475,8 @@ export default function BodyPage() {
      - Charts should carry more of the trend-reading burden over time
      ------------------------------------------------------------------------ */
   const [showAllRows, setShowAllRows] = useState(false);
+  const [weightRange, setWeightRange] = useState<ChartTimeRange>(DEFAULT_CHART_TIME_RANGE);
+  const [waistRange, setWaistRange] = useState<ChartTimeRange>(DEFAULT_CHART_TIME_RANGE);
 
   /* ------------------------------------------------------------------------
      Breadcrumb 2D — Read recent body rows
@@ -525,27 +564,13 @@ export default function BodyPage() {
   }, [rows]);
 
   const weightChartData: ChartDatum[] = useMemo(
-    () =>
-      chartRows
-        .filter((r) => pickWeightLb(r) != null)
-        .map((r) => ({
-          label: fmtShortDate(pickTime(r)),
-          value: pickWeightLb(r) ?? null,
-          date: fmtShortDate(pickTime(r)),
-        })),
-    [chartRows],
+    () => buildBodyWeightRangeChartData(chartRows, weightRange),
+    [chartRows, weightRange],
   );
 
   const waistChartData: ChartDatum[] = useMemo(
-    () =>
-      chartRows
-        .filter((r) => pickWaistIn(r) != null)
-        .map((r) => ({
-          label: fmtShortDate(pickTime(r)),
-          value: pickWaistIn(r) ?? null,
-          date: fmtShortDate(pickTime(r)),
-        })),
-    [chartRows],
+    () => buildBodyWaistRangeChartData(chartRows, waistRange),
+    [chartRows, waistRange],
   );
 
   const weightSeries: ChartSeriesConfig[] = useMemo(
@@ -1256,6 +1281,13 @@ export default function BodyPage() {
               dragScrollEnabled={true}
               yAxisSide="right"
               yDomainMode="auto"
+              headerControls={
+                <ChartRangeSelector
+                  value={weightRange}
+                  options={CHART_TIME_RANGES}
+                  onChange={setWeightRange}
+                />
+              }
               valueFormatter={(value) => formatLbs(value)}
               tooltipLabelFormatter={(label, datum) => {
                 if (typeof datum?.date === "string" && datum.date.trim()) {
@@ -1279,6 +1311,13 @@ export default function BodyPage() {
               dragScrollEnabled={true}
               yAxisSide="right"
               yDomainMode="tight"
+              headerControls={
+                <ChartRangeSelector
+                  value={waistRange}
+                  options={CHART_TIME_RANGES}
+                  onChange={setWaistRange}
+                />
+              }
               valueFormatter={(value) => formatInches(value)}
               tooltipLabelFormatter={(label, datum) => {
                 if (typeof datum?.date === "string" && datum.date.trim()) {

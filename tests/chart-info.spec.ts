@@ -159,6 +159,12 @@ test.describe("Chart info buttons", () => {
       "Strength Signal Trend",
       "Relative Strength Trend",
     ]);
+    const relativeStrengthCard = page
+      .getByRole("heading", { name: "Relative Strength Trend", exact: true })
+      .locator("xpath=ancestor::div[contains(@class,'card')][1]");
+    await expect(relativeStrengthCard.getByRole("button", { name: "D", exact: true })).toBeVisible();
+    await expect(relativeStrengthCard.getByRole("button", { name: "W", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(relativeStrengthCard.getByRole("button", { name: "M", exact: true })).toBeVisible();
 
     await openInfoModal(page, "Strength Signal Trend");
   });
@@ -243,6 +249,14 @@ test.describe("Chart info buttons", () => {
       "Weight Trend",
       "Waist Trend",
     ]);
+    for (const title of ["Weight Trend", "Waist Trend"]) {
+      const card = page
+        .getByRole("heading", { name: title, exact: true })
+        .locator("xpath=ancestor::div[contains(@class,'card')][1]");
+      await expect(card.getByRole("button", { name: "D", exact: true })).toBeVisible();
+      await expect(card.getByRole("button", { name: "W", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(card.getByRole("button", { name: "M", exact: true })).toBeVisible();
+    }
 
     await openInfoModal(page, "Waist Trend");
   });
@@ -256,6 +270,30 @@ test.describe("Chart info buttons", () => {
       "Weight Trend",
       "Body Fat % Trend",
     ]);
+    for (const title of [
+      "Weight Trend",
+      "Waist Trend",
+      "Body Fat % Trend",
+      "Corrected Body Fat % Trend",
+      "Fat Mass Trend",
+      "Lean Mass Trend",
+      "Corrected Lean Mass Trend",
+    ]) {
+      const card = page
+        .getByRole("heading", { name: title, exact: true })
+        .locator("xpath=ancestor::div[contains(@class,'card')][1]");
+      await expect(card.getByRole("button", { name: "D", exact: true })).toBeVisible();
+      await expect(card.getByRole("button", { name: "W", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(card.getByRole("button", { name: "M", exact: true })).toBeVisible();
+    }
+    for (const title of ["TBW Trend", "Fluid Ratio Trend"]) {
+      const card = page
+        .getByRole("heading", { name: title, exact: true })
+        .locator("xpath=ancestor::div[contains(@class,'card')][1]");
+      await expect(card.getByRole("button", { name: "D", exact: true })).toHaveCount(0);
+      await expect(card.getByRole("button", { name: "W", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(card.getByRole("button", { name: "M", exact: true })).toBeVisible();
+    }
 
     await openInfoModal(page, "Body Fat % Trend");
   });

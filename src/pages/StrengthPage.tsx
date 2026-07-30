@@ -37,6 +37,14 @@ import {
   type StrengthSignalV2Result,
 } from "../strength/v2/computeStrengthSignalV2";
 import VisxTrendChartCard from "../components/charts/VisxTrendChartCard";
+import ChartRangeSelector from "../components/charts/ChartRangeSelector";
+import {
+  buildAverageChartRangeSeries,
+  CHART_TIME_RANGES,
+  DEFAULT_CHART_TIME_RANGE,
+  WEEK_MONTH_CHART_TIME_RANGES,
+  type ChartTimeRange,
+} from "../components/charts/chartRange";
 import { formatTwoDecimals } from "../components/charts/chartFormatters";
 import { formatTimelineLabel, monthKeyFromMs } from "../components/charts/timelineLabels";
 import InfoStubButton from "../components/information/InfoStubButton";
@@ -51,7 +59,7 @@ import {
 } from "../config/appConfig";
 
 type Mode = CurrentPhase;
-type StrengthResolution = "W" | "M";
+type StrengthResolution = Extract<ChartTimeRange, "W" | "M">;
 
 const MODE_KEY = "workout_pwa_strength_mode_v1";
 const STRENGTH_SIGNAL_TIMELINE_WEEKS = 104;
@@ -112,6 +120,23 @@ function buildStrengthSignalTimelineChartData(
       date: key,
       unitStartMs: bucket.at,
     }));
+}
+
+export function buildRelativeStrengthTimelineChartData(
+  trendSorted: StrengthTrendRow[],
+  range: ChartTimeRange
+) {
+  return buildAverageChartRangeSeries(
+    (trendSorted ?? [])
+      .slice()
+      .reverse()
+      .map((row) => ({
+        at: Number(row.weekEndMs),
+        value: Number(row.relativeIndex),
+      }))
+      .filter((row) => Number.isFinite(row.at) && row.at > 0 && Number.isFinite(row.value)),
+    range
+  );
 }
 
 /* ========================================================================== */
@@ -266,47 +291,6 @@ function formatStrengthTrendBadgeLabel(value: string | null | undefined): string
   return `-> ${normalized}`;
 }
 
-function ResolutionControl({
-  activeResolution,
-  resolutions,
-  onChange,
-}: {
-  activeResolution: StrengthResolution;
-  resolutions: readonly StrengthResolution[];
-  onChange: (resolution: StrengthResolution) => void;
-}) {
-  const labels = {
-    W: "W",
-    M: "M",
-  } as const;
-  const titles = {
-    W: "Weekly",
-    M: "Monthly",
-  } as const;
-
-  return (
-    <div className="row" style={{ gap: 6, flexWrap: "nowrap", marginBottom: 10 }}>
-      {resolutions.map((resolution) => {
-        const active = resolution === activeResolution;
-        const displayLabel = labels[resolution];
-        const title = titles[resolution];
-        return (
-          <button
-            key={resolution}
-            type="button"
-            className={`btn small ${active ? "primary" : ""}`}
-            onClick={() => onChange(resolution)}
-            style={{ minWidth: 34, paddingInline: 10 }}
-            title={title}
-          >
-            {displayLabel}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 const CUT_MAINTAIN_ANCHOR_SLOTS: StrengthSignalV2Pattern[] = [
   "push",
   "pull",
@@ -424,6 +408,7 @@ export default function StrengthPage() {
 
   const [mode, setMode] = useState<Mode>(() => loadLegacyMode());
   const [strengthResolution, setStrengthResolution] = useState<StrengthResolution>("W");
+  const [relativeStrengthRange, setRelativeStrengthRange] = useState<ChartTimeRange>(DEFAULT_CHART_TIME_RANGE);
   const [phaseLoaded, setPhaseLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
@@ -552,6 +537,10 @@ export default function StrengthPage() {
   const strengthSignalTimelineChartData = useMemo(
     () => buildStrengthSignalTimelineChartData(strengthSignalTimelineTrend, strengthResolution),
     [strengthSignalTimelineTrend, strengthResolution]
+  );
+  const relativeStrengthTimelineChartData = useMemo(
+    () => buildRelativeStrengthTimelineChartData(trendSorted, relativeStrengthRange),
+    [trendSorted, relativeStrengthRange]
   );
   const anchorSlots = useMemo(() => anchorSlotsForMode(mode), [mode]);
   const eligibleAnchorExercisesBySlot = useMemo(() => {
@@ -719,11 +708,13 @@ export default function StrengthPage() {
                 </div>
               </div>
 
-              <ResolutionControl
-                activeResolution={strengthResolution}
-                resolutions={["W", "M"] as const}
-                onChange={setStrengthResolution}
-              />
+              <div style={{ marginBottom: 10 }}>
+                <ChartRangeSelector
+                  value={strengthResolution}
+                  options={WEEK_MONTH_CHART_TIME_RANGES}
+                  onChange={setStrengthResolution}
+                />
+              </div>
 
               <VisxTrendChartCard
                 title="Strength Signal Trend"
@@ -1204,7 +1195,7 @@ export default function StrengthPage() {
               <VisxTrendChartCard
                 title="Relative Strength Trend"
                 subtitle="Weekly snapshots of bodyweight-normalized strength"
-                data={relativeChartData}
+                data={relativeStrengthTimelineChartData}
                 series={relativeStrengthSeries}
                 testIdBase="relative-strength-trend"
                 infoPageKey="strength"
@@ -1216,6 +1207,13 @@ export default function StrengthPage() {
                 yDomainMode="auto"
                 showTrendLine={true}
                 readoutMode="statRow"
+                headerControls={
+                  <ChartRangeSelector
+                    value={relativeStrengthRange}
+                    options={CHART_TIME_RANGES}
+                    onChange={setRelativeStrengthRange}
+                  />
+                }
                 valueFormatter={(value) => {
                   if (value == null || !Number.isFinite(value)) return "—";
                   return value.toFixed(2);
