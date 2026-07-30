@@ -40,6 +40,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { Page, Section } from "../components/Page.tsx";
+import ChartRangeSelector from "../components/charts/ChartRangeSelector";
+import {
+  buildAverageChartRangeSeries,
+  CHART_TIME_RANGES,
+  WEEK_MONTH_CHART_TIME_RANGES,
+  DEFAULT_CHART_TIME_RANGE,
+  type ChartTimeRange,
+} from "../components/charts/chartRange";
 import { formatLbs } from "../components/charts/chartFormatters";
 import type { ChartDatum, ChartSeriesConfig } from "../components/charts/chartTypes";
 import { formatTimelineLabel, monthKeyFromMs } from "../components/charts/timelineLabels";
@@ -92,10 +100,10 @@ import {
    ============================================================================ */
 
 export type DashboardPhase = "CUT" | "MAINTAIN" | "BULK";
-type BodyWeightResolution = "D" | "W" | "M";
-type WaistResolution = "W" | "M";
-type VolumeResolution = "W" | "M";
-type StrengthResolution = "W" | "M";
+export type BodyWeightResolution = ChartTimeRange;
+type WaistResolution = Extract<ChartTimeRange, "W" | "M">;
+type VolumeResolution = Extract<ChartTimeRange, "W" | "M">;
+type StrengthResolution = Extract<ChartTimeRange, "W" | "M">;
 export type TrendDirection = "improving" | "stable" | "declining" | "watch";
 
 type ChartViewModel = {
@@ -661,49 +669,19 @@ function buildBodyWeightTrend(
   }));
 }
 
-function buildBodyWeightTimelineTrend(
+export function buildBodyWeightTimelineTrend(
   bodyMetrics: BodyMetricEntry[],
   resolution: BodyWeightResolution
 ): ChartDatum[] {
-  const filtered = bodyMetrics
-    .filter((entry) => {
-      const at = pickBodyMetricTime(entry);
-      return at > 0 && typeof entry.weightLb === "number" && Number.isFinite(entry.weightLb);
-    })
-    .sort((a, b) => pickBodyMetricTime(a) - pickBodyMetricTime(b));
-
-  const buckets = new Map<string, { values: number[]; at: number }>();
-
-  filtered.forEach((entry) => {
-    const at = pickBodyMetricTime(entry);
-    const key =
-      resolution === "D"
-        ? new Date(at).toISOString().slice(0, 10)
-        : resolution === "W"
-          ? weekKeyFromMs(at)
-          : monthKeyFromMs(at);
-    const bucket = buckets.get(key) ?? { values: [], at };
-    bucket.values.push(entry.weightLb as number);
-    bucket.at = Math.min(bucket.at, at);
-    buckets.set(key, bucket);
-  });
-
-  return Array.from(buckets.entries())
-    .sort((a, b) => a[1].at - b[1].at)
-    .map(([key, bucket]) => {
-      const label = formatTimelineLabel({
-        resolution,
-        unitStartMs: bucket.at,
-        monthKey: resolution === "M" ? key : undefined,
-      });
-
-      return {
-        label,
-        value: round2(average(bucket.values)),
-        date: key,
-        unitStartMs: bucket.at,
-      };
-    });
+  return buildAverageChartRangeSeries(
+    bodyMetrics
+      .map((entry) => ({
+        at: pickBodyMetricTime(entry),
+        value: Number(entry.weightLb),
+      }))
+      .filter((entry) => entry.at > 0 && Number.isFinite(entry.value)),
+    resolution
+  );
 }
 
 function buildWaistTrend(
@@ -1268,51 +1246,8 @@ function buildDashboardViewModel(
 }
 
 /* ============================================================================
-   Breadcrumb 7 — UI helpers
+   Breadcrumb 7 — Page
    ============================================================================ */
-
-function ResolutionControl<T extends string>({
-  activeResolution,
-  resolutions,
-  onChange,
-}: {
-  activeResolution: T;
-  resolutions: readonly T[];
-  onChange: (resolution: T) => void;
-}) {
-  const labels = {
-    D: "D",
-    W: "W",
-    M: "M",
-  } as const;
-  const titles = {
-    D: "Daily",
-    W: "Weekly",
-    M: "Monthly",
-  } as const;
-
-  return (
-    <div className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
-      {resolutions.map((resolution) => {
-        const active = resolution === activeResolution;
-        const displayLabel = labels[resolution as keyof typeof labels] ?? resolution;
-        const title = titles[resolution as keyof typeof titles] ?? resolution;
-        return (
-          <button
-            key={resolution}
-            type="button"
-            className={`btn small ${active ? "primary" : ""}`}
-            onClick={() => onChange(resolution)}
-            style={{ minWidth: 34, paddingInline: 10 }}
-            title={title}
-          >
-            {displayLabel}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 /* ============================================================================
    Breadcrumb 8 — Page
@@ -1324,7 +1259,7 @@ export default function PerformanceDashboardPage() {
   const [activePhase, setActivePhase] = useState<DashboardPhase>("CUT");
   const [phaseLoaded, setPhaseLoaded] = useState(false);
   const [bodyWeightResolution, setBodyWeightResolution] =
-    useState<BodyWeightResolution>("W");
+    useState<BodyWeightResolution>(DEFAULT_CHART_TIME_RANGE);
   const [waistResolution, setWaistResolution] = useState<WaistResolution>("W");
   const [volumeResolution, setVolumeResolution] = useState<VolumeResolution>("W");
   const [strengthResolution, setStrengthResolution] = useState<StrengthResolution>("W");
@@ -1791,9 +1726,9 @@ export default function PerformanceDashboardPage() {
               dragScrollEnabled={true}
               yAxisSide="right"
               headerControls={
-                <ResolutionControl
-                  activeResolution={strengthResolution}
-                  resolutions={["W", "M"] as const}
+                <ChartRangeSelector
+                  value={strengthResolution}
+                  options={WEEK_MONTH_CHART_TIME_RANGES}
                   onChange={setStrengthResolution}
                 />
               }
@@ -1832,9 +1767,9 @@ export default function PerformanceDashboardPage() {
               dragScrollEnabled={true}
               yAxisSide="right"
               headerControls={
-                <ResolutionControl
-                  activeResolution={bodyWeightResolution}
-                  resolutions={["D", "W", "M"] as const}
+                <ChartRangeSelector
+                  value={bodyWeightResolution}
+                  options={CHART_TIME_RANGES}
                   onChange={setBodyWeightResolution}
                 />
               }
@@ -1856,9 +1791,9 @@ export default function PerformanceDashboardPage() {
               dragScrollEnabled={true}
               yAxisSide="right"
               headerControls={
-                <ResolutionControl
-                  activeResolution={waistResolution}
-                  resolutions={["W", "M"] as const}
+                <ChartRangeSelector
+                  value={waistResolution}
+                  options={WEEK_MONTH_CHART_TIME_RANGES}
                   onChange={setWaistResolution}
                 />
               }
@@ -1880,9 +1815,9 @@ export default function PerformanceDashboardPage() {
               dragScrollEnabled={true}
               yAxisSide="right"
               headerControls={
-                <ResolutionControl
-                  activeResolution={volumeResolution}
-                  resolutions={["W", "M"] as const}
+                <ChartRangeSelector
+                  value={volumeResolution}
+                  options={WEEK_MONTH_CHART_TIME_RANGES}
                   onChange={setVolumeResolution}
                 />
               }
