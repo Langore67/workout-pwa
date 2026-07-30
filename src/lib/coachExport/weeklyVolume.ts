@@ -4,6 +4,7 @@ import type {
   CoachExportWeeklyVolume,
   CoachExportWeeklyVolumeBalance,
   CoachExportWeeklyVolumeGroup,
+  CoachExportWeeklyVolumeLatestContribution,
   CoachExportWeeklyVolumeRollup,
   ExerciseVolumeContribution,
   VolumeBucket,
@@ -700,6 +701,7 @@ export function buildWeeklyVolume(args: {
     .slice()
     .filter((session) => !session.deletedAt && Number.isFinite(sessionTime(session)))
     .sort((a, b) => sessionTime(b) - sessionTime(a));
+  const latestCompletedSession = sortedSessions.find((session) => typeof session.endedAt === "number" && Number.isFinite(session.endedAt));
   const asOf = Number.isFinite(args.asOf) ? Number(args.asOf) : sortedSessions[0] ? sessionTime(sortedSessions[0]) : Date.now();
   const recentIds = new Set(
     recentSessionIds({
@@ -719,7 +721,24 @@ export function buildWeeklyVolume(args: {
   }
 
   const unclassified = new Map<string, number>();
+  const latestContributionMap = new Map<string, CoachExportWeeklyVolumeLatestContribution>();
   let hadRelevantActivity = false;
+
+  const recordLatestContribution = (
+    sessionId: string,
+    exerciseName: string,
+    bucket: VolumeBucket,
+    kind: CoachExportWeeklyVolumeLatestContribution["kind"]
+  ) => {
+    if (!latestCompletedSession || sessionId !== latestCompletedSession.id) return;
+    const key = `${exerciseName.toLowerCase()}|${bucket}|${kind}`;
+    const current = latestContributionMap.get(key);
+    if (current) {
+      current.count += 1;
+      return;
+    }
+    latestContributionMap.set(key, { exerciseName, bucket, kind, count: 1 });
+  };
 
   const setsBySessionId = new Map<string, SetEntry[]>();
   for (const set of args.sets ?? []) {
@@ -756,10 +775,12 @@ export function buildWeeklyVolume(args: {
         if (isWorkTrack && hasSetWork) {
           for (const bucket of contribution.prime ?? []) {
             addCredits(accumulators.get(bucket)!, "prime", 1, name);
+            recordLatestContribution(sessionId, name, bucket, "prime");
             hadRelevantActivity = true;
           }
           for (const bucket of contribution.support ?? []) {
             addCredits(accumulators.get(bucket)!, "support", 1, name);
+            recordLatestContribution(sessionId, name, bucket, "support");
             hadRelevantActivity = true;
           }
           continue;
@@ -770,6 +791,7 @@ export function buildWeeklyVolume(args: {
         if (hasExposure) {
           for (const bucket of contribution.exposure) {
             addCredits(accumulators.get(bucket)!, "exposure", 1, name);
+            recordLatestContribution(sessionId, name, bucket, "exposure");
             hadRelevantActivity = true;
           }
           continue;
@@ -780,6 +802,7 @@ export function buildWeeklyVolume(args: {
         const fallbackBucket = contribution?.exposure?.[0];
         if (fallbackBucket) {
           addCredits(accumulators.get(fallbackBucket)!, "exposure", 1, name);
+          recordLatestContribution(sessionId, name, fallbackBucket, "exposure");
           hadRelevantActivity = true;
           continue;
         }
@@ -794,10 +817,12 @@ export function buildWeeklyVolume(args: {
         if (contribution.prime?.length || contribution.support?.length) {
           for (const bucket of contribution.prime ?? []) {
             addCredits(accumulators.get(bucket)!, "prime", 1, name);
+            recordLatestContribution(sessionId, name, bucket, "prime");
             hadRelevantActivity = true;
           }
           for (const bucket of contribution.support ?? []) {
             addCredits(accumulators.get(bucket)!, "support", 1, name);
+            recordLatestContribution(sessionId, name, bucket, "support");
             hadRelevantActivity = true;
           }
           continue;
@@ -807,6 +832,7 @@ export function buildWeeklyVolume(args: {
       if (hasExposure && contribution?.exposure?.length) {
         for (const bucket of contribution.exposure) {
           addCredits(accumulators.get(bucket)!, "exposure", 1, name);
+          recordLatestContribution(sessionId, name, bucket, "exposure");
           hadRelevantActivity = true;
         }
         continue;
@@ -935,6 +961,13 @@ export function buildWeeklyVolume(args: {
     unclassified: Array.from(unclassified.entries())
       .map(([exerciseName, setCount]) => ({ exerciseName, setCount }))
       .sort((a, b) => b.setCount - a.setCount || a.exerciseName.localeCompare(b.exerciseName)),
+    latestSession: latestCompletedSession
+      ? {
+          sessionId: latestCompletedSession.id,
+          completedAt: latestCompletedSession.endedAt != null ? new Date(latestCompletedSession.endedAt).toISOString() : undefined,
+          contributions: Array.from(latestContributionMap.values()),
+        }
+      : undefined,
     status: balanceRows.some((row) => row.status === "intervene") || activeGroups.some((group) => group.status === "intervene")
       ? "intervene"
       : balanceRows.some((row) => row.status === "watch") || activeGroups.some((group) => group.status === "watch")

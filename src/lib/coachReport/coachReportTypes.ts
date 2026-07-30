@@ -181,6 +181,11 @@ export type CoachProgrammingPriority = {
   reason: string;
   evidence: string[];
   coachAction: string;
+  recentAction?: Readonly<{
+    status: "not_completed" | "completed_latest_session";
+    completedAt?: string;
+    evidence: readonly string[];
+  }>;
 };
 
 export type CoachProgrammingSummary = {

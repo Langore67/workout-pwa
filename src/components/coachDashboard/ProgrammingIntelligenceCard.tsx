@@ -47,6 +47,9 @@ export function ProgrammingIntelligenceCard({ programming }: { programming: Coac
                   </div>
                 </div>
                 {priority.rationale ? <MetricRow label="Why" value={priority.rationale} /> : null}
+                {priority.recentAction?.status === "completed_latest_session" ? (
+                  <MetricRow label="Recent Action" value="Addressed in latest session" emphasis="strong" />
+                ) : null}
                 {priority.direction ? <MetricRow label="Direction" value={priority.direction} emphasis="strong" /> : null}
               </div>
             ))}
@@ -82,8 +85,23 @@ export function ProgrammingIntelligenceCard({ programming }: { programming: Coac
                     <MetricRow label="Priority" value={priority.priorityLabel} emphasis="strong" />
                     {priority.categoryLabel ? <MetricRow label="Category" value={priority.categoryLabel} /> : null}
                     {priority.rationale ? <MetricRow label="Why" value={priority.rationale} /> : null}
+                    {priority.recentAction ? <MetricRow label="Recent Action" value={priority.recentAction.statusLabel} emphasis={priority.recentAction.status === "completed_latest_session" ? "strong" : "normal"} /> : null}
                     {priority.direction ? <MetricRow label="Direction" value={priority.direction} emphasis="strong" /> : null}
                   </div>
+                  {priority.recentAction?.evidence.length ? (
+                    <div style={{ display: "grid", gap: 7 }}>
+                      <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                        Recent Action Evidence
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.45 }}>
+                        {priority.recentAction.evidence.map((item) => (
+                          <li key={item} style={{ marginBottom: 4 }}>
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                   {priority.evidence.length ? (
                     <div style={{ display: "grid", gap: 7 }}>
                       <div className="muted" style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>

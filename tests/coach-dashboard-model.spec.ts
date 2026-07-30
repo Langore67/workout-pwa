@@ -250,6 +250,43 @@ test("programming detail priorities include all evidence in source order", () =>
   expect(Object.isFrozen(model.programming.detailPriorities[0].evidence)).toBe(true);
 });
 
+test("programming priorities map recent action state and evidence", () => {
+  const model = buildCoachDashboardModel(
+    buildReport({
+      programming: {
+        overallStatus: "Watch",
+        summary: "Carry balance still needs monitoring.",
+        priorities: [
+          {
+            title: "Core Ahead",
+            priority: "medium",
+            category: "volume",
+            reason: "Core work remains ahead of loaded carry exposure.",
+            evidence: ["Core: 8 effective sets | Carry: 0 effective sets"],
+            coachAction:
+              "Carry exposure was completed in the latest session. Allow the rolling 7-day balance to update before adding more solely to correct this ratio.",
+            recentAction: {
+              status: "completed_latest_session",
+              completedAt: "2026-07-06T13:00:00.000Z",
+              evidence: ["Farmer Carry: 2 direct carry sets"],
+            },
+          },
+        ],
+      },
+    })
+  );
+
+  expect(model.programming.priorities[0].recentAction).toEqual({
+    status: "completed_latest_session",
+    statusLabel: "Addressed in latest session",
+    completedAt: "2026-07-06T13:00:00.000Z",
+    evidence: ["Farmer Carry: 2 direct carry sets"],
+  });
+  expect(Object.isFrozen(model.programming.priorities[0].recentAction)).toBe(true);
+  expect(Object.isFrozen(model.programming.priorities[0].recentAction?.evidence)).toBe(true);
+  expect(model.programming.detailPriorities[0].recentAction).toEqual(model.programming.priorities[0].recentAction);
+});
+
 test("missing programming intelligence returns a safe empty state", () => {
   const model = buildCoachDashboardModel(buildReport({ programming: undefined }));
 

@@ -60,6 +60,21 @@ function buildProgrammingPriorities(report?: CoachReport | null): readonly Coach
         rationale: cleanText(priority.reason),
         direction: cleanText(priority.coachAction),
         evidence: readonlyStrings((priority.evidence ?? []).map((item) => cleanText(item)).filter((item): item is string => Boolean(item))),
+        ...(priority.recentAction
+          ? {
+              recentAction: Object.freeze({
+                status: priority.recentAction.status,
+                statusLabel:
+                  priority.recentAction.status === "completed_latest_session"
+                    ? "Addressed in latest session"
+                    : "Not completed",
+                completedAt: priority.recentAction.completedAt,
+                evidence: readonlyStrings(
+                  (priority.recentAction.evidence ?? []).map((item) => cleanText(item)).filter((item): item is string => Boolean(item))
+                ),
+              }),
+            }
+          : {}),
       })
     )
   );

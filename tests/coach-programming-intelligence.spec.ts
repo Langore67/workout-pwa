@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import type { Exercise, Session, SetEntry, Track } from "../src/db";
+import { buildWeeklyVolume } from "../src/lib/coachExport/weeklyVolume";
 import type { CoachExportMetrics } from "../src/lib/coachExport/types";
 import { buildCoachReport } from "../src/lib/coachReport/buildCoachReport";
 import { formatCoachReportText } from "../src/lib/coachReport/formatCoachReportText";
@@ -79,6 +81,43 @@ function buildProgramming(metrics: CoachExportMetrics, overallStatus: "solid" | 
   return { report, text: formatCoachReportText(report) };
 }
 
+function balance(overrides: Record<string, any>) {
+  return {
+    id: "core_carry",
+    label: "Core / Carry",
+    leftLabel: "Core",
+    rightLabel: "Carry",
+    leftValue: 8,
+    rightValue: 0,
+    ratio: null,
+    status: "intervene",
+    statusLabel: "Core Ahead",
+    direction: "left_ahead",
+    summary: "Core work is ahead of carry exposure.",
+    currentText: "Core: 8 effective sets | Carry: 0 effective sets",
+    explanation: "Core work is ahead.",
+    action: "Add one carry exposure in the next session.",
+    note: "Core work is ahead.",
+    ...overrides,
+  };
+}
+
+function metricsWithBalance(row: Record<string, any>, contributions: NonNullable<NonNullable<CoachExportMetrics["weeklyVolume"]>["latestSession"]>["contributions"] = []) {
+  return baseMetrics({
+    weeklyVolume: {
+      ...baseMetrics().weeklyVolume!,
+      status: "watch",
+      summary: row.summary ?? "Imbalance remains.",
+      balances: [balance(row)],
+      latestSession: {
+        sessionId: "latest-session",
+        completedAt: new Date(AS_OF).toISOString(),
+        contributions,
+      },
+    },
+  });
+}
+
 test("missing vertical push with shoulder sensitivity becomes a high movement priority", () => {
   const metrics = baseMetrics({
     movementCoverage: {
@@ -127,6 +166,196 @@ test("missing carry is medium priority and does not choose a specific exercise",
   expect(carry?.coachAction).toBe("Add one loaded-carry exposure.");
   expect(carry?.coachAction).not.toContain("Farmer");
   expect(carry?.coachAction).not.toContain("Suitcase");
+});
+
+test("carry imbalance remains but latest workout carry work prevents immediate repeat instruction", () => {
+  const metrics = metricsWithBalance(
+    {},
+    [{ exerciseName: "farmer carry", bucket: "carry_grip", kind: "prime", count: 2 }]
+  );
+
+  const { report, text } = buildProgramming(metrics);
+  const carry = report.programming?.priorities.find((priority) => priority.title === "Core Ahead");
+
+  expect(carry?.recentAction?.status).toBe("completed_latest_session");
+  expect(carry?.recentAction?.evidence).toEqual(["Farmer Carry: 2 direct carry sets"]);
+  expect(carry?.coachAction).toContain("Carry exposure was completed in the latest session");
+  expect(carry?.coachAction).not.toContain("Add one carry exposure in the next session");
+  expect(report.programming?.priorities.map((priority) => priority.title)).toContain("Core Ahead");
+  expect(text).toContain("Recent Action: Completed in latest session");
+  expect(text).toContain("Farmer Carry: 2 direct carry sets");
+});
+
+test("carry imbalance remains outstanding when latest workout contains no carry", () => {
+  const metrics = metricsWithBalance({});
+
+  const { report } = buildProgramming(metrics);
+  const carry = report.programming?.priorities.find((priority) => priority.title === "Core Ahead");
+
+  expect(carry?.recentAction?.status).toBe("not_completed");
+  expect(carry?.coachAction).toBe("Add one carry exposure in the next session.");
+});
+
+test("posterior-chain imbalance acknowledges latest quad-focused work", () => {
+  const metrics = metricsWithBalance(
+    {
+      id: "quad_posterior_chain",
+      label: "Quads / Posterior Chain",
+      leftLabel: "Quads",
+      rightLabel: "Posterior Chain",
+      leftValue: 4,
+      rightValue: 14,
+      ratio: 0.29,
+      statusLabel: "Posterior Chain Ahead",
+      direction: "right_ahead",
+      summary: "Posterior-chain volume is ahead of quad volume.",
+      currentText: "Quads: 4 effective sets | Posterior Chain: 14 effective sets",
+      action: "Add one quad-focused exercise or 2-4 quad sets.",
+    },
+    [{ exerciseName: "back squat", bucket: "quads", kind: "prime", count: 3 }]
+  );
+
+  const { report } = buildProgramming(metrics);
+  const priority = report.programming?.priorities.find((item) => item.title === "Posterior Chain Ahead");
+
+  expect(priority?.recentAction?.status).toBe("completed_latest_session");
+  expect(priority?.recentAction?.evidence).toEqual(["Back Squat: 3 direct quad sets"]);
+  expect(priority?.coachAction).toBe("Quad-focused work was completed in the latest session. No additional corrective volume is required immediately.");
+});
+
+test("hip-extension bias acknowledges sufficient latest control exposures", () => {
+  const metrics = metricsWithBalance(
+    {
+      id: "glute_max_med_min",
+      label: "Glute Max / Med-Min",
+      leftLabel: "Glute Max",
+      rightLabel: "Glute Med/Min",
+      leftValue: 12,
+      rightValue: 1,
+      ratio: 12,
+      statusLabel: "Strong Hip-Extension Bias",
+      direction: "left_ahead",
+      summary: "Glute max volume is ahead of hip-stability work.",
+      currentText: "Glute Max: 12 effective sets | Glute Med/Min: 1 effective sets",
+      action: "Add 2-4 hip-stability sets or corrective exposures.",
+    },
+    [{ exerciseName: "heel tap left/right", bucket: "glute_med_min", kind: "exposure", count: 6 }]
+  );
+
+  const { report } = buildProgramming(metrics);
+  const priority = report.programming?.priorities.find((item) => item.title === "Strong Hip-Extension Bias");
+
+  expect(priority?.recentAction?.status).toBe("completed_latest_session");
+  expect(priority?.recentAction?.evidence).toEqual(["Heel Tap Left/Right: 6 control exposures"]);
+  expect(priority?.coachAction).toContain("Hip-stability work was completed in the latest session");
+});
+
+test("hip-extension bias remains outstanding with one qualifying exposure", () => {
+  const metrics = metricsWithBalance(
+    {
+      id: "glute_max_med_min",
+      label: "Glute Max / Med-Min",
+      leftLabel: "Glute Max",
+      rightLabel: "Glute Med/Min",
+      leftValue: 12,
+      rightValue: 1,
+      ratio: 12,
+      statusLabel: "Strong Hip-Extension Bias",
+      direction: "left_ahead",
+      summary: "Glute max volume is ahead of hip-stability work.",
+      currentText: "Glute Max: 12 effective sets | Glute Med/Min: 1 effective sets",
+      action: "Add 2-4 hip-stability sets or corrective exposures.",
+    },
+    [{ exerciseName: "heel tap", bucket: "glute_med_min", kind: "exposure", count: 1 }]
+  );
+
+  const { report } = buildProgramming(metrics);
+  const priority = report.programming?.priorities.find((item) => item.title === "Strong Hip-Extension Bias");
+
+  expect(priority?.recentAction?.status).toBe("not_completed");
+  expect(priority?.coachAction).toBe("Add 2-4 hip-stability sets or corrective exposures.");
+});
+
+test("biceps-ahead priority acknowledges latest direct triceps work", () => {
+  const metrics = metricsWithBalance(
+    {
+      id: "arms",
+      label: "Arms",
+      leftLabel: "Biceps",
+      rightLabel: "Triceps",
+      leftValue: 10,
+      rightValue: 2,
+      ratio: 5,
+      statusLabel: "Biceps Ahead",
+      direction: "left_ahead",
+      summary: "Biceps volume is ahead of triceps volume.",
+      currentText: "Biceps: 10 effective sets | Triceps: 2 effective sets",
+      action: "Add 2-3 direct triceps sets only if direct work is still low.",
+    },
+    [{ exerciseName: "overhead cable triceps extension", bucket: "triceps_overhead_long_head", kind: "prime", count: 2 }]
+  );
+
+  const { report } = buildProgramming(metrics);
+  const priority = report.programming?.priorities.find((item) => item.title === "Biceps Ahead");
+
+  expect(priority?.recentAction?.status).toBe("completed_latest_session");
+  expect(priority?.recentAction?.evidence).toEqual(["Overhead Cable Triceps Extension: 2 direct triceps sets"]);
+  expect(priority?.coachAction).toContain("Direct triceps work was completed in the latest session");
+});
+
+test("push-behind priority acknowledges latest pressing work", () => {
+  const metrics = metricsWithBalance(
+    {
+      id: "push_pull",
+      label: "Push / Pull",
+      leftLabel: "Push",
+      rightLabel: "Pull",
+      leftValue: 4,
+      rightValue: 14,
+      ratio: 0.29,
+      statusLabel: "Push Behind",
+      direction: "right_ahead",
+      summary: "Pull volume is ahead of push volume.",
+      currentText: "Push: 4 effective sets | Pull: 14 effective sets",
+      action: "Add 3-5 pushing sets over the next 7 days, or hold pull volume steady.",
+    },
+    [{ exerciseName: "bench press", bucket: "chest_pressing", kind: "prime", count: 2 }]
+  );
+
+  const { report } = buildProgramming(metrics);
+  const priority = report.programming?.priorities.find((item) => item.title === "Push Behind");
+
+  expect(priority?.recentAction?.status).toBe("completed_latest_session");
+  expect(priority?.recentAction?.evidence).toEqual(["Bench Press: 2 direct push sets"]);
+  expect(priority?.coachAction).toContain("Push work was completed in the latest session");
+});
+
+test("warmups do not satisfy recent programming actions", () => {
+  const sessions: Session[] = [{ id: "latest-session", startedAt: AS_OF - 3600000, endedAt: AS_OF }];
+  const tracks: Track[] = [
+    { id: "track-carry", exerciseId: "exercise-carry", displayName: "Farmer Carry", trackType: "strength", trackingMode: "weightedReps", warmupSetsDefault: 0, workingSetsDefault: 2, repMin: 1, repMax: 20, restSecondsDefault: 60, weightJumpDefault: 5, createdAt: AS_OF } as any,
+  ];
+  const exercises: Exercise[] = [{ id: "exercise-carry", name: "Farmer Carry", bodyPart: "Full Body", category: "Strength", createdAt: AS_OF } as any];
+  const sets: SetEntry[] = [
+    { id: "set-1", sessionId: "latest-session", trackId: "track-carry", setType: "warmup", reps: 20, weight: 50, createdAt: AS_OF - 1000, completedAt: AS_OF - 1000 },
+    { id: "set-2", sessionId: "latest-session", trackId: "track-carry", setType: "warmup", reps: 20, weight: 50, createdAt: AS_OF, completedAt: AS_OF },
+  ];
+  const weeklyVolume = buildWeeklyVolume({ sessions, sets, tracks, exercises, asOf: AS_OF });
+  const metrics = baseMetrics({
+    weeklyVolume: {
+      ...baseMetrics().weeklyVolume!,
+      ...weeklyVolume,
+      status: "watch",
+      balances: [balance({})],
+    },
+  });
+
+  const { report } = buildProgramming(metrics);
+  const carry = report.programming?.priorities.find((priority) => priority.title === "Core Ahead");
+
+  expect(weeklyVolume?.latestSession?.contributions ?? []).toEqual([]);
+  expect(carry?.recentAction?.status).toBe("not_completed");
+  expect(carry?.coachAction).toBe("Add one carry exposure in the next session.");
 });
 
 test("recovery and performance pressure merge while push-behind volume remains ranked", () => {
