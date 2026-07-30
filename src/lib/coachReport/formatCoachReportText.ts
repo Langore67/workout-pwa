@@ -128,6 +128,17 @@ function renderProgrammingIntelligence(programming: CoachReport["programming"]) 
     if (priority.evidence.length) {
       lines.push("- Evidence", ...priority.evidence.map((item) => `  - ${item}`));
     }
+    if (priority.recentAction) {
+      lines.push(
+        `- Recent Action: ${
+          priority.recentAction.status === "completed_latest_session" ? "Completed in latest session" : "Not completed"
+        }`
+      );
+      if (priority.recentAction.completedAt) lines.push(`- Completed At: ${priority.recentAction.completedAt}`);
+      if (priority.recentAction.evidence.length) {
+        lines.push("- Recent Action Evidence", ...priority.recentAction.evidence.map((item) => `  - ${item}`));
+      }
+    }
     lines.push(`- Coach Action: ${priority.coachAction}`);
   });
   lines.push("");

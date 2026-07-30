@@ -307,6 +307,61 @@ test("ProgrammingIntelligenceCard renders multiple priorities in model order", (
   expect(text.indexOf("Carry")).toBeLessThan(text.indexOf("Push Behind"));
 });
 
+test("ProgrammingIntelligenceCard renders recent-action acknowledgement and evidence", () => {
+  const programming: CoachDashboardProgramming = {
+    status: "Medium Focus",
+    summary: "Carry balance still needs monitoring.",
+    emptyState: "No programming changes are currently recommended.",
+    priorities: [
+      {
+        id: "1-volume-medium-core-ahead",
+        title: "Core Ahead",
+        category: "volume",
+        categoryLabel: "Volume",
+        priority: "medium",
+        priorityLabel: "Medium",
+        rationale: "Core work remains ahead of loaded carry exposure.",
+        direction:
+          "Carry exposure was completed in the latest session. Allow the rolling 7-day balance to update before adding more solely to correct this ratio.",
+        evidence: ["Core: 8 effective sets | Carry: 0 effective sets"],
+        recentAction: {
+          status: "completed_latest_session",
+          statusLabel: "Addressed in latest session",
+          completedAt: "2026-07-06T13:00:00.000Z",
+          evidence: ["Farmer Carry: 2 direct carry sets"],
+        },
+      },
+    ],
+    detailPriorities: [
+      {
+        id: "1-volume-medium-core-ahead",
+        title: "Core Ahead",
+        category: "volume",
+        categoryLabel: "Volume",
+        priority: "medium",
+        priorityLabel: "Medium",
+        rationale: "Core work remains ahead of loaded carry exposure.",
+        direction:
+          "Carry exposure was completed in the latest session. Allow the rolling 7-day balance to update before adding more solely to correct this ratio.",
+        evidence: ["Core: 8 effective sets | Carry: 0 effective sets"],
+        recentAction: {
+          status: "completed_latest_session",
+          statusLabel: "Addressed in latest session",
+          completedAt: "2026-07-06T13:00:00.000Z",
+          evidence: ["Farmer Carry: 2 direct carry sets"],
+        },
+      },
+    ],
+  };
+
+  const text = textFrom(ProgrammingIntelligenceCard({ programming }));
+
+  expect(text).toContain("Recent Action");
+  expect(text).toContain("Addressed in latest session");
+  expect(text).toContain("Recent Action Evidence");
+  expect(text).toContain("Farmer Carry: 2 direct carry sets");
+});
+
 test("ProgrammingIntelligenceCard renders empty and partial states cleanly", () => {
   const empty: CoachDashboardProgramming = {
     status: null,

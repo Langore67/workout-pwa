@@ -1440,6 +1440,152 @@ function priorityFromSeverity(severity: number): CoachProgrammingPriority["prior
   return "low";
 }
 
+type ProgrammingRecentAction = NonNullable<CoachProgrammingPriority["recentAction"]>;
+type LatestContribution = NonNullable<NonNullable<CoachExportMetrics["weeklyVolume"]>["latestSession"]>["contributions"][number];
+
+function displayExerciseName(value: string) {
+  return String(value ?? "")
+    .trim()
+    .split(/\s+/)
+    .map((part) =>
+      part
+        .split(/([/-])/)
+        .map((segment) => (segment === "/" || segment === "-" ? segment : segment.charAt(0).toUpperCase() + segment.slice(1)))
+        .join("")
+    )
+    .join(" ");
+}
+
+function pluralLabel(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function contributionEvidence(contributions: LatestContribution[], label: string) {
+  return contributions.map((entry) => `${displayExerciseName(entry.exerciseName)}: ${pluralLabel(entry.count, label)}`);
+}
+
+function latestContributionsFor(metrics: CoachExportMetrics, args: {
+  buckets: string[];
+  kinds: Array<LatestContribution["kind"]>;
+}) {
+  const bucketSet = new Set(args.buckets);
+  const kindSet = new Set(args.kinds);
+  return (metrics.weeklyVolume?.latestSession?.contributions ?? []).filter(
+    (entry) => bucketSet.has(entry.bucket) && kindSet.has(entry.kind)
+  );
+}
+
+function totalContributionCount(contributions: LatestContribution[]) {
+  return contributions.reduce((sum, entry) => sum + entry.count, 0);
+}
+
+function completedRecentAction(metrics: CoachExportMetrics, evidence: string[]): ProgrammingRecentAction {
+  return Object.freeze({
+    status: "completed_latest_session" as const,
+    completedAt: metrics.weeklyVolume?.latestSession?.completedAt,
+    evidence: Object.freeze(evidence),
+  });
+}
+
+function outstandingRecentAction(): ProgrammingRecentAction {
+  return Object.freeze({
+    status: "not_completed" as const,
+    evidence: Object.freeze([]),
+  });
+}
+
+function annotateRecentProgrammingAction(
+  priority: CoachProgrammingPriority,
+  concernKey: string,
+  metrics: CoachExportMetrics
+): CoachProgrammingPriority {
+  const complete = (evidence: string[], coachAction: string): CoachProgrammingPriority => ({
+    ...priority,
+    coachAction,
+    recentAction: completedRecentAction(metrics, evidence),
+  });
+  const outstanding = (): CoachProgrammingPriority => ({
+    ...priority,
+    recentAction: outstandingRecentAction(),
+  });
+
+  if (concernKey === "volume:push_pull" && priority.title === "Push Behind") {
+    const contributions = latestContributionsFor(metrics, {
+      buckets: ["chest_pressing", "upper_chest", "chest_isolation", "anterior_delts", "lateral_delts"],
+      kinds: ["prime"],
+    });
+    if (totalContributionCount(contributions) >= 2) {
+      return complete(
+        contributionEvidence(contributions, "direct push set"),
+        "Push work was completed in the latest session. Allow the rolling 7-day balance to update before adding more solely to correct this ratio."
+      );
+    }
+    return outstanding();
+  }
+
+  if (concernKey === "volume:quad_posterior_chain" && priority.title === "Posterior Chain Ahead") {
+    const contributions = latestContributionsFor(metrics, { buckets: ["quads"], kinds: ["prime"] });
+    if (totalContributionCount(contributions) >= 2) {
+      return complete(
+        contributionEvidence(contributions, "direct quad set"),
+        "Quad-focused work was completed in the latest session. No additional corrective volume is required immediately."
+      );
+    }
+    return outstanding();
+  }
+
+  if (
+    (concernKey === "volume:glute_max_med_min" && priority.title === "Strong Hip-Extension Bias") ||
+    concernKey === "movement:hip_stability"
+  ) {
+    const setContributions = latestContributionsFor(metrics, { buckets: ["glute_med_min"], kinds: ["prime", "support"] });
+    const exposureContributions = latestContributionsFor(metrics, { buckets: ["glute_med_min"], kinds: ["exposure"] });
+    if (totalContributionCount(setContributions) >= 2) {
+      return complete(
+        contributionEvidence(setContributions, "direct/support set", "direct/support sets"),
+        "Hip-stability work was completed in the latest session. Continue normal programming and monitor the rolling balance."
+      );
+    }
+    if (totalContributionCount(exposureContributions) >= 4) {
+      return complete(
+        contributionEvidence(exposureContributions, "control exposure"),
+        "Hip-stability work was completed in the latest session. Continue normal programming and monitor the rolling balance."
+      );
+    }
+    return outstanding();
+  }
+
+  if (concernKey === "volume:arms" && priority.title === "Biceps Ahead") {
+    const contributions = latestContributionsFor(metrics, {
+      buckets: ["triceps_isolation", "triceps_overhead_long_head"],
+      kinds: ["prime"],
+    });
+    if (totalContributionCount(contributions) >= 2) {
+      return complete(
+        contributionEvidence(contributions, "direct triceps set"),
+        "Direct triceps work was completed in the latest session. Allow the rolling 7-day arm balance to update before adding more solely to correct this ratio."
+      );
+    }
+    return outstanding();
+  }
+
+  if (
+    (concernKey === "volume:core_carry" && priority.title === "Core Ahead") ||
+    concernKey === "movement:carry"
+  ) {
+    const contributions = latestContributionsFor(metrics, { buckets: ["carry_grip"], kinds: ["prime"] });
+    if (totalContributionCount(contributions) >= 2) {
+      return complete(
+        contributionEvidence(contributions, "direct carry set"),
+        "Carry exposure was completed in the latest session. Allow the rolling 7-day balance to update before adding more solely to correct this ratio."
+      );
+    }
+    return outstanding();
+  }
+
+  return priority;
+}
+
 function buildProgrammingIntelligence(metrics: CoachExportMetrics, coachState: CoachState): CoachProgrammingSummary {
   const candidates: ProgrammingPriorityCandidate[] = [];
   let order = 0;
@@ -1620,7 +1766,9 @@ function buildProgrammingIntelligence(metrics: CoachExportMetrics, coachState: C
       return a.order - b.order;
     })
     .slice(0, 5)
-    .map(({ severity: _severity, concernKey: _concernKey, order: _order, ...priority }) => priority);
+    .map(({ severity: _severity, concernKey, order: _order, ...priority }) =>
+      annotateRecentProgrammingAction(priority, concernKey, metrics)
+    );
 
   const topPriority = ranked[0]?.priority ?? "low";
   const overallStatus =

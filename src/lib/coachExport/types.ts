@@ -294,6 +294,13 @@ export type CoachExportWeeklyVolumeBalance = {
   note: string;
 };
 
+export type CoachExportWeeklyVolumeLatestContribution = {
+  exerciseName: string;
+  bucket: VolumeBucket;
+  kind: "prime" | "support" | "exposure";
+  count: number;
+};
+
 export type CoachExportWeeklyVolume = {
   windowDays: number;
   asOf?: string;
@@ -304,6 +311,11 @@ export type CoachExportWeeklyVolume = {
     exerciseName: string;
     setCount: number;
   }>;
+  latestSession?: {
+    sessionId: string;
+    completedAt?: string;
+    contributions: CoachExportWeeklyVolumeLatestContribution[];
+  };
   status: CoachExportOverallStatus;
   summary: string;
 };

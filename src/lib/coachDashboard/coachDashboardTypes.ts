@@ -78,6 +78,12 @@ export type CoachDashboardProgrammingPriority = Readonly<{
   rationale?: string;
   direction?: string;
   evidence: readonly string[];
+  recentAction?: Readonly<{
+    status: "not_completed" | "completed_latest_session";
+    statusLabel: string;
+    completedAt?: string;
+    evidence: readonly string[];
+  }>;
 }>;
 
 export type CoachDashboardProgramming = Readonly<{
