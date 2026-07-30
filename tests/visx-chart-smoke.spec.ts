@@ -636,8 +636,10 @@ test.describe("VisX chart smoke", () => {
       .getByText("Strength Signal", { exact: true })
       .locator("xpath=ancestor::div[contains(@class,'card')][1]");
 
-    await expect(section.getByRole("button", { name: "W", exact: true })).toBeVisible();
-    await expect(section.getByRole("button", { name: "M", exact: true })).toBeVisible();
+    const weeklyButton = section.getByRole("button", { name: "W", exact: true }).first();
+    const monthlyButton = section.getByRole("button", { name: "M", exact: true }).first();
+    await expect(weeklyButton).toBeVisible();
+    await expect(monthlyButton).toBeVisible();
     await expect(page.getByTestId(`${testIdBase}:slider-input`)).toHaveCount(0);
     await expect(page.getByTestId(`${testIdBase}:trend-line`)).toHaveCount(0);
     await expect(page.getByTestId(`${testIdBase}:y-axis-right`)).toBeVisible();
@@ -648,8 +650,8 @@ test.describe("VisX chart smoke", () => {
     expect(weeklyTicks.length).toBe(5);
     expectLandmarkLabelsPresent(weeklyTicks, /^W\d{1,2}$/);
 
-    await section.getByRole("button", { name: "M", exact: true }).click();
-    await expect(section.getByRole("button", { name: "M", exact: true })).toHaveClass(/primary/);
+    await monthlyButton.click();
+    await expect(monthlyButton).toHaveClass(/primary/);
 
     const monthlyTicks = await readXAxisTickState(page, testIdBase);
     expect(monthlyTicks.length).toBeGreaterThanOrEqual(2);
