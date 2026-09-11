@@ -48,6 +48,10 @@ import {
   summarizeSessionActivityMetrics,
 } from "../lib/activityMetrics";
 import { dispatchCoachDashboardRefresh } from "../lib/coachDashboardEvents";
+import {
+  CARDIO_ACTIVITY_TYPE_OPTIONS,
+  parseCardioActivityType,
+} from "../lib/cardio/cardioActivityType";
 import { CARDIO_INTENT_OPTIONS, parseCardioIntent } from "../lib/cardio/cardioIntent";
 
 /* =============================================================================
@@ -243,6 +247,16 @@ export default function SessionDetailPage() {
     const conditioningIntent = parseCardioIntent(value);
     await db.sessions.update(sessionId, {
       conditioningIntent,
+      updatedAt: Date.now(),
+    } as any);
+    dispatchCoachDashboardRefresh("session:update");
+  }
+
+  async function updateActivityType(value: string) {
+    if (!sessionId) return;
+    const activityType = parseCardioActivityType(value);
+    await db.sessions.update(sessionId, {
+      activityType,
       updatedAt: Date.now(),
     } as any);
     dispatchCoachDashboardRefresh("session:update");
@@ -701,7 +715,25 @@ export default function SessionDetailPage() {
         </div>
 
         <hr />
-        <label htmlFor="session-conditioning-intent">Walk Intent</label>
+        <label htmlFor="session-activity-type">Activity Type</label>
+        <select
+          id="session-activity-type"
+          className="input"
+          value={session.activityType ?? ""}
+          onChange={(e) => {
+            void updateActivityType(e.target.value);
+          }}
+          data-testid="session-activity-type"
+          style={{ marginBottom: 12 }}
+        >
+          <option value="">Not set</option>
+          {CARDIO_ACTIVITY_TYPE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <label htmlFor="session-conditioning-intent">Cardio Intent</label>
         <select
           id="session-conditioning-intent"
           className="input"
