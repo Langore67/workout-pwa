@@ -978,8 +978,14 @@ function ReadOnlySetTable({
 }) {
   const weightEntryContextName = [exerciseName, track.displayName].filter(Boolean).join(" ").trim();
   const mode = inferDisplayMode(track, rows, weightEntryContextName, exerciseMetricMode);
+  const isMixedConditioningMetricTable =
+    track.trackType === "conditioning" &&
+    rows.some((row) => typeof (row as any).distance === "number" && Number.isFinite((row as any).distance) && (row as any).distance > 0) &&
+    rows.some((row) => typeof row.seconds === "number" && Number.isFinite(row.seconds) && row.seconds > 0);
 
   const headers: string[] = (() => {
+    if (isMixedConditioningMetricTable) return ["Metric"];
+
     switch (mode) {
       case "weightedReps":
         return ["Weight", "Reps", "RIR"];
@@ -1007,6 +1013,26 @@ function ReadOnlySetTable({
 
   function renderCells(se: SetEntry) {
     const badge = se.setType === "drop" ? "DROP" : se.setType === "failure" ? "FAIL" : undefined;
+
+    if (isMixedConditioningMetricTable) {
+      const distanceLabel = formatDistanceLabel(
+        (se as any).distance,
+        ((se as any).distanceUnit as string | undefined) ?? "m"
+      );
+      const timeLabel = formatDurationShortFromSeconds(se.seconds);
+
+      if (distanceLabel || timeLabel) {
+        return (
+          <td style={{ textAlign: "right" }} data-testid={`set-activity-metric:${se.id}`}>
+            {distanceLabel ? (
+              <span data-testid={`set-distance:${se.id}`}>Distance {distanceLabel}</span>
+            ) : null}
+            {distanceLabel && timeLabel ? <span className="muted"> • </span> : null}
+            {timeLabel ? <span data-testid={`set-seconds:${se.id}`}>Time {timeLabel}</span> : null}
+          </td>
+        );
+      }
+    }
 
     switch (mode) {
       case "weightedReps": {
