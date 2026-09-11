@@ -90,6 +90,10 @@ import {
   inferTrackingModeFromSetSignals,
   isNonStrengthTrackType,
 } from "../domain/trackingMode";
+import {
+  inferCardioActivityType,
+  type CardioActivityType,
+} from "../lib/cardio/cardioActivityType";
 import { parseCardioIntent, type CardioIntent } from "../lib/cardio/cardioIntent";
 import { parseImportLoadToken } from "../domain/import/loadParsing";
 import {
@@ -127,6 +131,7 @@ type ParsedExerciseBlock = {
 
 type ParsedWorkout = {
   programDay: string;
+  activityType?: CardioActivityType;
   conditioningIntent?: CardioIntent;
   date: string; // YYYY-MM-DD
   start?: string; // HH:mm
@@ -1168,8 +1173,17 @@ function parseWorkoutText(text: string): ParsedWorkout {
     if (!ex.sets.length) warnings.push(`Exercise has no parsed sets: ${ex.exercise}`);
   }
 
+  const conditioningExerciseName = exercises.find((ex) =>
+    ex.sets.some((set) => set.setKind === "conditioning" || set.setKind === "cardio")
+  )?.exercise;
+  const activityType = inferCardioActivityType({
+    sessionName: programDay || "Imported Session",
+    exerciseName: conditioningExerciseName,
+  });
+
   return {
     programDay: programDay || "Imported Session",
+    activityType,
     conditioningIntent,
     date,
     start: normalizeTimeString(start),
@@ -1689,6 +1703,7 @@ export default function PasteWorkoutPage() {
         endedAt: safeEndedAt,
         templateId: undefined,
         templateName: parsed.programDay,
+        activityType: parsed.activityType,
         conditioningIntent: parsed.conditioningIntent,
         notes: parsed.sessionNotes?.trim() || undefined,
         updatedAt: safeEndedAt,
