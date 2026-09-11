@@ -1577,6 +1577,130 @@ conditioning duration 20min`);
   expect(invalidIntent).toBeUndefined();
 });
 
+test("Paste Workout parses explicit activity type metadata and keeps intent independent", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  const cases = [
+    { label: "Walk", expected: "walk", date: "2026-07-01" },
+    { label: "Hike", expected: "hike", date: "2026-07-02", intent: "Adventure" },
+    { label: "Run", expected: "run", date: "2026-07-03", intent: "Fitness" },
+    { label: "Bike", expected: "bike", date: "2026-07-04" },
+    { label: "Row", expected: "row", date: "2026-07-05" },
+    { label: "Other", expected: "other", date: "2026-07-06", intent: "Recovery" },
+  ];
+  const enableDbWrite = async () => {
+    await page.getByLabel(/Dry run/i).evaluate((checkbox) => {
+      if (checkbox instanceof HTMLInputElement && checkbox.checked) {
+        checkbox.click();
+      }
+    });
+    await expect(page.getByText(/DB write enabled/i)).toBeVisible();
+  };
+
+  for (const item of cases) {
+    await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+    await page.getByRole("textbox").first().fill(`Session: ${item.label} Metadata
+Activity Type: ${item.label}
+${item.intent ? `Intent: ${item.intent}\n` : ""}Date: ${item.date}
+Start: 08:00
+End: 08:20
+
+Walk
+conditioning duration 20min`);
+    await page.getByRole("button", { name: "Parse Preview" }).click();
+    await expect(page.getByText(/Unsupported set format/i)).toHaveCount(0);
+    await enableDbWrite();
+    await page.getByRole("button", { name: "Import Now" }).click();
+    await expect(page.getByText(/Imported/i)).toBeVisible();
+  }
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Walk
+Activity Type: Hike
+Intent: Adventure
+Date: 2026-07-07
+Start: 08:00
+End: 08:20
+
+Walk
+conditioning 5km`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+  await expect(page.getByText(/Unsupported set format/i)).toHaveCount(0);
+  await enableDbWrite();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Mountain Day
+Activity Type: Swim
+Intent: expedition
+Date: 2026-07-08
+Start: 08:00
+End: 08:20
+
+Training
+conditioning duration 20min`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+  await expect(page.getByText(/Unsupported set format/i)).toHaveCount(0);
+  await enableDbWrite();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const imported = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    return (await db.sessions.toArray())
+      .sort((a: any, b: any) => a.startedAt - b.startedAt)
+      .map((session: any) => ({
+        name: session.templateName,
+        activityType: session.activityType,
+        conditioningIntent: session.conditioningIntent,
+      }));
+  });
+
+  expect(imported.filter((row: any) => row.name.endsWith(" Metadata")).map((row: any) => row.activityType)).toEqual([
+    "walk",
+    "hike",
+    "run",
+    "bike",
+    "row",
+    "other",
+  ]);
+  expect(imported.find((row: any) => row.name === "Hike Metadata")).toMatchObject({
+    activityType: "hike",
+    conditioningIntent: "adventure",
+  });
+  expect(imported.find((row: any) => row.name === "Run Metadata")).toMatchObject({
+    activityType: "run",
+    conditioningIntent: "fitness",
+  });
+  expect(imported.find((row: any) => row.name === "Other Metadata")).toMatchObject({
+    activityType: "other",
+    conditioningIntent: "recovery",
+  });
+  expect(imported.find((row: any) => row.name === "Walk")).toMatchObject({
+    activityType: "hike",
+    conditioningIntent: "adventure",
+  });
+  expect(imported.find((row: any) => row.name === "Mountain Day")).toMatchObject({
+    activityType: undefined,
+    conditioningIntent: undefined,
+  });
+});
+
+test("Paste Workout formatting prompt documents activity type and conservative intent metadata", async ({ page }) => {
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+
+  await page.getByText("Need help formatting a workout?").click();
+
+  await expect(page.getByText("Activity Type: <Walk|Hike|Run|Bike|Row|Other, cardio only when known>")).toBeVisible();
+  await expect(page.getByText("Intent: <Fitness|Recovery|Adventure, cardio only when known>")).toBeVisible();
+  await expect(page.getByText("- Activity Type describes WHAT the activity was.")).toBeVisible();
+  await expect(page.getByText("- Intent describes WHY the cardio was performed.")).toBeVisible();
+  await expect(page.getByText("- Do not guess Intent when it is unclear.")).toBeVisible();
+});
+
 test("Paste Workout persists activity type from trusted cardio activity names", async ({ page }) => {
   test.slow();
   await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
@@ -1643,6 +1767,7 @@ test("Paste Workout and standalone journal import classify equivalent cardio tex
 
   await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
   const pasteText = `Session: Hike - Ridge Trail
+Activity Type: Hike
 Intent: Adventure
 Date: 2026-06-20
 Start: 08:00
@@ -1658,6 +1783,7 @@ conditioning duration 45min`;
 
   const result = await page.evaluate(async () => {
     const standaloneText = `Session: Hike - Ridge Trail Copy
+Activity Type: Hike
 Intent: Adventure
 Date: 2026-06-21
 Start: 08:00

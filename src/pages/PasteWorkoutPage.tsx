@@ -92,6 +92,7 @@ import {
 } from "../domain/trackingMode";
 import {
   inferCardioActivityType,
+  parseCardioActivityType,
   type CardioActivityType,
 } from "../lib/cardio/cardioActivityType";
 import { parseCardioIntent, type CardioIntent } from "../lib/cardio/cardioIntent";
@@ -240,6 +241,8 @@ const CHATGPT_FORMAT_PROMPT = `Convert the following workout notes into IronForg
 Use exactly this structure:
 
 Session: <name>
+Activity Type: <Walk|Hike|Run|Bike|Row|Other, cardio only when known>
+Intent: <Fitness|Recovery|Adventure, cardio only when known>
 Date: YYYY-MM-DD
 Start: HH:mm
 End: HH:mm
@@ -261,6 +264,12 @@ Formatting rules:
 - Use @RIR for work sets when RIR is known.
 - Use conditioning BWx3.12mi or conditioning BWx5.39km for distance conditioning.
 - Use conditioning BWx42min or conditioning BWx2520s for time conditioning.
+- For cardio sessions, include Activity Type when it is known.
+- Activity Type describes WHAT the activity was.
+- Include Intent only when the notes/source support the purpose of the activity.
+- Intent describes WHY the cardio was performed.
+- Do not guess Intent when it is unclear.
+- Omit Activity Type and Intent when they do not apply or cannot be determined reliably.
 - Keep all notes under Session Notes.
 - Return only the IronForge-formatted workout.
 
@@ -1018,6 +1027,7 @@ function parseWorkoutText(text: string): ParsedWorkout {
   const lines = text.replace(/\r/g, "").split("\n");
 
   let programDay = "";
+  let explicitActivityType: CardioActivityType | undefined;
   let conditioningIntent: ParsedWorkout["conditioningIntent"];
   let date = "";
   let start = "";
@@ -1039,6 +1049,7 @@ function parseWorkoutText(text: string): ParsedWorkout {
       const noteBlockHeader = parseSessionNoteBlockHeader(line);
       const isMetadataLine =
         /^session\s*:/i.test(line) ||
+        /^activity\s+type\s*:/i.test(line) ||
         /^intent\s*:/i.test(line) ||
         /^date\s*:/i.test(line) ||
         /^start\s*:/i.test(line) ||
@@ -1090,6 +1101,13 @@ function parseWorkoutText(text: string): ParsedWorkout {
     const dateMatch = line.match(/^date\s*:\s*(.+)$/i);
     if (dateMatch) {
       date = dateMatch[1].trim();
+      currentExercise = null;
+      continue;
+    }
+
+    const activityTypeMatch = line.match(/^activity\s+type\s*:\s*(.+)$/i);
+    if (activityTypeMatch) {
+      explicitActivityType = parseCardioActivityType(activityTypeMatch[1]);
       currentExercise = null;
       continue;
     }
@@ -1176,10 +1194,12 @@ function parseWorkoutText(text: string): ParsedWorkout {
   const conditioningExerciseName = exercises.find((ex) =>
     ex.sets.some((set) => set.setKind === "conditioning" || set.setKind === "cardio")
   )?.exercise;
-  const activityType = inferCardioActivityType({
-    sessionName: programDay || "Imported Session",
-    exerciseName: conditioningExerciseName,
-  });
+  const activityType =
+    explicitActivityType ??
+    inferCardioActivityType({
+      sessionName: programDay || "Imported Session",
+      exerciseName: conditioningExerciseName,
+    });
 
   return {
     programDay: programDay || "Imported Session",
