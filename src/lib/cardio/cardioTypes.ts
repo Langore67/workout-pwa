@@ -1,7 +1,13 @@
 import type { Exercise, Session, SetEntry, Track } from "../../db";
+import type { CardioIntent } from "./cardioIntent";
+import {
+  isAdventureCardioIntent,
+  isFitnessCardioIntent,
+  isRecoveryCardioIntent,
+} from "./cardioIntent";
 
 export type CardioWalkConfidence = "high" | "medium";
-export type CardioWalkIntent = "fitness" | "recovery" | "adventure";
+export type CardioWalkIntent = CardioIntent;
 
 export type CardioWalkEvent = {
   sessionId: string;
@@ -74,13 +80,13 @@ export type BuildCardioWalkSummaryInput = {
 };
 
 export function isFitnessWalk(event: Pick<CardioWalkEvent, "conditioningIntent">): boolean {
-  return event.conditioningIntent === "fitness";
+  return isFitnessCardioIntent(event.conditioningIntent);
 }
 
 export function isRecoveryWalk(event: Pick<CardioWalkEvent, "conditioningIntent">): boolean {
-  return event.conditioningIntent === "recovery";
+  return isRecoveryCardioIntent(event.conditioningIntent);
 }
 
 export function isAdventureWalk(event: Pick<CardioWalkEvent, "conditioningIntent">): boolean {
-  return event.conditioningIntent === "adventure";
+  return isAdventureCardioIntent(event.conditioningIntent);
 }

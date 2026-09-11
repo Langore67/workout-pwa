@@ -4,6 +4,7 @@ import type {
   CardioWalkSummary,
   CardioWalkWindowSummary,
 } from "./cardioTypes";
+import { getCardioIntentLabel } from "./cardioIntent";
 import { isAdventureWalk, isFitnessWalk, isRecoveryWalk } from "./cardioTypes";
 import { formatDistanceMiKm } from "./formatCardioWalk";
 
@@ -80,9 +81,7 @@ function extractNotesText(notes: string | undefined): string | undefined {
 }
 
 function formatWalkIntent(walk: CardioWalkEvent): string | undefined {
-  if (isFitnessWalk(walk)) return "Fitness";
-  if (isRecoveryWalk(walk)) return "Recovery";
-  if (isAdventureWalk(walk)) return "Adventure";
+  if (walk.conditioningIntent) return getCardioIntentLabel(walk.conditioningIntent);
   return undefined;
 }
 
