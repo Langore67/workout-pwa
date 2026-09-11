@@ -9,6 +9,10 @@ import {
 } from "../data/normalizeTimestamps";
 import { findOrCreateReusableTrack } from "../lib/reusableTrackWorkflow";
 import { computeAndStorePRsForSession } from "../prs";
+import {
+  inferCardioActivityType,
+  type CardioActivityType,
+} from "../lib/cardio/cardioActivityType";
 import { parseCardioIntent, type CardioIntent } from "../lib/cardio/cardioIntent";
 
 type ImportedMetricType = "reps" | "distance" | "duration";
@@ -24,6 +28,7 @@ type ImportedSet = Partial<SetEntry> &
 export type ParsedIfWorkout = {
   dateISO: string;
   templateName: string;
+  activityType?: CardioActivityType;
   conditioningIntent?: CardioIntent;
   start?: string;
   end?: string;
@@ -200,7 +205,7 @@ function parseIfSetLine(line: string): ImportedSet | null {
 export function parseIfJournalText(text: string): ParsedIfWorkout {
   const lines = String(text ?? "").replace(/\r/g, "").split("\n");
   let templateName = "";
-  let conditioningIntent: ConditioningIntent | undefined;
+  let conditioningIntent: CardioIntent | undefined;
   let dateISO = "";
   let start = "";
   let end = "";
@@ -310,10 +315,16 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
 
   if (!dateISO) throw new Error("IF import requires Date: YYYY-MM-DD");
   if (!templateName) templateName = "Imported Session";
+  const conditioningExerciseName = sets.find((set) => set.trackType === "conditioning")?.exerciseName;
+  const activityType = inferCardioActivityType({
+    sessionName: templateName,
+    exerciseName: conditioningExerciseName,
+  });
 
   return {
     dateISO,
     templateName,
+    activityType,
     conditioningIntent,
     start: start || undefined,
     end: end || undefined,
@@ -418,6 +429,7 @@ export async function importSessionFromJournal(
         dateISO: string;
         templateId?: string;
         templateName?: string;
+        activityType?: CardioActivityType;
         conditioningIntent?: CardioIntent;
         start?: string;
         end?: string;
@@ -431,6 +443,12 @@ export async function importSessionFromJournal(
         dateISO: args.dateISO,
         templateId: args.templateId,
         templateName: args.templateName,
+        activityType:
+          args.activityType ??
+          inferCardioActivityType({
+            sessionName: args.templateName,
+            exerciseName: args.sets.find((set) => set.trackType === "conditioning")?.exerciseName,
+          }),
         conditioningIntent: args.conditioningIntent,
         start: args.start,
         end: args.end,
@@ -462,6 +480,7 @@ export async function importSessionFromJournal(
       id: sessionId,
       templateId: "templateId" in parsed ? parsed.templateId : undefined,
       templateName: parsed.templateName,
+      activityType: parsed.activityType,
       conditioningIntent: parsed.conditioningIntent,
       startedAt,
       endedAt,

@@ -458,6 +458,109 @@ conditioning duration 20min`;
   });
 });
 
+test("cardio activity type classifier uses explicit activity names and avoids false positives", async ({ page }) => {
+  await goto(page, "/");
+
+  const classified = await page.evaluate(async () => {
+    const { inferCardioActivityType } = await import("/src/lib/cardio/cardioActivityType.ts");
+    return {
+      walk: inferCardioActivityType({ sessionName: "Walk" }),
+      walking: inferCardioActivityType({ sessionName: "Walking" }),
+      hike: inferCardioActivityType({ sessionName: "Hike" }),
+      hiking: inferCardioActivityType({ sessionName: "Hiking" }),
+      run: inferCardioActivityType({ sessionName: "Run" }),
+      running: inferCardioActivityType({ sessionName: "Running" }),
+      bike: inferCardioActivityType({ sessionName: "Bike" }),
+      biking: inferCardioActivityType({ sessionName: "Biking" }),
+      cycling: inferCardioActivityType({ sessionName: "Cycling" }),
+      row: inferCardioActivityType({ sessionName: "Row" }),
+      rowing: inferCardioActivityType({ sessionName: "Rowing" }),
+      otherCardio: inferCardioActivityType({ sessionName: "Conditioning" }),
+      farmerWalk: inferCardioActivityType({ sessionName: "Farmer's Walk" }),
+      walkingLunge: inferCardioActivityType({ sessionName: "Walking Lunge" }),
+      walkout: inferCardioActivityType({ sessionName: "Walkout Mobility" }),
+      unsupported: inferCardioActivityType({ sessionName: "Upper A" }),
+    };
+  });
+
+  expect(classified).toEqual({
+    walk: "walk",
+    walking: "walk",
+    hike: "hike",
+    hiking: "hike",
+    run: "run",
+    running: "run",
+    bike: "bike",
+    biking: "bike",
+    cycling: "bike",
+    row: "row",
+    rowing: "row",
+    otherCardio: "other",
+    farmerWalk: undefined,
+    walkingLunge: undefined,
+    walkout: undefined,
+    unsupported: undefined,
+  });
+});
+
+test("IF journal import persists activity type from trusted activity names independently from intent", async ({ page }) => {
+  await goto(page, "/");
+  await resetDexieDb(page);
+
+  const imported = await page.evaluate(async () => {
+    const { importSessionFromJournal, parseIfJournalText } = await import("/src/importers/importSession.ts");
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const cases = [
+      { name: "Walk", expected: "walk" },
+      { name: "Walking", expected: "walk" },
+      { name: "Hike", expected: "hike", intent: "Adventure" },
+      { name: "Hiking", expected: "hike" },
+      { name: "Run", expected: "run" },
+      { name: "Running", expected: "run" },
+      { name: "Bike", expected: "bike" },
+      { name: "Biking", expected: "bike" },
+      { name: "Cycling", expected: "bike" },
+      { name: "Row", expected: "row" },
+      { name: "Rowing", expected: "row" },
+      { name: "Conditioning", expected: "other" },
+      { name: "Upper A", expected: undefined },
+    ];
+
+    const rows = [];
+    for (const [index, item] of cases.entries()) {
+      const text = `Session: ${item.name}
+${item.intent ? `Intent: ${item.intent}\n` : ""}Date: 2026-06-${String(index + 1).padStart(2, "0")}
+
+${item.name}
+conditioning duration 20min`;
+      const parsed = parseIfJournalText(text);
+      const result = await importSessionFromJournal({ text });
+      const session = await db.sessions.get(result.sessionId);
+      rows.push({
+        name: item.name,
+        expected: item.expected,
+        parsedActivityType: parsed.activityType,
+        sessionActivityType: session?.activityType,
+        conditioningIntent: session?.conditioningIntent,
+      });
+    }
+
+    return rows;
+  });
+
+  for (const row of imported) {
+    expect(row.parsedActivityType).toBe(row.expected);
+    expect(row.sessionActivityType).toBe(row.expected);
+  }
+  expect(imported.find((row: any) => row.name === "Hike")).toMatchObject({
+    sessionActivityType: "hike",
+    conditioningIntent: "adventure",
+  });
+});
+
 test("IF journal import treats walk metadata outside Session Notes as notes, not exercises", async ({ page }) => {
   await goto(page, "/");
   await resetDexieDb(page);

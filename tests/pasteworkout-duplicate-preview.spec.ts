@@ -1560,3 +1560,108 @@ conditioning duration 20min`);
 
   expect(invalidIntent).toBeUndefined();
 });
+
+test("Paste Workout persists activity type from trusted cardio activity names", async ({ page }) => {
+  test.slow();
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  const cases = [
+    { name: "Walk", expected: "walk" },
+    { name: "Walking", expected: "walk" },
+    { name: "Hike", expected: "hike", intent: "Adventure" },
+    { name: "Hiking", expected: "hike" },
+    { name: "Run", expected: "run" },
+    { name: "Running", expected: "run" },
+    { name: "Bike", expected: "bike" },
+    { name: "Biking", expected: "bike" },
+    { name: "Cycling", expected: "bike" },
+    { name: "Row", expected: "row" },
+    { name: "Rowing", expected: "row" },
+    { name: "Upper A", expected: undefined },
+  ];
+
+  for (const [index, item] of cases.entries()) {
+    await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+    await page.getByRole("textbox").first().fill(`Session: ${item.name}
+${item.intent ? `Intent: ${item.intent}\n` : ""}Date: 2026-06-${String(index + 1).padStart(2, "0")}
+Start: 08:00
+End: 08:20
+
+${item.name}
+conditioning duration 20min`);
+    await page.getByRole("button", { name: "Parse Preview" }).click();
+    await expect(page.getByText(/Unsupported set format/i)).toHaveCount(0);
+    await page.getByLabel(/Dry run/i).evaluate((checkbox) => {
+      if (checkbox instanceof HTMLInputElement && checkbox.checked) {
+        checkbox.click();
+      }
+    });
+    await expect(page.getByText(/DB write enabled/i)).toBeVisible();
+    await page.getByRole("button", { name: "Import Now" }).click();
+    await expect(page.getByText(/Imported/i)).toBeVisible();
+  }
+
+  const imported = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    return (await db.sessions.toArray())
+      .sort((a: any, b: any) => a.startedAt - b.startedAt)
+      .map((session: any) => ({
+        name: session.templateName,
+        activityType: session.activityType,
+        conditioningIntent: session.conditioningIntent,
+      }));
+  });
+
+  expect(imported.map((row: any) => row.activityType)).toEqual(cases.map((item) => item.expected));
+  expect(imported.find((row: any) => row.name === "Hike")).toMatchObject({
+    activityType: "hike",
+    conditioningIntent: "adventure",
+  });
+});
+
+test("Paste Workout and standalone journal import classify equivalent cardio text the same way", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  const pasteText = `Session: Hike - Ridge Trail
+Intent: Adventure
+Date: 2026-06-20
+Start: 08:00
+End: 08:45
+
+Hiking
+conditioning duration 45min`;
+  await page.getByRole("textbox").first().fill(pasteText);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const result = await page.evaluate(async () => {
+    const standaloneText = `Session: Hike - Ridge Trail Copy
+Intent: Adventure
+Date: 2026-06-21
+Start: 08:00
+End: 08:45
+
+Hiking
+conditioning duration 45min`;
+    const { importSessionFromJournal } = await import("/src/importers/importSession.ts");
+    // @ts-ignore
+    const db = window.__db;
+    const standalone = await importSessionFromJournal({ text: standaloneText });
+    const sessions = await db.sessions.toArray();
+    return {
+      paste: sessions.find((session: any) => session.templateName === "Hike - Ridge Trail"),
+      standalone: sessions.find((session: any) => session.id === standalone.sessionId),
+    };
+  });
+
+  expect(result.paste.activityType).toBe("hike");
+  expect(result.standalone.activityType).toBe("hike");
+  expect(result.paste.conditioningIntent).toBe("adventure");
+  expect(result.standalone.conditioningIntent).toBe("adventure");
+});
