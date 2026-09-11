@@ -1,4 +1,5 @@
 import type { Exercise, Session, SetEntry, Track } from "../../db";
+import type { CardioActivityType } from "./cardioActivityType";
 import type { CardioIntent } from "./cardioIntent";
 import {
   isAdventureCardioIntent,
@@ -15,6 +16,7 @@ export type CardioWalkEvent = {
   endedAt?: number;
   date: string;
   name: string;
+  activityType?: CardioActivityType;
   conditioningIntent?: CardioWalkIntent;
   source?: string;
   route?: string;

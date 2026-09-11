@@ -15,6 +15,7 @@ function ms(year: number, month: number, day: number, hour: number, minute: numb
 function session(args: {
   id: string;
   name: string;
+  activityType?: Session["activityType"];
   conditioningIntent?: Session["conditioningIntent"];
   startedAt?: number;
   endedAt?: number;
@@ -23,6 +24,7 @@ function session(args: {
   return {
     id: args.id,
     templateName: args.name,
+    activityType: args.activityType,
     conditioningIntent: args.conditioningIntent,
     startedAt: args.startedAt ?? ms(2026, 5, 13, 7, 30),
     endedAt: args.endedAt,
@@ -212,6 +214,56 @@ test("conditioning intent helpers classify walk events", () => {
   expect(isRecoveryWalk(walkEvent("adventure"))).toBe(false);
   expect(isAdventureWalk(walkEvent("adventure"))).toBe(true);
   expect(isAdventureWalk(walkEvent("fitness"))).toBe(false);
+});
+
+test("persisted activity type copies to walk events independently from conditioning intent", () => {
+  const summary = buildCardioWalkSummary({
+    now: ms(2026, 5, 14, 0, 0),
+    sessions: [
+      session({
+        id: "walk-recovery",
+        name: "Walk - Recovery",
+        activityType: "walk",
+        conditioningIntent: "recovery",
+        startedAt: ms(2026, 5, 13, 7, 30),
+      }),
+      session({
+        id: "hike-adventure",
+        name: "Walk - Trail",
+        activityType: "hike",
+        conditioningIntent: "adventure",
+        startedAt: ms(2026, 5, 13, 8, 30),
+      }),
+      session({
+        id: "walk-no-activity-type",
+        name: "Walk - No Activity Type",
+        conditioningIntent: "fitness",
+        startedAt: ms(2026, 5, 13, 9, 30),
+      }),
+    ],
+    sets: [
+      setEntry({ id: "set-walk", sessionId: "walk-recovery", trackId: walkTimeTrack.id, seconds: 1800 }),
+      setEntry({ id: "set-hike", sessionId: "hike-adventure", trackId: walkTimeTrack.id, seconds: 2400 }),
+      setEntry({ id: "set-undefined", sessionId: "walk-no-activity-type", trackId: walkTimeTrack.id, seconds: 1200 }),
+    ],
+    tracks: [walkTimeTrack],
+    exercises: [walkExercise],
+  });
+
+  expect(summary.normalizedWalks).toHaveLength(3);
+  expect(summary.normalizedWalks.find((walk) => walk.sessionId === "walk-recovery")).toMatchObject({
+    activityType: "walk",
+    conditioningIntent: "recovery",
+  });
+  expect(summary.normalizedWalks.find((walk) => walk.sessionId === "hike-adventure")).toMatchObject({
+    activityType: "hike",
+    conditioningIntent: "adventure",
+  });
+  expect(summary.normalizedWalks.find((walk) => walk.sessionId === "walk-no-activity-type")).toMatchObject({
+    conditioningIntent: "fitness",
+  });
+  expect(summary.normalizedWalks.find((walk) => walk.sessionId === "walk-no-activity-type")?.activityType).toBeUndefined();
+  expect(summary.last7d.count).toBe(3);
 });
 
 test("Route, pace, elevation, avg HR, and max HR are parsed from Session.notes", () => {
