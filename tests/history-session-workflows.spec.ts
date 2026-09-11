@@ -17,6 +17,113 @@ function getSection(text: string, heading: string, nextHeading?: string) {
 }
 
 test.describe("history and ad hoc session workflows", () => {
+  test("session detail edits cardio activity type independently from cardio intent", async ({ page }) => {
+    await goto(page, "/");
+    await resetDexieDb(page);
+
+    const seeded = await page.evaluate(async () => {
+      const db = (window as any).__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const now = Date.now();
+      const uuid = () => crypto.randomUUID();
+      const exerciseId = uuid();
+      const trackId = uuid();
+      const sessionId = uuid();
+
+      await db.exercises.add({
+        id: exerciseId,
+        name: "Hiking",
+        normalizedName: "hiking",
+        category: "Cardio",
+        metricMode: "time",
+        equipmentTags: ["bodyweight"],
+        createdAt: now - 10_000,
+      });
+      await db.tracks.add({
+        id: trackId,
+        exerciseId,
+        trackType: "conditioning",
+        displayName: "Hiking",
+        trackingMode: "timeSeconds",
+        warmupSetsDefault: 0,
+        workingSetsDefault: 1,
+        repMin: 1,
+        repMax: 1,
+        restSecondsDefault: 0,
+        weightJumpDefault: 0,
+        createdAt: now - 9_000,
+      });
+      await db.sessions.add({
+        id: sessionId,
+        templateName: "Park City hiking",
+        activityType: "hike",
+        conditioningIntent: "adventure",
+        startedAt: now - 60 * 60 * 1000,
+        endedAt: now,
+        notes: "Trail session",
+      });
+      await db.sets.add({
+        id: uuid(),
+        sessionId,
+        trackId,
+        createdAt: now - 59 * 60 * 1000,
+        setType: "working",
+        seconds: 60 * 60,
+        completedAt: now - 59 * 60 * 1000,
+      });
+
+      return { sessionId };
+    });
+
+    await goto(page, `/session/${seeded.sessionId}`);
+    await expect(page.getByTestId("session-detail")).toBeVisible({ timeout: 15000 });
+
+    await expect(page.getByLabel("Activity Type")).toHaveValue("hike");
+    await expect(page.getByLabel("Cardio Intent")).toHaveValue("adventure");
+    await expect(page.getByText("Walk Intent")).toHaveCount(0);
+
+    await page.getByLabel("Activity Type").selectOption("walk");
+    let stored = await page.evaluate(async (sessionId) => {
+      const session = await (window as any).__db.sessions.get(sessionId);
+      return {
+        activityType: session?.activityType,
+        conditioningIntent: session?.conditioningIntent,
+      };
+    }, seeded.sessionId);
+    expect(stored).toEqual({ activityType: "walk", conditioningIntent: "adventure" });
+
+    await page.getByLabel("Activity Type").selectOption("hike");
+    stored = await page.evaluate(async (sessionId) => {
+      const session = await (window as any).__db.sessions.get(sessionId);
+      return {
+        activityType: session?.activityType,
+        conditioningIntent: session?.conditioningIntent,
+      };
+    }, seeded.sessionId);
+    expect(stored).toEqual({ activityType: "hike", conditioningIntent: "adventure" });
+
+    await page.getByLabel("Cardio Intent").selectOption("recovery");
+    stored = await page.evaluate(async (sessionId) => {
+      const session = await (window as any).__db.sessions.get(sessionId);
+      return {
+        activityType: session?.activityType,
+        conditioningIntent: session?.conditioningIntent,
+      };
+    }, seeded.sessionId);
+    expect(stored).toEqual({ activityType: "hike", conditioningIntent: "recovery" });
+
+    await page.getByLabel("Activity Type").selectOption("");
+    stored = await page.evaluate(async (sessionId) => {
+      const session = await (window as any).__db.sessions.get(sessionId);
+      return {
+        activityType: session?.activityType,
+        conditioningIntent: session?.conditioningIntent,
+      };
+    }, seeded.sessionId);
+    expect(stored).toEqual({ activityType: undefined, conditioningIntent: "recovery" });
+  });
+
   test("session detail copies the completed session snapshot", async ({ page }) => {
     await page.addInitScript(() => {
       const clipboardState = { text: "" };
