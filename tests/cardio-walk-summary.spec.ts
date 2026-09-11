@@ -266,6 +266,119 @@ test("persisted activity type copies to walk events independently from condition
   expect(summary.last7d.count).toBe(3);
 });
 
+test("explicit persisted activity types are authoritative cardio inclusion", () => {
+  const activityCases = [
+    { id: "activity-walk", name: "Neighborhood", activityType: "walk" },
+    { id: "activity-hike", name: "Ridge Trail", activityType: "hike", conditioningIntent: "adventure" },
+    { id: "activity-run", name: "Intervals", activityType: "run" },
+    { id: "activity-bike", name: "Trainer", activityType: "bike" },
+    { id: "activity-row", name: "Erg", activityType: "row" },
+    { id: "activity-other", name: "Conditioning Circuit", activityType: "other" },
+    { id: "activity-recovery", name: "Easy Recovery", activityType: "walk", conditioningIntent: "recovery" },
+  ] satisfies Array<{
+    id: string;
+    name: string;
+    activityType: NonNullable<Session["activityType"]>;
+    conditioningIntent?: Session["conditioningIntent"];
+  }>;
+
+  const summary = buildCardioWalkSummary({
+    now: ms(2026, 5, 14, 0, 0),
+    sessions: activityCases.map((item, index) =>
+      session({
+        id: item.id,
+        name: item.name,
+        activityType: item.activityType,
+        conditioningIntent: item.conditioningIntent,
+        startedAt: ms(2026, 5, 13, 7 + index, 30),
+      })
+    ),
+    sets: activityCases.map((item, index) =>
+      setEntry({
+        id: `set-${item.id}`,
+        sessionId: item.id,
+        trackId: walkTimeTrack.id,
+        seconds: 1200 + index,
+      })
+    ),
+    tracks: [walkTimeTrack],
+    exercises: [walkExercise],
+  });
+
+  expect(summary.normalizedWalks.map((walk) => walk.sessionId).sort()).toEqual(
+    activityCases.map((item) => item.id).sort()
+  );
+  for (const item of activityCases) {
+    expect(summary.normalizedWalks.find((walk) => walk.sessionId === item.id)).toMatchObject({
+      activityType: item.activityType,
+      conditioningIntent: item.conditioningIntent,
+      confidence: "high",
+    });
+  }
+  expect(summary.normalizedWalks.find((walk) => walk.sessionId === "activity-hike")).toMatchObject({
+    activityType: "hike",
+    conditioningIntent: "adventure",
+  });
+  expect(summary.normalizedWalks.find((walk) => walk.sessionId === "activity-recovery")).toMatchObject({
+    activityType: "walk",
+    conditioningIntent: "recovery",
+  });
+});
+
+test("undefined activity type preserves legacy walk fallback and false-positive exclusions", () => {
+  const strengthExercise = exercise("ex-fallback-strength", "Farmer's Walk");
+  const lungeExercise = exercise("ex-fallback-lunge", "Walking Lunge");
+  const walkoutExercise = exercise("ex-fallback-walkout", "Hamstring Walkouts");
+  const falseTracks = [
+    track({
+      id: "track-fallback-farmer",
+      exerciseId: strengthExercise.id,
+      displayName: "Farmer's Walk",
+      trackType: "strength",
+      trackingMode: "weightedReps",
+    }),
+    track({
+      id: "track-fallback-lunge",
+      exerciseId: lungeExercise.id,
+      displayName: "Walking Lunge",
+      trackType: "conditioning",
+      trackingMode: "timeSeconds",
+    }),
+    track({
+      id: "track-fallback-walkout",
+      exerciseId: walkoutExercise.id,
+      displayName: "Hamstring Walkouts",
+      trackType: "conditioning",
+      trackingMode: "timeSeconds",
+    }),
+  ];
+
+  const summary = buildCardioWalkSummary({
+    now: ms(2026, 5, 14, 0, 0),
+    sessions: [
+      session({ id: "legacy-mapmywalk", name: "Walk - MapMyWalk" }),
+      session({ id: "legacy-farmer", name: "Farmer's Walk" }),
+      session({ id: "legacy-lunge", name: "Walking Lunge" }),
+      session({ id: "legacy-walkout", name: "Walkout Mobility" }),
+    ],
+    sets: [
+      setEntry({ id: "set-legacy-mapmywalk", sessionId: "legacy-mapmywalk", trackId: walkTimeTrack.id, seconds: 2520 }),
+      setEntry({ id: "set-legacy-farmer", sessionId: "legacy-farmer", trackId: "track-fallback-farmer", weight: 50, reps: 40 }),
+      setEntry({ id: "set-legacy-lunge", sessionId: "legacy-lunge", trackId: "track-fallback-lunge", seconds: 600 }),
+      setEntry({ id: "set-legacy-walkout", sessionId: "legacy-walkout", trackId: "track-fallback-walkout", seconds: 600 }),
+    ],
+    tracks: [walkTimeTrack, ...falseTracks],
+    exercises: [walkExercise, strengthExercise, lungeExercise, walkoutExercise],
+  });
+
+  expect(summary.normalizedWalks).toHaveLength(1);
+  expect(summary.normalizedWalks[0]).toMatchObject({
+    sessionId: "legacy-mapmywalk",
+    confidence: "high",
+  });
+  expect(summary.normalizedWalks[0].activityType).toBeUndefined();
+});
+
 test("Route, pace, elevation, avg HR, and max HR are parsed from Session.notes", () => {
   const summary = buildCardioWalkSummary({
     now: ms(2026, 5, 14, 0, 0),
