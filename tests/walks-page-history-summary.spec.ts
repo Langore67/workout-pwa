@@ -178,4 +178,112 @@ test.describe("/walks History-backed summary", () => {
       "60 min · 3.00 mi / 4.83 km · 20:00/mi · Neighborhood Loop"
     );
   });
+
+  test("shows persisted activity type badges without inventing labels for legacy rows", async ({ page }) => {
+    await resetDexieDb(page);
+
+    const seeded = await page.evaluate(async () => {
+      const db = (window as any).__db;
+      if (!db) throw new Error("__db missing on window.");
+
+      const uuid = () => crypto.randomUUID();
+      const base = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const at = (hour: number, minute: number) =>
+        new Date(base.getFullYear(), base.getMonth(), base.getDate(), hour, minute).getTime();
+
+      const exerciseId = uuid();
+      const timeTrackId = uuid();
+      const typedWalkSessionId = uuid();
+      const typedHikeSessionId = uuid();
+      const legacySessionId = uuid();
+
+      await db.exercises.add({
+        id: exerciseId,
+        name: "Walk",
+        normalizedName: "walk",
+        category: "Cardio",
+        metricMode: "time",
+        equipmentTags: ["bodyweight"],
+        createdAt: at(8, 0),
+      });
+      await db.tracks.add({
+        id: timeTrackId,
+        exerciseId,
+        trackType: "conditioning",
+        displayName: "Walk",
+        trackingMode: "timeSeconds",
+        warmupSetsDefault: 0,
+        workingSetsDefault: 1,
+        repMin: 1,
+        repMax: 1,
+        restSecondsDefault: 0,
+        weightJumpDefault: 0,
+        createdAt: at(8, 1),
+      });
+
+      await db.sessions.bulkAdd([
+        {
+          id: typedWalkSessionId,
+          templateName: "Morning Walk",
+          activityType: "walk",
+          startedAt: at(9, 0),
+          endedAt: at(9, 30),
+          notes: "",
+        },
+        {
+          id: typedHikeSessionId,
+          templateName: "Cloudland Canyon",
+          activityType: "hike",
+          startedAt: at(10, 0),
+          endedAt: at(11, 0),
+          notes: "",
+        },
+        {
+          id: legacySessionId,
+          templateName: "Walk - MapMyWalk",
+          startedAt: at(12, 0),
+          endedAt: at(12, 45),
+          notes: "",
+        },
+      ]);
+
+      await db.sets.bulkAdd([
+        {
+          id: uuid(),
+          sessionId: typedWalkSessionId,
+          trackId: timeTrackId,
+          createdAt: at(9, 1),
+          setType: "working",
+          seconds: 30 * 60,
+        },
+        {
+          id: uuid(),
+          sessionId: typedHikeSessionId,
+          trackId: timeTrackId,
+          createdAt: at(10, 1),
+          setType: "working",
+          seconds: 60 * 60,
+        },
+        {
+          id: uuid(),
+          sessionId: legacySessionId,
+          trackId: timeTrackId,
+          createdAt: at(12, 1),
+          setType: "working",
+          seconds: 45 * 60,
+        },
+      ]);
+
+      return { typedWalkSessionId, typedHikeSessionId, legacySessionId };
+    });
+
+    await goto(page, "/walks");
+
+    await expect(page.getByTestId(`walks-history-row:${seeded.typedWalkSessionId}`)).toContainText("Morning Walk");
+    await expect(page.getByTestId(`walks-history-row-activity-type:${seeded.typedWalkSessionId}`)).toHaveText("Walk");
+    await expect(page.getByTestId(`walks-history-row:${seeded.typedHikeSessionId}`)).toContainText("Cloudland Canyon");
+    await expect(page.getByTestId(`walks-history-row-activity-type:${seeded.typedHikeSessionId}`)).toHaveText("Hike");
+    await expect(page.getByTestId(`walks-history-row:${seeded.legacySessionId}`)).toContainText("Walk - MapMyWalk");
+    await expect(page.getByTestId(`walks-history-row-activity-type:${seeded.legacySessionId}`)).toHaveCount(0);
+  });
 });

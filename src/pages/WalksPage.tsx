@@ -19,6 +19,7 @@ import { Page, Section } from "../components/Page.tsx";
 import { db } from "../db";
 import { buildCardioWalkSummary } from "../lib/cardio/buildCardioWalkSummary";
 import type { CardioWalkEvent, CardioWalkSummary } from "../lib/cardio/cardioTypes";
+import { getCardioActivityTypeLabel } from "../lib/cardio/cardioActivityType";
 import {
   formatCardioDuration,
   formatCardioPace,
@@ -52,6 +53,7 @@ function SummaryMetric({
 }
 
 function WalkListRow({ walk, suspiciousPace }: { walk: CardioWalkEvent; suspiciousPace?: boolean }) {
+  const activityTypeLabel = walk.activityType ? getCardioActivityTypeLabel(walk.activityType) : undefined;
   const meta = [
     formatCardioDuration(walk.durationSeconds),
     formatDistanceMiKm(walk.distanceMeters),
@@ -72,7 +74,18 @@ function WalkListRow({ walk, suspiciousPace }: { walk: CardioWalkEvent; suspicio
       <div className="muted" style={{ fontSize: 12, marginBottom: 3 }}>
         {formatCardioWalkDateTime(walk.startedAt)}
       </div>
-      <div style={{ fontWeight: 900, lineHeight: 1.25 }}>{walk.name}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexWrap: "wrap" }}>
+        <div style={{ fontWeight: 900, lineHeight: 1.25 }}>{walk.name}</div>
+        {activityTypeLabel ? (
+          <span
+            className="badge"
+            data-testid={`walks-history-row-activity-type:${walk.sessionId}`}
+            style={{ fontSize: 11, lineHeight: 1.15, padding: "2px 7px" }}
+          >
+            {activityTypeLabel}
+          </span>
+        ) : null}
+      </div>
       {meta.length ? (
         <div
           data-testid={`walks-history-row-meta:${walk.sessionId}`}
