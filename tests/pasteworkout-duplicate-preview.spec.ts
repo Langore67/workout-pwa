@@ -1125,10 +1125,13 @@ Session Notes:
     const sets = await db.sets.where("sessionId").equals(session.id).sortBy("createdAt");
     const tracks = await db.tracks.toArray();
     return {
+      sessionId: session.id,
       sessionNotes: session.notes,
       sets: sets.map((set: any) => {
         const track = tracks.find((row: any) => row.id === set.trackId);
         return {
+          id: set.id,
+          trackId: set.trackId,
           distance: set.distance,
           distanceUnit: set.distanceUnit,
           seconds: set.seconds,
@@ -1148,6 +1151,19 @@ Session Notes:
   ]);
   expect(imported.sessionNotes).toContain("Avg pace 10:43/km");
   expect(imported.sessionNotes).toContain("Avg HR 115");
+
+  const distanceSet = imported.sets.find((set: any) => set.distance === 6100);
+  const durationSet = imported.sets.find((set: any) => set.seconds === 3931);
+  expect(distanceSet).toBeTruthy();
+  expect(durationSet).toBeTruthy();
+
+  await page.goto(new URL(`/session/${imported.sessionId}`, BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("session-activity-metric")).toContainText("Distance 6.1 km");
+  await expect(page.getByTestId(`exercise-activity-time:${distanceSet.trackId}`)).toContainText("1h 6m");
+  await expect(page.getByTestId(`exercise-activity-distance:${distanceSet.trackId}`)).toContainText("6.1 km");
+  await expect(page.getByTestId(`set-distance:${distanceSet.id}`)).toContainText("Distance 6.1 km");
+  await expect(page.getByTestId(`set-seconds:${durationSet.id}`)).toContainText("Time 1h 6m");
+  await expect(page.getByTestId(`set-activity-metric:${durationSet.id}`)).not.toHaveText("?");
 });
 
 test("Paste Workout parses spaced mile distance and mm:ss conditioning duration", async ({
