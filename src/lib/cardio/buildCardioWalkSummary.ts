@@ -8,6 +8,7 @@ import {
   type CardioWalkSummary,
   type CardioWalkWindowSummary,
 } from "./cardioTypes";
+import { parseCardioActivityType } from "./cardioActivityType";
 import { parseCardioSessionNotes } from "./parseCardioSessionNotes";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -139,6 +140,16 @@ function classifyWalkSession(args: {
   return null;
 }
 
+function classifyCardioSession(args: {
+  session: Session;
+  sets: SetEntry[];
+  trackById: Map<string, Track>;
+  exerciseById: Map<string, Exercise>;
+}): CardioWalkConfidence | null {
+  if (parseCardioActivityType(args.session.activityType)) return "high";
+  return classifyWalkSession(args);
+}
+
 function buildWindowSummary(walks: CardioWalkEvent[], now: number, days: number): CardioWalkWindowSummary {
   const start = now - days * DAY_MS;
   const windowWalks = walks.filter(
@@ -244,7 +255,7 @@ export function buildCardioWalkSummary(input: BuildCardioWalkSummaryInput): Card
     .filter((session) => !session.deletedAt)
     .map((session): CardioWalkEvent | null => {
       const sessionSets = setsBySessionId.get(session.id) ?? [];
-      const confidence = classifyWalkSession({
+      const confidence = classifyCardioSession({
         session,
         sets: sessionSets,
         trackById,
