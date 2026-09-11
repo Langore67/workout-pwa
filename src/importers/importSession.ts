@@ -11,6 +11,7 @@ import { findOrCreateReusableTrack } from "../lib/reusableTrackWorkflow";
 import { computeAndStorePRsForSession } from "../prs";
 import {
   inferCardioActivityType,
+  parseCardioActivityType,
   type CardioActivityType,
 } from "../lib/cardio/cardioActivityType";
 import { parseCardioIntent, type CardioIntent } from "../lib/cardio/cardioIntent";
@@ -205,6 +206,7 @@ function parseIfSetLine(line: string): ImportedSet | null {
 export function parseIfJournalText(text: string): ParsedIfWorkout {
   const lines = String(text ?? "").replace(/\r/g, "").split("\n");
   let templateName = "";
+  let explicitActivityType: CardioActivityType | undefined;
   let conditioningIntent: CardioIntent | undefined;
   let dateISO = "";
   let start = "";
@@ -222,6 +224,7 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
     if (inNotesBlock) {
       const isMetaLine =
         /^session\s*:/i.test(line) ||
+        /^activity\s+type\s*:/i.test(line) ||
         /^intent\s*:/i.test(line) ||
         /^date\s*:/i.test(line) ||
         /^start\s*:/i.test(line) ||
@@ -256,6 +259,13 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
     const dateMatch = line.match(/^date\s*:\s*(\d{4}-\d{2}-\d{2})$/i);
     if (dateMatch) {
       dateISO = dateMatch[1].trim();
+      currentExercise = "";
+      continue;
+    }
+
+    const activityTypeMatch = line.match(/^activity\s+type\s*:\s*(.+)$/i);
+    if (activityTypeMatch) {
+      explicitActivityType = parseCardioActivityType(activityTypeMatch[1]);
       currentExercise = "";
       continue;
     }
@@ -316,10 +326,12 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
   if (!dateISO) throw new Error("IF import requires Date: YYYY-MM-DD");
   if (!templateName) templateName = "Imported Session";
   const conditioningExerciseName = sets.find((set) => set.trackType === "conditioning")?.exerciseName;
-  const activityType = inferCardioActivityType({
-    sessionName: templateName,
-    exerciseName: conditioningExerciseName,
-  });
+  const activityType =
+    explicitActivityType ??
+    inferCardioActivityType({
+      sessionName: templateName,
+      exerciseName: conditioningExerciseName,
+    });
 
   return {
     dateISO,

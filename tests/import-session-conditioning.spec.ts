@@ -458,6 +458,138 @@ conditioning duration 20min`;
   });
 });
 
+test("IF journal import parses explicit activity type metadata with precedence over inference", async ({ page }) => {
+  await goto(page, "/");
+  await resetDexieDb(page);
+
+  const imported = await page.evaluate(async () => {
+    const { importSessionFromJournal, parseIfJournalText } = await import("/src/importers/importSession.ts");
+    // @ts-ignore
+    const db = window.__db;
+    if (!db) throw new Error("__db missing on window.");
+
+    const cases = [
+      { label: "Walk", expected: "walk", date: "2026-07-01" },
+      { label: "Hike", expected: "hike", date: "2026-07-02", intent: "Adventure" },
+      { label: "Run", expected: "run", date: "2026-07-03", intent: "Fitness" },
+      { label: "Bike", expected: "bike", date: "2026-07-04" },
+      { label: "Row", expected: "row", date: "2026-07-05" },
+      { label: "Other", expected: "other", date: "2026-07-06", intent: "Recovery" },
+    ] as const;
+
+    const results = [];
+    for (const item of cases) {
+      const text = `Session: ${item.label} Metadata
+Activity Type: ${item.label}
+${item.intent ? `Intent: ${item.intent}\n` : ""}Date: ${item.date}
+
+Walk
+conditioning duration 20min`;
+      const parsed = parseIfJournalText(text);
+      const result = await importSessionFromJournal({ text });
+      const session = await db.sessions.get(result.sessionId);
+      results.push({
+        label: item.label,
+        expected: item.expected,
+        parsedActivityType: parsed.activityType,
+        sessionActivityType: session?.activityType,
+        conditioningIntent: session?.conditioningIntent,
+      });
+    }
+
+    const precedenceText = `Session: Walk
+Activity Type: Hike
+Intent: Adventure
+Date: 2026-07-07
+
+Walk
+conditioning 5km`;
+    const parsedPrecedence = parseIfJournalText(precedenceText);
+    const precedenceResult = await importSessionFromJournal({ text: precedenceText });
+    const precedenceSession = await db.sessions.get(precedenceResult.sessionId);
+
+    const invalidText = `Session: Mountain Day
+Activity Type: Swim
+Intent: expedition
+Date: 2026-07-08
+
+Training
+conditioning duration 20min`;
+    const parsedInvalid = parseIfJournalText(invalidText);
+    const invalidResult = await importSessionFromJournal({ text: invalidText });
+    const invalidSession = await db.sessions.get(invalidResult.sessionId);
+
+    const legacyText = `Session: Walk - Legacy
+Date: 2026-07-09
+
+Walk
+conditioning duration 20min`;
+    const parsedLegacy = parseIfJournalText(legacyText);
+    const legacyResult = await importSessionFromJournal({ text: legacyText });
+    const legacySession = await db.sessions.get(legacyResult.sessionId);
+
+    return {
+      results,
+      precedence: {
+        parsedActivityType: parsedPrecedence.activityType,
+        sessionActivityType: precedenceSession?.activityType,
+        conditioningIntent: precedenceSession?.conditioningIntent,
+      },
+      invalid: {
+        parsedActivityType: parsedInvalid.activityType,
+        sessionActivityType: invalidSession?.activityType,
+        parsedIntent: parsedInvalid.conditioningIntent,
+        sessionIntent: invalidSession?.conditioningIntent,
+      },
+      legacy: {
+        parsedActivityType: parsedLegacy.activityType,
+        sessionActivityType: legacySession?.activityType,
+        parsedIntent: parsedLegacy.conditioningIntent,
+        sessionIntent: legacySession?.conditioningIntent,
+      },
+    };
+  });
+
+  expect(imported.results.map((row: any) => row.sessionActivityType)).toEqual([
+    "walk",
+    "hike",
+    "run",
+    "bike",
+    "row",
+    "other",
+  ]);
+  expect(imported.results.find((row: any) => row.label === "Hike")).toMatchObject({
+    parsedActivityType: "hike",
+    sessionActivityType: "hike",
+    conditioningIntent: "adventure",
+  });
+  expect(imported.results.find((row: any) => row.label === "Run")).toMatchObject({
+    sessionActivityType: "run",
+    conditioningIntent: "fitness",
+  });
+  expect(imported.results.find((row: any) => row.label === "Other")).toMatchObject({
+    sessionActivityType: "other",
+    conditioningIntent: "recovery",
+  });
+  expect(imported.precedence).toEqual({
+    parsedActivityType: "hike",
+    sessionActivityType: "hike",
+    conditioningIntent: "adventure",
+  });
+  expect(imported.invalid).toEqual({
+    parsedActivityType: undefined,
+    sessionActivityType: undefined,
+    parsedIntent: undefined,
+    sessionIntent: undefined,
+  });
+  expect(imported.legacy).toEqual({
+    parsedActivityType: "walk",
+    sessionActivityType: "walk",
+    parsedIntent: undefined,
+    sessionIntent: undefined,
+  });
+});
+
 test("cardio activity type classifier uses explicit activity names and avoids false positives", async ({ page }) => {
   await goto(page, "/");
 
