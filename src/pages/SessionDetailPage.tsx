@@ -48,6 +48,7 @@ import {
   summarizeSessionActivityMetrics,
 } from "../lib/activityMetrics";
 import { dispatchCoachDashboardRefresh } from "../lib/coachDashboardEvents";
+import { CARDIO_INTENT_OPTIONS, parseCardioIntent } from "../lib/cardio/cardioIntent";
 
 /* =============================================================================
    Breadcrumb 0 — Types
@@ -239,8 +240,7 @@ export default function SessionDetailPage() {
 
   async function updateConditioningIntent(value: string) {
     if (!sessionId) return;
-    const conditioningIntent =
-      value === "fitness" || value === "recovery" || value === "adventure" ? value : undefined;
+    const conditioningIntent = parseCardioIntent(value);
     await db.sessions.update(sessionId, {
       conditioningIntent,
       updatedAt: Date.now(),
@@ -713,9 +713,11 @@ export default function SessionDetailPage() {
           style={{ marginBottom: 12 }}
         >
           <option value="">Not set</option>
-          <option value="fitness">Fitness</option>
-          <option value="recovery">Recovery</option>
-          <option value="adventure">Adventure</option>
+          {CARDIO_INTENT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
         </select>
         <label>Session notes</label>
         <div

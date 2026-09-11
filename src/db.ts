@@ -26,6 +26,7 @@
    ============================================================================ */
 
 import Dexie, { Table } from "dexie";
+import type { CardioIntent } from "./lib/cardio/cardioIntent";
 
 export type UUID = string;
 
@@ -248,7 +249,7 @@ export interface Session {
   id: UUID;
   templateId?: UUID;
   templateName?: string;
-  conditioningIntent?: "fitness" | "recovery" | "adventure";
+  conditioningIntent?: CardioIntent;
   startedAt: number;
   endedAt?: number;
   notes?: string;

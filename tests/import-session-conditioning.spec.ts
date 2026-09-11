@@ -382,22 +382,37 @@ conditioning duration 42 min`);
   ]);
 });
 
-test("IF journal import parses conditioning intent when valid and ignores invalid intent", async ({ page }) => {
+test("IF journal import parses conditioning intent values when valid and ignores invalid intent", async ({ page }) => {
   await goto(page, "/");
   await resetDexieDb(page);
 
   const imported = await page.evaluate(async () => {
     const { importSessionFromJournal, parseIfJournalText } = await import("/src/importers/importSession.ts");
+    const { parseCardioIntent } = await import("/src/lib/cardio/cardioIntent.ts");
     // @ts-ignore
     const db = window.__db;
     if (!db) throw new Error("__db missing on window.");
 
-    const validText = `Session: Walk - Recovery
+    const validTexts = [
+      ["fitness", `Session: Walk - Fitness
+Intent: Fitness
+Date: 2026-05-23
+
+Walk
+conditioning duration 30min`],
+      ["recovery", `Session: Walk - Recovery
 Intent: Recovery
 Date: 2026-05-24
 
 Walk
-conditioning duration 42min`;
+conditioning duration 42min`],
+      ["adventure", `Session: Walk - Adventure
+Intent: AdVenTure
+Date: 2026-05-26
+
+Walk
+conditioning duration 45min`],
+    ] as const;
 
     const invalidText = `Session: Walk - Invalid
 Intent: expedition
@@ -406,27 +421,40 @@ Date: 2026-05-25
 Walk
 conditioning duration 20min`;
 
-    const parsedValid = parseIfJournalText(validText);
-    const parsedInvalid = parseIfJournalText(invalidText);
-    const validResult = await importSessionFromJournal({ text: validText });
-    const invalidResult = await importSessionFromJournal({ text: invalidText });
+    const validResults = [];
+    for (const [expected, text] of validTexts) {
+      const parsed = parseIfJournalText(text);
+      const result = await importSessionFromJournal({ text });
+      const session = await db.sessions.get(result.sessionId);
+      validResults.push({
+        expected,
+        sharedParserIntent: parseCardioIntent(text.match(/^Intent:\s*(.+)$/m)?.[1]),
+        parsedIntent: parsed.conditioningIntent,
+        sessionIntent: session?.conditioningIntent,
+      });
+    }
 
-    const validSession = await db.sessions.get(validResult.sessionId);
+    const parsedInvalid = parseIfJournalText(invalidText);
+    const invalidResult = await importSessionFromJournal({ text: invalidText });
     const invalidSession = await db.sessions.get(invalidResult.sessionId);
 
     return {
-      parsedValidIntent: parsedValid.conditioningIntent,
+      validResults,
       parsedInvalidIntent: parsedInvalid.conditioningIntent,
-      validSessionIntent: validSession?.conditioningIntent,
       invalidSessionIntent: invalidSession?.conditioningIntent,
+      sharedInvalidIntent: parseCardioIntent("expedition"),
     };
   });
 
-  expect(imported).toEqual({
-    parsedValidIntent: "recovery",
+  expect(imported.validResults).toEqual([
+    { expected: "fitness", sharedParserIntent: "fitness", parsedIntent: "fitness", sessionIntent: "fitness" },
+    { expected: "recovery", sharedParserIntent: "recovery", parsedIntent: "recovery", sessionIntent: "recovery" },
+    { expected: "adventure", sharedParserIntent: "adventure", parsedIntent: "adventure", sessionIntent: "adventure" },
+  ]);
+  expect(imported).toMatchObject({
     parsedInvalidIntent: undefined,
-    validSessionIntent: "recovery",
     invalidSessionIntent: undefined,
+    sharedInvalidIntent: undefined,
   });
 });
 

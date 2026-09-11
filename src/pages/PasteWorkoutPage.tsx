@@ -90,6 +90,7 @@ import {
   inferTrackingModeFromSetSignals,
   isNonStrengthTrackType,
 } from "../domain/trackingMode";
+import { parseCardioIntent, type CardioIntent } from "../lib/cardio/cardioIntent";
 import { parseImportLoadToken } from "../domain/import/loadParsing";
 import {
   importSetClassToTrackIntentKind,
@@ -126,7 +127,7 @@ type ParsedExerciseBlock = {
 
 type ParsedWorkout = {
   programDay: string;
-  conditioningIntent?: "fitness" | "recovery" | "adventure";
+  conditioningIntent?: CardioIntent;
   date: string; // YYYY-MM-DD
   start?: string; // HH:mm
   end?: string; // HH:mm
@@ -309,14 +310,6 @@ function isSectionHeader(line: string): boolean {
     "finishers",
     "cooldown",
   ].includes(s);
-}
-
-function parseConditioningIntent(raw: string | undefined): ParsedWorkout["conditioningIntent"] {
-  const normalized = String(raw ?? "").trim().toLowerCase();
-  if (normalized === "fitness" || normalized === "recovery" || normalized === "adventure") {
-    return normalized;
-  }
-  return undefined;
 }
 
 function normalizeTimeString(s: string): string | undefined {
@@ -1098,7 +1091,7 @@ function parseWorkoutText(text: string): ParsedWorkout {
 
     const intentMatch = line.match(/^intent\s*:\s*(.+)$/i);
     if (intentMatch) {
-      conditioningIntent = parseConditioningIntent(intentMatch[1]);
+      conditioningIntent = parseCardioIntent(intentMatch[1]);
       currentExercise = null;
       continue;
     }

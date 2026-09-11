@@ -1480,29 +1480,61 @@ test("Paste Workout parses valid intent and ignores invalid intent without crash
   await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
   await resetDexieDb(page);
 
-  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
-  await page.getByRole("textbox").first().fill(`Session: Walk - Adventure
-Intent: AdVenTure
-Date: 2026-05-26
+  const validCases = [
+    { label: "Fitness", expected: "fitness", date: "2026-05-24", minutes: 30 },
+    { label: "Recovery", expected: "recovery", date: "2026-05-25", minutes: 35 },
+    { label: "AdVenTure", expected: "adventure", date: "2026-05-26", minutes: 45 },
+  ];
+
+  for (const { label, expected, date, minutes } of validCases) {
+    await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+    await page.getByRole("textbox").first().fill(`Session: Walk - ${expected}
+Intent: ${label}
+Date: ${date}
 Start: 08:00
-End: 08:45
+End: 08:${String(minutes).padStart(2, "0")}
 
 Walk
-conditioning duration 45min`);
-  await page.getByRole("button", { name: "Parse Preview" }).click();
-  await expect(page.getByText(/Unsupported set format/i)).toHaveCount(0);
-  await page.getByLabel(/Dry run/i).uncheck();
-  await page.getByRole("button", { name: "Import Now" }).click();
-  await expect(page.getByText(/Imported/i)).toBeVisible();
+conditioning duration ${minutes}min`);
+    await page.getByRole("button", { name: "Parse Preview" }).click();
+    await expect(page.getByText(/Unsupported set format/i)).toHaveCount(0);
+    await page.getByLabel(/Dry run/i).uncheck();
+    await page.getByRole("button", { name: "Import Now" }).click();
+    await expect(page.getByText(/Imported/i)).toBeVisible();
+  }
 
-  const validIntent = await page.evaluate(async () => {
+  const validIntents = await page.evaluate(async () => {
     // @ts-ignore
     const db = window.__db;
-    const session = (await db.sessions.toArray()).find((row: any) => row.templateName === "Walk - Adventure");
-    return session?.conditioningIntent;
+    return (await db.sessions.toArray())
+      .filter((row: any) => String(row.templateName ?? "").startsWith("Walk - "))
+      .sort((a: any, b: any) => a.startedAt - b.startedAt)
+      .map((row: any) => row.conditioningIntent);
   });
 
-  expect(validIntent).toBe("adventure");
+  expect(validIntents).toEqual(["fitness", "recovery", "adventure"]);
+
+  const adventureSessionId = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const session = (await db.sessions.toArray()).find((row: any) => row.templateName === "Walk - adventure");
+    return session?.id;
+  });
+  expect(adventureSessionId).toBeTruthy();
+  await page.goto(new URL(`/session/${adventureSessionId}`, BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("session-conditioning-intent")).toHaveValue("adventure");
+  const intentOptions = await page.getByTestId("session-conditioning-intent").locator("option").evaluateAll((options) =>
+    options.map((option) => ({
+      value: (option as HTMLOptionElement).value,
+      label: option.textContent?.trim(),
+    }))
+  );
+  expect(intentOptions).toEqual([
+    { value: "", label: "Not set" },
+    { value: "fitness", label: "Fitness" },
+    { value: "recovery", label: "Recovery" },
+    { value: "adventure", label: "Adventure" },
+  ]);
 
   await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
   await page.getByRole("textbox").first().fill(`Session: Walk - Invalid Intent

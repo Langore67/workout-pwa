@@ -9,9 +9,9 @@ import {
 } from "../data/normalizeTimestamps";
 import { findOrCreateReusableTrack } from "../lib/reusableTrackWorkflow";
 import { computeAndStorePRsForSession } from "../prs";
+import { parseCardioIntent, type CardioIntent } from "../lib/cardio/cardioIntent";
 
 type ImportedMetricType = "reps" | "distance" | "duration";
-type ConditioningIntent = "fitness" | "recovery" | "adventure";
 
 type ImportedSet = Partial<SetEntry> &
   Record<string, any> & {
@@ -24,20 +24,12 @@ type ImportedSet = Partial<SetEntry> &
 export type ParsedIfWorkout = {
   dateISO: string;
   templateName: string;
-  conditioningIntent?: ConditioningIntent;
+  conditioningIntent?: CardioIntent;
   start?: string;
   end?: string;
   notes?: string;
   sets: ImportedSet[];
 };
-
-function parseConditioningIntent(raw: string | undefined): ConditioningIntent | undefined {
-  const normalized = String(raw ?? "").trim().toLowerCase();
-  if (normalized === "fitness" || normalized === "recovery" || normalized === "adventure") {
-    return normalized;
-  }
-  return undefined;
-}
 
 function parseClockMs(dateISO: string, rawTime?: string): number | undefined {
   const time = String(rawTime ?? "").trim();
@@ -265,7 +257,7 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
 
     const intentMatch = line.match(/^intent\s*:\s*(.+)$/i);
     if (intentMatch) {
-      conditioningIntent = parseConditioningIntent(intentMatch[1]);
+      conditioningIntent = parseCardioIntent(intentMatch[1]);
       currentExercise = "";
       continue;
     }
@@ -426,7 +418,7 @@ export async function importSessionFromJournal(
         dateISO: string;
         templateId?: string;
         templateName?: string;
-        conditioningIntent?: ConditioningIntent;
+        conditioningIntent?: CardioIntent;
         start?: string;
         end?: string;
         notes?: string;
