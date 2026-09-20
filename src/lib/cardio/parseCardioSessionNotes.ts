@@ -9,11 +9,11 @@ export type ParsedCardioSessionNotes = {
   notesText?: string;
 };
 
-function parseNumber(value: string): number | undefined {
-  const match = value.match(/-?\d+(?:\.\d+)?/);
+function parseHeartRate(value: string): number | undefined {
+  const match = value.trim().match(/^(\d{1,3})(?:\s*bpm)?$/i);
   if (!match) return undefined;
-  const parsed = Number(match[0]);
-  return Number.isFinite(parsed) ? parsed : undefined;
+  const parsed = Number(match[1]);
+  return Number.isInteger(parsed) && parsed > 0 && parsed <= 300 ? parsed : undefined;
 }
 
 export function parsePaceSecondsPerMile(value: string | undefined): number | undefined {
@@ -41,8 +41,16 @@ export function parseCardioSessionNotes(notes?: string): ParsedCardioSessionNote
   const lines = String(notes ?? "").replace(/\r/g, "").split("\n");
 
   for (const rawLine of lines) {
-    const line = rawLine.trim();
+    const line = rawLine.trim().replace(/^[-*]\s*/, "");
     if (!line) continue;
+    const heartRateMatch = line.match(/^(avg|average|max|maximum)\s+hr\s*:?\s*(.+)$/i);
+    if (heartRateMatch) {
+      const heartRate = parseHeartRate(heartRateMatch[2]);
+      if (heartRate == null) continue;
+      if (/^(avg|average)$/i.test(heartRateMatch[1])) parsed.avgHr = heartRate;
+      else parsed.maxHr = heartRate;
+      continue;
+    }
     const match = line.match(/^([A-Za-z ]+):\s*(.*)$/);
     if (!match) continue;
 
@@ -56,8 +64,6 @@ export function parseCardioSessionNotes(notes?: string): ParsedCardioSessionNote
       parsed.paceText = value;
       parsed.paceSecondsPerMile = parsePaceSecondsPerMile(value);
     } else if (label === "elevation") parsed.elevationText = value;
-    else if (label === "avg hr" || label === "average hr") parsed.avgHr = parseNumber(value);
-    else if (label === "max hr" || label === "maximum hr") parsed.maxHr = parseNumber(value);
     else if (label === "notes" || label === "note") parsed.notesText = value;
   }
 

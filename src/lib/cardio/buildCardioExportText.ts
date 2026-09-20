@@ -15,6 +15,9 @@ export type BuildCardioExportTextOptions = {
   generatedAt?: Date | number | string;
 };
 
+const SIMILAR_HR_TOLERANCE_BPM = 3;
+const MATERIAL_HR_DIFFERENCE_BPM = 5;
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
@@ -161,10 +164,10 @@ function describeComparison(recent: CardioWalkEvent, prior: CardioWalkEvent): st
   if (!hasHr) return `${paceDifference < 0 ? "faster" : paceDifference > 0 ? "slower" : "unchanged"} pace; HR comparison unavailable`;
 
   const hrDifference = recent.avgHr - prior.avgHr;
-  if (similarPace && hrDifference <= -5) return "similar pace at lower avg HR; possible improved aerobic efficiency signal";
-  if (paceDifference < 0 && hrDifference <= 3) return "faster pace at similar or lower avg HR; possible improved aerobic efficiency signal";
-  if (paceDifference < 0 && hrDifference >= 5) return "faster pace with higher avg HR; efficiency improvement not established";
-  if (paceDifference > 0 && hrDifference <= -5) return "lower avg HR with slower pace; efficiency improvement not established";
+  if (similarPace && hrDifference <= -MATERIAL_HR_DIFFERENCE_BPM) return "similar pace at lower avg HR; possible improved aerobic efficiency signal";
+  if (paceDifference < 0 && hrDifference <= SIMILAR_HR_TOLERANCE_BPM) return "faster pace at similar or lower avg HR; possible improved aerobic efficiency signal";
+  if (paceDifference < 0 && hrDifference >= MATERIAL_HR_DIFFERENCE_BPM) return "faster pace at higher effort; efficiency improvement not established";
+  if (paceDifference > 0 && hrDifference <= -MATERIAL_HR_DIFFERENCE_BPM) return "slower pace at lower effort; improvement not established";
   return `${paceDifference < 0 ? "faster" : paceDifference > 0 ? "slower" : "similar"} pace with ${hrDifference < 0 ? "lower" : hrDifference > 0 ? "higher" : "similar"} avg HR`;
 }
 

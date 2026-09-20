@@ -353,6 +353,7 @@ test.describe("buildCardioExportText", () => {
     expect(text).toContain("Max HR 138");
     expect(text).toContain("Notes felt steady");
     expect(text).toContain("Walk - Treadmill | 42 min | not available | not available");
+    expect(text.split("\n").find((line) => line.includes("Walk - Treadmill"))).not.toContain("HR");
     expect(text).toContain("2026-05-13 | 2 activities | 1 hr 42 min | 3.12 mi / 5.02 km");
   });
 
@@ -564,10 +565,10 @@ test.describe("buildCardioExportText", () => {
     summary.recentWalks = summary.normalizedWalks;
 
     const text = buildCardioExportText(summary);
-    expect(text).toContain("faster pace with higher avg HR; efficiency improvement not established");
+    expect(text).toContain("faster pace at higher effort; efficiency improvement not established");
     expect(text).toContain("faster pace; HR comparison unavailable");
     expect(text).toContain("faster pace at similar or lower avg HR; possible improved aerobic efficiency signal");
-    expect(text).toContain("lower avg HR with slower pace; efficiency improvement not established");
+    expect(text).toContain("slower pace at lower effort; improvement not established");
     expect(text).not.toContain("Route A — Fitness — Intervals");
     expect(text).not.toContain("Route B — Fitness — Intervals");
     expect(text).not.toContain("Singleton — Fitness — Intervals");
@@ -774,6 +775,7 @@ Session Notes:
     expect(text).toContain("2026-05-23 | 1 activity | 1 hr 6 min | 3.79 mi / 6.10 km");
     expect(text).toContain("- Fitness + untagged: 1 activity | 1 hr 6 min | 3.79 mi / 6.10 km");
     expect(text).toContain("- Missing distance: 0");
+    expect(text).toContain("Avg HR 115");
     expect(text).not.toContain("Walk - Peachtree Ridge Park | 1 hr 6 min | not available");
   });
 });
