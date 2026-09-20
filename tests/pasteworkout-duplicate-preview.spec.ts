@@ -1761,6 +1761,42 @@ conditioning duration 20min`);
   });
 });
 
+test("Paste Workout keeps embedded treadmill work on a strength session without inferring parent cardio", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Back / Lats / Delts / Biceps
+Date: 2026-06-19
+Start: 08:00
+End: 09:00
+
+Lat Pulldown
+work 100x8
+
+Treadmill Walk
+conditioning duration 5min`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const stored = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const session = (await db.sessions.toArray()).find(
+      (candidate: any) => candidate.templateName === "Back / Lats / Delts / Biceps"
+    );
+    const sets = await db.sets.where("sessionId").equals(session.id).toArray();
+    return {
+      activityType: session.activityType,
+      setCount: sets.length,
+      embeddedSeconds: sets.find((set: any) => set.seconds === 300)?.seconds,
+    };
+  });
+
+  expect(stored).toEqual({ activityType: undefined, setCount: 2, embeddedSeconds: 300 });
+});
+
 test("Paste Workout and standalone journal import classify equivalent cardio text the same way", async ({ page }) => {
   await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
   await resetDexieDb(page);

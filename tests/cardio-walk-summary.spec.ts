@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { buildCardioWalkSummary } from "../src/lib/cardio/buildCardioWalkSummary";
+import { buildCardioExportText } from "../src/lib/cardio/buildCardioExportText";
 import {
   isAdventureWalk,
   isFitnessWalk,
@@ -266,7 +267,7 @@ test("persisted activity type copies to walk events independently from condition
   expect(summary.last7d.count).toBe(3);
 });
 
-test("explicit persisted activity types are authoritative cardio inclusion", () => {
+test("persisted activity types include conditioning-only cardio sessions", () => {
   const activityCases = [
     { id: "activity-walk", name: "Neighborhood", activityType: "walk" },
     { id: "activity-hike", name: "Ridge Trail", activityType: "hike", conditioningIntent: "adventure" },
@@ -533,6 +534,61 @@ test("named strength workouts do not qualify as walks from walk-like conditionin
   });
 
   expect(summary.normalizedWalks).toHaveLength(0);
+});
+
+test("typed embedded warmups stay out of dedicated cardio totals", () => {
+  const strengthExercise = exercise("ex-dedicated-strength", "Back Squat");
+  const strengthTrack = track({
+    id: "track-dedicated-strength",
+    exerciseId: strengthExercise.id,
+    displayName: "Back Squat",
+    trackType: "strength",
+    trackingMode: "weightedReps",
+  });
+  const dedicated = [
+    { id: "prp", name: "PRP Walk", activityType: "walk" as const },
+    { id: "treadmill", name: "Treadmill Walk", activityType: "walk" as const },
+    { id: "intervals", name: "Treadmill Intervals", activityType: "run" as const },
+    { id: "bike", name: "Dedicated Bike", activityType: "bike" as const },
+    { id: "row", name: "Dedicated Row", activityType: "row" as const },
+  ];
+  const embedded = [
+    { id: "lower", name: "Lower B" },
+    { id: "upper", name: "Upper A" },
+  ];
+  const sessions = [
+    ...dedicated.map((item, index) => session({ ...item, startedAt: ms(2026, 5, 13, 7 + index, 0) })),
+    ...embedded.map((item, index) =>
+      session({ ...item, activityType: "walk", startedAt: ms(2026, 5, 13, 12 + index, 0) })
+    ),
+  ];
+  const sets = [
+    ...dedicated.map((item, index) =>
+      setEntry({ id: `cardio-${item.id}`, sessionId: item.id, trackId: walkTimeTrack.id, seconds: 20 * 60 + index })
+    ),
+    ...embedded.flatMap((item) => [
+      setEntry({ id: `strength-${item.id}`, sessionId: item.id, trackId: strengthTrack.id, weight: 135, reps: 5 }),
+      setEntry({ id: `warmup-${item.id}`, sessionId: item.id, trackId: walkTimeTrack.id, seconds: 5 * 60 }),
+    ]),
+  ];
+
+  const summary = buildCardioWalkSummary({
+    now: ms(2026, 5, 14, 0, 0),
+    sessions,
+    sets,
+    tracks: [walkTimeTrack, strengthTrack],
+    exercises: [walkExercise, strengthExercise],
+  });
+
+  expect(summary.normalizedWalks.map((walk) => walk.sessionId)).toEqual(["row", "bike", "intervals", "treadmill", "prp"]);
+  expect(summary.last7d.count).toBe(5);
+  expect(summary.last7d.totalDurationSeconds).toBe(5 * 20 * 60 + 10);
+  expect(summary.last28d.count).toBe(5);
+  expect(sets.filter((set) => set.id.startsWith("warmup-"))).toHaveLength(2);
+  const exportText = buildCardioExportText(summary, { generatedAt: new Date(2026, 4, 14, 12) });
+  expect(exportText).not.toContain("Lower B");
+  expect(exportText).not.toContain("Upper A");
+  expect(exportText).toContain("- Activities: 5");
 });
 
 test("suspicious walking pace is flagged and excluded from pace analytics without hiding activity totals", () => {
