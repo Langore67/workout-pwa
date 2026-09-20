@@ -590,6 +590,48 @@ conditioning duration 20min`;
   });
 });
 
+test("journal import does not infer parent cardio type from an embedded treadmill set", async ({ page }) => {
+  await goto(page, "/");
+  await resetDexieDb(page);
+
+  const result = await page.evaluate(async () => {
+    const { importSessionFromJournal } = await import("/src/importers/importSession.ts");
+    // @ts-ignore
+    const db = window.__db;
+    const mixedSets = [
+      { exerciseName: "Back Squat", trackType: "strength", weight: 135, reps: 5 },
+      { exerciseName: "Treadmill Walk", trackType: "conditioning", seconds: 300 },
+    ];
+    const inferredImport = await importSessionFromJournal({
+      dateISO: "2026-07-10",
+      templateName: "Lower B",
+      sets: mixedSets,
+    });
+    const explicitImport = await importSessionFromJournal({
+      dateISO: "2026-07-11",
+      templateName: "Upper A",
+      activityType: "walk",
+      sets: mixedSets,
+    });
+    const inferredSession = await db.sessions.get(inferredImport.sessionId);
+    const explicitSession = await db.sessions.get(explicitImport.sessionId);
+    const inferredSets = await db.sets.where("sessionId").equals(inferredImport.sessionId).toArray();
+    return {
+      inferredStoredType: inferredSession?.activityType,
+      explicitStoredType: explicitSession?.activityType,
+      inferredSetCount: inferredSets.length,
+      embeddedSeconds: inferredSets.find((set: any) => set.seconds === 300)?.seconds,
+    };
+  });
+
+  expect(result).toEqual({
+    inferredStoredType: undefined,
+    explicitStoredType: "walk",
+    inferredSetCount: 2,
+    embeddedSeconds: 300,
+  });
+});
+
 test("cardio activity type classifier uses explicit activity names and avoids false positives", async ({ page }) => {
   await goto(page, "/");
 

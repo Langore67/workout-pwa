@@ -8,7 +8,7 @@ import {
   type CardioWalkSummary,
   type CardioWalkWindowSummary,
 } from "./cardioTypes";
-import { parseCardioActivityType } from "./cardioActivityType";
+import { inferCardioActivityType, parseCardioActivityType } from "./cardioActivityType";
 import { getCardioPaceQuality } from "./cardioPaceQuality";
 import { parseCardioSessionNotes } from "./parseCardioSessionNotes";
 
@@ -140,7 +140,20 @@ function classifyCardioSession(args: {
   trackById: Map<string, Track>;
   exerciseById: Map<string, Exercise>;
 }): CardioWalkConfidence | null {
-  if (parseCardioActivityType(args.session.activityType)) return "high";
+  if (parseCardioActivityType(args.session.activityType)) {
+    let hasStrengthEvidence = false;
+    let hasConditioningEvidence = false;
+    for (const set of args.sets) {
+      const trackType = String(args.trackById.get(set.trackId)?.trackType ?? "").trim().toLowerCase();
+      if (STRENGTH_TRACK_TYPES.has(trackType)) hasStrengthEvidence = true;
+      if (trackType === "conditioning") hasConditioningEvidence = true;
+    }
+
+    // Activity type describes embedded cardio too; it does not override the
+    // parent session's lifting structure.
+    if (hasStrengthEvidence) return null;
+    if (hasConditioningEvidence || inferCardioActivityType({ sessionName: args.session.templateName })) return "high";
+  }
   return classifyWalkSession(args);
 }
 

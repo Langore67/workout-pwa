@@ -10,7 +10,7 @@ import {
 import { findOrCreateReusableTrack } from "../lib/reusableTrackWorkflow";
 import { computeAndStorePRsForSession } from "../prs";
 import {
-  inferCardioActivityType,
+  inferSessionCardioActivityType,
   parseCardioActivityType,
   type CardioActivityType,
 } from "../lib/cardio/cardioActivityType";
@@ -328,9 +328,10 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
   const conditioningExerciseName = sets.find((set) => set.trackType === "conditioning")?.exerciseName;
   const activityType =
     explicitActivityType ??
-    inferCardioActivityType({
+    inferSessionCardioActivityType({
       sessionName: templateName,
-      exerciseName: conditioningExerciseName,
+      conditioningExerciseName,
+      hasStrengthWork: sets.some((set) => ["strength", "hypertrophy", "technique"].includes(String(set.trackType))),
     });
 
   return {
@@ -457,9 +458,12 @@ export async function importSessionFromJournal(
         templateName: args.templateName,
         activityType:
           args.activityType ??
-          inferCardioActivityType({
+          inferSessionCardioActivityType({
             sessionName: args.templateName,
-            exerciseName: args.sets.find((set) => set.trackType === "conditioning")?.exerciseName,
+            conditioningExerciseName: args.sets.find((set) => set.trackType === "conditioning")?.exerciseName,
+            hasStrengthWork: args.sets.some((set) =>
+              ["strength", "hypertrophy", "technique"].includes(String(set.trackType))
+            ),
           }),
         conditioningIntent: args.conditioningIntent,
         start: args.start,

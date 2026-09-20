@@ -91,7 +91,7 @@ import {
   isNonStrengthTrackType,
 } from "../domain/trackingMode";
 import {
-  inferCardioActivityType,
+  inferSessionCardioActivityType,
   parseCardioActivityType,
   type CardioActivityType,
 } from "../lib/cardio/cardioActivityType";
@@ -1196,9 +1196,12 @@ function parseWorkoutText(text: string): ParsedWorkout {
   )?.exercise;
   const activityType =
     explicitActivityType ??
-    inferCardioActivityType({
+    inferSessionCardioActivityType({
       sessionName: programDay || "Imported Session",
-      exerciseName: conditioningExerciseName,
+      conditioningExerciseName,
+      hasStrengthWork: exercises.some((exercise) =>
+        ["strength", "hypertrophy", "technique"].includes(inferTrackTypeFromParsedSets(exercise.exercise, exercise.sets))
+      ),
     });
 
   return {

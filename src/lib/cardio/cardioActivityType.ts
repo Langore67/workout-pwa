@@ -76,3 +76,14 @@ export function inferCardioActivityType(input: {
     classifyExplicitActivityText(input.sourceText)
   );
 }
+
+export function inferSessionCardioActivityType(input: {
+  sessionName?: string;
+  conditioningExerciseName?: string;
+  hasStrengthWork: boolean;
+}): CardioActivityType | undefined {
+  const sessionType = inferCardioActivityType({ sessionName: input.sessionName });
+  if (sessionType) return sessionType;
+  if (input.hasStrengthWork) return undefined;
+  return inferCardioActivityType({ exerciseName: input.conditioningExerciseName });
+}
