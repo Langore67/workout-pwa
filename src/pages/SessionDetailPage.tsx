@@ -53,6 +53,7 @@ import {
   parseCardioActivityType,
 } from "../lib/cardio/cardioActivityType";
 import { CARDIO_INTENT_OPTIONS, parseCardioIntent } from "../lib/cardio/cardioIntent";
+import { CARDIO_FORMAT_OPTIONS, parseCardioFormat } from "../lib/cardio/cardioFormat";
 
 /* =============================================================================
    Breadcrumb 0 — Types
@@ -257,6 +258,16 @@ export default function SessionDetailPage() {
     const activityType = parseCardioActivityType(value);
     await db.sessions.update(sessionId, {
       activityType,
+      updatedAt: Date.now(),
+    } as any);
+    dispatchCoachDashboardRefresh("session:update");
+  }
+
+  async function updateCardioFormat(value: string) {
+    if (!sessionId) return;
+    const cardioFormat = parseCardioFormat(value);
+    await db.sessions.update(sessionId, {
+      cardioFormat,
       updatedAt: Date.now(),
     } as any);
     dispatchCoachDashboardRefresh("session:update");
@@ -746,6 +757,24 @@ export default function SessionDetailPage() {
         >
           <option value="">Not set</option>
           {CARDIO_INTENT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <label htmlFor="session-cardio-format">Cardio Format</label>
+        <select
+          id="session-cardio-format"
+          className="input"
+          value={session.cardioFormat ?? ""}
+          onChange={(e) => {
+            void updateCardioFormat(e.target.value);
+          }}
+          data-testid="session-cardio-format"
+          style={{ marginBottom: 12 }}
+        >
+          <option value="">Not set</option>
+          {CARDIO_FORMAT_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>

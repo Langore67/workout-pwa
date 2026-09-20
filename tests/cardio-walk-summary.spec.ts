@@ -8,6 +8,7 @@ import {
   type CardioWalkEvent,
 } from "../src/lib/cardio/cardioTypes";
 import type { Exercise, Session, SetEntry, Track } from "../src/db";
+import { getCardioFormatLabel, parseCardioFormat } from "../src/lib/cardio/cardioFormat";
 
 function ms(year: number, month: number, day: number, hour: number, minute: number) {
   return new Date(year, month - 1, day, hour, minute, 0, 0).getTime();
@@ -18,6 +19,7 @@ function session(args: {
   name: string;
   activityType?: Session["activityType"];
   conditioningIntent?: Session["conditioningIntent"];
+  cardioFormat?: Session["cardioFormat"];
   startedAt?: number;
   endedAt?: number;
   notes?: string;
@@ -27,6 +29,7 @@ function session(args: {
     templateName: args.name,
     activityType: args.activityType,
     conditioningIntent: args.conditioningIntent,
+    cardioFormat: args.cardioFormat,
     startedAt: args.startedAt ?? ms(2026, 5, 13, 7, 30),
     endedAt: args.endedAt,
     notes: args.notes,
@@ -116,6 +119,14 @@ function walkEvent(conditioningIntent?: CardioWalkEvent["conditioningIntent"]): 
     confidence: "high",
   };
 }
+
+test("cardio format model parses supported values and ignores invalid or missing values", () => {
+  expect(parseCardioFormat("Continuous")).toBe("continuous");
+  expect(parseCardioFormat(" intervals ")).toBe("intervals");
+  expect(parseCardioFormat("tempo")).toBeUndefined();
+  expect(parseCardioFormat(undefined)).toBeUndefined();
+  expect(getCardioFormatLabel("intervals")).toBe("Intervals");
+});
 
 test("Walk - MapMyWalk with distance and duration is included", () => {
   const summary = buildCardioWalkSummary({
@@ -265,6 +276,25 @@ test("persisted activity type copies to walk events independently from condition
   });
   expect(summary.normalizedWalks.find((walk) => walk.sessionId === "walk-no-activity-type")?.activityType).toBeUndefined();
   expect(summary.last7d.count).toBe(3);
+});
+
+test("persisted cardio format copies to cardio events without inference", () => {
+  const summary = buildCardioWalkSummary({
+    now: ms(2026, 5, 14, 0, 0),
+    sessions: [
+      session({ id: "intervals", name: "Treadmill Intervals", activityType: "run", cardioFormat: "intervals" }),
+      session({ id: "legacy-format", name: "Walk - Legacy" }),
+    ],
+    sets: [
+      setEntry({ id: "interval-set", sessionId: "intervals", trackId: walkTimeTrack.id, seconds: 1200 }),
+      setEntry({ id: "legacy-set", sessionId: "legacy-format", trackId: walkTimeTrack.id, seconds: 1200 }),
+    ],
+    tracks: [walkTimeTrack],
+    exercises: [walkExercise],
+  });
+
+  expect(summary.normalizedWalks.find((walk) => walk.sessionId === "intervals")?.cardioFormat).toBe("intervals");
+  expect(summary.normalizedWalks.find((walk) => walk.sessionId === "legacy-format")?.cardioFormat).toBeUndefined();
 });
 
 test("persisted activity types include conditioning-only cardio sessions", () => {

@@ -96,6 +96,7 @@ import {
   type CardioActivityType,
 } from "../lib/cardio/cardioActivityType";
 import { parseCardioIntent, type CardioIntent } from "../lib/cardio/cardioIntent";
+import { parseCardioFormat, type CardioFormat } from "../lib/cardio/cardioFormat";
 import { parseImportLoadToken } from "../domain/import/loadParsing";
 import {
   importSetClassToTrackIntentKind,
@@ -134,6 +135,7 @@ type ParsedWorkout = {
   programDay: string;
   activityType?: CardioActivityType;
   conditioningIntent?: CardioIntent;
+  cardioFormat?: CardioFormat;
   date: string; // YYYY-MM-DD
   start?: string; // HH:mm
   end?: string; // HH:mm
@@ -243,6 +245,7 @@ Use exactly this structure:
 Session: <name>
 Activity Type: <Walk|Hike|Run|Bike|Row|Other, cardio only when known>
 Intent: <Fitness|Recovery|Adventure, cardio only when known>
+Cardio Format: <Continuous|Intervals, cardio only when known>
 Date: YYYY-MM-DD
 Start: HH:mm
 End: HH:mm
@@ -269,7 +272,11 @@ Formatting rules:
 - Include Intent only when the notes/source support the purpose of the activity.
 - Intent describes WHY the cardio was performed.
 - Do not guess Intent when it is unclear.
-- Omit Activity Type and Intent when they do not apply or cannot be determined reliably.
+- Cardio Format describes HOW the cardio was performed.
+- Use Continuous for steady-state cardio and Intervals for structured work/recovery sessions.
+- Do not guess Cardio Format when it is unclear.
+- Example: Session: PRP Run/Walk Intervals | Activity Type: Run | Intent: Fitness | Cardio Format: Intervals
+- Omit Activity Type, Intent, and Cardio Format when they do not apply or cannot be determined reliably.
 - Keep all notes under Session Notes.
 - Return only the IronForge-formatted workout.
 
@@ -1029,6 +1036,7 @@ function parseWorkoutText(text: string): ParsedWorkout {
   let programDay = "";
   let explicitActivityType: CardioActivityType | undefined;
   let conditioningIntent: ParsedWorkout["conditioningIntent"];
+  let cardioFormat: ParsedWorkout["cardioFormat"];
   let date = "";
   let start = "";
   let end = "";
@@ -1051,6 +1059,7 @@ function parseWorkoutText(text: string): ParsedWorkout {
         /^session\s*:/i.test(line) ||
         /^activity\s+type\s*:/i.test(line) ||
         /^intent\s*:/i.test(line) ||
+        /^cardio\s+format\s*:/i.test(line) ||
         /^date\s*:/i.test(line) ||
         /^start\s*:/i.test(line) ||
         /^end\s*:/i.test(line);
@@ -1115,6 +1124,13 @@ function parseWorkoutText(text: string): ParsedWorkout {
     const intentMatch = line.match(/^intent\s*:\s*(.+)$/i);
     if (intentMatch) {
       conditioningIntent = parseCardioIntent(intentMatch[1]);
+      currentExercise = null;
+      continue;
+    }
+
+    const cardioFormatMatch = line.match(/^cardio\s+format\s*:\s*(.+)$/i);
+    if (cardioFormatMatch) {
+      cardioFormat = parseCardioFormat(cardioFormatMatch[1]);
       currentExercise = null;
       continue;
     }
@@ -1208,6 +1224,7 @@ function parseWorkoutText(text: string): ParsedWorkout {
     programDay: programDay || "Imported Session",
     activityType,
     conditioningIntent,
+    cardioFormat,
     date,
     start: normalizeTimeString(start),
     end: normalizeTimeString(end),
@@ -1728,6 +1745,7 @@ export default function PasteWorkoutPage() {
         templateName: parsed.programDay,
         activityType: parsed.activityType,
         conditioningIntent: parsed.conditioningIntent,
+        cardioFormat: parsed.cardioFormat,
         notes: parsed.sessionNotes?.trim() || undefined,
         updatedAt: safeEndedAt,
       },

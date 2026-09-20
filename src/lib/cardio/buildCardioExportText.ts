@@ -8,6 +8,7 @@ import { getCardioIntentLabel } from "./cardioIntent";
 import { CARDIO_ACTIVITY_TYPES, getCardioActivityTypeLabel } from "./cardioActivityType";
 import { isAdventureWalk, isFitnessWalk, isRecoveryWalk } from "./cardioTypes";
 import { formatDistanceMiKm } from "./formatCardioWalk";
+import { getCardioFormatLabel } from "./cardioFormat";
 
 export type BuildCardioExportTextOptions = {
   generatedAt?: Date | number | string;
@@ -91,6 +92,11 @@ function formatActivityType(walk: CardioWalkEvent): string | undefined {
   return undefined;
 }
 
+function formatCardioFormat(walk: CardioWalkEvent): string | undefined {
+  if (walk.cardioFormat) return getCardioFormatLabel(walk.cardioFormat);
+  return undefined;
+}
+
 function formatWindow(title: string, window: CardioWalkWindowSummary): string[] {
   return [
     title,
@@ -108,6 +114,7 @@ function formatWalkRow(walk: CardioWalkEvent, suspiciousPaceSessionIds: Set<stri
     cleanInline(walk.name) ?? "Walk",
     formatActivityType(walk),
     formatWalkIntent(walk),
+    formatCardioFormat(walk),
     formatDuration(walk.durationSeconds),
     formatDistance(walk.distanceMeters),
     formatPace(walk.paceSecondsPerMile),
@@ -139,6 +146,66 @@ function formatActivityTotals(label: string, totals: ReturnType<typeof sumCardio
   return `- ${label}: ${pluralizeActivityCount(totals.count)} | ${formatDuration(totals.totalDurationSeconds)} | ${formatDistance(totals.totalDistanceMeters)}`;
 }
 
+function normalizeComparisonText(value: string | undefined): string {
+  return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function formatComparisonPoint(label: string, walk: CardioWalkEvent): string {
+  const hr = isFiniteNumber(walk.avgHr) ? ` @ ${Math.round(walk.avgHr)} avg HR` : "";
+  return `- ${label}: ${formatPace(walk.paceSecondsPerMile)}${hr}`;
+}
+
+function describeComparison(recent: CardioWalkEvent, prior: CardioWalkEvent): string {
+  const recentPace = recent.paceSecondsPerMile as number;
+  const priorPace = prior.paceSecondsPerMile as number;
+  const paceDifference = recentPace - priorPace;
+  const similarPace = Math.abs(paceDifference) <= Math.max(15, priorPace * 0.02);
+  const hasHr = isFiniteNumber(recent.avgHr) && isFiniteNumber(prior.avgHr);
+  if (!hasHr) return `${paceDifference < 0 ? "faster" : paceDifference > 0 ? "slower" : "unchanged"} pace; HR comparison unavailable`;
+
+  const hrDifference = recent.avgHr - prior.avgHr;
+  if (similarPace && hrDifference <= -5) return "similar pace at lower avg HR; possible improved aerobic efficiency signal";
+  if (paceDifference < 0 && hrDifference <= 3) return "faster pace at similar or lower avg HR; possible improved aerobic efficiency signal";
+  if (paceDifference < 0 && hrDifference >= 5) return "faster pace with higher avg HR; efficiency improvement not established";
+  if (paceDifference > 0 && hrDifference <= -5) return "lower avg HR with slower pace; efficiency improvement not established";
+  return `${paceDifference < 0 ? "faster" : paceDifference > 0 ? "slower" : "similar"} pace with ${hrDifference < 0 ? "lower" : hrDifference > 0 ? "higher" : "similar"} avg HR`;
+}
+
+function buildLikeForLikeComparisons(
+  walks: CardioWalkEvent[],
+  suspiciousPaceSessionIds: Set<string>
+): string[] {
+  const groups = new Map<string, CardioWalkEvent[]>();
+  for (const walk of walks) {
+    if (!walk.activityType || !walk.cardioFormat || !isFiniteNumber(walk.paceSecondsPerMile)) continue;
+    if (suspiciousPaceSessionIds.has(walk.sessionId)) continue;
+    const routeKey = normalizeComparisonText(walk.route) || "route-unknown";
+    const intentKey = walk.conditioningIntent ?? "intent-unknown";
+    const key = [walk.activityType, walk.cardioFormat, intentKey, routeKey].join("|");
+    const group = groups.get(key) ?? [];
+    group.push(walk);
+    groups.set(key, group);
+  }
+
+  const lines: string[] = [];
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    group.sort((a, b) => b.startedAt - a.startedAt);
+    const [recent, prior] = group;
+    const route = cleanInline(recent.route);
+    const intent = recent.conditioningIntent ? getCardioIntentLabel(recent.conditioningIntent) : undefined;
+    const titleParts = [route ?? cleanInline(recent.name) ?? getCardioActivityTypeLabel(recent.activityType!), intent, getCardioFormatLabel(recent.cardioFormat!)];
+    lines.push(titleParts.filter(Boolean).join(" — "));
+    lines.push(formatComparisonPoint("Recent", recent));
+    lines.push(formatComparisonPoint("Prior comparable", prior));
+    lines.push(`- Signal: ${describeComparison(recent, prior)}`);
+    if (recent.elevationText && prior.elevationText && recent.elevationText !== prior.elevationText) {
+      lines.push(`- Elevation context differs: recent ${cleanInline(recent.elevationText)}; prior ${cleanInline(prior.elevationText)}.`);
+    }
+  }
+  return lines;
+}
+
 export function buildCardioExportText(
   summary: CardioWalkSummary,
   options: BuildCardioExportTextOptions = {}
@@ -157,6 +224,7 @@ export function buildCardioExportText(
     totals: sumCardioActivity(summary.normalizedWalks.filter((walk) => walk.activityType === activityType)),
   })).filter(({ totals }) => totals.count > 0);
   const untypedTotals = sumCardioActivity(summary.normalizedWalks.filter((walk) => walk.activityType === undefined));
+  const comparisons = buildLikeForLikeComparisons(summary.normalizedWalks, suspiciousPaceSessionIds);
 
   const lines: string[] = [
     "IronForge Cardio Export",
@@ -201,6 +269,8 @@ export function buildCardioExportText(
   lines.push(...activityTypeTotals.map(({ label, totals }) => formatActivityTotals(label, totals)));
   if (untypedTotals.count > 0) lines.push(formatActivityTotals("Untyped", untypedTotals));
   if (!activityTypeTotals.length && untypedTotals.count === 0) lines.push("- No activity type data available.");
+
+  if (comparisons.length) lines.push("", "Like-for-Like Comparisons", ...comparisons);
 
   lines.push(
     "",

@@ -1,6 +1,7 @@
 import type { Exercise, Session, SetEntry, Track } from "../../db";
 import type { CardioActivityType } from "./cardioActivityType";
 import type { CardioIntent } from "./cardioIntent";
+import type { CardioFormat } from "./cardioFormat";
 import {
   isAdventureCardioIntent,
   isFitnessCardioIntent,
@@ -18,6 +19,7 @@ export type CardioWalkEvent = {
   name: string;
   activityType?: CardioActivityType;
   conditioningIntent?: CardioWalkIntent;
+  cardioFormat?: CardioFormat;
   source?: string;
   route?: string;
   durationSeconds?: number;

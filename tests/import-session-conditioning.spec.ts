@@ -632,6 +632,43 @@ test("journal import does not infer parent cardio type from an embedded treadmil
   });
 });
 
+test("IF journal import persists explicit cardio format independently and leaves legacy undefined", async ({ page }) => {
+  await goto(page, "/");
+  await resetDexieDb(page);
+
+  const result = await page.evaluate(async () => {
+    const { importSessionFromJournal, parseIfJournalText } = await import("/src/importers/importSession.ts");
+    // @ts-ignore
+    const db = window.__db;
+    const inputs = [
+      `Session: PRP Run/Walk Intervals\nActivity Type: Run\nIntent: Fitness\nCardio Format: Intervals\nDate: 2026-07-20\n\nRun\nconditioning duration 20min`,
+      `Session: PRP Walk\nActivity Type: Walk\nCardio Format: Continuous\nDate: 2026-07-21\n\nWalk\nconditioning duration 20min`,
+      `Session: Invalid Format\nActivity Type: Walk\nCardio Format: Tempo\nDate: 2026-07-22\n\nWalk\nconditioning duration 20min`,
+      `Session: Legacy Walk\nActivity Type: Walk\nDate: 2026-07-23\n\nWalk\nconditioning duration 20min`,
+    ];
+    const rows = [];
+    for (const text of inputs) {
+      const parsed = parseIfJournalText(text);
+      const imported = await importSessionFromJournal({ text });
+      const session = await db.sessions.get(imported.sessionId);
+      rows.push({
+        activityType: session?.activityType,
+        intent: session?.conditioningIntent,
+        parsedFormat: parsed.cardioFormat,
+        storedFormat: session?.cardioFormat,
+      });
+    }
+    return rows;
+  });
+
+  expect(result).toEqual([
+    { activityType: "run", intent: "fitness", parsedFormat: "intervals", storedFormat: "intervals" },
+    { activityType: "walk", intent: undefined, parsedFormat: "continuous", storedFormat: "continuous" },
+    { activityType: "walk", intent: undefined, parsedFormat: undefined, storedFormat: undefined },
+    { activityType: "walk", intent: undefined, parsedFormat: undefined, storedFormat: undefined },
+  ]);
+});
+
 test("cardio activity type classifier uses explicit activity names and avoids false positives", async ({ page }) => {
   await goto(page, "/");
 
