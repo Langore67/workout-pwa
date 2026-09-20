@@ -120,8 +120,9 @@ function DataQualityNote({ summary }: { summary: CardioWalkSummary }) {
   return (
     <div data-testid="walks-data-quality" className="muted" style={{ fontSize: 13, lineHeight: 1.45 }}>
       {notes.length ? `${notes.join(" ")} ` : ""}
-      Pace is shown only when both distance and duration are available. Suspicious rows are shown in Recent Walks but
-      excluded from summary totals and averages. Route, HR, elevation, and zone trends are not tracked yet.
+      Pace is shown only when both distance and duration are available. Suspicious rows remain in activity totals but
+      are excluded from average pace. Walking thresholds apply only to Walk and legacy untyped rows. Route, HR,
+      elevation, and zone trends are not tracked yet.
     </div>
   );
 }

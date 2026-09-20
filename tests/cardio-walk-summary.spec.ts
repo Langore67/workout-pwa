@@ -535,7 +535,7 @@ test("named strength workouts do not qualify as walks from walk-like conditionin
   expect(summary.normalizedWalks).toHaveLength(0);
 });
 
-test("suspicious walking pace is flagged, remains visible, and is excluded from rollups", () => {
+test("suspicious walking pace is flagged and excluded from pace analytics without hiding activity totals", () => {
   const summary = buildCardioWalkSummary({
     now: ms(2026, 5, 14, 0, 0),
     recentLimit: 10,
@@ -560,21 +560,51 @@ test("suspicious walking pace is flagged, remains visible, and is excluded from 
   expect(summary.recentWalks.map((walk) => walk.sessionId)).toEqual(["normal-walk", "slow-walk", "fast-walk"]);
   expect(summary.dataQuality.suspiciousPaceCount).toBe(2);
   expect(summary.dataQuality.suspiciousPaceSessionIds).toEqual(["slow-walk", "fast-walk"]);
-  expect(summary.last7d.count).toBe(1);
-  expect(summary.last7d.totalDurationSeconds).toBe(20 * 60);
-  expect(summary.last7d.totalDistanceMeters).toBe(1609.344);
-  expect(summary.last7d.averageDurationSeconds).toBe(20 * 60);
+  expect(summary.last7d.count).toBe(3);
+  expect(summary.last7d.totalDurationSeconds).toBe(74 * 60);
+  expect(summary.last7d.totalDistanceMeters).toBe(4 * 1609.344);
+  expect(summary.last7d.averageDurationSeconds).toBe((74 * 60) / 3);
   expect(summary.last7d.averagePaceSecondsPerMile).toBe(20 * 60);
-  expect(summary.last28d.count).toBe(1);
-  expect(summary.last28d.totalDurationSeconds).toBe(20 * 60);
+  expect(summary.last28d.count).toBe(3);
+  expect(summary.last28d.totalDurationSeconds).toBe(74 * 60);
 
   const day = summary.dailySummaries.find((row) => row.date === "2026-05-13");
   expect(day).toMatchObject({
-    count: 1,
-    totalDurationSeconds: 20 * 60,
-    totalDistanceMeters: 1609.344,
-    sessionIds: ["normal-walk"],
+    count: 3,
+    totalDurationSeconds: 74 * 60,
+    totalDistanceMeters: 4 * 1609.344,
+    sessionIds: ["normal-walk", "slow-walk", "fast-walk"],
   });
+});
+
+test("pace quality uses walking thresholds only for typed walks and legacy untyped cardio", () => {
+  const activityTypes = ["walk", "hike", "run", "bike", "row", "other", undefined] as const;
+  const sessions = activityTypes.map((activityType, index) =>
+    session({
+      id: `pace-${activityType ?? "legacy"}`,
+      name: activityType ? `${activityType} session` : "Walk - Legacy",
+      activityType,
+      startedAt: ms(2026, 5, 13, 7 + index, 0),
+    })
+  );
+  const sets = sessions.flatMap((item, index) => [
+    setEntry({ id: `distance-${index}`, sessionId: item.id, trackId: walkDistanceTrack.id, distance: 1609.344, distanceUnit: "m" }),
+    setEntry({ id: `duration-${index}`, sessionId: item.id, trackId: walkTimeTrack.id, seconds: 40 * 60 }),
+  ]);
+
+  const summary = buildCardioWalkSummary({
+    now: ms(2026, 5, 14, 0, 0),
+    sessions,
+    sets,
+    tracks: [walkDistanceTrack, walkTimeTrack],
+    exercises: [walkExercise],
+  });
+
+  expect(summary.dataQuality.suspiciousPaceSessionIds).toEqual(["pace-legacy", "pace-walk"]);
+  expect(summary.dataQuality.suspiciousPaceCount).toBe(2);
+  expect(summary.normalizedWalks.find((walk) => walk.activityType === "hike")?.paceSecondsPerMile).toBe(40 * 60);
+  expect(summary.last7d.count).toBe(7);
+  expect(summary.last7d.averagePaceSecondsPerMile).toBe(40 * 60);
 });
 
 test("multiple same-day walks remain separate events and roll up only in daily/window summaries", () => {
