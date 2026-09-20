@@ -9,6 +9,7 @@ import {
 } from "../src/lib/cardio/cardioTypes";
 import type { Exercise, Session, SetEntry, Track } from "../src/db";
 import { getCardioFormatLabel, parseCardioFormat } from "../src/lib/cardio/cardioFormat";
+import { parseCardioSessionNotes } from "../src/lib/cardio/parseCardioSessionNotes";
 
 function ms(year: number, month: number, day: number, hour: number, minute: number) {
   return new Date(year, month - 1, day, hour, minute, 0, 0).getTime();
@@ -422,8 +423,8 @@ test("Route, pace, elevation, avg HR, and max HR are parsed from Session.notes",
           "Route: Neighborhood Loop",
           "Pace: 13:28/mi",
           "Elevation: 120 ft",
-          "Avg HR: 112",
-          "Max HR: 138",
+          "- Avg HR 112",
+          "- Max HR 138 bpm",
           "Notes: optional",
         ].join("\n"),
       }),
@@ -564,6 +565,15 @@ test("named strength workouts do not qualify as walks from walk-like conditionin
   });
 
   expect(summary.normalizedWalks).toHaveLength(0);
+});
+
+test("cardio note HR parsing accepts integer bpm independently and ignores malformed values", () => {
+  expect(parseCardioSessionNotes("Avg HR 112\nMax HR: 136")).toMatchObject({ avgHr: 112, maxHr: 136 });
+  expect(parseCardioSessionNotes("Average HR: 109 bpm\nMaximum HR 141 BPM")).toMatchObject({ avgHr: 109, maxHr: 141 });
+  expect(parseCardioSessionNotes("Avg HR: 112.5\nMax HR: fast").avgHr).toBeUndefined();
+  expect(parseCardioSessionNotes("Avg HR: 112.5\nMax HR: fast").maxHr).toBeUndefined();
+  expect(parseCardioSessionNotes("Avg HR: 112")).toEqual({ avgHr: 112 });
+  expect(parseCardioSessionNotes("Max HR: 136")).toEqual({ maxHr: 136 });
 });
 
 test("typed embedded warmups stay out of dedicated cardio totals", () => {
