@@ -1698,6 +1698,9 @@ test("Paste Workout formatting prompt documents activity type and conservative i
   await expect(page.getByText("Intent: <Fitness|Recovery|Adventure, cardio only when known>")).toBeVisible();
   await expect(page.getByText("- Activity Type describes WHAT the activity was.")).toBeVisible();
   await expect(page.getByText("- Intent describes WHY the cardio was performed.")).toBeVisible();
+  await expect(page.getByText("- Cardio Format describes HOW the cardio was performed.")).toBeVisible();
+  await expect(page.getByText("- Use Continuous for steady-state cardio and Intervals for structured work/recovery sessions.")).toBeVisible();
+  await expect(page.getByText("- Do not guess Cardio Format when it is unclear.")).toBeVisible();
   await expect(page.getByText("- Do not guess Intent when it is unclear.")).toBeVisible();
 });
 
@@ -1759,6 +1762,38 @@ conditioning duration 20min`);
     activityType: "hike",
     conditioningIntent: "adventure",
   });
+});
+
+test("Paste Workout persists explicit cardio format independently", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: PRP Run/Walk Intervals
+Activity Type: Run
+Intent: Fitness
+Cardio Format: Intervals
+Date: 2026-06-18
+Start: 08:00
+End: 08:20
+
+Run
+conditioning duration 20min`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const stored = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const session = (await db.sessions.toArray())[0];
+    return {
+      activityType: session.activityType,
+      conditioningIntent: session.conditioningIntent,
+      cardioFormat: session.cardioFormat,
+    };
+  });
+  expect(stored).toEqual({ activityType: "run", conditioningIntent: "fitness", cardioFormat: "intervals" });
 });
 
 test("Paste Workout keeps embedded treadmill work on a strength session without inferring parent cardio", async ({ page }) => {

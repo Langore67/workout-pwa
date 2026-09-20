@@ -15,6 +15,7 @@ import {
   type CardioActivityType,
 } from "../lib/cardio/cardioActivityType";
 import { parseCardioIntent, type CardioIntent } from "../lib/cardio/cardioIntent";
+import { parseCardioFormat, type CardioFormat } from "../lib/cardio/cardioFormat";
 
 type ImportedMetricType = "reps" | "distance" | "duration";
 
@@ -31,6 +32,7 @@ export type ParsedIfWorkout = {
   templateName: string;
   activityType?: CardioActivityType;
   conditioningIntent?: CardioIntent;
+  cardioFormat?: CardioFormat;
   start?: string;
   end?: string;
   notes?: string;
@@ -208,6 +210,7 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
   let templateName = "";
   let explicitActivityType: CardioActivityType | undefined;
   let conditioningIntent: CardioIntent | undefined;
+  let cardioFormat: CardioFormat | undefined;
   let dateISO = "";
   let start = "";
   let end = "";
@@ -226,6 +229,7 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
         /^session\s*:/i.test(line) ||
         /^activity\s+type\s*:/i.test(line) ||
         /^intent\s*:/i.test(line) ||
+        /^cardio\s+format\s*:/i.test(line) ||
         /^date\s*:/i.test(line) ||
         /^start\s*:/i.test(line) ||
         /^end\s*:/i.test(line);
@@ -273,6 +277,13 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
     const intentMatch = line.match(/^intent\s*:\s*(.+)$/i);
     if (intentMatch) {
       conditioningIntent = parseCardioIntent(intentMatch[1]);
+      currentExercise = "";
+      continue;
+    }
+
+    const cardioFormatMatch = line.match(/^cardio\s+format\s*:\s*(.+)$/i);
+    if (cardioFormatMatch) {
+      cardioFormat = parseCardioFormat(cardioFormatMatch[1]);
       currentExercise = "";
       continue;
     }
@@ -339,6 +350,7 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
     templateName,
     activityType,
     conditioningIntent,
+    cardioFormat,
     start: start || undefined,
     end: end || undefined,
     notes: notes.trim() || undefined,
@@ -444,6 +456,7 @@ export async function importSessionFromJournal(
         templateName?: string;
         activityType?: CardioActivityType;
         conditioningIntent?: CardioIntent;
+        cardioFormat?: CardioFormat;
         start?: string;
         end?: string;
         notes?: string;
@@ -466,6 +479,7 @@ export async function importSessionFromJournal(
             ),
           }),
         conditioningIntent: args.conditioningIntent,
+        cardioFormat: args.cardioFormat,
         start: args.start,
         end: args.end,
         notes: args.notes,
@@ -498,6 +512,7 @@ export async function importSessionFromJournal(
       templateName: parsed.templateName,
       activityType: parsed.activityType,
       conditioningIntent: parsed.conditioningIntent,
+      cardioFormat: parsed.cardioFormat,
       startedAt,
       endedAt,
       notes: parsed.notes?.trim() || undefined,

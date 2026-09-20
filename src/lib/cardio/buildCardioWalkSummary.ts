@@ -307,6 +307,7 @@ export function buildCardioWalkSummary(input: BuildCardioWalkSummaryInput): Card
         name: session.templateName ?? "Walk",
         activityType: session.activityType,
         conditioningIntent: session.conditioningIntent,
+        cardioFormat: session.cardioFormat,
         source: parsedNotes.source,
         route: parsedNotes.route,
         durationSeconds,

@@ -498,6 +498,83 @@ test.describe("buildCardioExportText", () => {
     expect(text).toContain("- Hike: 1 activity | 40 min | 3.00 mi / 4.83 km");
     expect(text).toContain("- Untyped: 1 activity | 50 min | 4.00 mi / 6.44 km");
   });
+
+  test("exports cardio format and compares only like-for-like pace and HR", () => {
+    const summary = emptySummary();
+    const event = (overrides: Partial<CardioWalkSummary["normalizedWalks"][number]>) => ({
+      sessionId: String(overrides.sessionId),
+      startedAt: Number(overrides.startedAt),
+      date: "2026-05-20",
+      name: String(overrides.name),
+      durationSeconds: 1800,
+      distanceMeters: 2 * METERS_PER_MILE,
+      confidence: "high" as const,
+      ...overrides,
+    });
+    summary.normalizedWalks = [
+      event({ sessionId: "walk-recent", startedAt: 4, name: "PRP Walk", activityType: "walk", conditioningIntent: "fitness", cardioFormat: "continuous", route: "PRP Loop", paceSecondsPerMile: 1031, avgHr: 112 }),
+      event({ sessionId: "walk-prior", startedAt: 3, name: "PRP Walk", activityType: "walk", conditioningIntent: "fitness", cardioFormat: "continuous", route: "PRP Loop", paceSecondsPerMile: 1044, avgHr: 118 }),
+      event({ sessionId: "interval", startedAt: 2, name: "PRP Run/Walk Intervals", activityType: "run", conditioningIntent: "fitness", cardioFormat: "intervals", route: "PRP Loop", paceSecondsPerMile: 800, avgHr: 140 }),
+      event({ sessionId: "hike", startedAt: 1, name: "Ridge Hike", activityType: "hike", conditioningIntent: "adventure", cardioFormat: "continuous", route: "PRP Loop", paceSecondsPerMile: 2200, avgHr: 112 }),
+    ];
+    summary.recentWalks = summary.normalizedWalks;
+
+    const text = buildCardioExportText(summary, { generatedAt: new Date(2026, 4, 20, 12) });
+    expect(text).toContain("PRP Run/Walk Intervals | Run | Fitness | Intervals");
+    expect(text).toContain("Like-for-Like Comparisons");
+    expect(text).toContain("PRP Loop — Fitness — Continuous");
+    expect(text).toContain("- Recent: 17:11/mi @ 112 avg HR");
+    expect(text).toContain("- Prior comparable: 17:24/mi @ 118 avg HR");
+    expect(text).toContain("similar pace at lower avg HR; possible improved aerobic efficiency signal");
+    expect(text).not.toContain("PRP Run/Walk Intervals — Fitness — Intervals");
+    expect(text).not.toContain("Ridge Hike — Adventure — Continuous");
+  });
+
+  test("comparison signals stay cautious and require two comparable sessions", () => {
+    const summary = emptySummary();
+    const event = (id: string, route: string, startedAt: number, pace: number, avgHr?: number) => ({
+      sessionId: id,
+      startedAt,
+      date: "2026-05-20",
+      name: route,
+      activityType: "run" as const,
+      conditioningIntent: "fitness" as const,
+      cardioFormat: "intervals" as const,
+      route,
+      durationSeconds: 1800,
+      distanceMeters: 2 * METERS_PER_MILE,
+      paceSecondsPerMile: pace,
+      avgHr,
+      confidence: "high" as const,
+    });
+    summary.normalizedWalks = [
+      event("high-recent", "High HR", 8, 700, 155),
+      event("high-prior", "High HR", 7, 720, 145),
+      event("nohr-recent", "No HR", 6, 710),
+      event("nohr-prior", "No HR", 5, 730),
+      event("similar-hr-recent", "Similar HR", 12, 700, 132),
+      event("similar-hr-prior", "Similar HR", 11, 730, 130),
+      event("slow-low-recent", "Slow Low", 10, 760, 120),
+      event("slow-low-prior", "Slow Low", 9, 720, 130),
+      event("route-a", "Route A", 4, 700, 130),
+      event("route-b", "Route B", 3, 720, 130),
+      event("singleton", "Singleton", 2, 700, 130),
+    ];
+    summary.recentWalks = summary.normalizedWalks;
+
+    const text = buildCardioExportText(summary);
+    expect(text).toContain("faster pace with higher avg HR; efficiency improvement not established");
+    expect(text).toContain("faster pace; HR comparison unavailable");
+    expect(text).toContain("faster pace at similar or lower avg HR; possible improved aerobic efficiency signal");
+    expect(text).toContain("lower avg HR with slower pace; efficiency improvement not established");
+    expect(text).not.toContain("Route A — Fitness — Intervals");
+    expect(text).not.toContain("Route B — Fitness — Intervals");
+    expect(text).not.toContain("Singleton — Fitness — Intervals");
+
+    const one = emptySummary();
+    one.normalizedWalks = [event("only", "Only", 1, 700, 130)];
+    expect(buildCardioExportText(one)).not.toContain("Like-for-Like Comparisons");
+  });
 });
 
 test.describe("Progress Copy Cardio Export", () => {

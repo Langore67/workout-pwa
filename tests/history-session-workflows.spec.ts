@@ -59,6 +59,7 @@ test.describe("history and ad hoc session workflows", () => {
         templateName: "Park City hiking",
         activityType: "hike",
         conditioningIntent: "adventure",
+        cardioFormat: "intervals",
         startedAt: now - 60 * 60 * 1000,
         endedAt: now,
         notes: "Trail session",
@@ -81,6 +82,7 @@ test.describe("history and ad hoc session workflows", () => {
 
     await expect(page.getByLabel("Activity Type")).toHaveValue("hike");
     await expect(page.getByLabel("Cardio Intent")).toHaveValue("adventure");
+    await expect(page.getByLabel("Cardio Format")).toHaveValue("intervals");
     await expect(page.getByText("Walk Intent")).toHaveCount(0);
 
     await page.getByLabel("Activity Type").selectOption("walk");
@@ -122,6 +124,22 @@ test.describe("history and ad hoc session workflows", () => {
       };
     }, seeded.sessionId);
     expect(stored).toEqual({ activityType: undefined, conditioningIntent: "recovery" });
+
+    await page.getByLabel("Cardio Format").selectOption("continuous");
+    await expect.poll(async () => page.evaluate(async (sessionId) => {
+      const session = await (window as any).__db.sessions.get(sessionId);
+      return session?.cardioFormat;
+    }, seeded.sessionId)).toBe("continuous");
+    await page.getByLabel("Cardio Format").selectOption("intervals");
+    await expect.poll(async () => page.evaluate(async (sessionId) => {
+      const session = await (window as any).__db.sessions.get(sessionId);
+      return session?.cardioFormat;
+    }, seeded.sessionId)).toBe("intervals");
+    await page.getByLabel("Cardio Format").selectOption("");
+    await expect.poll(async () => page.evaluate(async (sessionId) => {
+      const session = await (window as any).__db.sessions.get(sessionId);
+      return session?.cardioFormat;
+    }, seeded.sessionId)).toBeUndefined();
   });
 
   test("session detail copies the completed session snapshot", async ({ page }) => {
