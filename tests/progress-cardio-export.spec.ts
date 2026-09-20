@@ -329,10 +329,10 @@ test.describe("buildCardioExportText", () => {
     expect(text).toContain("IronForge Cardio Export");
     expect(text).toContain("Generated: 2026-05-15");
     expect(text).toContain("Last 7 Days");
-    expect(text).toContain("- No imported walk sessions were found in History.");
+    expect(text).toContain("- No imported cardio sessions were found in History.");
     expect(text).toContain("- Missing distance: 0");
     expect(text).toContain("- Suspicious pace: 0");
-    expect(text).toContain("- Suspicious rows are shown in Recent Walks but excluded from summary totals and averages.");
+    expect(text).toContain("- Suspicious rows are excluded from average pace calculations.");
     expect(text).toContain("- Manual legacy db.walks rows are not included in this export.");
     expect(text).not.toMatch(/\b(undefined|null|NaN)\b/);
   });
@@ -340,7 +340,7 @@ test.describe("buildCardioExportText", () => {
   test("keeps multiple walks separate while daily totals aggregate them", () => {
     const text = buildCardioExportText(populatedSummary(), { generatedAt: new Date(2026, 4, 15, 12) });
 
-    expect(text).toContain("- Walks: 2");
+    expect(text).toContain("- Activities: 2");
     expect(text).toContain("- Total duration: 1 hr 42 min");
     expect(text).toContain("- Total distance: 3.12 mi / 5.02 km");
     expect(text).toContain("- Average duration: 51 min");
@@ -352,11 +352,12 @@ test.describe("buildCardioExportText", () => {
     expect(text).toContain("Max HR 138");
     expect(text).toContain("Notes felt steady");
     expect(text).toContain("Walk - Treadmill | 42 min | not available | not available");
-    expect(text).toContain("2026-05-13 | 2 walks | 1 hr 42 min | 3.12 mi / 5.02 km");
+    expect(text).toContain("2026-05-13 | 2 activities | 1 hr 42 min | 3.12 mi / 5.02 km");
   });
 
   test("explains suspicious pace exclusion while still showing the row", () => {
     const summary = populatedSummary();
+    summary.recentWalks = [...summary.recentWalks];
     const suspiciousStartedAt = new Date(2026, 4, 13, 20, 0).getTime();
     summary.normalizedWalks.unshift({
       sessionId: "walk-suspicious",
@@ -376,9 +377,10 @@ test.describe("buildCardioExportText", () => {
 
     expect(text).toContain("Walk - Suspicious | 5 hr 29 min | 5.29 mi / 8.51 km | 62:09/mi | Suspicious pace");
     expect(text).toContain("- Suspicious pace: 1");
-    expect(text).toContain("- Suspicious rows are shown in Recent Walks but excluded from summary totals and averages.");
+    expect(text).toContain("- Suspicious rows are excluded from average pace calculations.");
+    expect(text).toContain("- Fitness + untagged: 2 activities | 6 hr 11 min | 5.29 mi / 8.51 km");
     expect(text).toContain("- Total distance: 3.12 mi / 5.02 km");
-    expect(text).toContain("2026-05-13 | 2 walks | 1 hr 42 min | 3.12 mi / 5.02 km");
+    expect(text).toContain("2026-05-13 | 2 activities | 1 hr 42 min | 3.12 mi / 5.02 km");
   });
 
   test("adds intent-specific export sections while preserving the all-walk summary", () => {
@@ -399,6 +401,7 @@ test.describe("buildCardioExportText", () => {
         startedAt: at(10),
         date: "2026-05-20",
         name: "Walk - Trail",
+        activityType: "hike" as const,
         conditioningIntent: "adventure" as const,
         durationSeconds: 40 * 60,
         distanceMeters: 3 * METERS_PER_MILE,
@@ -409,6 +412,7 @@ test.describe("buildCardioExportText", () => {
         startedAt: at(9),
         date: "2026-05-20",
         name: "Walk - Easy",
+        activityType: "walk" as const,
         conditioningIntent: "recovery" as const,
         durationSeconds: 30 * 60,
         distanceMeters: 2 * METERS_PER_MILE,
@@ -419,6 +423,7 @@ test.describe("buildCardioExportText", () => {
         startedAt: at(8),
         date: "2026-05-20",
         name: "Walk - Fitness",
+        activityType: "walk" as const,
         conditioningIntent: "fitness" as const,
         durationSeconds: 20 * 60,
         distanceMeters: 1 * METERS_PER_MILE,
@@ -470,28 +475,28 @@ test.describe("buildCardioExportText", () => {
     };
 
     const text = buildCardioExportText(summary, { generatedAt: new Date(2026, 4, 20, 12) });
-    const cardioSummary = text.slice(text.indexOf("Cardio Summary"), text.indexOf("Fitness Walk Summary"));
-    const fitnessSummary = text.slice(text.indexOf("Fitness Walk Summary"), text.indexOf("Recovery / Adventure Activity"));
-    const recoveryAdventure = text.slice(text.indexOf("Recovery / Adventure Activity"), text.indexOf("Data Quality"));
+    const cardioSummary = text.slice(text.indexOf("Cardio Summary"), text.indexOf("Cardio Intent Summary"));
+    const intentSummary = text.slice(text.indexOf("Cardio Intent Summary"), text.indexOf("Activity Type Summary"));
 
-    expect(cardioSummary).toContain("- Walks: 4");
+    expect(cardioSummary).toContain("- Activities: 4");
     expect(cardioSummary).toContain("- Total duration: 2 hr 20 min");
     expect(cardioSummary).toContain("- Total distance: 10.00 mi / 16.09 km");
     expect(cardioSummary).toContain("- Average duration: 35 min");
     expect(cardioSummary).toContain("- Average pace: 14:00/mi");
-    expect(cardioSummary).toContain("2026-05-20 | 4 walks | 2 hr 20 min | 10.00 mi / 16.09 km");
+    expect(cardioSummary).toContain("2026-05-20 | 4 activities | 2 hr 20 min | 10.00 mi / 16.09 km");
 
-    expect(cardioSummary).toContain("Walk - Fitness | Fitness | 20 min | 1.00 mi / 1.61 km");
-    expect(cardioSummary).toContain("Walk - Easy | Recovery | 30 min | 2.00 mi / 3.22 km");
-    expect(cardioSummary).toContain("Walk - Trail | Adventure | 40 min | 3.00 mi / 4.83 km");
+    expect(cardioSummary).toContain("Walk - Fitness | Walk | Fitness | 20 min | 1.00 mi / 1.61 km");
+    expect(cardioSummary).toContain("Walk - Easy | Walk | Recovery | 30 min | 2.00 mi / 3.22 km");
+    expect(cardioSummary).toContain("Walk - Trail | Hike | Adventure | 40 min | 3.00 mi / 4.83 km");
     expect(cardioSummary).toContain("Walk - Untagged | 50 min | 4.00 mi / 6.44 km");
 
-    expect(fitnessSummary).toContain("- Fitness + untagged walks: 2 walks | 1 hr 10 min | 5.00 mi / 8.05 km");
-    expect(fitnessSummary).toContain("- Includes walks tagged Fitness plus walks with no intent set.");
-    expect(fitnessSummary).toContain("- Excludes Recovery and Adventure walks.");
-
-    expect(recoveryAdventure).toContain("- Recovery: 1 walk | 30 min | 2.00 mi / 3.22 km");
-    expect(recoveryAdventure).toContain("- Adventure: 1 walk | 40 min | 3.00 mi / 4.83 km");
+    expect(intentSummary).toContain("- Fitness + untagged: 2 activities | 1 hr 10 min | 5.00 mi / 8.05 km");
+    expect(intentSummary).toContain("- Recovery: 1 activity | 30 min | 2.00 mi / 3.22 km");
+    expect(intentSummary).toContain("- Adventure: 1 activity | 40 min | 3.00 mi / 4.83 km");
+    expect(text).toContain("Activity Type Summary");
+    expect(text).toContain("- Walk: 2 activities | 50 min | 3.00 mi / 4.83 km");
+    expect(text).toContain("- Hike: 1 activity | 40 min | 3.00 mi / 4.83 km");
+    expect(text).toContain("- Untyped: 1 activity | 50 min | 4.00 mi / 6.44 km");
   });
 });
 
@@ -537,7 +542,7 @@ test.describe("Progress Copy Cardio Export", () => {
     expect(text).toContain("IronForge Cardio Export");
     expect(text).toContain("Last 7 Days");
     expect(text).toContain("Last 28 Days");
-    expect(text).toContain("- No imported walk sessions were found in History.");
+    expect(text).toContain("- No imported cardio sessions were found in History.");
     expect(text).toContain("- Manual legacy db.walks rows are not included in this export.");
     expect(text).not.toContain("Legacy manual walk should not export");
     expect(text).not.toContain("9.99 mi");
@@ -557,13 +562,13 @@ test.describe("Progress Copy Cardio Export", () => {
     expect(text).toContain("Cardio Summary");
     expect(text).toContain("Last 7 Days");
     expect(text).toContain("Last 28 Days");
-    expect(text).toContain("- Walks: 2");
+    expect(text).toContain("- Activities: 2");
     expect(text).toContain("- Total duration: 1 hr 42 min");
     expect(text).toContain("- Total distance: 3.12 mi / 5.02 km");
     expect(text).toContain("- Average duration: 51 min");
     expect(text).toContain("- Average pace: 19:14/mi");
 
-    const recentWalks = text.slice(text.indexOf("Recent Walks"), text.indexOf("Daily Totals"));
+    const recentWalks = text.slice(text.indexOf("Recent Cardio"), text.indexOf("Daily Totals"));
     expect(recentWalks).toContain("Walk - MapMyWalk | Adventure | 1 hr | 3.12 mi / 5.02 km | 19:14/mi | Neighborhood Loop");
     expect(recentWalks).toContain("Source MapMyWalk screenshot");
     expect(recentWalks).toContain("Elevation 120 ft");
@@ -573,14 +578,14 @@ test.describe("Progress Copy Cardio Export", () => {
     expect(recentWalks).toContain("Walk - Treadmill | 42 min | not available | not available");
     expect((recentWalks.match(/^-/gm) ?? [])).toHaveLength(2);
 
-    const dailyTotals = text.slice(text.indexOf("Daily Totals"), text.indexOf("Fitness Walk Summary"));
-    expect(dailyTotals).toContain("| 2 walks | 1 hr 42 min | 3.12 mi / 5.02 km");
+    const dailyTotals = text.slice(text.indexOf("Daily Totals"), text.indexOf("Cardio Intent Summary"));
+    expect(dailyTotals).toContain("| 2 activities | 1 hr 42 min | 3.12 mi / 5.02 km");
     expect((dailyTotals.match(/^-/gm) ?? [])).toHaveLength(1);
 
     expect(text).toContain("- Missing distance: 1");
     expect(text).toContain("- Missing duration: 0");
     expect(text).toContain("- Suspicious pace: 0");
-    expect(text).toContain("Suspicious rows are shown in Recent Walks but excluded from summary totals and averages.");
+    expect(text).toContain("Suspicious rows are excluded from average pace calculations.");
     expect(text).toContain("- Pace shown only when distance and duration are available.");
     expect(text).not.toMatch(/\b(readiness|strain|HRV|sleep|calories|prescription|prescriptions)\b/i);
     expect(text).not.toMatch(/\b(undefined|null|NaN)\b/);
@@ -612,9 +617,9 @@ Session Notes:
     await page.getByRole("button", { name: "Copy Cardio Export" }).click();
     const text = await readCopiedText(page);
 
-    expect(text).toContain("Walk - Peachtree Ridge Park | 1 hr 6 min | 3.79 mi / 6.10 km | 17:17/mi");
-    expect(text).toContain("2026-05-23 | 1 walk | 1 hr 6 min | 3.79 mi / 6.10 km");
-    expect(text).toContain("- Fitness + untagged walks: 1 walk | 1 hr 6 min | 3.79 mi / 6.10 km");
+    expect(text).toContain("Walk - Peachtree Ridge Park | Walk | 1 hr 6 min | 3.79 mi / 6.10 km | 17:17/mi");
+    expect(text).toContain("2026-05-23 | 1 activity | 1 hr 6 min | 3.79 mi / 6.10 km");
+    expect(text).toContain("- Fitness + untagged: 1 activity | 1 hr 6 min | 3.79 mi / 6.10 km");
     expect(text).toContain("- Missing distance: 0");
     expect(text).not.toContain("Walk - Peachtree Ridge Park | 1 hr 6 min | not available");
   });

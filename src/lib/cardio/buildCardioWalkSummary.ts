@@ -9,12 +9,11 @@ import {
   type CardioWalkWindowSummary,
 } from "./cardioTypes";
 import { parseCardioActivityType } from "./cardioActivityType";
+import { getCardioPaceQuality } from "./cardioPaceQuality";
 import { parseCardioSessionNotes } from "./parseCardioSessionNotes";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const METERS_PER_MILE = 1609.344;
-const MIN_REASONABLE_WALK_PACE_SECONDS_PER_MILE = 10 * 60;
-const MAX_REASONABLE_WALK_PACE_SECONDS_PER_MILE = 35 * 60;
 
 const EXCLUDED_NAME_PATTERNS = [
   /\bfarmer'?s?\s+walk\b/i,
@@ -78,13 +77,8 @@ function hasStrengthSessionName(value: string): boolean {
   return STRENGTH_SESSION_NAME_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
-function isSuspiciousWalkingPace(secondsPerMile?: number): boolean {
-  return (
-    typeof secondsPerMile === "number" &&
-    Number.isFinite(secondsPerMile) &&
-    (secondsPerMile < MIN_REASONABLE_WALK_PACE_SECONDS_PER_MILE ||
-      secondsPerMile > MAX_REASONABLE_WALK_PACE_SECONDS_PER_MILE)
-  );
+function hasSuspiciousPace(walk: Pick<CardioWalkEvent, "activityType" | "paceSecondsPerMile">): boolean {
+  return getCardioPaceQuality(walk) === "suspicious";
 }
 
 function convertDistanceToMeters(distance?: number, unit?: string): number | undefined {
@@ -152,13 +146,12 @@ function classifyCardioSession(args: {
 
 function buildWindowSummary(walks: CardioWalkEvent[], now: number, days: number): CardioWalkWindowSummary {
   const start = now - days * DAY_MS;
-  const windowWalks = walks.filter(
-    (walk) => walk.startedAt >= start && walk.startedAt <= now && !isSuspiciousWalkingPace(walk.paceSecondsPerMile)
-  );
+  const windowWalks = walks.filter((walk) => walk.startedAt >= start && walk.startedAt <= now);
   const durationWalks = windowWalks.filter((walk) => typeof walk.durationSeconds === "number");
   const distanceWalks = windowWalks.filter((walk) => typeof walk.distanceMeters === "number");
   const paceWalks = windowWalks.filter(
     (walk) =>
+      !hasSuspiciousPace(walk) &&
       typeof walk.durationSeconds === "number" &&
       typeof walk.distanceMeters === "number" &&
       walk.distanceMeters > 0
@@ -183,7 +176,6 @@ function buildDailySummaries(walks: CardioWalkEvent[]): CardioDailyWalkSummary[]
   const byDate = new Map<string, CardioDailyWalkSummary>();
 
   for (const walk of walks) {
-    if (isSuspiciousWalkingPace(walk.paceSecondsPerMile)) continue;
     const current =
       byDate.get(walk.date) ??
       ({
@@ -228,9 +220,9 @@ function buildDataQuality(walks: CardioWalkEvent[]): CardioWalkDataQuality {
   return {
     missingDistanceCount: walks.filter((walk) => walk.distanceMeters == null).length,
     missingDurationCount: walks.filter((walk) => walk.durationSeconds == null).length,
-    suspiciousPaceCount: walks.filter((walk) => isSuspiciousWalkingPace(walk.paceSecondsPerMile)).length,
+    suspiciousPaceCount: walks.filter(hasSuspiciousPace).length,
     suspiciousPaceSessionIds: walks
-      .filter((walk) => isSuspiciousWalkingPace(walk.paceSecondsPerMile))
+      .filter(hasSuspiciousPace)
       .map((walk) => walk.sessionId),
     notesFieldCoverage: coverage,
     unsupportedSignals: ["routeTrend", "zoneDistribution", "liftingInterference"],

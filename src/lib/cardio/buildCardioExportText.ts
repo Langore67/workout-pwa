@@ -5,6 +5,7 @@ import type {
   CardioWalkWindowSummary,
 } from "./cardioTypes";
 import { getCardioIntentLabel } from "./cardioIntent";
+import { CARDIO_ACTIVITY_TYPES, getCardioActivityTypeLabel } from "./cardioActivityType";
 import { isAdventureWalk, isFitnessWalk, isRecoveryWalk } from "./cardioTypes";
 import { formatDistanceMiKm } from "./formatCardioWalk";
 
@@ -57,8 +58,8 @@ function formatPace(secondsPerMile?: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}/mi`;
 }
 
-function pluralizeWalkCount(count: number): string {
-  return `${count} ${count === 1 ? "walk" : "walks"}`;
+function pluralizeActivityCount(count: number): string {
+  return `${count} ${count === 1 ? "activity" : "activities"}`;
 }
 
 function cleanInline(value: string | undefined): string | undefined {
@@ -85,10 +86,15 @@ function formatWalkIntent(walk: CardioWalkEvent): string | undefined {
   return undefined;
 }
 
+function formatActivityType(walk: CardioWalkEvent): string | undefined {
+  if (walk.activityType) return getCardioActivityTypeLabel(walk.activityType);
+  return undefined;
+}
+
 function formatWindow(title: string, window: CardioWalkWindowSummary): string[] {
   return [
     title,
-    `- Walks: ${window.count}`,
+    `- Activities: ${window.count}`,
     `- Total duration: ${formatDuration(window.totalDurationSeconds)}`,
     `- Total distance: ${formatDistance(window.totalDistanceMeters)}`,
     `- Average duration: ${formatDuration(window.averageDurationSeconds)}`,
@@ -100,6 +106,7 @@ function formatWalkRow(walk: CardioWalkEvent, suspiciousPaceSessionIds: Set<stri
   const fields = [
     formatDateTime(walk.startedAt),
     cleanInline(walk.name) ?? "Walk",
+    formatActivityType(walk),
     formatWalkIntent(walk),
     formatDuration(walk.durationSeconds),
     formatDistance(walk.distanceMeters),
@@ -117,20 +124,19 @@ function formatWalkRow(walk: CardioWalkEvent, suspiciousPaceSessionIds: Set<stri
 }
 
 function formatDailyRow(day: CardioDailyWalkSummary): string {
-  return `- ${day.date} | ${pluralizeWalkCount(day.count)} | ${formatDuration(day.totalDurationSeconds)} | ${formatDistance(day.totalDistanceMeters)}`;
+  return `- ${day.date} | ${pluralizeActivityCount(day.count)} | ${formatDuration(day.totalDurationSeconds)} | ${formatDistance(day.totalDistanceMeters)}`;
 }
 
-function sumWalkActivity(walks: CardioWalkEvent[], suspiciousPaceSessionIds: Set<string>) {
-  const included = walks.filter((walk) => !suspiciousPaceSessionIds.has(walk.sessionId));
+function sumCardioActivity(walks: CardioWalkEvent[]) {
   return {
-    count: included.length,
-    totalDurationSeconds: included.reduce((sum, walk) => sum + (walk.durationSeconds ?? 0), 0),
-    totalDistanceMeters: included.reduce((sum, walk) => sum + (walk.distanceMeters ?? 0), 0),
+    count: walks.length,
+    totalDurationSeconds: walks.reduce((sum, walk) => sum + (walk.durationSeconds ?? 0), 0),
+    totalDistanceMeters: walks.reduce((sum, walk) => sum + (walk.distanceMeters ?? 0), 0),
   };
 }
 
-function formatActivityTotals(label: string, totals: ReturnType<typeof sumWalkActivity>): string {
-  return `- ${label}: ${pluralizeWalkCount(totals.count)} | ${formatDuration(totals.totalDurationSeconds)} | ${formatDistance(totals.totalDistanceMeters)}`;
+function formatActivityTotals(label: string, totals: ReturnType<typeof sumCardioActivity>): string {
+  return `- ${label}: ${pluralizeActivityCount(totals.count)} | ${formatDuration(totals.totalDurationSeconds)} | ${formatDistance(totals.totalDistanceMeters)}`;
 }
 
 export function buildCardioExportText(
@@ -143,9 +149,14 @@ export function buildCardioExportText(
   );
   const recoveryWalks = summary.normalizedWalks.filter(isRecoveryWalk);
   const adventureWalks = summary.normalizedWalks.filter(isAdventureWalk);
-  const fitnessTotals = sumWalkActivity(fitnessWalks, suspiciousPaceSessionIds);
-  const recoveryTotals = sumWalkActivity(recoveryWalks, suspiciousPaceSessionIds);
-  const adventureTotals = sumWalkActivity(adventureWalks, suspiciousPaceSessionIds);
+  const fitnessTotals = sumCardioActivity(fitnessWalks);
+  const recoveryTotals = sumCardioActivity(recoveryWalks);
+  const adventureTotals = sumCardioActivity(adventureWalks);
+  const activityTypeTotals = CARDIO_ACTIVITY_TYPES.map((activityType) => ({
+    label: getCardioActivityTypeLabel(activityType),
+    totals: sumCardioActivity(summary.normalizedWalks.filter((walk) => walk.activityType === activityType)),
+  })).filter(({ totals }) => totals.count > 0);
+  const untypedTotals = sumCardioActivity(summary.normalizedWalks.filter((walk) => walk.activityType === undefined));
 
   const lines: string[] = [
     "IronForge Cardio Export",
@@ -162,33 +173,34 @@ export function buildCardioExportText(
     "",
     ...formatWindow("Last 28 Days", summary.last28d),
     "",
-    "Recent Walks",
+    "Recent Cardio",
   ];
 
   if (summary.recentWalks.length) {
     lines.push(...summary.recentWalks.map((walk) => formatWalkRow(walk, suspiciousPaceSessionIds)));
   } else {
-    lines.push("- No imported walk sessions were found in History.");
+    lines.push("- No imported cardio sessions were found in History.");
   }
 
   lines.push("", "Daily Totals");
   if (summary.dailySummaries.length) {
     lines.push(...summary.dailySummaries.map(formatDailyRow));
   } else {
-    lines.push("- No imported walk sessions were found in History.");
+    lines.push("- No imported cardio sessions were found in History.");
   }
 
   lines.push(
     "",
-    "Fitness Walk Summary",
-    formatActivityTotals("Fitness + untagged walks", fitnessTotals),
-    "- Includes walks tagged Fitness plus walks with no intent set.",
-    "- Excludes Recovery and Adventure walks.",
-    "",
-    "Recovery / Adventure Activity",
+    "Cardio Intent Summary",
+    formatActivityTotals("Fitness + untagged", fitnessTotals),
     formatActivityTotals("Recovery", recoveryTotals),
     formatActivityTotals("Adventure", adventureTotals)
   );
+
+  lines.push("", "Activity Type Summary");
+  lines.push(...activityTypeTotals.map(({ label, totals }) => formatActivityTotals(label, totals)));
+  if (untypedTotals.count > 0) lines.push(formatActivityTotals("Untyped", untypedTotals));
+  if (!activityTypeTotals.length && untypedTotals.count === 0) lines.push("- No activity type data available.");
 
   lines.push(
     "",
@@ -197,8 +209,9 @@ export function buildCardioExportText(
     `- Missing duration: ${summary.dataQuality.missingDurationCount}`,
     `- Suspicious pace: ${summary.dataQuality.suspiciousPaceCount}`,
     "- Pace shown only when distance and duration are available.",
-    "- Suspicious rows are shown in Recent Walks but excluded from summary totals and averages.",
-    "- Suspicious pace means faster than 10:00/mi or slower than 35:00/mi when pace can be computed.",
+    "- Suspicious rows are shown in Recent Cardio and included in activity counts, duration, and distance totals.",
+    "- Suspicious rows are excluded from average pace calculations.",
+    "- Walk and legacy untyped pace is suspicious below 10:00/mi or above 35:00/mi; other activity types do not inherit walking thresholds.",
     "- Route, elevation, and HR are note-derived fields when present.",
     "- Zone distribution, route trends, and lifting interference are not modeled yet.",
     "",
