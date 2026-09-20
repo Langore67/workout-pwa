@@ -9,6 +9,7 @@ import { CARDIO_ACTIVITY_TYPES, getCardioActivityTypeLabel } from "./cardioActiv
 import { isAdventureWalk, isFitnessWalk, isRecoveryWalk } from "./cardioTypes";
 import { formatDistanceMiKm } from "./formatCardioWalk";
 import { getCardioFormatLabel } from "./cardioFormat";
+import { getCardioComparisonIdentity } from "./cardioComparisonFamily";
 
 export type BuildCardioExportTextOptions = {
   generatedAt?: Date | number | string;
@@ -146,10 +147,6 @@ function formatActivityTotals(label: string, totals: ReturnType<typeof sumCardio
   return `- ${label}: ${pluralizeActivityCount(totals.count)} | ${formatDuration(totals.totalDurationSeconds)} | ${formatDistance(totals.totalDistanceMeters)}`;
 }
 
-function normalizeComparisonText(value: string | undefined): string {
-  return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
 function formatComparisonPoint(label: string, walk: CardioWalkEvent): string {
   const hr = isFiniteNumber(walk.avgHr) ? ` @ ${Math.round(walk.avgHr)} avg HR` : "";
   return `- ${label}: ${formatPace(walk.paceSecondsPerMile)}${hr}`;
@@ -179,9 +176,10 @@ function buildLikeForLikeComparisons(
   for (const walk of walks) {
     if (!walk.activityType || !walk.cardioFormat || !isFiniteNumber(walk.paceSecondsPerMile)) continue;
     if (suspiciousPaceSessionIds.has(walk.sessionId)) continue;
-    const routeKey = normalizeComparisonText(walk.route) || "route-unknown";
+    const comparisonIdentity = getCardioComparisonIdentity(walk);
+    if (!comparisonIdentity) continue;
     const intentKey = walk.conditioningIntent ?? "intent-unknown";
-    const key = [walk.activityType, walk.cardioFormat, intentKey, routeKey].join("|");
+    const key = [walk.activityType, walk.cardioFormat, intentKey, comparisonIdentity].join("|");
     const group = groups.get(key) ?? [];
     group.push(walk);
     groups.set(key, group);
@@ -286,7 +284,7 @@ export function buildCardioExportText(
     "- Zone distribution, route trends, and lifting interference are not modeled yet.",
     "",
     "Source Notes",
-    "- Walk data comes from History-backed conditioning sessions.",
+    "- Cardio data comes from History-backed conditioning sessions.",
     "- MapMyWalk screenshots should be converted to IF paste format and imported through Paste Workout.",
     "- Manual legacy db.walks rows are not included in this export."
   );

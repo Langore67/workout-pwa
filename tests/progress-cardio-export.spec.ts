@@ -334,6 +334,7 @@ test.describe("buildCardioExportText", () => {
     expect(text).toContain("- Suspicious pace: 0");
     expect(text).toContain("- Suspicious rows are excluded from average pace calculations.");
     expect(text).toContain("- Manual legacy db.walks rows are not included in this export.");
+    expect(text).toContain("- Cardio data comes from History-backed conditioning sessions.");
     expect(text).not.toMatch(/\b(undefined|null|NaN)\b/);
   });
 
@@ -574,6 +575,81 @@ test.describe("buildCardioExportText", () => {
     const one = emptySummary();
     one.normalizedWalks = [event("only", "Only", 1, 700, 130)];
     expect(buildCardioExportText(one)).not.toContain("Like-for-Like Comparisons");
+  });
+
+  test("groups conservative PRP aliases without grouping treadmill or distinct hikes", () => {
+    const summary = emptySummary();
+    const event = (id: string, name: string, startedAt: number, activityType: "walk" | "hike") => ({
+      sessionId: id,
+      startedAt,
+      date: "2026-05-20",
+      name,
+      activityType,
+      conditioningIntent: activityType === "walk" ? "fitness" as const : "adventure" as const,
+      cardioFormat: "continuous" as const,
+      durationSeconds: 1800,
+      distanceMeters: 2 * METERS_PER_MILE,
+      paceSecondsPerMile: activityType === "walk" ? 1050 + startedAt : 2200 + startedAt,
+      confidence: "high" as const,
+    });
+    summary.normalizedWalks = [
+      event("prp-1", "PRP Walk", 9, "walk"),
+      event("prp-2", "PRP Fitness Walk", 8, "walk"),
+      event("prp-3", "Walk - Peachtree Ridge Park", 7, "walk"),
+      event("treadmill", "Treadmill Walk", 6, "walk"),
+      event("park-city", "Park City Out-and-Back Hike", 5, "hike"),
+      event("west-rim", "West Rim Loop", 4, "hike"),
+      event("cherokee", "Cherokee Falls Walk", 3, "hike"),
+      event("cravens", "Cravens House Rifle Pits Trail Walk", 2, "hike"),
+    ];
+
+    const text = buildCardioExportText(summary);
+    expect(text).toContain("Like-for-Like Comparisons");
+    expect(text).toContain("PRP Walk — Fitness — Continuous");
+    expect(text).not.toContain("Treadmill Walk — Fitness — Continuous");
+    expect(text).not.toContain("Park City Out-and-Back Hike — Adventure — Continuous");
+    expect(text).not.toContain("West Rim Loop — Adventure — Continuous");
+    expect(text).not.toContain("Cherokee Falls Walk — Adventure — Continuous");
+    expect(text).not.toContain("Cravens House Rifle Pits Trail Walk — Adventure — Continuous");
+  });
+
+  test("uses exact route precedence and never mixes known and unknown routes", () => {
+    const summary = emptySummary();
+    const event = (id: string, name: string, startedAt: number, route?: string) => ({
+      sessionId: id,
+      startedAt,
+      date: "2026-05-20",
+      name,
+      activityType: "walk" as const,
+      conditioningIntent: "fitness" as const,
+      cardioFormat: "continuous" as const,
+      route,
+      durationSeconds: 1800,
+      distanceMeters: 2 * METERS_PER_MILE,
+      paceSecondsPerMile: 1000 + startedAt,
+      confidence: "high" as const,
+    });
+    summary.normalizedWalks = [
+      event("route-1", "Morning Walk", 6, "Peachtree Ridge Park Loop"),
+      event("route-2", "Evening Cardio", 5, "  PEACHTREE-RIDGE PARK LOOP "),
+      event("known", "PRP Walk", 4, "Different Route"),
+      event("unknown", "PRP Fitness Walk", 3),
+    ];
+
+    const text = buildCardioExportText(summary);
+    expect(text).toContain("Peachtree Ridge Park Loop — Fitness — Continuous");
+    expect(text).not.toContain("PRP Walk — Fitness — Continuous");
+  });
+
+  test("preserves format and intent boundaries within the same session family", () => {
+    const summary = emptySummary();
+    summary.normalizedWalks = [
+      { sessionId: "continuous", startedAt: 4, date: "2026-05-20", name: "PRP Walk", activityType: "walk", conditioningIntent: "fitness", cardioFormat: "continuous", paceSecondsPerMile: 1000, confidence: "high" },
+      { sessionId: "intervals", startedAt: 3, date: "2026-05-20", name: "PRP Fitness Walk", activityType: "walk", conditioningIntent: "fitness", cardioFormat: "intervals", paceSecondsPerMile: 990, confidence: "high" },
+      { sessionId: "recovery", startedAt: 2, date: "2026-05-20", name: "Walk - Peachtree Ridge Park", activityType: "walk", conditioningIntent: "recovery", cardioFormat: "continuous", paceSecondsPerMile: 1010, confidence: "high" },
+    ];
+
+    expect(buildCardioExportText(summary)).not.toContain("Like-for-Like Comparisons");
   });
 });
 
