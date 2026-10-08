@@ -55,7 +55,14 @@ import { WeeklyVolumeCard } from "../components/coachDashboard/WeeklyVolumeCard"
 import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetrics";
 import type { CoachExportMetrics } from "../lib/coachExport/types";
 import { buildCoachStateFromExportMetrics } from "../lib/coachState/buildCoachState";
-import { withCoachStateComparison } from "../lib/coachState/coachExplainability";
+import {
+  buildPersistedCoachComparisonSnapshot,
+  withCoachStateComparison,
+} from "../lib/coachState/coachExplainability";
+import {
+  loadPersistedCoachComparisonSnapshot,
+  savePersistedCoachComparisonSnapshot,
+} from "../lib/coachState/coachComparisonPersistence";
 import type { CoachState } from "../lib/coachState/coachStateTypes";
 import { buildCoachReport } from "../lib/coachReport/buildCoachReport";
 import type { CoachReport } from "../lib/coachReport/coachReportTypes";
@@ -291,6 +298,7 @@ export default function StartPage() {
     });
 
     try {
+      const priorComparisonSnapshot = await loadPersistedCoachComparisonSnapshot();
       coachDashboardLog(`[${requestId}] buildCoachExportMetrics start`);
       const metricsStartedAt = Date.now();
       const metrics = await withTimeout(
@@ -308,10 +316,8 @@ export default function StartPage() {
 
       coachDashboardLog(`[${requestId}] buildCoachStateFromExportMetrics start`);
       const stateStartedAt = Date.now();
-      const nextCoachState = withCoachStateComparison(
-        buildCoachStateFromExportMetrics(metrics),
-        coachStateRef.current,
-      );
+      const currentCoachState = buildCoachStateFromExportMetrics(metrics);
+      const nextCoachState = withCoachStateComparison(currentCoachState, priorComparisonSnapshot);
       coachDashboardLog(`[${requestId}] buildCoachStateFromExportMetrics complete`, {
         elapsedMs: Date.now() - stateStartedAt,
       });
@@ -331,6 +337,7 @@ export default function StartPage() {
       );
       setCoachStateError(null);
       setHasLoadedCoachDashboard(true);
+      await savePersistedCoachComparisonSnapshot(buildPersistedCoachComparisonSnapshot(currentCoachState));
     } catch (err: any) {
       coachDashboardLog(`[${requestId}] refresh failed`, {
         elapsedMs: Date.now() - startedAt,

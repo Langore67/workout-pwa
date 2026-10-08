@@ -29,6 +29,7 @@ export type CoachExplanation = {
   why: string[];
   whatChanged: string[];
   evidence: CoachEvidenceItem[];
+  comparisonAvailable?: boolean;
 };
 
 export type CoachStateSnapshot = {

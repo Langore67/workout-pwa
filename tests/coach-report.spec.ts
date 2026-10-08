@@ -6,6 +6,7 @@ import { formatCoachExportText } from "../src/lib/coachExport/formatCoachExportT
 import { buildCoachReport, hasCoachReportDashboardContent } from "../src/lib/coachReport/buildCoachReport";
 import { formatCoachReportText } from "../src/lib/coachReport/formatCoachReportText";
 import { buildCoachStateFromExportMetrics } from "../src/lib/coachState/buildCoachState";
+import { buildPersistedCoachComparisonSnapshot, withCoachStateComparison } from "../src/lib/coachState/coachExplainability";
 
 function buildFixture(overrides: any = {}) {
   const weeklyVolume = {
@@ -668,6 +669,24 @@ test("coach export formatter delegates to coach report rendering", async () => {
   expect(formatCoachExportText(fixture.metrics as any)).toBe(
     formatCoachReportText(report, { bodyHeadingOverride: "Body Composition — Coach Trend Values" })
   );
+});
+
+test("coach report and export use the same durable What Changed comparison", () => {
+  const fixture = buildFixture();
+  const current = buildCoachStateFromExportMetrics(fixture.metrics as any);
+  const prior = buildPersistedCoachComparisonSnapshot(current);
+  prior.strength = { ...prior.strength, signal: 1.82 };
+  const compared = withCoachStateComparison(current, prior);
+  const reportText = formatCoachReportText(buildCoachReport({
+    coachState: compared,
+    metrics: fixture.metrics as any,
+    generatedAt: fixture.metrics.generatedAt,
+  }));
+  const exportText = formatCoachExportText(fixture.metrics as any, prior);
+
+  expect(compared.explanation.whatChanged).toContain("Strength Signal improved +0.10.");
+  expect(reportText).toContain("Strength Signal improved +0.10.");
+  expect(exportText).toContain("Strength Signal improved +0.10.");
 });
 
 

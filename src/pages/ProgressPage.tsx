@@ -44,6 +44,7 @@ import {
 import type { CardioWalkEvent, CardioWalkSummary } from "../lib/cardio/cardioTypes";
 import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetrics";
 import { formatCoachExportText } from "../lib/coachExport/formatCoachExportText";
+import { loadPersistedCoachComparisonSnapshot } from "../lib/coachState/coachComparisonPersistence";
 import { formatCapabilityDate, labelForCapabilityCategory } from "../lib/capabilityTests";
 import { buildCapabilityTestsSummary } from "../lib/capabilityTestsSummary";
 import { deriveCarryCapabilityResultsFromHistory } from "../lib/deriveCapabilityTestsFromHistory";
@@ -605,8 +606,11 @@ export default function ProgressPage() {
 
     async function generateCoachExportText() {
       try {
-        const metrics = await buildCoachExportMetrics();
-        return formatCoachExportText(metrics);
+        const [metrics, priorSnapshot] = await Promise.all([
+          buildCoachExportMetrics(),
+          loadPersistedCoachComparisonSnapshot(),
+        ]);
+        return formatCoachExportText(metrics, priorSnapshot);
       } catch (err: any) {
         setManualCopyText(err?.message || "Could not generate coach export text.");
         return "";
@@ -632,8 +636,11 @@ export default function ProgressPage() {
     let text = coachExportText;
     if (!text) {
       try {
-        const metrics = await buildCoachExportMetrics();
-        text = formatCoachExportText(metrics);
+        const [metrics, priorSnapshot] = await Promise.all([
+          buildCoachExportMetrics(),
+          loadPersistedCoachComparisonSnapshot(),
+        ]);
+        text = formatCoachExportText(metrics, priorSnapshot);
         setCoachExportText(text);
         setCoachExportReadyState(text ? "ready" : "error");
       } catch (err: any) {

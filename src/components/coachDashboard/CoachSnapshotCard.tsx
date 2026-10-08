@@ -31,7 +31,9 @@ export function CoachSnapshotCard({
               <ExplanationList
                 heading="What Changed"
                 items={snapshot.explanation.whatChanged}
-                emptyText="No prior comparable Coach state is available."
+                emptyText={snapshot.explanation.comparisonAvailable
+                  ? "No material changes since the prior comparable Coach state."
+                  : "No prior comparable Coach state is available."}
               />
               {snapshot.explanation.evidence.length ? (
                 <div>

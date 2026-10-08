@@ -112,6 +112,7 @@ export function buildCoachDashboardModel(report?: CoachReport | null): CoachDash
             why: Object.freeze([...report.snapshot.explanation.why]),
             whatChanged: Object.freeze([...report.snapshot.explanation.whatChanged]),
             evidence: Object.freeze(report.snapshot.explanation.evidence.map((item) => Object.freeze({ ...item }))),
+            comparisonAvailable: report.snapshot.explanation.comparisonAvailable,
           })
         : undefined,
     }),
