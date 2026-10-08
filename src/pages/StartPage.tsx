@@ -55,6 +55,7 @@ import { WeeklyVolumeCard } from "../components/coachDashboard/WeeklyVolumeCard"
 import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetrics";
 import type { CoachExportMetrics } from "../lib/coachExport/types";
 import { buildCoachStateFromExportMetrics } from "../lib/coachState/buildCoachState";
+import { withCoachStateComparison } from "../lib/coachState/coachExplainability";
 import type { CoachState } from "../lib/coachState/coachStateTypes";
 import { buildCoachReport } from "../lib/coachReport/buildCoachReport";
 import type { CoachReport } from "../lib/coachReport/coachReportTypes";
@@ -307,7 +308,10 @@ export default function StartPage() {
 
       coachDashboardLog(`[${requestId}] buildCoachStateFromExportMetrics start`);
       const stateStartedAt = Date.now();
-      const nextCoachState = buildCoachStateFromExportMetrics(metrics);
+      const nextCoachState = withCoachStateComparison(
+        buildCoachStateFromExportMetrics(metrics),
+        coachStateRef.current,
+      );
       coachDashboardLog(`[${requestId}] buildCoachStateFromExportMetrics complete`, {
         elapsedMs: Date.now() - stateStartedAt,
       });

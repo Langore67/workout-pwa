@@ -2164,6 +2164,7 @@ export function buildCoachReport({
       today: coachState.snapshot.todayFocus ?? "—",
       biggestWin: coachState.snapshot.biggestWin ?? undefined,
       biggestRisk: coachState.snapshot.biggestRisk ?? undefined,
+      explanation: coachState.explanation,
     } satisfies CoachReportSnapshot,
     body: {
       heading: "Body Values",

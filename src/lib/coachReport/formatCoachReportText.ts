@@ -113,6 +113,31 @@ function formatPriorityLabel(priority: string) {
   return priority.charAt(0).toUpperCase() + priority.slice(1);
 }
 
+function titleCase(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function renderExplanation(explanation: CoachReport["snapshot"]["explanation"]) {
+  if (!explanation) return [] as string[];
+  const lines = explanation.why.length
+    ? ["Why This Status", ...explanation.why.map((item) => `- ${item}`)]
+    : [];
+  if (explanation.whatChanged.length) {
+    lines.push("", "What Changed", ...explanation.whatChanged.map((item) => `- ${item}`));
+  }
+  if (explanation.evidence.length) {
+    lines.push("", "Evidence Quality");
+    for (const item of explanation.evidence) {
+      const quality = [
+        item.freshness ? titleCase(item.freshness) : undefined,
+        item.confidence ? `${titleCase(item.confidence)} confidence` : undefined,
+      ].filter(Boolean).join(" · ");
+      lines.push(`- ${item.label}: ${[item.value, quality].filter(Boolean).join(" · ")}`);
+    }
+  }
+  return [...lines, ""];
+}
+
 function renderProgrammingIntelligence(programming: CoachReport["programming"]) {
   if (!programming) return [] as string[];
 
@@ -200,6 +225,7 @@ export function formatCoachReportText(
     ...(report.snapshot.biggestWin ? ["", "Biggest Win", `- ${report.snapshot.biggestWin}`] : []),
     ...(report.snapshot.biggestRisk ? ["", "Biggest Risk", `- ${report.snapshot.biggestRisk}`] : []),
     "",
+    ...renderExplanation(report.snapshot.explanation),
     ...(body
       ? [
           bodyHeading,

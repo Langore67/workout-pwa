@@ -1,3 +1,4 @@
+import type { CoachExplanation } from "../coachState/coachStateTypes";
 import type {
   CoachAction,
   CoachProgrammingPriority,
@@ -13,6 +14,7 @@ export type CoachDashboardSnapshot = Readonly<{
   why: string;
   today: string;
   programmingPriorities: readonly CoachProgrammingPriority[];
+  explanation?: Readonly<CoachExplanation>;
 }>;
 
 export type CoachDashboardActions = Readonly<{
