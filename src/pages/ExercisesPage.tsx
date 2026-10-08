@@ -475,9 +475,11 @@ function buildExerciseAuditSummary(args: {
 function CatalogIntegrityAuditPanel({
   audit,
   onAssignStrengthSignalRole,
+  onEditExercise,
 }: {
   audit: ExerciseCatalogIntegrityAudit;
   onAssignStrengthSignalRole?: (exerciseId: string, role: StrengthSignalRole) => void;
+  onEditExercise?: (exerciseId: string) => void;
 }) {
   const severityColor = (severity: string) =>
     severity === "high" ? "#b91c1c" : severity === "medium" ? "#b45309" : "#6b7280";
@@ -543,9 +545,34 @@ function CatalogIntegrityAuditPanel({
                       padding: 8,
                     }}
                   >
-                    <div style={{ fontWeight: 700, fontSize: 13 }}>
-                      {row.exerciseName ?? row.key ?? "Catalog issue"}
-                    </div>
+                    {group.type === "missing_movement_pattern" && row.exerciseId ? (
+                      <button
+                        type="button"
+                        onClick={() => onEditExercise?.(row.exerciseId!)}
+                        aria-label={`Edit movement pattern for ${row.exerciseName ?? "exercise"}`}
+                        data-testid={`missing-movement-pattern-exercise-${row.exerciseId}`}
+                        style={{
+                          appearance: "none",
+                          border: 0,
+                          background: "transparent",
+                          color: "var(--accent)",
+                          cursor: "pointer",
+                          font: "inherit",
+                          fontSize: 13,
+                          fontWeight: 700,
+                          padding: 0,
+                          textAlign: "left",
+                          textDecoration: "underline",
+                          textUnderlineOffset: 2,
+                        }}
+                      >
+                        {row.exerciseName ?? "Exercise"}
+                      </button>
+                    ) : (
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>
+                        {row.exerciseName ?? row.key ?? "Catalog issue"}
+                      </div>
+                    )}
                     <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
                       {row.details}
                     </div>
@@ -1876,6 +1903,15 @@ export default function ExercisesPage() {
     setEditVideoUrl(String((e as any).videoUrl ?? ""));
   }
 
+  function openAuditExerciseEdit(exerciseId: string) {
+    const exercise = (allExercises ?? []).find((row) => row.id === exerciseId);
+    if (!exercise) {
+      window.alert("Exercise not found.");
+      return;
+    }
+    openEdit(exercise);
+  }
+
   function closeEdit() {
     setEditingId("");
     setEditError("");
@@ -2157,6 +2193,7 @@ export default function ExercisesPage() {
                   <CatalogIntegrityAuditPanel
                     audit={auditSummary.integrityAudit}
                     onAssignStrengthSignalRole={assignMissingStrengthSignalRole}
+                    onEditExercise={openAuditExerciseEdit}
                   />
 		  
 		                  <div
