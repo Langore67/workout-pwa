@@ -85,6 +85,24 @@ test("CoachSnapshotCard renders snapshot, priorities, and coaching focus", () =>
   expect(text).toContain("High confidence");
 });
 
+test("CoachSnapshotCard distinguishes a durable identical baseline from a cold start", () => {
+  const base: CoachDashboardSnapshot = {
+    status: "Solid",
+    confidence: "High",
+    why: "Signals are stable.",
+    today: "Continue the current plan.",
+    programmingPriorities: [],
+    explanation: { why: ["Signals are stable."], whatChanged: [], evidence: [], comparisonAvailable: true },
+  };
+
+  expect(textFrom(CoachSnapshotCard({ snapshot: base }))).toContain(
+    "No material changes since the prior comparable Coach state.",
+  );
+  expect(textFrom(CoachSnapshotCard({
+    snapshot: { ...base, explanation: { ...base.explanation!, comparisonAvailable: false } },
+  }))).toContain("No prior comparable Coach state is available.");
+});
+
 test("BodyCard renders values from the dashboard body section", () => {
   const body: CoachDashboardBody = {
     heading: "Body Values",
