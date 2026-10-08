@@ -56,6 +56,11 @@ test("CoachSnapshotCard renders snapshot, priorities, and coaching focus", () =>
         coachAction: "Hold load jumps.",
       },
     ],
+    explanation: {
+      why: ["Goal trajectory is moving in the right direction."],
+      whatChanged: ["Strength Signal improved +0.10."],
+      evidence: [{ id: "strength-benchmark", label: "Strength benchmark", value: "Bench Press · 3d old", freshness: "fresh", confidence: "high" }],
+    },
   };
   const actions: CoachDashboardActions = {
     primaryFocus: {
@@ -73,6 +78,11 @@ test("CoachSnapshotCard renders snapshot, priorities, and coaching focus", () =>
   expect(text).toContain("High | Strength Signal down");
   expect(text).toContain("Today's Coaching Focus");
   expect(text).toContain("Hold load jumps today.");
+  expect(text).toContain("Why? / Details");
+  expect(text).toContain("What Changed");
+  expect(text).toContain("Strength Signal improved +0.10.");
+  expect(text).toContain("Fresh");
+  expect(text).toContain("High confidence");
 });
 
 test("BodyCard renders values from the dashboard body section", () => {

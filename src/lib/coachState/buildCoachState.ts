@@ -7,6 +7,7 @@ import type {
   CoachStateOverallStatus,
   CoachStateStrengthAnchor,
 } from "./coachStateTypes";
+import { buildCoachExplanation } from "./coachExplainability";
 
 function mapConfidence(value: string | undefined | null): CoachStateConfidence {
   const normalized = String(value ?? "").trim().toLowerCase();
@@ -157,7 +158,7 @@ export function buildCoachStateFromExportMetrics(metrics: CoachExportMetrics | n
     intelligence?.summary ?? undefined,
   ]);
 
-  return {
+  const state: CoachState = {
     generatedAt: source.generatedAt ?? 0,
     snapshot: {
       overallStatus: mapOverallStatus(intelligence?.overallStatus),
@@ -203,9 +204,11 @@ export function buildCoachStateFromExportMetrics(metrics: CoachExportMetrics | n
     },
     trainingVolume,
     movementCoverage,
+    explanation: { why: [], whatChanged: [], evidence: [] },
     export: {
       available: metrics != null,
       sourceMetrics: metrics ?? undefined,
     },
   };
+  return { ...state, explanation: buildCoachExplanation(state) };
 }

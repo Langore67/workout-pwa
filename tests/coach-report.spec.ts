@@ -660,6 +660,11 @@ test("coach export formatter delegates to coach report rendering", async () => {
     generatedAt: fixture.metrics.generatedAt,
   });
 
+  expect(report.snapshot.explanation?.evidence.length).toBeGreaterThan(0);
+  const explanationText = formatCoachReportText(report);
+  expect(explanationText).toContain("Evidence Quality");
+  expect(explanationText).toContain("Body composition:");
+
   expect(formatCoachExportText(fixture.metrics as any)).toBe(
     formatCoachReportText(report, { bodyHeadingOverride: "Body Composition — Coach Trend Values" })
   );

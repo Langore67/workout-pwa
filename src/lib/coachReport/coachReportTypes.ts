@@ -1,3 +1,4 @@
+import type { CoachExplanation } from "../coachState/coachStateTypes";
 import type {
   AnchorMovementFamily,
   CoachExportAnchorCurrentMovement,
@@ -65,6 +66,7 @@ export type CoachReportSnapshot = {
   today: string;
   biggestWin?: string;
   biggestRisk?: string;
+  explanation?: CoachExplanation;
 };
 
 export type CoachReportBody = {

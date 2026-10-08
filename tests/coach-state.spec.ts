@@ -2,6 +2,7 @@
 import { buildBodyConfidence } from "../src/body/bodyConfidenceEngine";
 import { buildCardioWalkSummary } from "../src/lib/cardio/buildCardioWalkSummary";
 import { buildCoachStateFromExportMetrics } from "../src/lib/coachState/buildCoachState";
+import { buildCoachExplanation, buildCoachWhatChanged, getBenchmarkFreshness } from "../src/lib/coachState/coachExplainability";
 import { buildGoalProgress } from "../src/lib/coachExport/goalEngine";
 import type { CoachExportMetrics } from "../src/lib/coachExport/types";
 import type { Exercise, Session, SetEntry, Track } from "../src/db";
@@ -470,6 +471,70 @@ test("coach state builder does not mutate the export metrics input", async () =>
   buildCoachStateFromExportMetrics(metrics);
 
   expect(metrics).toEqual(before);
+});
+
+test("coach explanation exposes existing reasons and evidence quality without changing status", () => {
+  const state = buildCoachStateFromExportMetrics(buildMetrics());
+
+  expect(state.snapshot.overallStatus).toBe("watch");
+  expect(state.explanation.why).toContain("Goal trajectory is moving in the right direction.");
+  expect(state.explanation.why.some((item) => item.startsWith("Biggest win:"))).toBe(true);
+  expect(state.explanation.why.some((item) => item.startsWith("Attention:"))).toBe(true);
+  expect(state.explanation.why.some((item) => item.startsWith("Today:"))).toBe(true);
+  expect(state.explanation.evidence).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: "strength-benchmark", freshness: "fresh", confidence: "high" }),
+    expect.objectContaining({ id: "cardio", confidence: "low" }),
+    expect.objectContaining({ id: "body-composition", confidence: "high" }),
+  ]));
+});
+
+test("benchmark freshness reuses current recent, historical, and stale buckets", () => {
+  const anchor = buildCoachStateFromExportMetrics(buildMetrics()).strength.anchors?.[0];
+  expect(getBenchmarkFreshness(anchor)).toBe("fresh");
+  expect(getBenchmarkFreshness({ ...anchor!, recency: "historical", ageDays: 22 })).toBe("aging");
+  expect(getBenchmarkFreshness({ ...anchor!, recency: "stale", ageDays: 29, isStale: true })).toBe("stale");
+});
+
+test("explanation preserves a solid status reason and raises cardio confidence only with enough recent data", () => {
+  const metrics = buildMetrics();
+  metrics.coachIntelligence = {
+    ...metrics.coachIntelligence!,
+    overallStatus: "On Track",
+    summary: "Strength and goal signals are stable.",
+  } as any;
+  const state = buildCoachStateFromExportMetrics(metrics);
+  const sparseCardio = state.explanation.evidence.find((item) => item.id === "cardio");
+  const denseExplanation = buildCoachExplanation({
+    ...state,
+    cardio: { ...state.cardio, walkCount7d: 4 },
+  });
+
+  expect(state.snapshot.overallStatus).toBe("solid");
+  expect(state.explanation.why).toContain("Strength and goal signals are stable.");
+  expect(sparseCardio?.confidence).toBe("low");
+  expect(denseExplanation.evidence.find((item) => item.id === "cardio")?.confidence).toBe("high");
+});
+
+test("What Changed emits material deltas and ignores trivial or missing baselines", () => {
+  const prior = buildCoachStateFromExportMetrics(buildMetrics());
+  const changedMetrics = buildMetrics();
+  changedMetrics.strengthSignal!.current = 2.02;
+  changedMetrics.bodyComp!.waist!.latest = 35;
+  changedMetrics.anchorLifts![0].recency = "historical";
+  changedMetrics.anchorLifts![0].ageDays = 22;
+  const changed = buildCoachStateFromExportMetrics(changedMetrics);
+
+  expect(buildCoachWhatChanged(changed)).toEqual([]);
+  expect(buildCoachWhatChanged(changed, prior)).toEqual(expect.arrayContaining([
+    "Strength Signal improved +0.10.",
+    "Waist decreased 0.5 in.",
+    "Strength benchmark freshness changed from fresh to aging.",
+  ]));
+
+  const trivialMetrics = buildMetrics();
+  trivialMetrics.strengthSignal!.current = 1.94;
+  const trivial = buildCoachStateFromExportMetrics(trivialMetrics);
+  expect(buildCoachWhatChanged(trivial, prior).some((item) => item.startsWith("Strength Signal"))).toBe(false);
 });
 
 

@@ -14,6 +14,11 @@ function buildReport(overrides: Partial<CoachReport> = {}): CoachReport {
       confidence: "High",
       why: "Goal trajectory is moving in the right direction.",
       today: "Keep progression conservative.",
+      explanation: {
+        why: ["Goal trajectory is moving in the right direction."],
+        whatChanged: ["Strength Signal improved +0.10."],
+        evidence: [{ id: "strength-benchmark", label: "Strength benchmark", freshness: "fresh", confidence: "high" }],
+      },
     },
     body: {
       heading: "Body Values",
@@ -152,6 +157,8 @@ test("maps snapshot, programming focus, and coaching focus", () => {
   expect(model.snapshot.confidence).toBe("High");
   expect(model.snapshot.why).toBe("Goal trajectory is moving in the right direction.");
   expect(model.snapshot.today).toBe("Keep progression conservative.");
+  expect(model.snapshot.explanation?.whatChanged).toEqual(["Strength Signal improved +0.10."]);
+  expect(model.snapshot.explanation?.evidence[0]).toEqual(expect.objectContaining({ freshness: "fresh", confidence: "high" }));
   expect(model.snapshot.programmingPriorities.map((row) => row.title)).toEqual(["Strength Signal down", "Cardio"]);
   expect(model.actions?.primaryFocus?.objective).toBe("Hold load jumps today.");
   expect(model.actions?.primaryFocus?.reason).toBe("Recent strength signal is pressured.");

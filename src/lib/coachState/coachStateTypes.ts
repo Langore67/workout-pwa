@@ -13,6 +13,23 @@ import type { GoalProgressRow } from "../coachExport/goalEngine";
 
 export type CoachStateOverallStatus = CoachExportOverallStatus;
 export type CoachStateConfidence = "low" | "moderate" | "high";
+export type CoachEvidenceFreshness = "fresh" | "aging" | "stale" | "unknown";
+
+export type CoachEvidenceItem = {
+  id: string;
+  label: string;
+  value?: string;
+  direction?: "up" | "down" | "flat" | "mixed";
+  freshness?: CoachEvidenceFreshness;
+  confidence?: "high" | "medium" | "low";
+  note?: string;
+};
+
+export type CoachExplanation = {
+  why: string[];
+  whatChanged: string[];
+  evidence: CoachEvidenceItem[];
+};
 
 export type CoachStateSnapshot = {
   overallStatus: CoachStateOverallStatus;
@@ -127,5 +144,6 @@ export type CoachState = {
   learnings: CoachStateLearnings;
   trainingVolume?: CoachStateTrainingVolume;
   movementCoverage?: CoachStateMovementCoverage;
+  explanation: CoachExplanation;
   export: CoachStateExport;
 };

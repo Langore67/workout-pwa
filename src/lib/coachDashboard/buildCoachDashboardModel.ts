@@ -107,6 +107,13 @@ export function buildCoachDashboardModel(report?: CoachReport | null): CoachDash
       why: report?.snapshot?.why ?? DASH,
       today: report?.snapshot?.today ?? DASH,
       programmingPriorities: firstThree(report?.programming?.priorities),
+      explanation: report?.snapshot?.explanation
+        ? Object.freeze({
+            why: Object.freeze([...report.snapshot.explanation.why]),
+            whatChanged: Object.freeze([...report.snapshot.explanation.whatChanged]),
+            evidence: Object.freeze(report.snapshot.explanation.evidence.map((item) => Object.freeze({ ...item }))),
+          })
+        : undefined,
     }),
     body: Object.freeze({
       heading: report?.body?.heading ?? "Body Values",
