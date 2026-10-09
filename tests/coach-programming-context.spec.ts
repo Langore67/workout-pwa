@@ -198,3 +198,33 @@ test("Cardio Progression report caps comparable groups at three", () => {
   expect(text).toContain("Route A / Walk / Fitness / Continuous");
   expect(text).not.toContain("Route D / Walk / Fitness / Continuous");
 });
+
+test("Programming Context renders factual cardio/strength proximity without causal or prescriptive language", () => {
+  const endedAt = AS_OF - 2 * 60 * 60 * 1000;
+  const sessions = [
+    { id: "prior-1", startedAt: AS_OF - 6 * DAY_MS, endedAt: AS_OF - 6 * DAY_MS + 60 * 60 * 1000 },
+    { id: "prior-2", startedAt: AS_OF - 4 * DAY_MS, endedAt: AS_OF - 4 * DAY_MS + 60 * 60 * 1000 },
+    { id: "current", templateName: "Anything", startedAt: endedAt - 60 * 60 * 1000, endedAt },
+  ] as any;
+  const tracks = [{ id: "deadlift-track", exerciseId: "trap", displayName: "Trap Bar Deadlift", trackType: "strength" }] as any;
+  const sets = sessions.map((session: any) => ({ id: `set-${session.id}`, sessionId: session.id, trackId: "deadlift-track", setType: "working", weight: session.id === "current" ? 285 : 300, reps: 5, completedAt: session.endedAt, createdAt: session.endedAt })) as any;
+  const cardioEvent = { sessionId: "cardio", startedAt: AS_OF - 20 * 60 * 60 * 1000, endedAt: AS_OF - 19 * 60 * 60 * 1000, date: "2026-10-08", name: "PRP Walk", activityType: "walk", conditioningIntent: "fitness", cardioFormat: "continuous", durationSeconds: 3600, distanceMeters: 5600, avgHr: 112, confidence: "high" };
+  const context = buildCoachProgrammingContext({
+    metrics: metrics({ cardioSummary: { normalizedWalks: [cardioEvent], last7d: { count: 1, totalDurationSeconds: 3600, totalDistanceMeters: 5600 }, last28d: { count: 1, totalDurationSeconds: 3600, totalDistanceMeters: 5600 } } }),
+    sessions,
+    sets,
+    tracks,
+    exercises: roleExercises,
+    asOf: AS_OF,
+  });
+  const text = formatCoachReportText({ snapshot: { status: "Solid", confidence: "High", why: "Current evidence.", today: "Coach decides." }, programmingContext: context } as any);
+
+  expect(context.cardio?.strengthProximity.observations[0]).toMatchObject({
+    strength: { sessionId: "current", classification: "lower-body dominant" },
+    comparison: { interpretation: "lower", exerciseName: "Trap Bar Deadlift" },
+  });
+  expect(text).toContain("Cardio / Strength Proximity");
+  expect(text).toContain("lower-body dominant strength 16h later");
+  expect(text).toContain("Trap Bar Deadlift: Performance was lower than recent comparable sessions");
+  expect(text).not.toMatch(/caused|impaired|reduce cardio|recovery was poor|fatigue score/i);
+});
