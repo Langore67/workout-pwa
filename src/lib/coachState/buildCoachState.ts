@@ -127,6 +127,7 @@ function buildStrengthAnchors(metrics: CoachExportMetrics): CoachStateStrengthAn
       : undefined,
     relationship: lift.relationship,
     interpretation: lift.interpretation ?? undefined,
+    benchmarkSelectionNote: lift.benchmarkSelectionNote,
   }));
 }
 

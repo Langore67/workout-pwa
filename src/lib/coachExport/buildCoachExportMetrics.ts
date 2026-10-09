@@ -238,11 +238,12 @@ async function buildAnchorLifts(generatedAt: number): Promise<CoachExportAnchorL
       effectiveWeightLb: anchor?.latestSet?.effectiveWeightLb ?? null,
       assistedBodyweight: anchor?.latestSet?.assistedBodyweight ?? null,
       reps: anchor?.latestSet?.reps ?? null,
-      e1rm: anchor?.capacity?.e1RM ?? null,
+      e1rm: anchor?.benchmarkE1RM ?? anchor?.capacity?.e1RM ?? null,
       performedAt: anchor?.latestSet?.completedAt ?? null,
       ageDays,
       recency,
       isStale: recency === "stale",
+      benchmarkSelectionNote: anchor?.benchmarkSelectionNote ?? undefined,
     };
   });
 }

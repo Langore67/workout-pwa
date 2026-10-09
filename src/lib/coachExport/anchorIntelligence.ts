@@ -326,6 +326,16 @@ export function buildAnchorIntelligence(args: {
       movementFamily,
     });
     const familyLabel = formatAnchorMovementFamilyLabel(movementFamily);
+    const interpretation = interpretationForAnchor({
+      anchor,
+      familyLabel,
+      status,
+      benchmarkStatus,
+      movementStatus,
+      latestSameExercise,
+      latestFamilyMovement,
+      relationship,
+    });
 
     return {
       ...anchor,
@@ -361,16 +371,7 @@ export function buildAnchorIntelligence(args: {
             }
           : undefined,
       relationship,
-      interpretation: interpretationForAnchor({
-        anchor,
-        familyLabel,
-        status,
-        benchmarkStatus,
-        movementStatus,
-        latestSameExercise,
-        latestFamilyMovement,
-        relationship,
-      }),
+      interpretation: [interpretation, anchor.benchmarkSelectionNote].filter(Boolean).join(" "),
     };
   });
 }

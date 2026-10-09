@@ -59,6 +59,8 @@ export type StrengthSignalV2AnchorResult = {
   exerciseId: string | null;
   exerciseName: string | null;
   latestSet: StrengthSignalV2LatestSet | null;
+  benchmarkE1RM: number | null;
+  benchmarkSelectionNote: string | null;
   capacity: StrengthSignalV2AnchorMeasurement;
   state: StrengthSignalV2AnchorMeasurement;
   // Legacy top-line fields currently mirror capacity for compatibility with existing consumers.
@@ -306,6 +308,8 @@ function emptyAnchorResult(): StrengthSignalV2AnchorResult {
     exerciseId: null,
     exerciseName: null,
     latestSet: null,
+    benchmarkE1RM: null,
+    benchmarkSelectionNote: null,
     capacity: emptyMeasurement,
     state: emptyMeasurement,
     e1RM: null,
@@ -385,12 +389,31 @@ function buildScoredAnchorResult(
   const capacity = buildAnchorMeasurement(selectedExerciseCandidates, now, CAPACITY_WINDOW_DAYS, selectedSupportsE1RM);
   const state = buildAnchorMeasurement(selectedExerciseCandidates, now, STATE_WINDOW_DAYS, selectedSupportsE1RM);
   const bestCapacityCandidate = bestScoredCandidateInWindow(selectedExerciseCandidates, now, CAPACITY_WINDOW_DAYS);
+  const bestStateCandidate = bestScoredCandidateInWindow(selectedExerciseCandidates, now, STATE_WINDOW_DAYS);
+  const capacityAgeDays = bestCapacityCandidate ? (now - bestCapacityCandidate.at) / DAY_MS : null;
+  const staleCapacityBenchmark = capacityAgeDays != null && Math.floor(Math.max(0, capacityAgeDays)) > STATE_WINDOW_DAYS;
+  const hasNewerStateBenchmark = !!(
+    staleCapacityBenchmark &&
+    bestStateCandidate &&
+    bestCapacityCandidate &&
+    bestStateCandidate.at > bestCapacityCandidate.at
+  );
+  const benchmarkCandidate = hasNewerStateBenchmark
+    ? bestStateCandidate
+    : bestCapacityCandidate ?? latest;
+  const benchmarkSelectionNote = hasNewerStateBenchmark
+    ? `Anchor updated to newer ${latest.exercise.name} benchmark.`
+    : staleCapacityBenchmark
+      ? "No newer comparable benchmark available."
+      : null;
 
   return {
     anchorId: selected.anchorId,
     exerciseId: latest.exercise.id,
     exerciseName: latest.exercise.name,
-    latestSet: bestCapacityCandidate ? latestSetPayload(bestCapacityCandidate) : latestSetPayload(latest),
+    latestSet: latestSetPayload(benchmarkCandidate),
+    benchmarkE1RM: benchmarkCandidate.e1RM,
+    benchmarkSelectionNote,
     capacity,
     state,
     e1RM: capacity.e1RM,
@@ -463,6 +486,8 @@ function buildCarryAnchorResult(
     exerciseId: latest.exercise.id,
     exerciseName: latest.exercise.name,
     latestSet: latestSetPayload(latest),
+    benchmarkE1RM: null,
+    benchmarkSelectionNote: null,
     capacity,
     state,
     e1RM: capacity.e1RM,

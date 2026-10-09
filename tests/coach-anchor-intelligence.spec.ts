@@ -30,6 +30,7 @@ test.describe("Anchor Intelligence", () => {
             ageDays: 3,
             recency: "recent",
             isStale: false,
+            benchmarkSelectionNote: "Anchor updated to newer Bench Press benchmark.",
           },
         ] as any,
         sessions: [],
@@ -49,6 +50,7 @@ test.describe("Anchor Intelligence", () => {
     expect(result.e1rm).toBe(262);
     expect(result.movementFamily).toBe("horizontal_push");
     expect(result.status).toBe("current_recent");
+    expect(result.interpretation).toContain("Anchor updated to newer Bench Press benchmark.");
   });
 
   test("marks same-exercise current anchors as current recent", async ({ page }) => {

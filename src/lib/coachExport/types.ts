@@ -116,6 +116,7 @@ export type CoachExportAnchorLift = {
   currentMovement?: CoachExportAnchorCurrentMovement | null;
   relationship?: CoachExportAnchorRelationship;
   interpretation?: string | null;
+  benchmarkSelectionNote?: string;
 };
 
 export type CoachExportHydration = {
