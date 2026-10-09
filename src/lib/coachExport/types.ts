@@ -387,6 +387,56 @@ export type MovementCoverageSummary = {
   summary: string;
 };
 
+export type CoachProgrammingContext = {
+  strength: {
+    strengthSignal?: number;
+    strengthSignalDelta14d?: number;
+    performanceTrend?: string;
+    anchors: Array<{
+      pattern: StrengthPattern;
+      exerciseName?: string;
+      benchmark?: string;
+      ageDays?: number;
+      freshness: "fresh" | "aging" | "stale" | "unknown";
+    }>;
+  };
+  coverage: {
+    windowDays: number;
+    movementPatterns: Array<{
+      family: MovementCoverageFamily;
+      label: string;
+      status: MovementCoverageStatus;
+      effectiveSets: number;
+      controlExposures: number;
+      sessions: number;
+    }>;
+  };
+  consistency: {
+    strengthSessions7d: number;
+    strengthSessions14d: number;
+    daysSinceLastStrengthSession?: number;
+  };
+  goals: {
+    trajectory?: string;
+    targets: Array<{
+      label: string;
+      current: number;
+      target: number;
+      unit: string;
+    }>;
+  };
+  constraints: string[];
+  cardio?: {
+    activities7d: number;
+    duration7dSeconds: number;
+    distance7dMeters: number;
+    activities28d: number;
+    activityTypes: string[];
+    intents: string[];
+    formats: string[];
+  };
+};
+
 export type CoachExportMetrics = {
   generatedAt: number;
   currentPhase: CurrentPhase;
@@ -412,6 +462,7 @@ export type CoachExportMetrics = {
   anchorLifts: CoachExportAnchorLift[];
   currentMovementFocus?: CoachExportCurrentMovementFocus;
   movementCoverage?: MovementCoverageSummary;
+  programmingContext?: CoachProgrammingContext;
   exerciseVocabulary: string[];
   trainingSignals: CoachExportTrainingSignals;
   coachingMemory?: CoachingMemory;

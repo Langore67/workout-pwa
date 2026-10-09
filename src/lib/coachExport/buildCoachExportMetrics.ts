@@ -52,6 +52,7 @@ import { buildGoalProgress } from "./goalEngine";
 import { buildLeanPreservationComposite } from "./leanPreservationComposite";
 import { buildWeeklyVolume } from "./weeklyVolume";
 import { selectRecentStrengthBuildingSessions } from "./strengthBuildingSessions";
+import { buildCoachProgrammingContext } from "./programmingContext";
 import type {
   CoachExportAnchorLift,
   CoachExportBodyTrendInputs,
@@ -873,6 +874,13 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
   metrics.coachIntelligence = buildCoachIntelligence({
     ...metrics,
     bodyComp: coachBodyComp,
+  });
+  metrics.programmingContext = buildCoachProgrammingContext({
+    metrics,
+    sessions: sessions ?? [],
+    sets: sets ?? [],
+    tracks: tracks ?? [],
+    asOf: generatedAt,
   });
   metrics.dataNotes = buildDataNotes(metrics);
   return metrics;

@@ -7,6 +7,7 @@ import type {
   CoachExportOverallStatus,
   MovementCoverageRelationship,
   MovementCoverageStatus,
+  CoachProgrammingContext,
 } from "../coachExport/types";
 
 export type CoachReportLine = {
@@ -228,6 +229,7 @@ export type CoachReport = {
   goals?: CoachReportGoals;
   learnings?: CoachReportLearnings;
   cardio?: CoachReportCardio;
+  programmingContext?: CoachProgrammingContext;
   programming?: CoachProgrammingSummary;
   coachingActions?: CoachActionSummary;
   exportOnly?: {

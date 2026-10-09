@@ -205,6 +205,7 @@ export function buildCoachStateFromExportMetrics(metrics: CoachExportMetrics | n
     },
     trainingVolume,
     movementCoverage,
+    programmingContext: source.programmingContext,
     explanation: { why: [], whatChanged: [], evidence: [] },
     export: {
       available: metrics != null,

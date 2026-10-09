@@ -170,6 +170,53 @@ function renderProgrammingIntelligence(programming: CoachReport["programming"]) 
   return lines;
 }
 
+function renderProgrammingContext(context: CoachReport["programmingContext"]) {
+  if (!context) return [] as string[];
+  const number = (value: number) => Number(value.toFixed(3)).toString();
+  const lines = ["Programming Context", "", "Strength"];
+  if (typeof context.strength.strengthSignal === "number") {
+    const delta = typeof context.strength.strengthSignalDelta14d === "number"
+      ? ` | 14d ${context.strength.strengthSignalDelta14d >= 0 ? "+" : ""}${context.strength.strengthSignalDelta14d.toFixed(2)}`
+      : "";
+    lines.push(`- Strength Signal: ${context.strength.strengthSignal.toFixed(2)}${delta}`);
+  }
+  if (context.strength.performanceTrend) lines.push(`- Performance Trend: ${context.strength.performanceTrend}`);
+  for (const anchor of context.strength.anchors) {
+    lines.push(`- ${anchor.exerciseName ?? anchor.pattern}: ${anchor.benchmark ?? "Benchmark unavailable"} | ${anchor.freshness}${anchor.ageDays != null ? ` | ${anchor.ageDays}d old` : ""}`);
+  }
+
+  if (context.coverage.movementPatterns.length) {
+    lines.push("", `Movement Coverage (${context.coverage.windowDays}d)`);
+    for (const pattern of context.coverage.movementPatterns) {
+      lines.push(`- ${pattern.label}: ${pattern.status} | ${pattern.effectiveSets} effective sets | ${pattern.controlExposures} control exposures | ${pattern.sessions} sessions`);
+    }
+  }
+
+  lines.push("", "Consistency");
+  lines.push(`- Strength sessions, last 7d: ${context.consistency.strengthSessions7d}`);
+  lines.push(`- Strength sessions, last 14d: ${context.consistency.strengthSessions14d}`);
+  if (context.consistency.daysSinceLastStrengthSession != null) lines.push(`- Days since last strength session: ${context.consistency.daysSinceLastStrengthSession}`);
+
+  if (context.goals.targets.length || context.goals.trajectory) {
+    lines.push("", "Goals");
+    if (context.goals.trajectory) lines.push(`- Trajectory: ${context.goals.trajectory}`);
+    for (const target of context.goals.targets) lines.push(`- ${target.label}: ${number(target.current)}${target.unit ? ` ${target.unit}` : ""} current | ${number(target.target)}${target.unit ? ` ${target.unit}` : ""} target`);
+  }
+  if (context.constraints.length) lines.push("", "Constraints / Data Quality", ...context.constraints.map((item) => `- ${item}`));
+
+  if (context.cardio) {
+    const cardio = context.cardio;
+    lines.push("", "Cardio Context");
+    lines.push(`- Last 7d: ${cardio.activities7d} activities | ${Math.round(cardio.duration7dSeconds / 60)} min${cardio.distance7dMeters > 0 ? ` | ${(cardio.distance7dMeters / 1609.344).toFixed(1)} mi` : ""}`);
+    lines.push(`- Last 28d: ${cardio.activities28d} activities`);
+    if (cardio.activityTypes.length) lines.push(`- Activity types: ${cardio.activityTypes.join(", ")}`);
+    if (cardio.intents.length) lines.push(`- Intents: ${cardio.intents.join(", ")}`);
+    if (cardio.formats.length) lines.push(`- Formats: ${cardio.formats.join(", ")}`);
+  }
+  lines.push("");
+  return lines;
+}
+
 function renderCoachingActions(actions: CoachReport["coachingActions"]) {
   if (!actions) return [] as string[];
 
@@ -297,6 +344,7 @@ export function formatCoachReportText(
             "",
           ]
       : []),
+    ...renderProgrammingContext(report.programmingContext),
     ...renderProgrammingIntelligence(report.programming),
     ...renderCoachingActions(report.coachingActions),
     ...(exportOnly
