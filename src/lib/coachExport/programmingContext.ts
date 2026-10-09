@@ -1,6 +1,7 @@
 import type { Exercise, Session, SetEntry, Track } from "../../db";
 import { TRAINING_ROLES, parseTrainingRole, type TrainingRole } from "../../domain/trainingRole";
 import { buildCardioProgressionContext } from "../cardio/cardioProgressionContext";
+import { buildCardioStrengthInterferenceContext } from "./cardioStrengthInterferenceContext";
 import { isStrengthBuildingSession } from "./strengthBuildingSessions";
 import type { CoachExportMetrics, CoachProgrammingContext } from "./types";
 
@@ -108,6 +109,15 @@ export function buildCoachProgrammingContext(args: {
         intents: uniqueDefined(cardioEvents.map((event) => event.conditioningIntent)),
         formats: uniqueDefined(cardioEvents.map((event) => event.cardioFormat)),
         progression: buildCardioProgressionContext(cardioEvents),
+        strengthProximity: buildCardioStrengthInterferenceContext({
+          sessions: args.sessions,
+          sets: args.sets,
+          tracks: args.tracks,
+          exercises: args.exercises ?? [],
+          cardioEvents,
+          asOf: args.asOf,
+          bodyweightLb: args.metrics.strengthSignal?.currentBodyweight ?? undefined,
+        }),
       }
     : undefined;
 

@@ -242,6 +242,24 @@ function renderProgrammingContext(context: CoachReport["programmingContext"]) {
         lines.push(`  - Signal: ${formatCardioProgressionSignal(group.signal)}`);
       }
     }
+    const proximity = cardio.strengthProximity?.observations?.slice(0, 5) ?? [];
+    if (proximity.length) {
+      lines.push("", "Cardio / Strength Proximity");
+      for (const observation of proximity) {
+        const cardioFields = [
+          observation.cardio.activityType,
+          observation.cardio.intent,
+          observation.cardio.cardioFormat,
+          observation.cardio.durationMinutes != null ? `${Math.round(observation.cardio.durationMinutes)} min` : undefined,
+          observation.cardio.distanceMiles != null ? `${observation.cardio.distanceMiles.toFixed(1)} mi` : undefined,
+          observation.cardio.avgHr != null ? `Avg HR ${Math.round(observation.cardio.avgHr)}` : undefined,
+        ].filter(Boolean);
+        lines.push(`- ${observation.cardio.dateTime.slice(0, 10)} cardio: ${cardioFields.join(" | ")}`);
+        lines.push(`  - ${observation.strength.classification} strength ${Number(observation.gapHours.toFixed(1))}h later`);
+        const comparisonLabel = observation.comparison.exerciseName ? `${observation.comparison.exerciseName}: ` : "";
+        lines.push(`  - ${comparisonLabel}${observation.strength.performanceSignal ?? "Insufficient comparable strength history"}`);
+      }
+    }
   }
   lines.push("");
   return lines;
