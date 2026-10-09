@@ -420,6 +420,60 @@ test.describe("Strength Signal v2 anchor resolver", () => {
     });
   });
 
+  test("stale exact-exercise benchmark promotes valid recent work without changing capacity scoring", async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      // @ts-ignore
+      const db = window.__db;
+      if (!db) throw new Error("__db missing on window.");
+      const { setCurrentPhase, setStrengthSignalConfig } = await import("/src/config/appConfig.ts");
+      const { computeStrengthSignalV2 } = await import("/src/strength/v2/computeStrengthSignalV2.ts");
+      const now = Date.UTC(2026, 9, 9, 12, 0, 0, 0);
+      const day = 24 * 60 * 60 * 1000;
+
+      await setCurrentPhase("cut");
+      await setStrengthSignalConfig({
+        activeVersion: "v2",
+        strengthSignalV2Config: { phases: { cut: { hinge: "trap-bar" } } },
+      });
+      await db.exercises.bulkAdd([
+        { id: "trap-bar", name: "Trap Bar Deadlift", normalizedName: "trap bar deadlift", anchorEligibility: "primary", anchorSubtypes: ["hinge"], equipmentTags: ["trap-bar"], createdAt: now },
+        { id: "barbell-rdl", name: "Barbell RDL", normalizedName: "barbell rdl", anchorEligibility: "primary", anchorSubtypes: ["hinge"], equipmentTags: ["barbell"], createdAt: now },
+      ]);
+      await db.tracks.bulkAdd([
+        { id: "trap-track", exerciseId: "trap-bar", displayName: "Trap Bar Deadlift", trackType: "strength", trackingMode: "weightedReps", warmupSetsDefault: 0, workingSetsDefault: 2, repMin: 3, repMax: 8, restSecondsDefault: 180, weightJumpDefault: 10, createdAt: now },
+        { id: "rdl-track", exerciseId: "barbell-rdl", displayName: "Barbell RDL", trackType: "strength", trackingMode: "weightedReps", warmupSetsDefault: 0, workingSetsDefault: 2, repMin: 5, repMax: 10, restSecondsDefault: 120, weightJumpDefault: 5, createdAt: now },
+      ]);
+      await db.sets.bulkAdd([
+        { id: "trap-stale", sessionId: "old", trackId: "trap-track", setType: "working", weight: 315, reps: 5, createdAt: now - 40 * day, completedAt: now - 40 * day },
+        { id: "trap-recent", sessionId: "new", trackId: "trap-track", setType: "working", weight: 225, reps: 5, createdAt: now - 5 * day, completedAt: now - 5 * day },
+        { id: "rdl-newer", sessionId: "rdl", trackId: "rdl-track", setType: "working", weight: 405, reps: 5, createdAt: now - day, completedAt: now - day },
+      ]);
+
+      const replaced = (await computeStrengthSignalV2({ now })).anchors.hinge!;
+      await db.sets.delete("trap-recent");
+      const fallback = (await computeStrengthSignalV2({ now })).anchors.hinge!;
+      await db.sets.delete("trap-stale");
+      await db.sets.bulkAdd([
+        { id: "trap-aging", sessionId: "aging", trackId: "trap-track", setType: "working", weight: 275, reps: 5, createdAt: now - 25 * day, completedAt: now - 25 * day },
+        { id: "trap-new-weaker", sessionId: "weak", trackId: "trap-track", setType: "working", weight: 185, reps: 5, createdAt: now - 3 * day, completedAt: now - 3 * day },
+      ]);
+      const aging = (await computeStrengthSignalV2({ now })).anchors.hinge!;
+
+      return {
+        replaced: { exerciseName: replaced.exerciseName, benchmarkSetId: replaced.latestSet?.setId, benchmarkE1RM: replaced.benchmarkE1RM, capacityE1RM: replaced.e1RM, note: replaced.benchmarkSelectionNote },
+        fallback: { benchmarkSetId: fallback.latestSet?.setId, note: fallback.benchmarkSelectionNote },
+        aging: { benchmarkSetId: aging.latestSet?.setId, note: aging.benchmarkSelectionNote },
+      };
+    });
+
+    expect(result.replaced.exerciseName).toBe("Trap Bar Deadlift");
+    expect(result.replaced.benchmarkSetId).toBe("trap-recent");
+    expect(result.replaced.benchmarkE1RM).toBeLessThan(result.replaced.capacityE1RM!);
+    expect(result.replaced.note).toBe("Anchor updated to newer Trap Bar Deadlift benchmark.");
+    expect(result.fallback).toEqual({ benchmarkSetId: "trap-stale", note: "No newer comparable benchmark available." });
+    expect(result.aging).toEqual({ benchmarkSetId: "trap-aging", note: null });
+  });
+
   test("computeStrengthSignalV2 anchor payload uses best qualifying bench set instead of later fatigue set", async ({ page }) => {
     const result = await page.evaluate(async () => {
       // @ts-ignore

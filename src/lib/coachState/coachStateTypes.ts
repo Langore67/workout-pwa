@@ -78,6 +78,7 @@ export type CoachStateStrengthAnchor = Pick<
   | "currentMovement"
   | "relationship"
   | "interpretation"
+  | "benchmarkSelectionNote"
 >;
 
 export type CoachStateStrength = {
