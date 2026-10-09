@@ -1,4 +1,6 @@
-import type { Session, SetEntry, Track } from "../../db";
+import type { Exercise, Session, SetEntry, Track } from "../../db";
+import { TRAINING_ROLES, parseTrainingRole, type TrainingRole } from "../../domain/trainingRole";
+import { buildCardioProgressionContext } from "../cardio/cardioProgressionContext";
 import { isStrengthBuildingSession } from "./strengthBuildingSessions";
 import type { CoachExportMetrics, CoachProgrammingContext } from "./types";
 
@@ -28,11 +30,16 @@ function uniqueDefined(values: Array<string | undefined>) {
   return [...new Set(values.filter((value): value is string => !!value))].sort();
 }
 
+function nameKey(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 export function buildCoachProgrammingContext(args: {
   metrics: CoachExportMetrics;
   sessions: Session[];
   sets: SetEntry[];
   tracks: Track[];
+  exercises?: Exercise[];
   asOf: number;
 }): CoachProgrammingContext {
   const tracksById = new Map((args.tracks ?? []).map((track) => [track.id, track]));
@@ -57,6 +64,25 @@ export function buildCoachProgrammingContext(args: {
     ...(finite(anchor.ageDays) ? { ageDays: Math.max(0, Math.floor(anchor.ageDays)) } : {}),
     freshness: freshness(anchor),
   }));
+  const roleByExerciseName = new Map<string, TrainingRole>();
+  for (const exercise of args.exercises ?? []) {
+    const role = parseTrainingRole(exercise.trainingRole);
+    if (role) roleByExerciseName.set(nameKey(exercise.name), role);
+  }
+  const recentRoleNames = new Set(
+    (args.metrics.movementCoverage?.entries ?? []).flatMap((entry) =>
+      (entry.contributingExercises ?? []).map((exercise) => nameKey(exercise.exerciseName))
+    )
+  );
+  const trainingRoles = TRAINING_ROLES.map((role) => {
+    const exercises = (args.exercises ?? [])
+      .filter((exercise) => !exercise.archivedAt && !(exercise as any).mergedIntoExerciseId && parseTrainingRole(exercise.trainingRole) === role)
+      .sort((a, b) => {
+        const recentDiff = Number(recentRoleNames.has(nameKey(b.name))) - Number(recentRoleNames.has(nameKey(a.name)));
+        return recentDiff || a.name.localeCompare(b.name);
+      });
+    return { role, exercises: exercises.slice(0, 5).map((exercise) => exercise.name), totalExercises: exercises.length };
+  }).filter((group) => group.totalExercises > 0);
   const constraints: string[] = [];
   for (const anchor of anchors) {
     const label = anchor.exerciseName ?? anchor.pattern;
@@ -81,6 +107,7 @@ export function buildCoachProgrammingContext(args: {
         activityTypes: uniqueDefined(cardioEvents.map((event) => event.activityType)),
         intents: uniqueDefined(cardioEvents.map((event) => event.conditioningIntent)),
         formats: uniqueDefined(cardioEvents.map((event) => event.cardioFormat)),
+        progression: buildCardioProgressionContext(cardioEvents),
       }
     : undefined;
 
@@ -102,8 +129,14 @@ export function buildCoachProgrammingContext(args: {
         effectiveSets: entry.effectiveSets7d,
         controlExposures: entry.controlExposures7d,
         sessions: entry.sessionCount7d,
+        roleBreakdown: (entry.contributingExercises ?? []).reduce<Partial<Record<TrainingRole | "untagged", number>>>((totals, exercise) => {
+          const role = roleByExerciseName.get(nameKey(exercise.exerciseName)) ?? "untagged";
+          totals[role] = Math.round(((totals[role] ?? 0) + exercise.effectiveSets) * 10) / 10;
+          return totals;
+        }, {}),
       })),
     },
+    trainingRoles,
     consistency: {
       strengthSessions7d: countWithin(7),
       strengthSessions14d: countWithin(14),
