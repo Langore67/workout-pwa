@@ -2183,6 +2183,7 @@ export function buildCoachReport({
     goals,
     learnings,
     cardio,
+    programmingContext: coachState.programmingContext ?? metrics.programmingContext,
     programming,
     coachingActions,
     exportOnly: Object.fromEntries(Object.entries(exportOnly).filter(([, section]) => hasSectionContent(section))) as NonNullable<

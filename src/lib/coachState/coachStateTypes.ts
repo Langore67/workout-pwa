@@ -5,6 +5,7 @@ import type {
   CoachExportAnchorLift,
   CoachExportOverallStatus,
   CoachExportMetrics,
+  CoachProgrammingContext,
   CoachExportWaistToHeight,
   CoachExportWeeklyVolume,
   MovementCoverageSummary,
@@ -146,6 +147,7 @@ export type CoachState = {
   learnings: CoachStateLearnings;
   trainingVolume?: CoachStateTrainingVolume;
   movementCoverage?: CoachStateMovementCoverage;
+  programmingContext?: CoachProgrammingContext;
   explanation: CoachExplanation;
   export: CoachStateExport;
 };
