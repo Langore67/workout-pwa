@@ -6,6 +6,7 @@ import type { CardioWalkSummary } from "../cardio/cardioTypes";
 import type { CoachIntelligence } from "./coachIntelligence";
 import type { GoalProgress } from "./goalEngine";
 import type { LeanPreservationComposite } from "./leanPreservationComposite";
+import type { TrainingRole } from "../../domain/trainingRole";
 
 export type CoachExportMetric = {
   latest: number | null;
@@ -409,8 +410,14 @@ export type CoachProgrammingContext = {
       effectiveSets: number;
       controlExposures: number;
       sessions: number;
+      roleBreakdown: Partial<Record<TrainingRole | "untagged", number>>;
     }>;
   };
+  trainingRoles: Array<{
+    role: TrainingRole;
+    exercises: string[];
+    totalExercises: number;
+  }>;
   consistency: {
     strengthSessions7d: number;
     strengthSessions14d: number;

@@ -880,6 +880,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     sessions: sessions ?? [],
     sets: sets ?? [],
     tracks: tracks ?? [],
+    exercises: exercises ?? [],
     asOf: generatedAt,
   });
   metrics.dataNotes = buildDataNotes(metrics);

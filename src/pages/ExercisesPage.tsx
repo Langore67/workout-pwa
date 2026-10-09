@@ -29,6 +29,11 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
 import { db, normalizeName } from "../db";
 import type { Exercise, BodyPart, MetricMode, Track, ExerciseMovementPattern, StrengthSignalRole } from "../db";
+import {
+  TRAINING_ROLE_OPTIONS,
+  parseTrainingRole,
+  type TrainingRole,
+} from "../domain/trainingRole";
 import { uuid } from "../utils";
 import { Page, Section } from "../components/Page.tsx";
 import { seedExercises } from "../seed/seedExercises";
@@ -1323,6 +1328,7 @@ export default function ExercisesPage() {
   const [editMetricMode, setEditMetricMode] = useState<MetricMode>("reps");
   const [editMovementPattern, setEditMovementPattern] = useState<ExerciseMovementPattern | "">("");
   const [editStrengthSignalRole, setEditStrengthSignalRole] = useState<StrengthSignalRole>("included");
+  const [editTrainingRole, setEditTrainingRole] = useState<TrainingRole | "">("");
 
   const [editSummary, setEditSummary] = useState("");
   const [editDirections, setEditDirections] = useState("");
@@ -1889,6 +1895,7 @@ export default function ExercisesPage() {
     setEditMetricMode(normalizeMetricMode((e as any).metricMode));
     setEditMovementPattern(normalizeExerciseMovementPattern((e as any).movementPattern) ?? "");
     setEditStrengthSignalRole(normalizeStrengthSignalRoleForEdit((e as any).strengthSignalRole));
+    setEditTrainingRole(parseTrainingRole(e.trainingRole) ?? "");
 
     setEditSummary(String((e as any).summary ?? ""));
     setEditDirections(String((e as any).directions ?? ""));
@@ -1965,6 +1972,7 @@ export default function ExercisesPage() {
       metricMode: normalizeMetricMode(editMetricMode),
       movementPattern: normalizeExerciseMovementPattern(editMovementPattern),
       strengthSignalRole: normalizeStrengthSignalRoleForEdit(editStrengthSignalRole),
+      trainingRole: parseTrainingRole(editTrainingRole),
     };
 
     if (editFocusArea) patch.focusArea = editFocusArea;
@@ -3392,6 +3400,21 @@ export default function ExercisesPage() {
 		       <option value="excluded">Excluded</option>
 		     </select>
          </div>
+
+         <div style={{ minWidth: 180, flex: 1 }}>
+           <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Training Role</div>
+           <select
+             className="input"
+             value={editTrainingRole}
+             onChange={(e) => setEditTrainingRole(parseTrainingRole(e.target.value) ?? "")}
+             title="Records this exercise's programming significance without changing scoring"
+           >
+             <option value="">Not set</option>
+             {TRAINING_ROLE_OPTIONS.map((option) => (
+               <option key={option.value} value={option.value}>{option.label}</option>
+             ))}
+           </select>
+         </div>
 	       </div>
 	       
 	       <div className="muted" style={{ marginTop: 6, fontSize: 12, lineHeight: 1.4 }}>
@@ -3402,6 +3425,9 @@ export default function ExercisesPage() {
 		 	           <strong>Strength Signal Role</strong>: Controls how strongly this exercise contributes to Strength Signal.
 		 	           Leave blank for <b>primary/default</b> lifts, use <b>Secondary</b> for accessories you still want counted
 		 	           at reduced weight, and use <b>Excluded</b> for movements that should not affect the signal.
+	         </div>
+	         <div style={{ marginTop: 4 }}>
+	           <strong>Training Role</strong>: Records primary, accessory, corrective, or intentionally deprioritized context for Coach. It does not change Strength Signal scoring.
 	         </div>
                 </div>
 

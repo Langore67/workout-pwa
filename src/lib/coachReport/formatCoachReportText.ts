@@ -1,4 +1,5 @@
 import type { CoachReport, CoachReportSection } from "./coachReportTypes";
+import { getTrainingRoleLabel, type TrainingRole } from "../../domain/trainingRole";
 
 function renderSection(section: CoachReportSection | undefined) {
   if (!section) return [] as string[];
@@ -189,6 +190,18 @@ function renderProgrammingContext(context: CoachReport["programmingContext"]) {
     lines.push("", `Movement Coverage (${context.coverage.windowDays}d)`);
     for (const pattern of context.coverage.movementPatterns) {
       lines.push(`- ${pattern.label}: ${pattern.status} | ${pattern.effectiveSets} effective sets | ${pattern.controlExposures} control exposures | ${pattern.sessions} sessions`);
+      const breakdown = Object.entries(pattern.roleBreakdown)
+        .filter(([, count]) => typeof count === "number" && count > 0)
+        .map(([role, count]) => `${role === "untagged" ? "Untagged" : getTrainingRoleLabel(role as TrainingRole)} ${count}`);
+      if (breakdown.length) lines.push(`  - Role breakdown: ${breakdown.join(" | ")}`);
+    }
+  }
+
+  if (context.trainingRoles.length) {
+    lines.push("", "Training Priorities / Roles");
+    for (const group of context.trainingRoles) {
+      const hidden = group.totalExercises - group.exercises.length;
+      lines.push(`- ${getTrainingRoleLabel(group.role)}: ${group.exercises.join(", ")}${hidden > 0 ? ` (+${hidden} more)` : ""}`);
     }
   }
 
