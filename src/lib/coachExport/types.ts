@@ -7,6 +7,7 @@ import type { CoachIntelligence } from "./coachIntelligence";
 import type { GoalProgress } from "./goalEngine";
 import type { LeanPreservationComposite } from "./leanPreservationComposite";
 import type { TrainingRole } from "../../domain/trainingRole";
+import type { CardioProgressionContext } from "../cardio/cardioProgressionContext";
 
 export type CoachExportMetric = {
   latest: number | null;
@@ -441,6 +442,7 @@ export type CoachProgrammingContext = {
     activityTypes: string[];
     intents: string[];
     formats: string[];
+    progression: CardioProgressionContext;
   };
 };
 

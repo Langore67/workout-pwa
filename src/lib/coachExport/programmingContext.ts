@@ -1,5 +1,6 @@
 import type { Exercise, Session, SetEntry, Track } from "../../db";
 import { TRAINING_ROLES, parseTrainingRole, type TrainingRole } from "../../domain/trainingRole";
+import { buildCardioProgressionContext } from "../cardio/cardioProgressionContext";
 import { isStrengthBuildingSession } from "./strengthBuildingSessions";
 import type { CoachExportMetrics, CoachProgrammingContext } from "./types";
 
@@ -106,6 +107,7 @@ export function buildCoachProgrammingContext(args: {
         activityTypes: uniqueDefined(cardioEvents.map((event) => event.activityType)),
         intents: uniqueDefined(cardioEvents.map((event) => event.conditioningIntent)),
         formats: uniqueDefined(cardioEvents.map((event) => event.cardioFormat)),
+        progression: buildCardioProgressionContext(cardioEvents),
       }
     : undefined;
 
