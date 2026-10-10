@@ -105,6 +105,7 @@ import {
 } from "../domain/import/setClassParsing";
 import { joinImportNoteFragments, normalizeImportNoteText } from "../domain/import/noteParsing";
 import { computeAndStorePRsForSession } from "../prs";
+import { inspectIfWorkoutContract } from "../domain/import/ifWorkoutContract";
 
 /* ============================================================================
    Breadcrumb 1 — Types
@@ -132,6 +133,7 @@ type ParsedExerciseBlock = {
 };
 
 type ParsedWorkout = {
+  formatVersion?: 1;
   programDay: string;
   activityType?: CardioActivityType;
   conditioningIntent?: CardioIntent;
@@ -170,6 +172,7 @@ type PreviewSummary = {
   wouldAddSets: number;
   duplicateSessionFound: boolean;
   duplicateSessionId?: string;
+  duplicateSessionLabel?: string;
 };
 
 type ResultTone = "info" | "success" | "warn";
@@ -189,7 +192,9 @@ const PAGE_VERSION = "8";
 const BUILD_ID = "2026-03-17-PASTEWORKOUT-08";
 const FILE_FOOTER = "src/pages/PasteWorkoutPage.tsx";
 
-const SAMPLE_TEXT = `Session: Lower A
+const SAMPLE_TEXT = `IF Workout
+Format Version: 1
+Session: Lower A
 Date: 2026-03-17
 Start: 07:45
 End: 09:18
@@ -238,10 +243,12 @@ work 95x10 @5
 work 105x10 @4
 work 105x10 @4`;
 
-const CHATGPT_FORMAT_PROMPT = `Convert the following workout notes into IronForge format.
+const CHATGPT_FORMAT_PROMPT = `Convert the following completed workout notes into IronForge format.
 
 Use exactly this structure:
 
+IF Workout
+Format Version: 1
 Session: <name>
 Activity Type: <Walk|Hike|Run|Bike|Row|Other, cardio only when known>
 Intent: <Fitness|Recovery|Adventure, cardio only when known>
@@ -261,6 +268,7 @@ Supported set types:
 warmup, work, technique, mobility, corrective, conditioning
 
 Formatting rules:
+- This contract imports completed workout data; it does not schedule a planned workout.
 - One exercise name per line.
 - One set per line under the exercise.
 - Use BW for bodyweight movements.
@@ -1031,6 +1039,7 @@ function formatParsedSetPreview(set: ParsedSet): string {
 }
 
 function parseWorkoutText(text: string): ParsedWorkout {
+  const contract = inspectIfWorkoutContract(text);
   const lines = text.replace(/\r/g, "").split("\n");
 
   let programDay = "";
@@ -1099,6 +1108,7 @@ function parseWorkoutText(text: string): ParsedWorkout {
     }
 
     if (isBlank(line)) continue;
+    if (/^IF Workout$/i.test(line) || /^Format Version\s*:/i.test(line)) continue;
 
     const sessionMatch = line.match(/^session\s*:\s*(.+)$/i);
     if (sessionMatch) {
@@ -1221,6 +1231,7 @@ function parseWorkoutText(text: string): ParsedWorkout {
     });
 
   return {
+    formatVersion: contract.formatVersion,
     programDay: programDay || "Imported Session",
     activityType,
     conditioningIntent,
@@ -1246,6 +1257,7 @@ export default function PasteWorkoutPage() {
   const [parsed, setParsed] = useState<ParsedWorkout | null>(null);
   const [preview, setPreview] = useState<PreviewSummary | null>(null);
   const [reviewAcknowledged, setReviewAcknowledged] = useState<boolean>(false);
+  const [duplicateAcknowledged, setDuplicateAcknowledged] = useState<boolean>(false);
   const [selectedExistingByName, setSelectedExistingByName] = useState<Record<string, string>>({});
   const [rememberAliasByName, setRememberAliasByName] = useState<Record<string, boolean>>({});
   const [promptCopyState, setPromptCopyState] = useState<"idle" | "copied" | "error">("idle");
@@ -1263,6 +1275,15 @@ export default function PasteWorkoutPage() {
     () => (preview?.newExerciseNames.length ?? 0) + unresolvedReviewNames.length,
     [preview, unresolvedReviewNames]
   );
+  const effectiveWouldAddSessions = preview?.duplicateSessionFound && duplicateAcknowledged
+    ? 1
+    : preview?.wouldAddSessions ?? 0;
+  const effectiveWouldAddSessionItems = preview?.duplicateSessionFound && duplicateAcknowledged
+    ? (preview.wouldAddSessionItems || parsed?.exercises.filter((exercise) => exercise.sets.length > 0).length || 0)
+    : preview?.wouldAddSessionItems ?? 0;
+  const effectiveWouldAddSets = preview?.duplicateSessionFound && duplicateAcknowledged
+    ? (preview.wouldAddSets || parsed?.exercises.reduce((sum, exercise) => sum + exercise.sets.length, 0) || 0)
+    : preview?.wouldAddSets ?? 0;
   const footer = useMemo(
     () => `${FILE_FOOTER} • v${PAGE_VERSION} • ${BUILD_ID}`,
     []
@@ -1434,14 +1455,26 @@ export default function PasteWorkoutPage() {
       wouldAddSets: existingSession ? 0 : wouldAddSets,
       duplicateSessionFound: !!existingSession,
       duplicateSessionId: existingSession?.id,
+      duplicateSessionLabel: existingSession
+        ? `${existingSession.templateName ?? parsedWorkout.programDay} — ${parsedWorkout.date}${parsedWorkout.start ? ` ${parsedWorkout.start}` : ""}`
+        : undefined,
     };
   }
 
   async function parsePreviewNow() {
     setStatus("Parsing pasted workout…");
 
-    const p = parseWorkoutText(pasteText);
-    const pv = await buildPreview(p);
+    let p: ParsedWorkout;
+    let pv: PreviewSummary;
+    try {
+      p = parseWorkoutText(pasteText);
+      pv = await buildPreview(p);
+    } catch (error) {
+      setParsed(null);
+      setPreview(null);
+      setStatus(`Import validation failed:\n${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
 
     if (pv.duplicateSessionFound) {
       p.warnings.push(`Likely duplicate session already exists for ${p.programDay} on ${p.date}`);
@@ -1454,6 +1487,7 @@ export default function PasteWorkoutPage() {
       failedLineCount: p.failedLines.length,
     });
     setReviewAcknowledged(false);
+    setDuplicateAcknowledged(false);
     setSelectedExistingByName({});
     setRememberAliasByName({});
 
@@ -1544,9 +1578,9 @@ export default function PasteWorkoutPage() {
       return;
     }
 
-    if (preview.duplicateSessionFound) {
+    if (preview.duplicateSessionFound && !duplicateAcknowledged) {
       setStatus(
-        `Import blocked: likely duplicate session already exists for ${parsed.programDay} on ${parsed.date}.`
+        `Import blocked: likely duplicate session already exists for ${parsed.programDay} on ${parsed.date}. Confirm intentional duplicate import to continue.`
       );
       return;
     }
@@ -2002,6 +2036,7 @@ export default function PasteWorkoutPage() {
         onChange={(e) => {
           setPasteText(e.target.value);
           setReviewAcknowledged(false);
+          setDuplicateAcknowledged(false);
           setSelectedExistingByName({});
           setRememberAliasByName({});
         }}
@@ -2174,6 +2209,14 @@ export default function PasteWorkoutPage() {
           <h3 style={{ marginTop: 0 }}>Preview</h3>
 
           <div className="kv">
+            <span>Format</span>
+            <span>{parsed.formatVersion ? `IF Workout v${parsed.formatVersion}` : "Legacy IF format"}</span>
+          </div>
+          <div className="kv">
+            <span>Import semantics</span>
+            <span>Completed workout</span>
+          </div>
+          <div className="kv">
             <span>Session</span>
             <span>{parsed.programDay || "—"}</span>
           </div>
@@ -2193,6 +2236,16 @@ export default function PasteWorkoutPage() {
             <span>Exercises</span>
             <span>{preview.exerciseCount}</span>
           </div>
+          {parsed.activityType || parsed.conditioningIntent || parsed.cardioFormat ? (
+            <div className="kv">
+              <span>Cardio metadata</span>
+              <span>{[
+                parsed.activityType ? `Activity Type: ${parsed.activityType}` : undefined,
+                parsed.conditioningIntent ? `Intent: ${parsed.conditioningIntent}` : undefined,
+                parsed.cardioFormat ? `Format: ${parsed.cardioFormat}` : undefined,
+              ].filter(Boolean).join(" | ")}</span>
+            </div>
+          ) : null}
           <div className="kv">
             <span>Sets</span>
             <span>{preview.setCount}</span>
@@ -2222,22 +2275,40 @@ export default function PasteWorkoutPage() {
           </div>
           <div className="kv">
             <span>Would add Sessions</span>
-            <span>{preview.wouldAddSessions}</span>
+            <span>{effectiveWouldAddSessions}</span>
           </div>
           <div className="kv">
             <span>Would add SessionItems</span>
-            <span>{preview.wouldAddSessionItems}</span>
+            <span>{effectiveWouldAddSessionItems}</span>
           </div>
           <div className="kv">
             <span>Would add Sets</span>
-            <span>{preview.wouldAddSets}</span>
+            <span>{effectiveWouldAddSets}</span>
           </div>
 
           {preview.duplicateSessionFound && (
             <>
               <hr />
               <div className="muted">
-                Import blocked because an existing same-day session has matching title and similar content.
+                Possible duplicate detected: {preview.duplicateSessionLabel}. Import remains blocked unless you explicitly confirm below.
+              </div>
+              <label style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={duplicateAcknowledged}
+                  onChange={(event) => setDuplicateAcknowledged(event.target.checked)}
+                />
+                <span>I reviewed this possible duplicate and want to import another session intentionally.</span>
+              </label>
+            </>
+          )}
+
+          {preview.newExerciseNames.length > 0 && (
+            <>
+              <hr />
+              <div className="muted" style={{ whiteSpace: "pre-wrap" }}>
+                <b>Unknown exercises to create</b>
+                {"\n"}{preview.newExerciseNames.map((name) => `• ${name}`).join("\n")}
               </div>
             </>
           )}
