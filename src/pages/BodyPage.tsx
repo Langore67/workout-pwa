@@ -63,6 +63,12 @@ import {
   getTBW,
   getFluidRatio,
 } from "../body/bodyCalculations";
+import {
+  getBodyMeasurementTimestamp,
+  getBodyMetricTimestamp,
+  sortBodyMeasurementHistory,
+  sortBodyMetricHistory,
+} from "../body/bodyHistory";
 
 type BodyMetricRow = {
   id: string;
@@ -97,10 +103,13 @@ type BodyMetricRow = {
 
 type BodyMetricsView = "snapshots" | "measurements";
 type MeasurementComposerState = {
+  id?: string;
   measurementKey: BodyMeasurementKey;
   valueIn: string;
   date: string;
   time: string;
+  source: string;
+  note: string;
 };
 
 const HEIGHT_META_KEY = "profile.heightIn";
@@ -145,10 +154,13 @@ const MEASUREMENT_GROUPS: Array<{
 const EMPTY_MEASUREMENT_COMPOSER = (): MeasurementComposerState => {
   const now = new Date();
   return {
+    id: undefined,
     measurementKey: "neck",
     valueIn: "",
     date: formatDateInputValue(now),
     time: formatTimeInputValue(now),
+    source: "manual",
+    note: "",
   };
 };
 
@@ -165,8 +177,7 @@ const EMPTY_MEASUREMENT_COMPOSER = (): MeasurementComposerState => {
    ---------------------------------------------------------------------------- */
 
 function pickTime(r: BodyMetricRow): number {
-  const t = Number(r?.measuredAt ?? r?.takenAt ?? r?.date ?? r?.createdAt);
-  return Number.isFinite(t) ? t : 0;
+  return getBodyMetricTimestamp(r) ?? 0;
 }
 
 function pickWeightLb(r: BodyMetricRow): number | undefined {
@@ -372,8 +383,8 @@ export default function BodyPage() {
   }, [selectedMeasurementKey]);
 
   const bodyMeasurementRows = useLiveQuery(async () => {
-    const arr = ((await measurementsTable.orderBy("measuredAt").reverse().toArray()) ?? []) as BodyMeasurementEntry[];
-    return arr.filter(
+    const arr = ((await measurementsTable.toArray()) ?? []) as BodyMeasurementEntry[];
+    return sortBodyMeasurementHistory(arr.filter(
       (entry) =>
         entry &&
         typeof entry.measurementKey === "string" &&
@@ -382,7 +393,7 @@ export default function BodyPage() {
         typeof entry.valueIn === "number" &&
         Number.isFinite(entry.valueIn) &&
         entry.valueIn > 0,
-    );
+    ));
   }, []);
 
   const parsedHeightIn = useMemo(() => {
@@ -433,6 +444,9 @@ export default function BodyPage() {
   const [icwLb, setIcwLb] = useState("");
   const [ecwLb, setEcwLb] = useState("");
   const [mineralMassLb, setMineralMassLb] = useState("");
+  const [snapshotDate, setSnapshotDate] = useState(() => formatDateInputValue(new Date()));
+  const [snapshotTime, setSnapshotTime] = useState(() => formatTimeInputValue(new Date()));
+  const [editingSnapshotId, setEditingSnapshotId] = useState<string | undefined>();
 
   const hasAnyInput = useMemo(() => {
     return (
@@ -492,19 +506,6 @@ export default function BodyPage() {
      ------------------------------------------------------------------------ */
   const rows = useLiveQuery(async () => {
     try {
-      try {
-        const indexed = ((await table.orderBy("measuredAt").reverse().limit(60).toArray()) ??
-          []) as BodyMetricRow[];
-
-        const indexedLooksClean =
-          indexed.length > 0 &&
-          indexed.every((r) => typeof r.measuredAt === "number" && Number.isFinite(r.measuredAt));
-
-        if (indexedLooksClean) return indexed;
-      } catch {
-        // ignore and fall through
-      }
-
       const arr = ((await table.toArray()) ?? []) as BodyMetricRow[];
 
       const patch: BodyMetricRow[] = [];
@@ -535,10 +536,7 @@ export default function BodyPage() {
         }
       }
 
-      return arr
-        .slice()
-        .sort((a, b) => pickTime(b) - pickTime(a))
-        .slice(0, 60);
+      return sortBodyMetricHistory(arr);
     } catch {
       return [] as BodyMetricRow[];
     }
@@ -621,6 +619,7 @@ export default function BodyPage() {
     const now = new Date();
     setSelectedMeasurementKey(measurementKey);
     setMeasurementComposer({
+      id: undefined,
       measurementKey,
       valueIn:
         latest?.valueIn != null && Number.isFinite(latest.valueIn)
@@ -630,6 +629,8 @@ export default function BodyPage() {
             : "",
       date: formatDateInputValue(now),
       time: formatTimeInputValue(now),
+      source: "manual",
+      note: "",
     });
     setIsAddingMeasurement(true);
   }
@@ -661,16 +662,17 @@ export default function BodyPage() {
 
     const now = Date.now();
     const entry: BodyMeasurementEntry = {
-      id: uuid(),
+      id: measurementComposer.id ?? uuid(),
       measurementKey: measurementComposer.measurementKey,
       valueIn,
       measuredAt,
-      source: "manual",
-      createdAt: now,
+      source: measurementComposer.source.trim() || undefined,
+      note: measurementComposer.note.trim() || undefined,
+      createdAt: measurementComposer.id ? (selectedMeasurementEntries.find((item) => item.id === measurementComposer.id)?.createdAt ?? now) : now,
       updatedAt: now,
     };
 
-    await measurementsTable.add(entry as any);
+    await measurementsTable.put(entry as any);
 
     if (measurementComposer.measurementKey === "height") {
       await db.app_meta.put({
@@ -687,7 +689,7 @@ export default function BodyPage() {
     closeMeasurementComposer();
   }
 
-    async function addEntry() {
+  async function addEntry() {
       const w = toNumOrUndef(weightLb);
       const waist = toNumOrUndef(waistIn);
       const bf = toNumOrUndef(bodyFatPct);
@@ -733,13 +735,21 @@ export default function BodyPage() {
   
       if (!hasAnyValid) return;
   
+      const parsedAt = parseMeasuredAt(snapshotDate, snapshotTime);
+      if (parsedAt == null) {
+        window.alert("Snapshot date and time must be valid.");
+        return;
+      }
+
       const now = Date.now();
   
+      const existing = editingSnapshotId ? (rows ?? []).find((item) => item.id === editingSnapshotId) : undefined;
       const row: BodyMetricRow = {
-        id: uuid(),
-        measuredAt: now,
-        takenAt: now,
-        createdAt: now,
+        ...(existing ?? {}),
+        id: editingSnapshotId ?? uuid(),
+        measuredAt: parsedAt,
+        takenAt: parsedAt,
+        createdAt: existing?.createdAt ?? now,
         weightLb: w,
         waistIn: waist,
         bodyFatPct: bf,
@@ -754,7 +764,7 @@ export default function BodyPage() {
         mineralMassLb: mineral,
       };
   
-      await table.add(row as any);
+      await table.put(row as any);
       dispatchCoachDashboardRefresh("body:add");
   
       setWeightLb("");
@@ -768,13 +778,63 @@ export default function BodyPage() {
       setIcwLb("");
       setEcwLb("");
       setMineralMassLb("");
+      setSnapshotDate(formatDateInputValue(new Date()));
+      setSnapshotTime(formatTimeInputValue(new Date()));
+      setEditingSnapshotId(undefined);
+  }
+
+  function editSnapshot(row: BodyMetricRow) {
+    const at = getBodyMetricTimestamp(row) ?? Date.now();
+    const date = new Date(at);
+    setEditingSnapshotId(row.id);
+    setSnapshotDate(formatDateInputValue(date));
+    setSnapshotTime(formatTimeInputValue(date));
+    setWeightLb(row.weightLb != null ? String(row.weightLb) : "");
+    setWaistIn(row.waistIn != null ? String(row.waistIn) : "");
+    setBodyFatPct(row.bodyFatPct != null ? String(row.bodyFatPct) : "");
+    setBodyFatMassLb(row.bodyFatMassLb != null ? String(row.bodyFatMassLb) : "");
+    setLeanMassLb(row.leanMassLb != null ? String(row.leanMassLb) : "");
+    setVisceralFatIndex(row.visceralFatIndex != null ? String(row.visceralFatIndex) : "");
+    setSkeletalMuscleMassLb(row.skeletalMuscleMassLb != null ? String(row.skeletalMuscleMassLb) : "");
+    setBodyWaterPct(row.bodyWaterPct != null ? String(row.bodyWaterPct) : "");
+    setIcwLb(row.icwLb != null ? String(row.icwLb) : "");
+    setEcwLb(row.ecwLb != null ? String(row.ecwLb) : "");
+    setMineralMassLb(row.mineralMassLb != null ? String(row.mineralMassLb) : "");
+    setActiveMetricsView("snapshots");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function deleteEntry(id: string) {
     const ok = window.confirm("Delete this entry?");
     if (!ok) return;
     await table.delete(id);
+    if (editingSnapshotId === id) {
+      setEditingSnapshotId(undefined);
+    }
     dispatchCoachDashboardRefresh("body:delete");
+  }
+
+  async function deleteMeasurementEntry(id: string) {
+    const ok = window.confirm("Delete this measurement?");
+    if (!ok) return;
+    await measurementsTable.delete(id);
+    dispatchCoachDashboardRefresh("body:measurement-delete");
+  }
+
+  function editMeasurementEntry(entry: BodyMeasurementEntry) {
+    const at = getBodyMeasurementTimestamp(entry) ?? Date.now();
+    const date = new Date(at);
+    setSelectedMeasurementKey(entry.measurementKey);
+    setMeasurementComposer({
+      id: entry.id,
+      measurementKey: entry.measurementKey,
+      valueIn: String(entry.valueIn),
+      date: formatDateInputValue(date),
+      time: formatTimeInputValue(date),
+      source: entry.source ?? "",
+      note: entry.note ?? "",
+    });
+    setIsAddingMeasurement(true);
   }
 
   /* ------------------------------------------------------------------------
@@ -956,7 +1016,9 @@ export default function BodyPage() {
 
                         {inlineComposerOpen ? (
                           <div className="card" style={{ padding: 10, marginTop: 10 }}>
-                            <div style={{ fontWeight: 900, marginBottom: 8 }}>Add {def.label}</div>
+                            <div style={{ fontWeight: 900, marginBottom: 8 }}>
+                              {measurementComposer.id ? "Edit" : "Add"} {def.label}
+                            </div>
                             <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
                               <div style={{ minWidth: 160, flex: 1 }}>
                                 <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
@@ -973,6 +1035,38 @@ export default function BodyPage() {
                                   }
                                   placeholder={def.placeholder}
                                   inputMode="decimal"
+                                />
+                              </div>
+                              <div style={{ minWidth: 160, flex: 1 }}>
+                                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                                  Source
+                                </div>
+                                <input
+                                  className="input"
+                                  value={measurementComposer.source}
+                                  onChange={(e) =>
+                                    setMeasurementComposer((current) => ({
+                                      ...current,
+                                      source: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="manual"
+                                />
+                              </div>
+                              <div style={{ minWidth: 160, flex: 1 }}>
+                                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                                  Note
+                                </div>
+                                <input
+                                  className="input"
+                                  value={measurementComposer.note}
+                                  onChange={(e) =>
+                                    setMeasurementComposer((current) => ({
+                                      ...current,
+                                      note: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Optional"
                                 />
                               </div>
                               <div style={{ minWidth: 160, flex: 1 }}>
@@ -1056,7 +1150,17 @@ export default function BodyPage() {
                       {formatMeasurementHistoryValue(selectedMeasurementKey, entry.valueIn)}
                     </div>
                     <div className="muted" style={{ fontSize: 12 }}>
-                      {fmtDate(entry.measuredAt)}
+                      {fmtDate(getBodyMeasurementTimestamp(entry) ?? entry.measuredAt)}
+                      {entry.source ? ` · ${entry.source}` : ""}
+                      {entry.note ? ` · ${entry.note}` : ""}
+                    </div>
+                    <div className="row" style={{ gap: 6 }}>
+                      <button className="btn small" onClick={() => editMeasurementEntry(entry)}>
+                        Edit
+                      </button>
+                      <button className="btn small" onClick={() => deleteMeasurementEntry(entry.id)}>
+                        Delete
+                      </button>
                     </div>
                   </div>
                 ))
@@ -1075,9 +1179,33 @@ export default function BodyPage() {
             Breadcrumb 4C.2 — Add entry card
            ------------------------------------------------------------------ */}
         <div className="card" style={{ padding: 12, marginTop: 12 }}>
-          <div style={{ fontWeight: 900, marginBottom: 10 }}>Add entry</div>
+          <div style={{ fontWeight: 900, marginBottom: 10 }}>
+            {editingSnapshotId ? "Edit snapshot" : "Add entry"}
+          </div>
 
           <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+            <div style={{ minWidth: 160, flex: 1 }}>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                Date
+              </div>
+              <input
+                className="input"
+                type="date"
+                value={snapshotDate}
+                onChange={(e) => setSnapshotDate(e.target.value)}
+              />
+            </div>
+            <div style={{ minWidth: 160, flex: 1 }}>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                Time
+              </div>
+              <input
+                className="input"
+                type="time"
+                value={snapshotTime}
+                onChange={(e) => setSnapshotTime(e.target.value)}
+              />
+            </div>
             <div style={{ minWidth: 160, flex: 1 }}>
               <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
                 Weight (lb)
@@ -1225,7 +1353,7 @@ export default function BodyPage() {
 
           <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap" }}>
             <button className="btn primary" onClick={addEntry} disabled={!hasAnyInput}>
-              Save
+              {editingSnapshotId ? "Save changes" : "Save"}
             </button>
             <button
               className="btn"
@@ -1241,6 +1369,9 @@ export default function BodyPage() {
 	        setIcwLb("");
 	        setEcwLb("");
 	        setMineralMassLb("");
+                setSnapshotDate(formatDateInputValue(new Date()));
+                setSnapshotTime(formatTimeInputValue(new Date()));
+                setEditingSnapshotId(undefined);
               }}
               disabled={!hasAnyInput}
             >
@@ -1367,6 +1498,13 @@ export default function BodyPage() {
                       title="Delete entry"
                     >
                       Delete
+                    </button>
+                    <button
+                      className="btn small"
+                      onClick={() => editSnapshot(r)}
+                      title="Edit entry"
+                    >
+                      Edit
                     </button>
                   </div>
 

@@ -80,6 +80,7 @@ import {
 } from "../body/phaseQualityModel";
 import { dataReadinessConfidenceFromFlags } from "../body/dataReadinessConfidence";
 import { computeHydrationConfidenceFromBodyRows } from "../body/hydrationConfidence";
+import { getBodyMetricTimestamp } from "../body/bodyHistory";
 import {
   db,
   type Exercise,
@@ -300,7 +301,7 @@ function weekLabelFromKey(key: string) {
 }
 
 function pickBodyMetricTime(entry: BodyMetricEntry): number {
-  return Number(entry.measuredAt ?? entry.takenAt ?? entry.createdAt ?? 0);
+  return getBodyMetricTimestamp(entry) ?? 0;
 }
 
 function analyzeMetricTrend(points: ChartDatum[]): MetricTrendSummary {
