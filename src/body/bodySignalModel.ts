@@ -15,6 +15,8 @@
    - MPS-specific interpretation remains in MpsPage.tsx for now
    ============================================================================ */
 
+import { getBodyMetricTimestamp } from "./bodyHistory";
+
 export type Mode = "cut" | "maintain" | "bulk";
 
 export type BodyMetricRow = {
@@ -44,8 +46,7 @@ export type BodyMetricRow = {
 };
 
 export function pickTime(r: BodyMetricRow): number {
-  const t = Number(r?.measuredAt ?? r?.takenAt ?? r?.date ?? r?.createdAt);
-  return Number.isFinite(t) ? t : 0;
+  return getBodyMetricTimestamp(r) ?? 0;
 }
 
 export function pickWeightLb(r: BodyMetricRow): number | undefined {

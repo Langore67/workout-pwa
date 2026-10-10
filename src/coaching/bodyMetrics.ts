@@ -11,6 +11,7 @@
    ========================================================================== */
 
 import { db } from "../db";
+import { getBodyMetricTimestamp, sortBodyMetricHistory } from "../body/bodyHistory";
 
 export type BodyMetricKey =
   | "weightLb"
@@ -166,18 +167,14 @@ export async function getBodyMetricsSummary(opts?: BodyMetricsSummaryOptions): P
   const endMs = nowMs;
   const startMs = endMs - lookbackDays * 24 * 60 * 60 * 1000;
 
-  // Pull recent rows (most recent first). Use measuredAt when possible.
-  // Note: measuredAt is indexed (v9 store), so orderBy("measuredAt") is fast.
-  const rows = (await db.bodyMetrics
-    .where("measuredAt")
-    .between(startMs, endMs, true, false)
-    .toArray()) as any[];
+  // Pull rows first, then apply the shared legacy-compatible timestamp rule.
+  const rows = (await db.bodyMetrics.toArray()) as any[];
 
   // normalize + sort DESC (most recent first)
-  const rowsDesc: BodyMetricEntry[] = (rows ?? [])
+  const rowsDesc: BodyMetricEntry[] = sortBodyMetricHistory((rows ?? [])
     .map((r) => ({
       id: String(r.id),
-      measuredAt: isFiniteNumber(r.measuredAt) ? r.measuredAt : r.createdAt ?? 0,
+      measuredAt: getBodyMetricTimestamp(r) ?? 0,
       weightLb: isFiniteNumber(r.weightLb) ? r.weightLb : undefined,
       bodyFatPct: isFiniteNumber(r.bodyFatPct) ? r.bodyFatPct : undefined,
       skeletalMuscleMassLb: isFiniteNumber(r.skeletalMuscleMassLb) ? r.skeletalMuscleMassLb : undefined,
@@ -186,7 +183,7 @@ export async function getBodyMetricsSummary(opts?: BodyMetricsSummaryOptions): P
       notes: typeof r.notes === "string" ? r.notes : undefined,
       createdAt: isFiniteNumber(r.createdAt) ? r.createdAt : (isFiniteNumber(r.measuredAt) ? r.measuredAt : 0),
     }))
-    .sort((a, b) => (b.measuredAt ?? 0) - (a.measuredAt ?? 0));
+    .filter((row) => row.measuredAt >= startMs && row.measuredAt < endMs));
 
   const latestRow = rowsDesc[0];
 
