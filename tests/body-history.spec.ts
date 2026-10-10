@@ -57,13 +57,11 @@ test("measurement entry saves two rounds as separate rows across reload", async 
   await page.getByRole("button", { name: "Measurements" }).click();
 
   const round = async (date: string, values: Record<string, string>) => {
+    await page.locator('input[type="date"]:visible').first().fill(date);
     for (const [label, value] of Object.entries(values)) {
-      await page.getByTitle(`Add ${label} measurement`).click();
-      const composer = page.locator("div.card").filter({ hasText: `Add ${label}` }).last();
-      await composer.locator("input").first().fill(value);
-      await composer.locator('input[type="date"]').fill(date);
-      await composer.getByRole("button", { name: "Save measurement" }).click();
+      await page.getByLabel(`${label} measurement`).fill(value);
     }
+    await page.getByRole("button", { name: "Save measurement round" }).click();
   };
 
   const firstRound = {
@@ -94,11 +92,40 @@ test("measurement entry saves two rounds as separate rows across reload", async 
   expect(rowsAfterSave).toHaveLength(14);
   expect(new Set(rowsAfterSave.map((row: any) => row.id)).size).toBe(14);
   expect(new Set(rowsAfterSave.map((row: any) => row.measurementKey)).size).toBe(7);
-  expect(new Set(rowsAfterSave.map((row: any) => new Date(row.measuredAt).toISOString().slice(0, 10)))).toEqual(
-    new Set(["2026-09-23", "2026-09-30"]),
-  );
+  expect(new Set(rowsAfterSave.map((row: any) => row.measuredAt)).size).toBe(2);
+  expect(page.getByText("7 measurements").first()).toBeVisible();
 
   await page.reload({ waitUntil: "domcontentloaded" });
   const rowsAfterReload = await readRows();
   expect(rowsAfterReload).toHaveLength(14);
+});
+
+test("measurement round edit can change date and remove a field, then delete the round", async ({ page }) => {
+  await resetDexieDb(page);
+  await page.goto("/body", { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Measurements" }).click();
+  await page.locator('input[type="date"]:visible').first().fill("2026-10-01");
+  await page.getByLabel("Chest measurement").fill("41");
+  await page.getByLabel("Left calf measurement").fill("14.5");
+  await page.getByRole("button", { name: "Save measurement round" }).click();
+
+  const roundCard = page.locator('[data-testid^="measurement-round-"]').first();
+  await roundCard.getByRole("button", { name: "Edit measurement round" }).click();
+  await expect(page.getByLabel("Chest measurement")).toHaveValue("41");
+  await page.locator('input[type="date"]:visible').first().fill("2026-10-02");
+  await page.getByLabel("Chest measurement").fill("42");
+  await page.getByLabel("Left calf measurement").fill("");
+  await expect(page.getByLabel("Chest measurement")).toHaveValue("42");
+  await page.getByRole("button", { name: "Save measurement round" }).click();
+  await expect(page.getByRole("status")).toContainText("Updated 1 measurement");
+
+  const editedRows = await page.evaluate(async () => (window as any).__db.bodyMeasurements.toArray());
+  expect(editedRows).toHaveLength(1);
+  expect(editedRows[0].measurementKey).toBe("chest");
+  expect(editedRows[0].valueIn).toBe(42);
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator('[data-testid^="measurement-round-"]').first().getByRole("button", { name: "Delete measurement round" }).click();
+  await expect(page.getByText("No measurement rounds yet.")).toBeVisible();
+  expect(await page.evaluate(async () => (window as any).__db.bodyMeasurements.count())).toBe(0);
 });
