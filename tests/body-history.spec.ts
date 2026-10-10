@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { resetDexieDb } from "./helpers/dbSeed";
 import {
   buildBodyMeasurementSeries,
   buildBodyMetricSeries,
@@ -48,4 +49,56 @@ test("body-part history uses measuredAt before createdAt and keeps duplicate tim
   expect(getBodyMeasurementTimestamp(rows[2])).toBe(80);
   expect(buildBodyMeasurementSeries(rows).map((point) => point.row.id)).toEqual(["a", "b", "c"]);
   expect(buildBodyMeasurementSeries(rows)).toHaveLength(3);
+});
+
+test("measurement entry saves two rounds as separate rows across reload", async ({ page }) => {
+  await resetDexieDb(page);
+  await page.goto("/body", { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Measurements" }).click();
+
+  const round = async (date: string, values: Record<string, string>) => {
+    for (const [label, value] of Object.entries(values)) {
+      await page.getByTitle(`Add ${label} measurement`).click();
+      const composer = page.locator("div.card").filter({ hasText: `Add ${label}` }).last();
+      await composer.locator("input").first().fill(value);
+      await composer.locator('input[type="date"]').fill(date);
+      await composer.getByRole("button", { name: "Save measurement" }).click();
+    }
+  };
+
+  const firstRound = {
+    Chest: "41",
+    "Right biceps": "14.5",
+    "Left biceps": "14.25",
+    "Right quad": "22",
+    "Left quad": "21.75",
+    "Right calf": "14.75",
+    "Left calf": "14.5",
+  };
+  const secondRound = {
+    Chest: "41.25",
+    "Right biceps": "14.75",
+    "Left biceps": "14.5",
+    "Right quad": "22.25",
+    "Left quad": "22",
+    "Right calf": "15",
+    "Left calf": "14.75",
+  };
+
+  await round("2026-09-23", firstRound);
+  await round("2026-09-30", secondRound);
+
+  const readRows = () =>
+    page.evaluate(async () => (window as any).__db.bodyMeasurements.toArray());
+  const rowsAfterSave = await readRows();
+  expect(rowsAfterSave).toHaveLength(14);
+  expect(new Set(rowsAfterSave.map((row: any) => row.id)).size).toBe(14);
+  expect(new Set(rowsAfterSave.map((row: any) => row.measurementKey)).size).toBe(7);
+  expect(new Set(rowsAfterSave.map((row: any) => new Date(row.measuredAt).toISOString().slice(0, 10)))).toEqual(
+    new Set(["2026-09-23", "2026-09-30"]),
+  );
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const rowsAfterReload = await readRows();
+  expect(rowsAfterReload).toHaveLength(14);
 });
