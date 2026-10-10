@@ -458,6 +458,82 @@ conditioning duration 20min`;
   });
 });
 
+test("IF workout contract accepts legacy and version 1 while rejecting unsupported versions before writes", async ({ page }) => {
+  await goto(page, "/");
+  await resetDexieDb(page);
+
+  const result = await page.evaluate(async () => {
+    const { importSessionFromJournal, parseIfJournalText } = await import("/src/importers/importSession.ts");
+    // @ts-ignore
+    const db = window.__db;
+    const legacy = parseIfJournalText(`Session: Legacy Walk
+Date: 2026-10-08
+
+Walk
+conditioning duration 30min`);
+    const versionedText = `IF Workout
+Format Version: 1
+Session: Versioned Walk
+Activity Type: Walk
+Intent: Fitness
+Cardio Format: Continuous
+Date: 2026-10-09
+Start: 18:00
+End: 19:02
+
+Walk
+conditioning 3.60mi
+conditioning duration 1:02:00
+Avg HR 118
+Max HR 142`;
+    const parsed = parseIfJournalText(versionedText);
+    const imported = await importSessionFromJournal({ text: versionedText });
+    const session = await db.sessions.get(imported.sessionId);
+    const sets = await db.sets.where("sessionId").equals(imported.sessionId).toArray();
+    const beforeRejected = await db.sessions.count();
+    let error = "";
+    try {
+      await importSessionFromJournal({ text: versionedText.replace("Format Version: 1", "Format Version: 2") });
+    } catch (caught) {
+      error = caught instanceof Error ? caught.message : String(caught);
+    }
+    return { legacy, parsed, session, sets, beforeRejected, afterRejected: await db.sessions.count(), error };
+  });
+
+  expect(result.legacy.formatVersion).toBeUndefined();
+  expect(result.parsed.formatVersion).toBe(1);
+  expect(result.session).toMatchObject({ activityType: "walk", conditioningIntent: "fitness", cardioFormat: "continuous" });
+  expect(result.session.notes).toContain("Avg HR 118");
+  expect(result.session.notes).toContain("Max HR 142");
+  expect(result.sets).toEqual(expect.arrayContaining([
+    expect.objectContaining({ distance: expect.any(Number) }),
+    expect.objectContaining({ seconds: 3720 }),
+  ]));
+  expect(result.error).toContain("Unsupported Format Version: 2");
+  expect(result.afterRejected).toBe(result.beforeRejected);
+});
+
+test("version 1 contract reports actionable structural and metadata errors", async ({ page }) => {
+  await goto(page, "/");
+  const errors = await page.evaluate(async () => {
+    const { parseIfJournalText } = await import("/src/importers/importSession.ts");
+    try {
+      parseIfJournalText(`IF Workout
+Format Version: 1
+Activity Type: Swim
+Cardio Format: Tempo
+Date: 2026-02-30`);
+      return "";
+    } catch (caught) {
+      return caught instanceof Error ? caught.message : String(caught);
+    }
+  });
+  expect(errors).toContain("Missing required Session field");
+  expect(errors).toContain("Invalid Date: 2026-02-30");
+  expect(errors).toContain("Invalid Activity Type: Swim");
+  expect(errors).toContain("Invalid Cardio Format: Tempo");
+});
+
 test("IF journal import parses explicit activity type metadata with precedence over inference", async ({ page }) => {
   await goto(page, "/");
   await resetDexieDb(page);

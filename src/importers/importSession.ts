@@ -16,6 +16,7 @@ import {
 } from "../lib/cardio/cardioActivityType";
 import { parseCardioIntent, type CardioIntent } from "../lib/cardio/cardioIntent";
 import { parseCardioFormat, type CardioFormat } from "../lib/cardio/cardioFormat";
+import { inspectIfWorkoutContract } from "../domain/import/ifWorkoutContract";
 
 type ImportedMetricType = "reps" | "distance" | "duration";
 
@@ -28,6 +29,7 @@ type ImportedSet = Partial<SetEntry> &
   };
 
 export type ParsedIfWorkout = {
+  formatVersion?: 1;
   dateISO: string;
   templateName: string;
   activityType?: CardioActivityType;
@@ -206,6 +208,7 @@ function parseIfSetLine(line: string): ImportedSet | null {
 }
 
 export function parseIfJournalText(text: string): ParsedIfWorkout {
+  const contract = inspectIfWorkoutContract(text);
   const lines = String(text ?? "").replace(/\r/g, "").split("\n");
   let templateName = "";
   let explicitActivityType: CardioActivityType | undefined;
@@ -223,6 +226,7 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
     const raw = lines[i];
     const line = raw.trim();
     if (!line) continue;
+    if (/^IF Workout$/i.test(line) || /^Format Version\s*:/i.test(line)) continue;
 
     if (inNotesBlock) {
       const isMetaLine =
@@ -346,6 +350,7 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
     });
 
   return {
+    formatVersion: contract.formatVersion,
     dateISO,
     templateName,
     activityType,

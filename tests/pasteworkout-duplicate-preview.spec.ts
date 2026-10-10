@@ -1166,6 +1166,73 @@ Session Notes:
   await expect(page.getByTestId(`set-activity-metric:${durationSet.id}`)).not.toHaveText("?");
 });
 
+test("Paste Workout allows an explicitly acknowledged duplicate session", async ({ page }) => {
+  await seedExistingPasteSession(page, {
+    title: "Upper A",
+    date: "2026-10-09",
+    start: "08:30",
+    end: "09:30",
+    exercises: [{ name: "Bench Press", sets: [{ weight: 135, reps: 8 }] }],
+  });
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`IF Workout
+Format Version: 1
+Session: Upper A
+Date: 2026-10-09
+Start: 08:30
+End: 09:30
+
+Bench Press
+work 135x8 @2`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+  await expect(page.getByText(/Possible duplicate detected: Upper A/i)).toBeVisible();
+  await page.getByLabel(/I reviewed this possible duplicate and want to import another session intentionally/i).check();
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+  const count = await page.evaluate(async () => {
+    // @ts-ignore
+    return window.__db.sessions.count();
+  });
+  expect(count).toBe(2);
+});
+
+test("Paste Workout versioned preview shows contract, completed semantics, cardio metadata, and unknown creation", async ({ page }) => {
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`IF Workout
+Format Version: 1
+Session: Coach Cardio
+Activity Type: Run
+Intent: Fitness
+Cardio Format: Intervals
+Date: 2026-10-09
+Start: 18:00
+End: 18:30
+
+Cable Y Raise
+work 10x12 @2`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+  await expect(page.locator(".kv").filter({ hasText: "IF Workout v1" })).toContainText("IF Workout v1");
+  await expect(page.locator(".kv").filter({ hasText: "Import semantics" })).toContainText("Completed workout");
+  await expect(page.locator(".kv").filter({ hasText: "Cardio metadata" })).toContainText("Activity Type: run");
+  await expect(page.getByText("Unknown exercises to create")).toBeVisible();
+  await expect(page.getByText("Cable Y Raise", { exact: true }).first()).toBeVisible();
+});
+
+test("Paste Workout rejects unsupported versions without showing an import preview", async ({ page }) => {
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`IF Workout
+Format Version: 2
+Session: Upper A
+Date: 2026-10-09
+
+Bench Press
+work 135x8`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+  await expect(page.getByText(/Unsupported Format Version: 2/i)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Preview", exact: true })).toHaveCount(0);
+});
+
 test("Paste Workout parses spaced mile distance and mm:ss conditioning duration", async ({
   page,
 }) => {
