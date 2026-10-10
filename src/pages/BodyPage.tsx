@@ -349,6 +349,7 @@ export default function BodyPage() {
   const [heightIn, setHeightIn] = useState("");
   const [selectedMeasurementKey, setSelectedMeasurementKey] = useState<BodyMeasurementKey>("height");
   const [isAddingMeasurement, setIsAddingMeasurement] = useState(false);
+  const [measurementSaveMessage, setMeasurementSaveMessage] = useState<string | undefined>();
   const [measurementComposer, setMeasurementComposer] = useState<MeasurementComposerState>(
     EMPTY_MEASUREMENT_COMPOSER(),
   );
@@ -388,8 +389,7 @@ export default function BodyPage() {
       (entry) =>
         entry &&
         typeof entry.measurementKey === "string" &&
-        typeof entry.measuredAt === "number" &&
-        Number.isFinite(entry.measuredAt) &&
+        getBodyMeasurementTimestamp(entry) != null &&
         typeof entry.valueIn === "number" &&
         Number.isFinite(entry.valueIn) &&
         entry.valueIn > 0,
@@ -618,6 +618,7 @@ export default function BodyPage() {
     const latest = latestMeasurementByKey.get(measurementKey);
     const now = new Date();
     setSelectedMeasurementKey(measurementKey);
+    setMeasurementSaveMessage(undefined);
     setMeasurementComposer({
       id: undefined,
       measurementKey,
@@ -673,6 +674,10 @@ export default function BodyPage() {
     };
 
     await measurementsTable.put(entry as any);
+
+    setMeasurementSaveMessage(
+      `${measurementComposer.id ? "Saved changes to" : "Saved"} ${getMeasurementDef(measurementComposer.measurementKey).label} — ${show(valueIn, 2)} in — ${fmtShortDate(measuredAt)}`,
+    );
 
     if (measurementComposer.measurementKey === "height") {
       await db.app_meta.put({
@@ -932,6 +937,14 @@ export default function BodyPage() {
               Latest body-part measurements with dated entries. Waist stays on the snapshot side
               because current body-composition and waist logic already depend on it there.
             </div>
+            <div className="muted" style={{ fontSize: 12, lineHeight: 1.45, marginTop: 6 }}>
+              Save each measurement separately. Each saved value becomes its own dated history row.
+            </div>
+            {measurementSaveMessage ? (
+              <div role="status" style={{ marginTop: 8, fontSize: 13, fontWeight: 700 }}>
+                {measurementSaveMessage}
+              </div>
+            ) : null}
           </div>
 
           <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
@@ -1105,7 +1118,7 @@ export default function BodyPage() {
 
                             <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap" }}>
                               <button className="btn primary" onClick={saveMeasurementEntry}>
-                                Save
+                                {measurementComposer.id ? "Save changes" : "Save measurement"}
                               </button>
                               <button className="btn" onClick={closeMeasurementComposer}>
                                 Cancel
