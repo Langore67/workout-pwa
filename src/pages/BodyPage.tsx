@@ -103,13 +103,17 @@ type BodyMetricRow = {
 
 type BodyMetricsView = "snapshots" | "measurements";
 type MeasurementComposerState = {
-  id?: string;
-  measurementKey: BodyMeasurementKey;
-  valueIn: string;
+  ids: Partial<Record<BodyMeasurementKey, string>>;
+  values: Record<BodyMeasurementKey, string>;
   date: string;
   time: string;
   source: string;
   note: string;
+};
+
+type MeasurementRound = {
+  measuredAt: number;
+  entries: BodyMeasurementEntry[];
 };
 
 const HEIGHT_META_KEY = "profile.heightIn";
@@ -154,9 +158,8 @@ const MEASUREMENT_GROUPS: Array<{
 const EMPTY_MEASUREMENT_COMPOSER = (): MeasurementComposerState => {
   const now = new Date();
   return {
-    id: undefined,
-    measurementKey: "neck",
-    valueIn: "",
+    ids: {},
+    values: Object.fromEntries(MEASUREMENT_DEFS.map((def) => [def.key, ""])) as Record<BodyMeasurementKey, string>,
     date: formatDateInputValue(now),
     time: formatTimeInputValue(now),
     source: "manual",
@@ -347,8 +350,9 @@ export default function BodyPage() {
      - It is a persistent profile metric used later for derived analysis
   ------------------------------------------------------------------------ */
   const [heightIn, setHeightIn] = useState("");
-  const [selectedMeasurementKey, setSelectedMeasurementKey] = useState<BodyMeasurementKey>("height");
-  const [isAddingMeasurement, setIsAddingMeasurement] = useState(false);
+  const [isEditingMeasurementRound, setIsEditingMeasurementRound] = useState(false);
+  const [editingMeasurementTimestamp, setEditingMeasurementTimestamp] = useState<number | undefined>();
+  const [showAllMeasurementRounds, setShowAllMeasurementRounds] = useState(false);
   const [measurementSaveMessage, setMeasurementSaveMessage] = useState<string | undefined>();
   const [measurementComposer, setMeasurementComposer] = useState<MeasurementComposerState>(
     EMPTY_MEASUREMENT_COMPOSER(),
@@ -379,10 +383,6 @@ export default function BodyPage() {
     };
   }, []);
 
-  useEffect(() => {
-    setMeasurementComposer((current) => ({ ...current, measurementKey: selectedMeasurementKey }));
-  }, [selectedMeasurementKey]);
-
   const bodyMeasurementRows = useLiveQuery(async () => {
     const arr = ((await measurementsTable.toArray()) ?? []) as BodyMeasurementEntry[];
     return sortBodyMeasurementHistory(arr.filter(
@@ -401,27 +401,19 @@ export default function BodyPage() {
     return Number.isFinite(value) && value > 0 ? value : undefined;
   }, [heightIn]);
 
-  const measurementEntriesByKey = useMemo(() => {
-    const map = new Map<BodyMeasurementKey, BodyMeasurementEntry[]>();
-    for (const def of MEASUREMENT_DEFS) map.set(def.key, []);
+  const measurementRounds = useMemo<MeasurementRound[]>(() => {
+    const byTimestamp = new Map<number, BodyMeasurementEntry[]>();
     for (const entry of bodyMeasurementRows ?? []) {
-      const bucket = map.get(entry.measurementKey);
-      if (bucket) bucket.push(entry);
+      const measuredAt = getBodyMeasurementTimestamp(entry);
+      if (measuredAt == null) continue;
+      const entries = byTimestamp.get(measuredAt) ?? [];
+      entries.push(entry);
+      byTimestamp.set(measuredAt, entries);
     }
-    return map;
+    return [...byTimestamp.entries()]
+      .sort(([a], [b]) => b - a)
+      .map(([measuredAt, entries]) => ({ measuredAt, entries }));
   }, [bodyMeasurementRows]);
-
-  const latestMeasurementByKey = useMemo(() => {
-    const map = new Map<BodyMeasurementKey, BodyMeasurementEntry | undefined>();
-    for (const def of MEASUREMENT_DEFS) {
-      map.set(def.key, measurementEntriesByKey.get(def.key)?.[0]);
-    }
-    return map;
-  }, [measurementEntriesByKey]);
-
-  const selectedMeasurementDef = getMeasurementDef(selectedMeasurementKey);
-  const selectedMeasurementEntries = measurementEntriesByKey.get(selectedMeasurementKey) ?? [];
-  const selectedLatestMeasurement = latestMeasurementByKey.get(selectedMeasurementKey);
 
   /* ------------------------------------------------------------------------
      Breadcrumb 2B — Body form state
@@ -614,47 +606,51 @@ export default function BodyPage() {
      Breadcrumb 3 — Actions
      ------------------------------------------------------------------------ */
 
-  function openMeasurementComposer(measurementKey: BodyMeasurementKey) {
-    const latest = latestMeasurementByKey.get(measurementKey);
-    const now = new Date();
-    setSelectedMeasurementKey(measurementKey);
+  function closeMeasurementComposer() {
+    setIsEditingMeasurementRound(false);
+    setEditingMeasurementTimestamp(undefined);
+    setMeasurementComposer(EMPTY_MEASUREMENT_COMPOSER());
+  }
+
+  function editMeasurementRound(round: MeasurementRound) {
+    const first = round.entries[0];
+    const at = round.measuredAt;
+    const values = Object.fromEntries(MEASUREMENT_DEFS.map((def) => [def.key, ""])) as Record<BodyMeasurementKey, string>;
+    const ids: Partial<Record<BodyMeasurementKey, string>> = {};
+    for (const entry of round.entries) {
+      values[entry.measurementKey] = String(entry.valueIn);
+      ids[entry.measurementKey] = entry.id;
+    }
+    const date = new Date(at);
+    setEditingMeasurementTimestamp(at);
     setMeasurementSaveMessage(undefined);
     setMeasurementComposer({
-      id: undefined,
-      measurementKey,
-      valueIn:
-        latest?.valueIn != null && Number.isFinite(latest.valueIn)
-          ? String(latest.valueIn)
-          : measurementKey === "height" && parsedHeightIn != null
-            ? String(parsedHeightIn)
-            : "",
-      date: formatDateInputValue(now),
-      time: formatTimeInputValue(now),
-      source: "manual",
-      note: "",
+      ids,
+      values,
+      date: formatDateInputValue(date),
+      time: formatTimeInputValue(date),
+      source: first?.source ?? "",
+      note: first?.note ?? "",
     });
-    setIsAddingMeasurement(true);
+    setIsEditingMeasurementRound(true);
   }
 
-  function closeMeasurementComposer() {
-    setIsAddingMeasurement(false);
-    setMeasurementComposer((current) => ({
-      ...EMPTY_MEASUREMENT_COMPOSER(),
-      measurementKey: current.measurementKey,
-    }));
-  }
-
-  async function saveMeasurementEntry() {
-    const valueIn = toNumOrUndef(measurementComposer.valueIn);
-    if (measurementComposer.valueIn.trim() && valueIn == null) {
-      window.alert("Measurement value must be a valid number.");
+  async function saveMeasurementRound() {
+    const populated: Array<{ key: BodyMeasurementKey; valueIn: number }> = [];
+    for (const def of MEASUREMENT_DEFS) {
+      const raw = measurementComposer.values[def.key]?.trim() ?? "";
+      if (!raw) continue;
+      const valueIn = toNumOrUndef(raw);
+      if (valueIn == null || valueIn <= 0) {
+        window.alert(`${def.label} must be a valid number greater than zero.`);
+        return;
+      }
+      populated.push({ key: def.key, valueIn });
+    }
+    if (!populated.length) {
+      window.alert("Enter at least one measurement before saving the round.");
       return;
     }
-    if (valueIn == null || valueIn <= 0) {
-      window.alert("Measurement value must be greater than zero.");
-      return;
-    }
-
     const measuredAt = parseMeasuredAt(measurementComposer.date, measurementComposer.time);
     if (measuredAt == null) {
       window.alert("Date and time must be valid.");
@@ -662,35 +658,42 @@ export default function BodyPage() {
     }
 
     const now = Date.now();
-    const entry: BodyMeasurementEntry = {
-      id: measurementComposer.id ?? uuid(),
-      measurementKey: measurementComposer.measurementKey,
-      valueIn,
-      measuredAt,
-      source: measurementComposer.source.trim() || undefined,
-      note: measurementComposer.note.trim() || undefined,
-      createdAt: measurementComposer.id ? (selectedMeasurementEntries.find((item) => item.id === measurementComposer.id)?.createdAt ?? now) : now,
-      updatedAt: now,
-    };
-
-    await measurementsTable.put(entry as any);
-
+    const oldEntries = editingMeasurementTimestamp == null
+      ? []
+      : (bodyMeasurementRows ?? []).filter((entry) => getBodyMeasurementTimestamp(entry) === editingMeasurementTimestamp);
+    const populatedKeys = new Set(populated.map((item) => item.key));
+    const removedIds = oldEntries.filter((entry) => !populatedKeys.has(entry.measurementKey)).map((entry) => entry.id);
+    if (removedIds.length) await measurementsTable.bulkDelete(removedIds);
+    const entries = populated.map(({ key, valueIn }) => {
+      const existing = oldEntries.find((entry) => entry.measurementKey === key);
+      return {
+        id: existing?.id ?? measurementComposer.ids[key] ?? uuid(),
+        measurementKey: key,
+        valueIn,
+        measuredAt,
+        source: measurementComposer.source.trim() || undefined,
+        note: measurementComposer.note.trim() || undefined,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      } satisfies BodyMeasurementEntry;
+    });
+    await measurementsTable.bulkPut(entries as any);
     setMeasurementSaveMessage(
-      `${measurementComposer.id ? "Saved changes to" : "Saved"} ${getMeasurementDef(measurementComposer.measurementKey).label} — ${show(valueIn, 2)} in — ${fmtShortDate(measuredAt)}`,
+      `${editingMeasurementTimestamp == null ? "Saved" : "Updated"} ${entries.length} measurement${entries.length === 1 ? "" : "s"} — ${fmtShortDate(measuredAt)}`,
     );
 
-    if (measurementComposer.measurementKey === "height") {
+    const heightEntry = entries.find((entry) => entry.measurementKey === "height");
+    if (heightEntry) {
       await db.app_meta.put({
         key: HEIGHT_META_KEY,
-        valueJson: JSON.stringify({ heightIn: valueIn }),
+        valueJson: JSON.stringify({ heightIn: heightEntry.valueIn }),
         updatedAt: now,
       } as any);
-      setHeightIn(String(valueIn));
+      setHeightIn(String(heightEntry.valueIn));
       dispatchCoachDashboardRefresh("body:height");
     } else {
-      dispatchCoachDashboardRefresh("body:add");
+      dispatchCoachDashboardRefresh("body:measurement-round");
     }
-
     closeMeasurementComposer();
   }
 
@@ -819,27 +822,11 @@ export default function BodyPage() {
     dispatchCoachDashboardRefresh("body:delete");
   }
 
-  async function deleteMeasurementEntry(id: string) {
-    const ok = window.confirm("Delete this measurement?");
+  async function deleteMeasurementRound(round: MeasurementRound) {
+    const ok = window.confirm(`Delete this measurement round (${round.entries.length} measurement${round.entries.length === 1 ? "" : "s"})?`);
     if (!ok) return;
-    await measurementsTable.delete(id);
-    dispatchCoachDashboardRefresh("body:measurement-delete");
-  }
-
-  function editMeasurementEntry(entry: BodyMeasurementEntry) {
-    const at = getBodyMeasurementTimestamp(entry) ?? Date.now();
-    const date = new Date(at);
-    setSelectedMeasurementKey(entry.measurementKey);
-    setMeasurementComposer({
-      id: entry.id,
-      measurementKey: entry.measurementKey,
-      valueIn: String(entry.valueIn),
-      date: formatDateInputValue(date),
-      time: formatTimeInputValue(date),
-      source: entry.source ?? "",
-      note: entry.note ?? "",
-    });
-    setIsAddingMeasurement(true);
+    await measurementsTable.bulkDelete(round.entries.map((entry) => entry.id));
+    dispatchCoachDashboardRefresh("body:measurement-round-delete");
   }
 
   /* ------------------------------------------------------------------------
@@ -934,11 +921,8 @@ export default function BodyPage() {
           <div className="card" style={{ padding: 12, marginTop: 12 }}>
             <div style={{ fontWeight: 900, marginBottom: 8 }}>Measurements</div>
             <div className="muted" style={{ fontSize: 12, lineHeight: 1.45 }}>
-              Latest body-part measurements with dated entries. Waist stays on the snapshot side
-              because current body-composition and waist logic already depend on it there.
-            </div>
-            <div className="muted" style={{ fontSize: 12, lineHeight: 1.45, marginTop: 6 }}>
-              Save each measurement separately. Each saved value becomes its own dated history row.
+              Enter any combination of body-part measurements as one dated round. Waist stays on
+              the snapshot side because body-composition logic already depends on it there.
             </div>
             {measurementSaveMessage ? (
               <div role="status" style={{ marginTop: 8, fontSize: 13, fontWeight: 700 }}>
@@ -947,242 +931,97 @@ export default function BodyPage() {
             ) : null}
           </div>
 
-          <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-            {MEASUREMENT_GROUPS.map((group) => (
-              <div key={group.title} className="card" style={{ padding: 12 }}>
-                <div style={{ fontWeight: 900, marginBottom: 8 }}>{group.title}</div>
-                <div style={{ display: "grid" }}>
-                  {group.keys.map((key, index) => {
-                    const def = getMeasurementDef(key);
-                    const latest = latestMeasurementByKey.get(key);
-                    const latestValue = formatMeasurementLatestValue(key, latest, parsedHeightIn);
-                    const selected = selectedMeasurementKey === key;
-                    const inlineComposerOpen =
-                      isAddingMeasurement && measurementComposer.measurementKey === key;
-
-                    return (
-                      <div
-                        key={key}
-                        style={{
-                          paddingTop: index === 0 ? 0 : 10,
-                          paddingBottom: 10,
-                          borderTop: index === 0 ? "none" : "1px solid var(--line)",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
-                          }}
-                        >
-                          <button
-                            className="btn"
-                            onClick={() => {
-                              setSelectedMeasurementKey(key);
-                              setIsAddingMeasurement(false);
-                            }}
-                            style={{
-                              flex: 1,
-                              minWidth: 0,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 10,
-                              padding: 0,
-                              background: "transparent",
-                              border: "none",
-                              textAlign: "left",
-                              color: "inherit",
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontWeight: selected ? 900 : 700,
-                                minWidth: 0,
-                              }}
-                            >
-                              {def.label}
-                            </span>
-                            <span
-                              className="muted"
-                              style={{
-                                fontSize: 13,
-                                whiteSpace: "nowrap",
-                                marginLeft: 10,
-                              }}
-                            >
-                              {latestValue}
-                            </span>
-                          </button>
-
-                          <button
-                            className="btn small"
-                            onClick={() => openMeasurementComposer(key)}
-                            title={`Add ${def.label} measurement`}
-                            aria-label={`Add ${def.label} measurement`}
-                            style={{ flexShrink: 0 }}
-                          >
-                            +
-                          </button>
-                        </div>
-
-                        {inlineComposerOpen ? (
-                          <div className="card" style={{ padding: 10, marginTop: 10 }}>
-                            <div style={{ fontWeight: 900, marginBottom: 8 }}>
-                              {measurementComposer.id ? "Edit" : "Add"} {def.label}
-                            </div>
-                            <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
-                              <div style={{ minWidth: 160, flex: 1 }}>
-                                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
-                                  Value (in)
-                                </div>
-                                <input
-                                  className="input"
-                                  value={measurementComposer.valueIn}
-                                  onChange={(e) =>
-                                    setMeasurementComposer((current) => ({
-                                      ...current,
-                                      valueIn: e.target.value,
-                                    }))
-                                  }
-                                  placeholder={def.placeholder}
-                                  inputMode="decimal"
-                                />
-                              </div>
-                              <div style={{ minWidth: 160, flex: 1 }}>
-                                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
-                                  Source
-                                </div>
-                                <input
-                                  className="input"
-                                  value={measurementComposer.source}
-                                  onChange={(e) =>
-                                    setMeasurementComposer((current) => ({
-                                      ...current,
-                                      source: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="manual"
-                                />
-                              </div>
-                              <div style={{ minWidth: 160, flex: 1 }}>
-                                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
-                                  Note
-                                </div>
-                                <input
-                                  className="input"
-                                  value={measurementComposer.note}
-                                  onChange={(e) =>
-                                    setMeasurementComposer((current) => ({
-                                      ...current,
-                                      note: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Optional"
-                                />
-                              </div>
-                              <div style={{ minWidth: 160, flex: 1 }}>
-                                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
-                                  Date
-                                </div>
-                                <input
-                                  className="input"
-                                  type="date"
-                                  value={measurementComposer.date}
-                                  onChange={(e) =>
-                                    setMeasurementComposer((current) => ({
-                                      ...current,
-                                      date: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                              <div style={{ minWidth: 160, flex: 1 }}>
-                                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
-                                  Time
-                                </div>
-                                <input
-                                  className="input"
-                                  type="time"
-                                  value={measurementComposer.time}
-                                  onChange={(e) =>
-                                    setMeasurementComposer((current) => ({
-                                      ...current,
-                                      time: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                            </div>
-
-                            <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap" }}>
-                              <button className="btn primary" onClick={saveMeasurementEntry}>
-                                {measurementComposer.id ? "Save changes" : "Save measurement"}
-                              </button>
-                              <button className="btn" onClick={closeMeasurementComposer}>
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
+          <div className="card" style={{ padding: 12, marginTop: 12 }}>
+            <div style={{ fontWeight: 900, marginBottom: 10 }}>
+              {isEditingMeasurementRound ? (editingMeasurementTimestamp == null ? "New measurement round" : "Edit measurement round") : "New measurement round"}
+            </div>
+            <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+              <div style={{ minWidth: 160, flex: 1 }}>
+                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Date</div>
+                <input className="input" type="date" value={measurementComposer.date} onChange={(e) => setMeasurementComposer((current) => ({ ...current, date: e.target.value }))} />
               </div>
-            ))}
+              <div style={{ minWidth: 160, flex: 1 }}>
+                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Time</div>
+                <input className="input" type="time" value={measurementComposer.time} onChange={(e) => setMeasurementComposer((current) => ({ ...current, time: e.target.value }))} />
+              </div>
+              <div style={{ minWidth: 160, flex: 1 }}>
+                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Source</div>
+                <input className="input" value={measurementComposer.source} onChange={(e) => setMeasurementComposer((current) => ({ ...current, source: e.target.value }))} placeholder="manual" />
+              </div>
+              <div style={{ minWidth: 220, flex: 2 }}>
+                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Note</div>
+                <input className="input" value={measurementComposer.note} onChange={(e) => setMeasurementComposer((current) => ({ ...current, note: e.target.value }))} placeholder="Optional" />
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
+              {MEASUREMENT_GROUPS.map((group) => (
+                <div key={group.title}>
+                  <div style={{ fontWeight: 800, marginBottom: 8 }}>{group.title}</div>
+                  <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+                    {group.keys.map((key) => {
+                      const def = getMeasurementDef(key);
+                      return (
+                        <div key={key} style={{ minWidth: 150, flex: "1 1 150px" }}>
+                          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>{def.label} (in)</div>
+                          <input
+                            className="input"
+                            value={measurementComposer.values[key] ?? ""}
+                            onChange={(e) => setMeasurementComposer((current) => ({ ...current, values: { ...current.values, [key]: e.target.value } }))}
+                            placeholder={def.placeholder}
+                            aria-label={`${def.label} measurement`}
+                            inputMode="decimal"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="row" style={{ marginTop: 14, gap: 8, flexWrap: "wrap" }}>
+              <button className="btn primary" onClick={saveMeasurementRound}>Save measurement round</button>
+              {isEditingMeasurementRound ? <button className="btn" onClick={closeMeasurementComposer}>Cancel</button> : null}
+            </div>
           </div>
 
           <div className="card" style={{ padding: 12, marginTop: 12 }}>
-            <div
-              className="row"
-              style={{ justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}
-            >
-              <div>
-                <div style={{ fontWeight: 900 }}>{selectedMeasurementDef.label}</div>
-                <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                  Latest {formatMeasurementLatestValue(selectedMeasurementKey, selectedLatestMeasurement, parsedHeightIn)}
-                </div>
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>Historical measurement rounds</div>
+            {measurementRounds.length ? (
+              <div style={{ display: "grid", gap: 10 }}>
+                {(showAllMeasurementRounds ? measurementRounds : measurementRounds.slice(0, RECENT_ROWS_DEFAULT)).map((round) => {
+                  const sources = [...new Set(round.entries.map((entry) => entry.source).filter(Boolean))];
+                  return (
+                    <div key={round.measuredAt} className="card" data-testid={`measurement-round-${round.measuredAt}`} style={{ padding: 10 }}>
+                      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+                        <div>
+                          <div style={{ fontWeight: 800 }}>{fmtDate(round.measuredAt)}{sources.length ? ` · ${sources.join(", ")}` : ""}</div>
+                          <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>{round.entries.length} measurement{round.entries.length === 1 ? "" : "s"}</div>
+                        </div>
+                        <div className="row" style={{ gap: 6 }}>
+                          <button className="btn small" onClick={() => editMeasurementRound(round)}>Edit measurement round</button>
+                          <button className="btn small" onClick={() => deleteMeasurementRound(round)}>Delete measurement round</button>
+                        </div>
+                      </div>
+                      <div className="muted" style={{ display: "grid", gap: 3, marginTop: 8, fontSize: 13 }}>
+                        {round.entries.map((entry) => (
+                          <div key={entry.id}>
+                            {getMeasurementDef(entry.measurementKey).label}: {formatMeasurementHistoryValue(entry.measurementKey, entry.valueIn)}
+                            {entry.note ? ` · ${entry.note}` : ""}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+                {measurementRounds.length > RECENT_ROWS_DEFAULT ? (
+                  <button className="btn" onClick={() => setShowAllMeasurementRounds((current) => !current)}>
+                    {showAllMeasurementRounds ? "Show fewer" : "Show more"}
+                  </button>
+                ) : null}
               </div>
-            </div>
-
-            <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-              Trend chart coming later.
-            </div>
-
-            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-              {selectedMeasurementEntries.length ? (
-                selectedMeasurementEntries.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className="card"
-                    style={{ padding: 10, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}
-                  >
-                    <div style={{ fontWeight: 700 }}>
-                      {formatMeasurementHistoryValue(selectedMeasurementKey, entry.valueIn)}
-                    </div>
-                    <div className="muted" style={{ fontSize: 12 }}>
-                      {fmtDate(getBodyMeasurementTimestamp(entry) ?? entry.measuredAt)}
-                      {entry.source ? ` · ${entry.source}` : ""}
-                      {entry.note ? ` · ${entry.note}` : ""}
-                    </div>
-                    <div className="row" style={{ gap: 6 }}>
-                      <button className="btn small" onClick={() => editMeasurementEntry(entry)}>
-                        Edit
-                      </button>
-                      <button className="btn small" onClick={() => deleteMeasurementEntry(entry.id)}>
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="muted" style={{ fontSize: 13 }}>
-                  No measurements yet for {selectedMeasurementDef.label.toLowerCase()} - add your first entry.
-                </div>
-              )}
-            </div>
+            ) : (
+              <div className="muted" style={{ fontSize: 13 }}>No measurement rounds yet.</div>
+            )}
           </div>
         </div>
 
