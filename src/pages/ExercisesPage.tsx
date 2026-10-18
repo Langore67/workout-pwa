@@ -59,6 +59,10 @@ import {
   buildExerciseHistoryExportText,
   formatExerciseHistorySetLabel,
 } from "../domain/coaching/exerciseHistorySnapshot";
+import {
+  buildExerciseProgressionContext,
+  type ExerciseProgressionObservation,
+} from "../domain/progression/exerciseProgressionContext";
 
 /* ========================================================================== */
 /*  Breadcrumb 1 — Schema tolerance + design intent                           */
@@ -755,36 +759,62 @@ function ChartCard({
 /*  Breadcrumb 4 — useExercisePerformance                                     */
 /* ========================================================================== */
 
+function formatProgressionObservation(row: ExerciseProgressionObservation, mode: MetricMode) {
+  const number = (value: number) => Number(value.toFixed(1)).toString();
+  const fields: string[] = [];
+  if (mode === "time") {
+    if (typeof row.time === "number") fields.push(`${number(row.time)} sec`);
+  } else if (mode === "distance") {
+    if (typeof row.distance === "number") fields.push(`${number(row.distance)} ${row.distanceUnit ?? "m"}`);
+  } else {
+    if (typeof row.load === "number" && typeof row.reps === "number") fields.push(`${number(row.load)} x ${number(row.reps)}`);
+    else if (typeof row.reps === "number") fields.push(`${number(row.reps)} reps`);
+    if (typeof row.rir === "number") fields.push(`RIR ${number(row.rir)}`);
+    if (typeof row.e1RM === "number") fields.push(`scored e1RM ${number(row.e1RM)}`);
+    if (typeof row.volume === "number") fields.push(`volume ${number(row.volume)}`);
+    if (typeof row.maxReps === "number") fields.push(`max reps ${number(row.maxReps)}`);
+  }
+  return fields.join(" • ") || "No comparable metric";
+}
+
 function useExercisePerformance(exerciseId?: string) {
   const data = useLiveQuery(async () => {
-    if (!exerciseId) return { sessionCount: 0, rows: [] as any[] };
+    if (!exerciseId) return { sessionCount: 0, rows: [] as any[], progression: null };
 
     const tracksTable = (db as any).tracks;
     const sessionsTable = (db as any).sessions;
     const setsTable = (db as any).setEntries ?? (db as any).sets;
 
     if (!tracksTable || !sessionsTable || !setsTable) {
-      return { sessionCount: 0, rows: [] as any[] };
+      return { sessionCount: 0, rows: [] as any[], progression: null };
     }
 
-    const tracks: any[] = (await tracksTable.where("exerciseId").equals(exerciseId).toArray()) ?? [];
+    const [allExercises, allTracks, allSessions, allSets] = await Promise.all([
+      db.exercises.toArray(),
+      tracksTable.toArray(),
+      sessionsTable.toArray(),
+      setsTable.toArray(),
+    ]);
+    const progression = buildExerciseProgressionContext({
+      exerciseId,
+      exercises: allExercises,
+      tracks: allTracks,
+      sessions: allSessions,
+      sets: allSets,
+    });
+    const tracks: any[] = allTracks.filter((track: any) => track.exerciseId === exerciseId);
     const trackIds = tracks.map((t) => t.id).filter(Boolean);
-    if (!trackIds.length) return { sessionCount: 0, rows: [] as any[] };
+    if (!trackIds.length) return { sessionCount: 0, rows: [] as any[], progression };
 
     const trackById = new Map(tracks.map((t) => [t.id, t]));
     const exercise = await db.exercises.get(exerciseId);
     const bodyMetrics = (await (db as any).bodyMetrics?.toArray?.()) ?? [];
 
-    let sets: any[] = [];
-    try {
-      sets = (await setsTable.where("trackId").anyOf(trackIds).toArray()) ?? [];
-    } catch {
-      const all = (await setsTable.toArray()) ?? [];
-      sets = all.filter((s: any) => trackIds.includes(s.trackId));
-    }
+    const sets: any[] = allSets.filter((set: any) => trackIds.includes(set.trackId));
 
     const sessionIds = Array.from(new Set(sets.map((s: any) => s.sessionId).filter(Boolean)));
-    const sessions: any[] = (await sessionsTable.bulkGet(sessionIds)).filter(Boolean) as any[];
+    const sessionIdSet = new Set(sessionIds);
+    const sessions: any[] = allSessions.filter((session: any) => sessionIdSet.has(session.id));
 
     const endedSessions = sessions.filter(
       (s) => typeof s?.endedAt === "number" && Number.isFinite(s.endedAt) && s.endedAt > 0
@@ -890,10 +920,12 @@ function useExercisePerformance(exerciseId?: string) {
         };
       });
 
-    return { sessionCount: endedSessions.length, rows };
+    return { sessionCount: endedSessions.length, rows, progression };
   }, [exerciseId]);
 
   const rows = data?.rows ?? [];
+  const progression = data?.progression ?? null;
+  const progressionRows = progression?.recentObservations ?? [];
 
   const toMonthly = (pairs: Array<{ ms: number; value: number }>, mode: "sum" | "max") => {
     const m = new Map<string, number>();
@@ -908,28 +940,30 @@ function useExercisePerformance(exerciseId?: string) {
   };
 
   const monthlyVolume = toMonthly(
-    rows.map((r: any) => ({ ms: r.endedAt, value: Number(r.totalVolume ?? 0) })),
+    progressionRows
+      .filter((r) => Number.isFinite(r.volume))
+      .map((r) => ({ ms: r.observedAt, value: r.volume as number })),
     "sum"
   );
 
   const monthlyE1rm = toMonthly(
-    rows
-      .filter((r: any) => Number.isFinite(r.bestE1rm))
-      .map((r: any) => ({ ms: r.endedAt, value: r.bestE1rm })),
+    progressionRows
+      .filter((r) => Number.isFinite(r.e1RM))
+      .map((r) => ({ ms: r.observedAt, value: r.e1RM as number })),
     "max"
   );
 
   const monthlyMaxWeight = toMonthly(
-    rows
-      .filter((r: any) => Number.isFinite(r.bestWeight))
-      .map((r: any) => ({ ms: r.endedAt, value: r.bestWeight })),
+    progressionRows
+      .filter((r) => Number.isFinite(r.load))
+      .map((r) => ({ ms: r.observedAt, value: r.load as number })),
     "max"
   );
 
   const monthlyMaxReps = toMonthly(
-    rows
-      .filter((r: any) => Number.isFinite(r.maxReps))
-      .map((r: any) => ({ ms: r.endedAt, value: r.maxReps })),
+    progressionRows
+      .filter((r) => Number.isFinite(r.maxReps))
+      .map((r) => ({ ms: r.observedAt, value: r.maxReps as number })),
     "max"
   );
 
@@ -942,7 +976,16 @@ function useExercisePerformance(exerciseId?: string) {
   let bestRepsVal: number | undefined;
   let bestRepsLabel: string | undefined;
 
-  for (const r of rows) {
+  const recordRows = progressionRows.map((row) => ({
+    bestE1rm: row.e1RM,
+    bestWeight: row.load,
+    totalVolume: row.volume,
+    maxReps: row.maxReps,
+    bestSetLabel: formatProgressionObservation(row, progression?.metricMode ?? "reps"),
+    dateLabel: prettyDateLabel(row.observedAt),
+  }));
+
+  for (const r of recordRows) {
     if (Number.isFinite(r.bestE1rm) && (bestE1rmVal == null || r.bestE1rm > bestE1rmVal)) {
       bestE1rmVal = r.bestE1rm;
       bestE1rmLabel = `${r.bestSetLabel ?? "—"} (${r.dateLabel})`;
@@ -963,6 +1006,7 @@ function useExercisePerformance(exerciseId?: string) {
 
   return {
     sessionCount: data?.sessionCount ?? 0,
+    progression,
     historyRows: rows.slice(0, 30),
     monthlyVolume,
     monthlyE1rm,
@@ -1001,6 +1045,7 @@ function ExerciseDetailsModal({
   onEdit: () => void;
 }) {
   const perf = useExercisePerformance(exercise?.id);
+  const progression = perf.progression;
 
   const summary = textOrUndef(String((exercise as any).summary ?? ""));
   const directions = textOrUndef(String((exercise as any).directions ?? ""));
@@ -1120,7 +1165,48 @@ function ExerciseDetailsModal({
               </div>
 
               <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
-                Completed sessions only (endedAt + completed sets).
+                Progression uses completed working sets only.
+              </div>
+
+              <div className="card" data-testid="exercise-progression-summary" style={{ marginTop: 10, padding: 10 }}>
+                <div style={{ fontWeight: 900 }}>Progression summary</div>
+                {progression?.recentObservations.length ? (
+                  <>
+                    <div className="muted" style={{ marginTop: 6, fontSize: 13, lineHeight: 1.5 }}>
+                      Direction: <b>{progression.direction}</b>
+                      {"  •  "}
+                      Comparable observations: <b>{progression.observationCount}</b>
+                      {"  •  "}
+                      Latest: <b>{progression.latestObservationAt ? prettyDateLabel(progression.latestObservationAt) : "—"}</b>
+                    </div>
+                    {progression.bestRecentObservation ? (
+                      <div style={{ marginTop: 6, fontSize: 13 }}>
+                        Best recent: <b>{formatProgressionObservation(progression.bestRecentObservation, progression.metricMode)}</b>
+                      </div>
+                    ) : null}
+                    <div style={{ marginTop: 8, display: "grid", gap: 4 }}>
+                      {progression.recentObservations.map((row) => (
+                        <div key={row.sessionId} className="muted" style={{ fontSize: 13 }}>
+                          {prettyDateLabel(row.observedAt)}: {formatProgressionObservation(row, progression.metricMode)}
+                        </div>
+                      ))}
+                    </div>
+                    {progression.limitations.map((limitation) => (
+                      <div key={limitation} className="muted" style={{ marginTop: 6, fontSize: 12 }}>
+                        {limitation}
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
+                    No comparable completed working-set observations in the last 28 days.
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginTop: 12, fontWeight: 900 }}>Detailed completed sessions</div>
+              <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>
+                Other completed set types may remain visible here but do not drive the progression summary, charts, or records.
               </div>
 
               <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
@@ -1160,12 +1246,12 @@ function ExerciseDetailsModal({
               <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
                 <ChartCard
                   title="Total Volume"
-                  subtitle="Sum(weight × reps) of completed non-warmup sets"
+                  subtitle="Sum(weight × reps) of completed working sets in the shared progression window"
                   points={perf.monthlyVolume}
                 />
                 <ChartCard
                   title="PR Progression (e1RM)"
-                  subtitle="Monthly max of e1RM (Epley)"
+                  subtitle="Monthly max of shared scored e1RM"
                   points={perf.monthlyE1rm}
                 />
                 <ChartCard
@@ -1186,7 +1272,7 @@ function ExerciseDetailsModal({
             <div className="card" style={{ padding: 12 }}>
               <div style={{ fontWeight: 900 }}>Records</div>
               <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
-                Derived from completed sessions only.
+                Progression uses completed working sets only in the shared 28-day window.
               </div>
 
               <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
