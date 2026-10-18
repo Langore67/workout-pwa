@@ -4,6 +4,10 @@ import { getCardioActivityTypeLabel } from "../cardio/cardioActivityType";
 import { getCardioIntentLabel } from "../cardio/cardioIntent";
 import { getCardioFormatLabel } from "../cardio/cardioFormat";
 import type { CardioProgressionObservation, CardioProgressionSignal } from "../cardio/cardioProgressionContext";
+import type {
+  ExerciseProgressionContext,
+  ExerciseProgressionObservation,
+} from "../../domain/progression/exerciseProgressionContext";
 
 function renderSection(section: CoachReportSection | undefined) {
   if (!section) return [] as string[];
@@ -190,6 +194,8 @@ function renderProgrammingContext(context: CoachReport["programmingContext"]) {
     lines.push(`- ${anchor.exerciseName ?? anchor.pattern}: ${anchor.benchmark ?? "Benchmark unavailable"} | ${anchor.freshness}${anchor.ageDays != null ? ` | ${anchor.ageDays}d old` : ""}`);
   }
 
+  lines.push(...formatRecentExerciseProgressionForCoach(context.exerciseProgression));
+
   if (context.coverage.movementPatterns.length) {
     lines.push("", `Movement Coverage (${context.coverage.windowDays}d)`);
     for (const pattern of context.coverage.movementPatterns) {
@@ -262,6 +268,54 @@ function renderProgrammingContext(context: CoachReport["programmingContext"]) {
     }
   }
   lines.push("");
+  return lines;
+}
+
+function compactNumber(value: number) {
+  return Number(value.toFixed(1)).toString();
+}
+
+function formatProgressionObservation(
+  observation: ExerciseProgressionObservation,
+  context: ExerciseProgressionContext
+) {
+  const fields = [new Date(observation.observedAt).toISOString().slice(0, 10)];
+  if (context.metricMode === "time") {
+    if (typeof observation.time === "number") fields.push(`${compactNumber(observation.time)} sec`);
+  } else if (context.metricMode === "distance") {
+    if (typeof observation.distance === "number") {
+      fields.push(`${compactNumber(observation.distance)} ${observation.distanceUnit ?? "m"}`);
+    }
+  } else {
+    const set = observation.bestWorkingSet;
+    const load = set?.load ?? observation.load;
+    const reps = set?.reps ?? observation.reps;
+    if (typeof load === "number" && typeof reps === "number") fields.push(`${compactNumber(load)}x${compactNumber(reps)}`);
+    else if (typeof reps === "number") fields.push(`${compactNumber(reps)} reps`);
+    else if (typeof observation.maxReps === "number") fields.push(`max reps ${compactNumber(observation.maxReps)}`);
+    if (typeof (set?.rir ?? observation.rir) === "number") fields.push(`RIR ${compactNumber((set?.rir ?? observation.rir) as number)}`);
+    if (typeof observation.e1RM === "number") fields.push(`scored e1RM ${compactNumber(observation.e1RM)}`);
+    if (typeof observation.volume === "number") fields.push(`volume ${compactNumber(observation.volume)}`);
+    if (typeof observation.maxReps === "number" && observation.maxReps !== reps) fields.push(`max reps ${compactNumber(observation.maxReps)}`);
+  }
+  return fields.join(" | ");
+}
+
+export function formatRecentExerciseProgressionForCoach(contexts?: ExerciseProgressionContext[]) {
+  if (!contexts?.length) return [] as string[];
+  const lines = ["", "Recent Exercise Progression"];
+  for (const context of contexts) {
+    lines.push(
+      `- ${context.exerciseName} [${context.exerciseId}] | ${context.metricMode} | direction ${context.direction} | ${context.observationCount} observation${context.observationCount === 1 ? "" : "s"}${context.latestObservationAt ? ` | latest ${new Date(context.latestObservationAt).toISOString()}` : ""}`
+    );
+    if (context.bestRecentObservation) {
+      lines.push(`  - Best recent: ${formatProgressionObservation(context.bestRecentObservation, context)}`);
+    }
+    for (const observation of context.recentObservations) {
+      lines.push(`  - Observation: ${formatProgressionObservation(observation, context)}`);
+    }
+    for (const limitation of context.limitations) lines.push(`  - Limitation: ${limitation}`);
+  }
   return lines;
 }
 
