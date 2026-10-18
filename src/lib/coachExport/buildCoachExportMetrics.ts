@@ -53,6 +53,7 @@ import { buildLeanPreservationComposite } from "./leanPreservationComposite";
 import { buildWeeklyVolume } from "./weeklyVolume";
 import { selectRecentStrengthBuildingSessions } from "./strengthBuildingSessions";
 import { buildCoachProgrammingContext } from "./programmingContext";
+import { buildRecentExerciseProgressionPacket } from "./recentExerciseProgression";
 import type {
   CoachExportAnchorLift,
   CoachExportBodyTrendInputs,
@@ -749,12 +750,21 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     exercises: exercises ?? [],
     asOf: generatedAt,
   });
+  const recentExerciseProgression = buildRecentExerciseProgressionPacket({
+    sessions: sessions ?? [],
+    sets: sets ?? [],
+    tracks: tracks ?? [],
+    exercises: exercises ?? [],
+    anchorLifts: anchorIntelligence,
+    asOf: generatedAt,
+  });
   const exerciseVocabulary = buildExerciseVocabulary({
     sessions: sessions ?? [],
     sets: sets ?? [],
     tracks: tracks ?? [],
     exercises: exercises ?? [],
     anchorLifts: anchorIntelligence,
+    recentExerciseProgression,
     asOf: generatedAt,
     limit: 25,
   });
