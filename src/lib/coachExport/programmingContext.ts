@@ -165,6 +165,7 @@ export function buildCoachProgrammingContext(args: {
     },
     constraints: [...new Set(constraints)],
     exerciseProgression: args.metrics.recentExerciseProgression ?? [],
+    strengthGoalProgress: args.metrics.strengthGoalProgress ?? [],
     ...(cardio ? { cardio } : {}),
   };
 }

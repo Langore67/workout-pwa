@@ -37,6 +37,7 @@ export type ExerciseProgressionObservation = {
   e1RM?: number;
   volume?: number;
   maxReps?: number;
+  maxLoad?: number;
   time?: number;
   distance?: number;
   distanceUnit?: "m" | "steps";
@@ -147,6 +148,8 @@ function observation(sessionId: string, observedAt: number, sets: readonly SetEn
   if (mode === "reps") {
     const reps = sets.map((set) => set.reps).filter(positive);
     if (reps.length) row.maxReps = Math.max(...reps);
+    const loads = sets.map((set) => set.weight).filter(positive);
+    if (loads.length) row.maxLoad = Math.max(...loads);
     const volume = sets.reduce(
       (sum, set) => sum + (positive(set.weight) && positive(set.reps) ? set.weight * set.reps : 0),
       0

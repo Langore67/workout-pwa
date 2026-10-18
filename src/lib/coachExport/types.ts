@@ -436,6 +436,7 @@ export type CoachProgrammingContext = {
   };
   constraints: string[];
   exerciseProgression?: import("../../domain/progression/exerciseProgressionContext").ExerciseProgressionContext[];
+  strengthGoalProgress?: import("../../domain/goals/strengthGoalProgress").StrengthGoalProgressContext[];
   cardio?: {
     activities7d: number;
     duration7dSeconds: number;
@@ -473,6 +474,7 @@ export type CoachExportMetrics = {
   phaseQuality: PhaseQualityResult | null;
   anchorLifts: CoachExportAnchorLift[];
   recentExerciseProgression?: import("../../domain/progression/exerciseProgressionContext").ExerciseProgressionContext[];
+  strengthGoalProgress?: import("../../domain/goals/strengthGoalProgress").StrengthGoalProgressContext[];
   currentMovementFocus?: CoachExportCurrentMovementFocus;
   movementCoverage?: MovementCoverageSummary;
   programmingContext?: CoachProgrammingContext;
