@@ -128,3 +128,48 @@ test("Programming Context reuses the already-built progression packet", () => {
   } as any);
   expect(state.recentExerciseProgression).toBe(contexts);
 });
+
+test("realistic IronForge mix produces a sensible capped packet with intentional side variants", () => {
+  const definitions = [
+    ["trap-bar", "Trap Bar Deadlift", "included"],
+    ["incline-bench", "Incline Barbell Bench Press", "included"],
+    ["lat-pulldown", "Lat Pulldown", "included"],
+    ["leg-press", "Leg Press", "included"],
+    ["db-bench", "Dumbbell Bench Press", "secondary"],
+    ["seated-row", "Seated Row", "secondary"],
+    ["left-row", "Single-Arm Cable Row Left", "secondary"],
+    ["right-row", "Single-Arm Cable Row Right", "secondary"],
+    ["leg-curl", "Seated Leg Curl", "secondary"],
+    ["calf-raise", "Standing Calf Raise", "secondary"],
+    ["lateral-raise", "Lateral Raise", "secondary"],
+    ["curl", "Dumbbell Curl", "secondary"],
+    ["pressdown", "Cable Pressdown", "secondary"],
+    ["back-extension", "Back Extension", "secondary"],
+    ["one-off-a", "One-Off A", "secondary"],
+    ["one-off-b", "One-Off B", "secondary"],
+  ] as const;
+  const exercises = definitions.map(([id, name, role]) => exercise(id, { name, strengthSignalRole: role }));
+  exercises.push(exercise("old-pulldown", { name: "Pulldown Old", mergedIntoExerciseId: "lat-pulldown", archivedAt: NOW - DAY }));
+  const sessions = [session("latest", 1), session("prior", 7), session("older", 14)];
+  const repeatIds = new Set(definitions.slice(0, 14).map(([id]) => id));
+  const sets = exercises.flatMap((row, index) => {
+    const rows = [working(row.id, "latest", { weight: 80 + index, reps: 8, rir: 2 })];
+    if (repeatIds.has(row.id) || row.id === "old-pulldown") rows.push(working(row.id, "prior", { weight: 75 + index, reps: 8, rir: 2 }));
+    return rows;
+  });
+  const contexts = buildRecentExerciseProgressionPacket({
+    exercises,
+    tracks: exercises.map((row) => track(row.id)),
+    sessions,
+    sets,
+    anchorLifts: [{ exerciseId: "trap-bar" }, { exerciseId: "incline-bench" }] as any,
+    asOf: NOW,
+  });
+  const ids = contexts.map((row) => row.exerciseId);
+
+  expect(contexts).toHaveLength(14);
+  expect(ids.slice(0, 2)).toEqual(["incline-bench", "trap-bar"]);
+  expect(ids).toEqual(expect.arrayContaining(["lat-pulldown", "db-bench", "left-row", "right-row"]));
+  expect(ids).not.toEqual(expect.arrayContaining(["old-pulldown", "one-off-a", "one-off-b"]));
+  expect(new Set(ids).size).toBe(ids.length);
+});
