@@ -149,6 +149,7 @@ export type CoachState = {
   movementCoverage?: CoachStateMovementCoverage;
   programmingContext?: CoachProgrammingContext;
   recentExerciseProgression?: CoachExportMetrics["recentExerciseProgression"];
+  strengthGoalProgress?: CoachExportMetrics["strengthGoalProgress"];
   explanation: CoachExplanation;
   export: CoachStateExport;
 };

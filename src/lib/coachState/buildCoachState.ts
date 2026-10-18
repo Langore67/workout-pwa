@@ -207,6 +207,7 @@ export function buildCoachStateFromExportMetrics(metrics: CoachExportMetrics | n
     movementCoverage,
     programmingContext: source.programmingContext,
     recentExerciseProgression: source.recentExerciseProgression ?? [],
+    strengthGoalProgress: source.strengthGoalProgress ?? [],
     explanation: { why: [], whatChanged: [], evidence: [] },
     export: {
       available: metrics != null,

@@ -17,9 +17,17 @@
    - No DB migration required yet
    ============================================================================ */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Page, Section } from "../components/Page.tsx";
+import { StrengthGoalsCard } from "../components/profile/StrengthGoalsCard";
+import { db, type Exercise } from "../db";
+import {
+  MAX_STRENGTH_GOALS,
+  getStrengthGoals,
+  setStrengthGoals,
+  type StrengthGoal,
+} from "../domain/goals/strengthGoals";
 import { getProfileGoals, setProfileGoals } from "../profile/profileGoals";
 
 type Sex = "male" | "female" | "other" | "";
@@ -248,6 +256,9 @@ export default function ProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
   const [profile, setProfile] = useState<ProfileData>(() => loadProfile());
   const [goalsLoaded, setGoalsLoaded] = useState(false);
+  const [strengthGoals, setStrengthGoalList] = useState<StrengthGoal[]>([]);
+  const [strengthGoalExercises, setStrengthGoalExercises] = useState<Exercise[]>([]);
+  const [strengthGoalsLoaded, setStrengthGoalsLoaded] = useState(false);
 
   useEffect(() => {
     saveProfile(profile);
@@ -274,6 +285,37 @@ export default function ProfilePage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([getStrengthGoals(), db.exercises.toArray()])
+      .then(([storedGoals, exercises]) => {
+        if (cancelled) return;
+        setStrengthGoalList(storedGoals);
+        setStrengthGoalExercises(exercises);
+      })
+      .catch(() => {
+        // The card remains usable with an empty list and will surface write failures explicitly.
+      })
+      .finally(() => {
+        if (!cancelled) setStrengthGoalsLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const persistStrengthGoals = useCallback(async (nextGoals: readonly StrengthGoal[]) => {
+    const latest = await getStrengthGoals();
+    const knownIds = new Set(strengthGoals.map((goal) => goal.id));
+    const goalsAddedElsewhere = latest.filter((goal) => !knownIds.has(goal.id));
+    const merged = [...nextGoals, ...goalsAddedElsewhere];
+    if (merged.length > MAX_STRENGTH_GOALS) {
+      throw new Error(`The strength-goal limit of ${MAX_STRENGTH_GOALS} has been reached.`);
+    }
+    const stored = await setStrengthGoals(merged);
+    setStrengthGoalList(stored);
+  }, [strengthGoals]);
 
   useEffect(() => {
     if (!goalsLoaded) return;
@@ -493,6 +535,16 @@ export default function ProfilePage() {
             </>
           )}
         </div>
+      </Section>
+
+      <Section>
+        <StrengthGoalsCard
+          isEditing={isEditing}
+          loading={!strengthGoalsLoaded}
+          goals={strengthGoals}
+          exercises={strengthGoalExercises}
+          persistGoals={persistStrengthGoals}
+        />
       </Section>
 
       <Section>

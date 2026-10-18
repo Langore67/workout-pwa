@@ -64,6 +64,8 @@ import type {
 } from "./types";
 import { getCurrentPhase } from "../../config/appConfig";
 import { getProfileGoals } from "../../profile/profileGoals";
+import { getStrengthGoals } from "../../domain/goals/strengthGoals";
+import { buildStrengthGoalProgressContexts } from "../../domain/goals/strengthGoalProgress";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HEIGHT_META_KEY = "profile.heightIn";
@@ -705,11 +707,12 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     hydration,
   });
   const strengthSignal = await buildStrengthSignal(generatedAt);
-  const [sessions, sets, tracks, exercises] = await Promise.all([
+  const [sessions, sets, tracks, exercises, strengthGoals] = await Promise.all([
     db.sessions.toArray(),
     db.sets.toArray(),
     db.tracks.toArray(),
     db.exercises.toArray(),
+    getStrengthGoals(),
   ]);
   const cardioSummary = buildCardioWalkSummary({
     sessions: sessions ?? [],
@@ -758,13 +761,20 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     anchorLifts: anchorIntelligence,
     asOf: generatedAt,
   });
+  const strengthGoalProgress = buildStrengthGoalProgressContexts({
+    goals: strengthGoals,
+    sessions: sessions ?? [],
+    sets: sets ?? [],
+    tracks: tracks ?? [],
+    exercises: exercises ?? [],
+    asOf: generatedAt,
+  });
   const exerciseVocabulary = buildExerciseVocabulary({
     sessions: sessions ?? [],
     sets: sets ?? [],
     tracks: tracks ?? [],
     exercises: exercises ?? [],
     anchorLifts: anchorIntelligence,
-    recentExerciseProgression,
     asOf: generatedAt,
     limit: 25,
   });
@@ -869,6 +879,8 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     strengthSignal,
     phaseQuality,
     anchorLifts: anchorIntelligence,
+    recentExerciseProgression,
+    strengthGoalProgress,
     currentMovementFocus,
     movementCoverage,
     exerciseVocabulary,

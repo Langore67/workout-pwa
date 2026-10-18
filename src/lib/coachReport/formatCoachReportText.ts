@@ -8,6 +8,7 @@ import type {
   ExerciseProgressionContext,
   ExerciseProgressionObservation,
 } from "../../domain/progression/exerciseProgressionContext";
+import type { StrengthGoalProgressContext } from "../../domain/goals/strengthGoalProgress";
 
 function renderSection(section: CoachReportSection | undefined) {
   if (!section) return [] as string[];
@@ -195,6 +196,7 @@ function renderProgrammingContext(context: CoachReport["programmingContext"]) {
   }
 
   lines.push(...formatRecentExerciseProgressionForCoach(context.exerciseProgression));
+  lines.push(...formatStrengthGoalProgressForCoach(context.strengthGoalProgress));
 
   if (context.coverage.movementPatterns.length) {
     lines.push("", `Movement Coverage (${context.coverage.windowDays}d)`);
@@ -314,6 +316,43 @@ export function formatRecentExerciseProgressionForCoach(contexts?: ExerciseProgr
     for (const observation of context.recentObservations) {
       lines.push(`  - Observation: ${formatProgressionObservation(observation, context)}`);
     }
+    for (const limitation of context.limitations) lines.push(`  - Limitation: ${limitation}`);
+  }
+  return lines;
+}
+
+function formatGoalObservation(context: StrengthGoalProgressContext) {
+  const observation = context.currentComparableObservation;
+  if (!observation) return undefined;
+  const fields: string[] = [];
+  if (typeof observation.load === "number" && typeof observation.reps === "number") {
+    fields.push(`${compactNumber(observation.load)}x${compactNumber(observation.reps)}`);
+  } else if (typeof observation.reps === "number") {
+    fields.push(`${compactNumber(observation.reps)} reps`);
+  }
+  if (typeof observation.rir === "number") fields.push(`RIR ${compactNumber(observation.rir)}`);
+  if (typeof observation.e1RM === "number") fields.push(`scored e1RM ${compactNumber(observation.e1RM)}`);
+  return fields.length ? fields.join(" | ") : undefined;
+}
+
+export function formatStrengthGoalProgressForCoach(contexts?: StrengthGoalProgressContext[]) {
+  if (!contexts?.length) return [] as string[];
+  const lines = ["", "Strength Goal Progress"];
+  for (const context of contexts) {
+    const unit = context.targetMetric === "load" ? "lb" : "reps";
+    lines.push(`- ${context.label ?? context.exerciseName} [${context.exerciseId}]`);
+    lines.push(`  - Goal: ${compactNumber(context.targetValue)} ${unit} ${context.targetMetric === "load" ? "performed load" : "reps"}`);
+    const current = formatGoalObservation(context);
+    if (current) lines.push(`  - Current comparable: ${current}`);
+    if (typeof context.currentValue === "number") lines.push(`  - Current ${context.targetMetric === "load" ? "performed load" : "reps"}: ${compactNumber(context.currentValue)} ${unit}`);
+    if (typeof context.bestValue === "number") lines.push(`  - Best known ${context.targetMetric === "load" ? "performed load" : "reps"}: ${compactNumber(context.bestValue)} ${unit}`);
+    if (typeof context.supportingScoredE1RM === "number") lines.push(`  - Supporting scored e1RM: ${compactNumber(context.supportingScoredE1RM)} lb`);
+    if (typeof context.absoluteDistance === "number") lines.push(`  - Distance to goal: ${compactNumber(context.absoluteDistance)} ${unit}`);
+    if (typeof context.percentOfGoal === "number") lines.push(`  - Percent of goal: ${compactNumber(context.percentOfGoal)}%`);
+    lines.push(`  - Direction: ${context.direction}`);
+    lines.push(`  - Observations: ${context.observationCount}`);
+    lines.push(`  - Freshness: ${context.freshness}`);
+    lines.push(`  - Comparability: ${context.comparability}`);
     for (const limitation of context.limitations) lines.push(`  - Limitation: ${limitation}`);
   }
   return lines;
