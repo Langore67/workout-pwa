@@ -9,6 +9,7 @@ import type { LeanPreservationComposite } from "./leanPreservationComposite";
 import type { TrainingRole } from "../../domain/trainingRole";
 import type { CardioProgressionContext } from "../cardio/cardioProgressionContext";
 import type { CardioStrengthInterferenceContext } from "./cardioStrengthInterferenceContext";
+import type { IntendedWeeklyScheduleContext } from "../../domain/schedule/weeklyTrainingSchedule";
 
 export type CoachExportMetric = {
   latest: number | null;
@@ -437,6 +438,7 @@ export type CoachProgrammingContext = {
   constraints: string[];
   exerciseProgression?: import("../../domain/progression/exerciseProgressionContext").ExerciseProgressionContext[];
   strengthGoalProgress?: import("../../domain/goals/strengthGoalProgress").StrengthGoalProgressContext[];
+  intendedWeeklySchedule?: IntendedWeeklyScheduleContext;
   cardio?: {
     activities7d: number;
     duration7dSeconds: number;
@@ -475,6 +477,7 @@ export type CoachExportMetrics = {
   anchorLifts: CoachExportAnchorLift[];
   recentExerciseProgression?: import("../../domain/progression/exerciseProgressionContext").ExerciseProgressionContext[];
   strengthGoalProgress?: import("../../domain/goals/strengthGoalProgress").StrengthGoalProgressContext[];
+  intendedWeeklySchedule?: IntendedWeeklyScheduleContext;
   currentMovementFocus?: CoachExportCurrentMovementFocus;
   movementCoverage?: MovementCoverageSummary;
   programmingContext?: CoachProgrammingContext;

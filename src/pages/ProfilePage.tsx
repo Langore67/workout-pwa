@@ -21,13 +21,19 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Page, Section } from "../components/Page.tsx";
 import { StrengthGoalsCard } from "../components/profile/StrengthGoalsCard";
-import { db, type Exercise } from "../db";
+import { WeeklyTrainingScheduleCard } from "../components/profile/WeeklyTrainingScheduleCard";
+import { db, type Exercise, type Template } from "../db";
 import {
   MAX_STRENGTH_GOALS,
   getStrengthGoals,
   setStrengthGoals,
   type StrengthGoal,
 } from "../domain/goals/strengthGoals";
+import {
+  getWeeklyTrainingSchedule,
+  setWeeklyTrainingSchedule,
+  type WeeklyTrainingSchedule,
+} from "../domain/schedule/weeklyTrainingSchedule";
 import { getProfileGoals, setProfileGoals } from "../profile/profileGoals";
 
 type Sex = "male" | "female" | "other" | "";
@@ -259,6 +265,9 @@ export default function ProfilePage() {
   const [strengthGoals, setStrengthGoalList] = useState<StrengthGoal[]>([]);
   const [strengthGoalExercises, setStrengthGoalExercises] = useState<Exercise[]>([]);
   const [strengthGoalsLoaded, setStrengthGoalsLoaded] = useState(false);
+  const [weeklySchedule, setWeeklySchedule] = useState<WeeklyTrainingSchedule | null>(null);
+  const [scheduleTemplates, setScheduleTemplates] = useState<Template[]>([]);
+  const [weeklyScheduleLoaded, setWeeklyScheduleLoaded] = useState(false);
 
   useEffect(() => {
     saveProfile(profile);
@@ -316,6 +325,35 @@ export default function ProfilePage() {
     const stored = await setStrengthGoals(merged);
     setStrengthGoalList(stored);
   }, [strengthGoals]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([getWeeklyTrainingSchedule(), db.templates.toArray()])
+      .then(([storedSchedule, templates]) => {
+        if (cancelled) return;
+        setWeeklySchedule(storedSchedule);
+        setScheduleTemplates(templates);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setWeeklySchedule(null);
+          setScheduleTemplates([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setWeeklyScheduleLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const persistWeeklySchedule = useCallback(async (nextSchedule: WeeklyTrainingSchedule) => {
+    const stored = await setWeeklyTrainingSchedule(nextSchedule, scheduleTemplates);
+    setWeeklySchedule(stored);
+  }, [scheduleTemplates]);
+
+  const scheduledTrainingDays = weeklySchedule?.entries.filter((entry) => entry.dayType === "training").length;
 
   useEffect(() => {
     if (!goalsLoaded) return;
@@ -548,12 +586,25 @@ export default function ProfilePage() {
       </Section>
 
       <Section>
+        <WeeklyTrainingScheduleCard
+          isEditing={isEditing}
+          loading={!weeklyScheduleLoaded}
+          schedule={weeklySchedule}
+          templates={scheduleTemplates}
+          persistSchedule={persistWeeklySchedule}
+        />
+      </Section>
+
+      <Section>
         <div className="card" style={{ padding: 14, marginBottom: 12 }}>
           <CardTitle>TRAINING PROFILE</CardTitle>
 
           {!isEditing ? (
             <>
-              <ReadRow label="Training Days / Week" value={profile.trainingDaysPerWeek || "—"} />
+              <ReadRow
+                label="Training Days / Week"
+                value={scheduledTrainingDays != null ? `${scheduledTrainingDays} (from weekly schedule)` : profile.trainingDaysPerWeek || "—"}
+              />
               <ReadRow
                 label="Experience Level"
                 value={profile.experienceLevel || "—"}
@@ -565,10 +616,19 @@ export default function ProfilePage() {
               <ReadRow
                 label="Training Days / Week"
                 value={
-                  <TextInput
-                    value={profile.trainingDaysPerWeek}
-                    onChange={(v) => setProfile((p) => ({ ...p, trainingDaysPerWeek: v }))}
-                  />
+                  scheduledTrainingDays != null ? (
+                    <div>
+                      {scheduledTrainingDays} (from weekly schedule)
+                      <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                        Edit the Weekly Training Schedule to change this value. The legacy Profile value is preserved.
+                      </div>
+                    </div>
+                  ) : (
+                    <TextInput
+                      value={profile.trainingDaysPerWeek}
+                      onChange={(v) => setProfile((p) => ({ ...p, trainingDaysPerWeek: v }))}
+                    />
+                  )
                 }
               />
               <ReadRow

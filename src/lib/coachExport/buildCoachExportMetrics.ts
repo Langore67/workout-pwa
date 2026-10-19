@@ -66,6 +66,10 @@ import { getCurrentPhase } from "../../config/appConfig";
 import { getProfileGoals } from "../../profile/profileGoals";
 import { getStrengthGoals } from "../../domain/goals/strengthGoals";
 import { buildStrengthGoalProgressContexts } from "../../domain/goals/strengthGoalProgress";
+import {
+  getWeeklyTrainingSchedule,
+  resolveIntendedWeeklySchedule,
+} from "../../domain/schedule/weeklyTrainingSchedule";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HEIGHT_META_KEY = "profile.heightIn";
@@ -707,13 +711,16 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     hydration,
   });
   const strengthSignal = await buildStrengthSignal(generatedAt);
-  const [sessions, sets, tracks, exercises, strengthGoals] = await Promise.all([
+  const [sessions, sets, tracks, exercises, strengthGoals, weeklySchedule, templates] = await Promise.all([
     db.sessions.toArray(),
     db.sets.toArray(),
     db.tracks.toArray(),
     db.exercises.toArray(),
     getStrengthGoals(),
+    getWeeklyTrainingSchedule(),
+    db.templates.toArray(),
   ]);
+  const intendedWeeklySchedule = resolveIntendedWeeklySchedule(weeklySchedule, templates ?? []);
   const cardioSummary = buildCardioWalkSummary({
     sessions: sessions ?? [],
     sets: sets ?? [],
@@ -881,6 +888,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     anchorLifts: anchorIntelligence,
     recentExerciseProgression,
     strengthGoalProgress,
+    intendedWeeklySchedule,
     currentMovementFocus,
     movementCoverage,
     exerciseVocabulary,

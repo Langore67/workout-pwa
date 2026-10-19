@@ -51,6 +51,7 @@ import { GoalsCard } from "../components/coachDashboard/GoalsCard";
 import { LearningsCard } from "../components/coachDashboard/LearningsCard";
 import { PerformanceCard } from "../components/coachDashboard/PerformanceCard";
 import { ProgrammingIntelligenceCard } from "../components/coachDashboard/ProgrammingIntelligenceCard";
+import { AICoachingPromptCard } from "../components/AICoachingPromptCard";
 import { WeeklyVolumeCard } from "../components/coachDashboard/WeeklyVolumeCard";
 import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetrics";
 import type { CoachExportMetrics } from "../lib/coachExport/types";
@@ -71,6 +72,12 @@ import {
   COACH_DASHBOARD_REFRESH_EVENT,
   dispatchCoachDashboardRefresh,
 } from "../lib/coachDashboardEvents";
+import {
+  getScheduledEntryForDate,
+  getWeeklyTrainingSchedule,
+  isSameLocalCalendarDay,
+  weekdayName,
+} from "../domain/schedule/weeklyTrainingSchedule";
 
 /* ============================================================================
    Breadcrumb 1 — Helpers
@@ -230,6 +237,7 @@ export default function StartPage() {
   const templateItems = useLiveQuery(() => db.templateItems.toArray(), []);
   const tracks = useLiveQuery(() => db.tracks.toArray(), []);
   const sessions = useLiveQuery(() => db.sessions.toArray(), []);
+  const weeklySchedule = useLiveQuery(() => getWeeklyTrainingSchedule(), []);
 
   /* --------------------------------------------------------------------------
      Breadcrumb 4 — UI state
@@ -480,6 +488,33 @@ export default function StartPage() {
       .filter((s: any) => !(s as any).deletedAt && typeof s.endedAt === "number" && Number.isFinite(s.endedAt))
       .sort((a, b) => (b.endedAt ?? b.startedAt ?? 0) - (a.endedAt ?? a.startedAt ?? 0))[0] ?? null;
   }, [sessions]);
+
+  const todaySchedule = useMemo(() => {
+    const today = new Date();
+    const entry = getScheduledEntryForDate(weeklySchedule, today);
+    if (!entry) return null;
+    if (entry.dayType === "recovery") {
+      return { entry, weekday: weekdayName(entry.dayOfWeek), kind: "recovery" as const, completed: false };
+    }
+    const template = entry.templateId ? (templates ?? []).find((row) => row.id === entry.templateId) : undefined;
+    const normalizedSessionName = entry.sessionName.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+    const completed = (sessions ?? []).some(
+      (session) =>
+        !session.deletedAt &&
+        (entry.templateId ? session.templateId === entry.templateId : String(session.templateName ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase() === normalizedSessionName) &&
+        typeof session.endedAt === "number" &&
+        Number.isFinite(session.endedAt) &&
+        isSameLocalCalendarDay(session.endedAt, today)
+    );
+    return {
+      entry,
+      weekday: weekdayName(entry.dayOfWeek),
+      kind: "training" as const,
+      template,
+      unavailable: entry.templateId && !template ? "missing" as const : template?.archivedAt ? "archived" as const : undefined,
+      completed,
+    };
+  }, [sessions, templates, weeklySchedule]);
 
   /* --------------------------------------------------------------------------
      Breadcrumb 8 — Build template previews + group into folders
@@ -744,6 +779,47 @@ export default function StartPage() {
      ----------------------------------------------------------------------- */
   return (
     <Page title="Today" subtitle="Start, continue, import, or review your latest training.">
+      {todaySchedule ? (
+        <Section>
+          <div className="card" data-testid="today-scheduled-workout" style={{ padding: 14 }}>
+            <div className="muted" style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.06em" }}>
+              TODAY'S WORKOUT · {todaySchedule.weekday.toUpperCase()}
+            </div>
+            {todaySchedule.kind === "recovery" ? (
+              <>
+                <div style={{ fontWeight: 900, fontSize: 20, marginTop: 6 }}>Recovery Day</div>
+                <div className="muted" style={{ marginTop: 4 }}>
+                  Your weekly schedule marks today for recovery. You can still start any workout below.
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontWeight: 900, fontSize: 20, marginTop: 6 }}>{todaySchedule.entry.sessionName}</div>
+                {todaySchedule.entry.focus ? <div style={{ marginTop: 4 }}>{todaySchedule.entry.focus}</div> : null}
+                <div className="muted" style={{ marginTop: 4 }}>
+                  Scheduled workout{todaySchedule.completed ? " · Completed today" : ""}
+                </div>
+                {todaySchedule.unavailable ? <div role="status" style={{ color: "#92400e", fontWeight: 700, marginTop: 4 }}>
+                  Linked template is {todaySchedule.unavailable}; the schedule entry remains valid.
+                </div> : null}
+                {todaySchedule.template && !todaySchedule.unavailable ? <button
+                  type="button"
+                  className="btn primary"
+                  style={{ marginTop: 10 }}
+                  onClick={() => startFromTemplate(todaySchedule.template!)}
+                >
+                  Start From Template
+                </button> : null}
+              </>
+            )}
+          </div>
+        </Section>
+      ) : null}
+
+      <Section>
+        <AICoachingPromptCard />
+      </Section>
+
       <Section>
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <div>
