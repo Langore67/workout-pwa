@@ -9,6 +9,7 @@ import type {
   ExerciseProgressionObservation,
 } from "../../domain/progression/exerciseProgressionContext";
 import type { StrengthGoalProgressContext } from "../../domain/goals/strengthGoalProgress";
+import type { IntendedWeeklyScheduleContext } from "../../domain/schedule/weeklyTrainingSchedule";
 
 function renderSection(section: CoachReportSection | undefined) {
   if (!section) return [] as string[];
@@ -197,6 +198,7 @@ function renderProgrammingContext(context: CoachReport["programmingContext"]) {
 
   lines.push(...formatRecentExerciseProgressionForCoach(context.exerciseProgression));
   lines.push(...formatStrengthGoalProgressForCoach(context.strengthGoalProgress));
+  lines.push(...formatIntendedWeeklyScheduleForCoach(context.intendedWeeklySchedule));
 
   if (context.coverage.movementPatterns.length) {
     lines.push("", `Movement Coverage (${context.coverage.windowDays}d)`);
@@ -270,6 +272,30 @@ function renderProgrammingContext(context: CoachReport["programmingContext"]) {
     }
   }
   lines.push("");
+  return lines;
+}
+
+export function formatIntendedWeeklyScheduleForCoach(
+  schedule?: IntendedWeeklyScheduleContext
+) {
+  if (!schedule) return [] as string[];
+  const lines = ["", schedule.status === "inactive" ? "Intended Weekly Schedule (Inactive)" : "Intended Weekly Schedule"];
+  if (schedule.status === "unconfigured") {
+    lines.push("- Not configured.");
+    return lines;
+  }
+  for (const entry of schedule.entries) {
+    if (entry.dayType === "recovery") lines.push(`- ${entry.dayName}: Recovery`);
+    else {
+      const focus = entry.focus ? ` — ${entry.focus}` : "";
+      const reference = entry.templateStatus === "missing"
+        ? ` [linked template unavailable: ${entry.templateId}]`
+        : entry.templateStatus === "archived"
+          ? ` [linked template archived: ${entry.templateName ?? entry.templateId}]`
+          : "";
+      lines.push(`- ${entry.dayName}: ${entry.sessionName}${focus}${reference}`);
+    }
+  }
   return lines;
 }
 
