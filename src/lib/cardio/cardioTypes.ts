@@ -22,14 +22,20 @@ export type CardioWalkEvent = {
   cardioFormat?: CardioFormat;
   source?: string;
   route?: string;
+  routeId?: string;
   durationSeconds?: number;
   distanceMeters?: number;
+  distance?: number;
+  distanceUnit?: "mi" | "km";
   paceSecondsPerMile?: number;
   elevationText?: string;
+  elevationGain?: number;
+  elevationUnit?: "ft" | "m";
   avgHr?: number;
   maxHr?: number;
   notes?: string;
   confidence: CardioWalkConfidence;
+  structuredMetrics?: boolean;
 };
 
 export type CardioDailyWalkSummary = {

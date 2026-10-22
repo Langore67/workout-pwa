@@ -37,8 +37,17 @@ For cardio, these optional metadata fields may appear after Session and before D
 Activity Type: Walk|Hike|Run|Bike|Row|Other
 Intent: Fitness|Recovery|Adventure
 Cardio Format: Continuous|Intervals
+Distance: <positive value> mi|km
+Duration: MM:SS|HH:MM:SS
+Average HR: <integer> bpm
+Maximum HR: <integer> bpm
+Elevation Gain: <non-negative value> ft|m
+Route ID: <explicit stable identifier>
+Route Name: <explicit route name>
+Source: <explicit source>
 
 Activity Type is what was performed, Intent is why, and Cardio Format is how. Never infer an unknown field.
+Distance, duration, heart rate, elevation, route, and source must also be explicit; omit unknown fields.
 
 Supported conditioning notation includes:
 conditioning BWx3.12mi

@@ -17,6 +17,7 @@ import {
 import { parseCardioIntent, type CardioIntent } from "../lib/cardio/cardioIntent";
 import { parseCardioFormat, type CardioFormat } from "../lib/cardio/cardioFormat";
 import { inspectIfWorkoutContract } from "../domain/import/ifWorkoutContract";
+import { parseStructuredCardioMetrics, type CardioMetrics } from "../lib/cardio/cardioMetrics";
 
 type ImportedMetricType = "reps" | "distance" | "duration";
 
@@ -35,6 +36,7 @@ export type ParsedIfWorkout = {
   activityType?: CardioActivityType;
   conditioningIntent?: CardioIntent;
   cardioFormat?: CardioFormat;
+  cardioMetrics?: CardioMetrics;
   start?: string;
   end?: string;
   notes?: string;
@@ -209,6 +211,7 @@ function parseIfSetLine(line: string): ImportedSet | null {
 
 export function parseIfJournalText(text: string): ParsedIfWorkout {
   const contract = inspectIfWorkoutContract(text);
+  const structuredCardio = parseStructuredCardioMetrics(text);
   const lines = String(text ?? "").replace(/\r/g, "").split("\n");
   let templateName = "";
   let explicitActivityType: CardioActivityType | undefined;
@@ -356,6 +359,7 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
     activityType,
     conditioningIntent,
     cardioFormat,
+    cardioMetrics: structuredCardio.metrics,
     start: start || undefined,
     end: end || undefined,
     notes: notes.trim() || undefined,
@@ -462,6 +466,7 @@ export async function importSessionFromJournal(
         activityType?: CardioActivityType;
         conditioningIntent?: CardioIntent;
         cardioFormat?: CardioFormat;
+        cardioMetrics?: CardioMetrics;
         start?: string;
         end?: string;
         notes?: string;
@@ -485,6 +490,7 @@ export async function importSessionFromJournal(
           }),
         conditioningIntent: args.conditioningIntent,
         cardioFormat: args.cardioFormat,
+        cardioMetrics: args.cardioMetrics,
         start: args.start,
         end: args.end,
         notes: args.notes,
@@ -518,6 +524,7 @@ export async function importSessionFromJournal(
       activityType: parsed.activityType,
       conditioningIntent: parsed.conditioningIntent,
       cardioFormat: parsed.cardioFormat,
+      cardioMetrics: parsed.cardioMetrics,
       startedAt,
       endedAt,
       notes: parsed.notes?.trim() || undefined,

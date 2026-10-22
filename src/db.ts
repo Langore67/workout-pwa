@@ -29,6 +29,7 @@ import Dexie, { Table } from "dexie";
 import type { CardioActivityType } from "./lib/cardio/cardioActivityType";
 import type { CardioIntent } from "./lib/cardio/cardioIntent";
 import type { CardioFormat } from "./lib/cardio/cardioFormat";
+import type { CardioMetrics } from "./lib/cardio/cardioMetrics";
 import type { TrainingRole } from "./domain/trainingRole";
 
 export type UUID = string;
@@ -256,6 +257,7 @@ export interface Session {
   activityType?: CardioActivityType;
   conditioningIntent?: CardioIntent;
   cardioFormat?: CardioFormat;
+  cardioMetrics?: CardioMetrics;
   startedAt: number;
   endedAt?: number;
   notes?: string;
