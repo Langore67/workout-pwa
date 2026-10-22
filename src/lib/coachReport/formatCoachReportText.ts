@@ -3,7 +3,7 @@ import { getTrainingRoleLabel, type TrainingRole } from "../../domain/trainingRo
 import { getCardioActivityTypeLabel } from "../cardio/cardioActivityType";
 import { getCardioIntentLabel } from "../cardio/cardioIntent";
 import { getCardioFormatLabel } from "../cardio/cardioFormat";
-import type { CardioProgressionObservation, CardioProgressionSignal } from "../cardio/cardioProgressionContext";
+import type { CardioProgressionObservation } from "../cardio/cardioProgressionContext";
 import type {
   ExerciseProgressionContext,
   ExerciseProgressionObservation,
@@ -239,17 +239,20 @@ function renderProgrammingContext(context: CoachReport["programmingContext"]) {
     if (cardio.activityTypes.length) lines.push(`- Activity types: ${cardio.activityTypes.join(", ")}`);
     if (cardio.intents.length) lines.push(`- Intents: ${cardio.intents.join(", ")}`);
     if (cardio.formats.length) lines.push(`- Formats: ${cardio.formats.join(", ")}`);
-    const progressionGroups = cardio.progression.recentComparableGroups
-      .filter((group) => group.prior)
-      .slice(0, 3);
+    const progressionGroups = cardio.progression.groups;
     if (progressionGroups.length) {
-      lines.push("", "Cardio Progression");
+      lines.push("", "Recent Cardio Progression");
       for (const group of progressionGroups) {
         lines.push(`- ${group.label} / ${getCardioActivityTypeLabel(group.activityType)}${group.intent ? ` / ${getCardioIntentLabel(group.intent)}` : ""} / ${getCardioFormatLabel(group.cardioFormat)}`);
-        lines.push(`  - ${group.observations} recent comparable sessions`);
-        lines.push(`  - Recent: ${formatCardioProgressionPoint(group.recent)}`);
-        lines.push(`  - Prior: ${formatCardioProgressionPoint(group.prior!)}`);
-        lines.push(`  - Signal: ${formatCardioProgressionSignal(group.signal)}`);
+        lines.push(`  - Observations: ${group.observationCount}`);
+        lines.push(`  - Comparability: ${group.comparability.replace(/_/g, " ")}`);
+        lines.push(`  - Latest: ${formatCardioProgressionPoint(group.recent)}`);
+        lines.push(`  - Direction: ${group.direction} (pace seconds per mile)`);
+        if (group.paceDifferenceSecondsPerMile != null) lines.push(`  - Pace difference: ${Math.abs(Math.round(group.paceDifferenceSecondsPerMile))} sec/mi ${group.paceDifferenceSecondsPerMile < 0 ? "lower" : group.paceDifferenceSecondsPerMile > 0 ? "higher" : "unchanged"}`);
+        if (group.averageHrDifferenceBpm != null) lines.push(`  - Average HR difference: ${Math.abs(group.averageHrDifferenceBpm)} bpm ${group.averageHrDifferenceBpm < 0 ? "lower" : group.averageHrDifferenceBpm > 0 ? "higher" : "unchanged"}`);
+        if (group.limitations.length) lines.push(`  - Limitations: ${group.limitations.join(" ")}`);
+        lines.push("  - Recent observations:");
+        for (const point of group.recentObservations) lines.push(`    - ${formatCardioProgressionPoint(point)}`);
       }
     }
     const proximity = cardio.strengthProximity?.observations?.slice(0, 5) ?? [];
@@ -390,20 +393,14 @@ function formatCardioProgressionPoint(point: CardioProgressionObservation) {
     const pace = Math.round(point.paceSecondsPerMile);
     fields.push(`${Math.floor(pace / 60)}:${String(pace % 60).padStart(2, "0")}/mi`);
   }
-  if (typeof point.avgHr === "number") fields.push(`${Math.round(point.avgHr)} avg HR`);
+  if (typeof point.avgHrBpm === "number") fields.push(`avg HR ${Math.round(point.avgHrBpm)} bpm`);
+  if (typeof point.maxHrBpm === "number") fields.push(`max HR ${Math.round(point.maxHrBpm)} bpm`);
   if (typeof point.durationSeconds === "number") fields.push(`${Math.round(point.durationSeconds / 60)} min`);
-  if (typeof point.distanceMeters === "number") fields.push(`${(point.distanceMeters / 1609.344).toFixed(1)} mi`);
+  if (typeof point.distance === "number" && point.distanceUnit) fields.push(`${point.distance} ${point.distanceUnit}`);
+  else if (typeof point.distanceMeters === "number") fields.push(`${(point.distanceMeters / 1609.344).toFixed(1)} mi`);
+  if (typeof point.elevationGain === "number" && point.elevationUnit) fields.push(`elevation ${point.elevationGain} ${point.elevationUnit}`);
+  if (point.source) fields.push(`source ${point.source}`);
   return fields.join(" | ");
-}
-
-function formatCardioProgressionSignal(signal: CardioProgressionSignal) {
-  if (signal === "possible_efficiency_improvement") return "possible efficiency signal";
-  if (signal === "higher_effort") return "faster pace at materially higher avg HR";
-  if (signal === "lower_effort") return "slower pace at materially lower avg HR";
-  if (signal === "broadly_similar") return "broadly similar pace and avg HR";
-  if (signal === "pace_only_improvement") return "faster pace; paired HR unavailable";
-  if (signal === "pace_only_decline") return "slower pace; paired HR unavailable";
-  return "insufficient paired pace/HR context";
 }
 
 function renderCoachingActions(actions: CoachReport["coachingActions"]) {

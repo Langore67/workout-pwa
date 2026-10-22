@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { buildCardioProgressionContext } from "../src/lib/cardio/cardioProgressionContext";
 import { buildCoachProgrammingContext } from "../src/lib/coachExport/programmingContext";
 import { formatCoachReportText } from "../src/lib/coachReport/formatCoachReportText";
 
@@ -166,11 +167,29 @@ test("Programming Context exposes factual comparable cardio progression without 
 
   expect(context.cardio?.progression.summary).toEqual({ comparableSessionCount: 2, groupsWithTrend: 1 });
   expect(context.cardio?.progression.recentComparableGroups[0].recentObservations).toHaveLength(2);
-  expect(text).toContain("Cardio Progression");
-  expect(text).toContain("2 recent comparable sessions");
-  expect(text).toContain("Recent: 2026-10-08 | 17:11/mi | 112 avg HR | 61 min | 3.5 mi");
-  expect(text).toContain("Signal: possible efficiency signal");
+  expect(text).toContain("Recent Cardio Progression");
+  expect(text).toContain("Observations: 2");
+  expect(text).toContain("2026-10-08 | 17:11/mi | avg HR 112 bpm");
+  expect(text).toContain("Direction: similar");
   expect(text).not.toMatch(/do more cardio|increase cardio|decrease cardio|target HR|add intervals/i);
+});
+
+test("Programming Context reuses the prebuilt CoachExportMetrics cardio progression object", () => {
+  const cardioEvents = [
+    { sessionId: "recent", startedAt: AS_OF - DAY_MS, date: "2026-10-08", name: "PRP Walk", activityType: "walk", conditioningIntent: "fitness", cardioFormat: "continuous", paceSecondsPerMile: 1031, confidence: "high" },
+    { sessionId: "prior", startedAt: AS_OF - 3 * DAY_MS, date: "2026-10-06", name: "PRP Walk", activityType: "walk", conditioningIntent: "fitness", cardioFormat: "continuous", paceSecondsPerMile: 1060, confidence: "high" },
+  ] as any;
+  const progression = buildCardioProgressionContext(cardioEvents, { asOf: AS_OF });
+  const context = buildCoachProgrammingContext({
+    metrics: metrics({
+      cardioSummary: { normalizedWalks: cardioEvents, last7d: { count: 2, totalDurationSeconds: 0, totalDistanceMeters: 0 }, last28d: { count: 2, totalDurationSeconds: 0, totalDistanceMeters: 0 } },
+      cardioProgression: progression,
+    }),
+    ...strengthHistory(["Anything"]),
+    asOf: AS_OF,
+  });
+
+  expect(context.cardio?.progression).toBe(progression);
 });
 
 test("Cardio Progression report caps comparable groups at three", () => {
@@ -194,7 +213,7 @@ test("Cardio Progression report caps comparable groups at three", () => {
     programmingContext: context,
   } as any);
 
-  expect((text.match(/recent comparable sessions/g) ?? [])).toHaveLength(3);
+  expect((text.match(/  - Observations: 2/g) ?? [])).toHaveLength(3);
   expect(text).toContain("Route A / Walk / Fitness / Continuous");
   expect(text).not.toContain("Route D / Walk / Fitness / Continuous");
 });

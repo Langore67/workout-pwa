@@ -473,6 +473,12 @@ test("coach state builder does not mutate the export metrics input", async () =>
   expect(metrics).toEqual(before);
 });
 
+test("coach state reuses the CoachExportMetrics cardio progression object", () => {
+  const progression = { lookbackDays: 28, maxObservationsPerGroup: 5, maxGroups: 3, groups: [], recentComparableGroups: [], summary: { comparableSessionCount: 0, groupsWithTrend: 0 } } as any;
+  const state = buildCoachStateFromExportMetrics({ generatedAt: 1, cardioProgression: progression } as any);
+  expect(state.cardioProgression).toBe(progression);
+});
+
 test("coach explanation exposes existing reasons and evidence quality without changing status", () => {
   const state = buildCoachStateFromExportMetrics(buildMetrics());
 

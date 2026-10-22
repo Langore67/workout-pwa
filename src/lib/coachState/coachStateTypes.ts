@@ -150,6 +150,7 @@ export type CoachState = {
   programmingContext?: CoachProgrammingContext;
   recentExerciseProgression?: CoachExportMetrics["recentExerciseProgression"];
   strengthGoalProgress?: CoachExportMetrics["strengthGoalProgress"];
+  cardioProgression?: CoachExportMetrics["cardioProgression"];
   explanation: CoachExplanation;
   export: CoachStateExport;
 };

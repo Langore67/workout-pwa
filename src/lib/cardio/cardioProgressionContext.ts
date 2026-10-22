@@ -7,26 +7,37 @@ import type { CardioWalkEvent } from "./cardioTypes";
 
 export const SIMILAR_HR_TOLERANCE_BPM = 3;
 export const MATERIAL_HR_DIFFERENCE_BPM = 5;
+export const CARDIO_PROGRESSION_LOOKBACK_DAYS = 28;
 export const MAX_CARDIO_PROGRESSION_OBSERVATIONS = 5;
+export const MAX_CARDIO_PROGRESSION_GROUPS = 3;
 
-export type CardioProgressionSignal =
-  | "possible_efficiency_improvement"
-  | "higher_effort"
-  | "lower_effort"
-  | "broadly_similar"
-  | "pace_only_improvement"
-  | "pace_only_decline"
-  | "insufficient_context";
+export type CardioProgressionDirection = "higher" | "lower" | "similar" | "insufficient_context";
+export type CardioProgressionSignal = CardioProgressionDirection;
+export type CardioComparability = "exact_route" | "same_activity_format_intent" | "route_unknown";
 
 export type CardioProgressionObservation = {
   sessionId: string;
   date: string;
   startedAt: number;
-  paceSecondsPerMile?: number;
-  avgHr?: number;
-  durationSeconds?: number;
+  activityType: CardioActivityType;
+  intent?: CardioIntent;
+  format: CardioFormat;
+  distance?: number;
+  distanceUnit?: "mi" | "km";
   distanceMeters?: number;
+  durationSeconds?: number;
+  paceSecondsPerMile?: number;
+  paceSecondsPerKm?: number;
+  avgHrBpm?: number;
+  maxHrBpm?: number;
+  avgHr?: number;
+  elevationGain?: number;
+  elevationUnit?: "ft" | "m";
   elevationText?: string;
+  routeId?: string;
+  routeName?: string;
+  source?: string;
+  provenance?: CardioWalkEvent["metricProvenance"];
 };
 
 export type CardioComparableGroup = {
@@ -36,121 +47,125 @@ export type CardioComparableGroup = {
   intent?: CardioIntent;
   cardioFormat: CardioFormat;
   routeFamily: string;
+  comparability: CardioComparability;
+  observationCount: number;
   observations: number;
+  latestObservationAt: number;
+  direction: CardioProgressionDirection;
+  signal: CardioProgressionDirection;
+  bestRecentObservation?: CardioProgressionObservation;
   recent: CardioProgressionObservation;
   prior?: CardioProgressionObservation;
   recentObservations: CardioProgressionObservation[];
-  signal: CardioProgressionSignal;
+  limitations: string[];
+  paceDifferenceSecondsPerMile?: number;
+  averageHrDifferenceBpm?: number;
 };
 
 export type CardioProgressionContext = {
+  lookbackDays: number;
+  maxObservationsPerGroup: number;
+  maxGroups: number;
+  groups: CardioComparableGroup[];
   recentComparableGroups: CardioComparableGroup[];
-  summary: {
-    comparableSessionCount: number;
-    groupsWithTrend: number;
-  };
+  summary: { comparableSessionCount: number; groupsWithTrend: number };
 };
 
-function finite(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
+function finite(value: unknown): value is number { return typeof value === "number" && Number.isFinite(value); }
+
+function elevationMeters(event: CardioWalkEvent) {
+  if (!finite(event.elevationGain)) return undefined;
+  return event.elevationUnit === "ft" ? event.elevationGain * 0.3048 : event.elevationGain;
 }
 
 function observation(event: CardioWalkEvent): CardioProgressionObservation {
   return {
-    sessionId: event.sessionId,
-    date: event.date,
-    startedAt: event.startedAt,
-    paceSecondsPerMile: event.paceSecondsPerMile,
-    avgHr: event.avgHr,
-    durationSeconds: event.durationSeconds,
-    distanceMeters: event.distanceMeters,
-    elevationText: event.elevationText,
+    sessionId: event.sessionId, date: event.date, startedAt: event.startedAt, activityType: event.activityType!, intent: event.conditioningIntent, format: event.cardioFormat!,
+    distance: event.distance, distanceUnit: event.distanceUnit, distanceMeters: event.distanceMeters, durationSeconds: event.durationSeconds,
+    paceSecondsPerMile: event.paceSecondsPerMile, paceSecondsPerKm: finite(event.paceSecondsPerMile) ? event.paceSecondsPerMile / 1.609344 : undefined,
+    avgHrBpm: event.avgHr, maxHrBpm: event.maxHr, avgHr: event.avgHr,
+    elevationGain: event.elevationGain, elevationUnit: event.elevationUnit, elevationText: event.elevationText,
+    routeId: event.routeId, routeName: event.route, source: event.source, provenance: event.metricProvenance ? { ...event.metricProvenance } : undefined,
   };
 }
 
-export function getCardioProgressionSignal(
-  recent: Pick<CardioProgressionObservation, "paceSecondsPerMile" | "avgHr">,
-  prior: Pick<CardioProgressionObservation, "paceSecondsPerMile" | "avgHr">
-): CardioProgressionSignal {
+export function getCardioProgressionSignal(recent: Pick<CardioProgressionObservation, "paceSecondsPerMile">, prior: Pick<CardioProgressionObservation, "paceSecondsPerMile">): CardioProgressionDirection {
   if (!finite(recent.paceSecondsPerMile) || !finite(prior.paceSecondsPerMile)) return "insufficient_context";
-  const paceDifference = recent.paceSecondsPerMile - prior.paceSecondsPerMile;
-  const similarPace = Math.abs(paceDifference) <= Math.max(15, prior.paceSecondsPerMile * 0.02);
-  if (!finite(recent.avgHr) || !finite(prior.avgHr)) {
-    if (paceDifference < 0) return "pace_only_improvement";
-    if (paceDifference > 0) return "pace_only_decline";
-    return "insufficient_context";
-  }
-
-  const hrDifference = recent.avgHr - prior.avgHr;
-  if (similarPace && hrDifference <= -MATERIAL_HR_DIFFERENCE_BPM) return "possible_efficiency_improvement";
-  if (paceDifference < 0 && hrDifference <= SIMILAR_HR_TOLERANCE_BPM) return "possible_efficiency_improvement";
-  if (paceDifference < 0 && hrDifference >= MATERIAL_HR_DIFFERENCE_BPM) return "higher_effort";
-  if (paceDifference > 0 && hrDifference <= -MATERIAL_HR_DIFFERENCE_BPM) return "lower_effort";
-  if (similarPace && Math.abs(hrDifference) <= SIMILAR_HR_TOLERANCE_BPM) return "broadly_similar";
-  return "insufficient_context";
+  const difference = recent.paceSecondsPerMile - prior.paceSecondsPerMile;
+  if (Math.abs(difference) <= Math.max(15, prior.paceSecondsPerMile * 0.02)) return "similar";
+  return difference > 0 ? "higher" : "lower";
 }
 
-export function describeCardioProgressionSignal(
-  signal: CardioProgressionSignal,
-  recent: CardioProgressionObservation,
-  prior: CardioProgressionObservation
-): string {
-  const paceDifference = (recent.paceSecondsPerMile as number) - (prior.paceSecondsPerMile as number);
-  if (signal === "possible_efficiency_improvement") {
-    const hrDifference = (recent.avgHr as number) - (prior.avgHr as number);
-    const similarPace = Math.abs(paceDifference) <= Math.max(15, (prior.paceSecondsPerMile as number) * 0.02);
-    return similarPace && hrDifference <= -MATERIAL_HR_DIFFERENCE_BPM
-      ? "similar pace at lower avg HR; possible improved aerobic efficiency signal"
-      : "faster pace at similar or lower avg HR; possible improved aerobic efficiency signal";
-  }
-  if (signal === "higher_effort") return "faster pace at higher effort; efficiency improvement not established";
-  if (signal === "lower_effort") return "slower pace at lower effort; improvement not established";
-  if (signal === "broadly_similar") return "similar pace with similar avg HR";
-  if (signal === "pace_only_improvement") return "faster pace; HR comparison unavailable";
-  if (signal === "pace_only_decline") return "slower pace; HR comparison unavailable";
-  if (!finite(recent.avgHr) || !finite(prior.avgHr)) return "unchanged pace; HR comparison unavailable";
-  const hrDifference = recent.avgHr - prior.avgHr;
-  return `${paceDifference < 0 ? "faster" : paceDifference > 0 ? "slower" : "similar"} pace with ${hrDifference < 0 ? "lower" : hrDifference > 0 ? "higher" : "similar"} avg HR`;
+export function getAverageHrDirection(recent?: number, prior?: number): CardioProgressionDirection {
+  if (!finite(recent) || !finite(prior)) return "insufficient_context";
+  const difference = recent - prior;
+  if (Math.abs(difference) <= SIMILAR_HR_TOLERANCE_BPM) return "similar";
+  return difference > 0 ? "higher" : "lower";
 }
 
-export function buildCardioProgressionContext(events: CardioWalkEvent[]): CardioProgressionContext {
+export function describeCardioProgressionSignal(signal: CardioProgressionDirection, recent: CardioProgressionObservation, prior: CardioProgressionObservation): string {
+  if (signal === "insufficient_context") return "insufficient comparable pace context";
+  const paceDifference = (recent.paceSecondsPerMile ?? 0) - (prior.paceSecondsPerMile ?? 0);
+  const fields = [`pace ${signal} by ${Math.round(Math.abs(paceDifference))} sec/mi`];
+  if (finite(recent.avgHrBpm) && finite(prior.avgHrBpm)) fields.push(`average HR ${getAverageHrDirection(recent.avgHrBpm, prior.avgHrBpm)} by ${Math.abs(recent.avgHrBpm - prior.avgHrBpm)} bpm`);
+  return fields.join("; ");
+}
+
+function limitations(events: CardioWalkEvent[], comparability: CardioComparability) {
+  const result: string[] = [];
+  if (comparability === "route_unknown") result.push("Route identity is unavailable.");
+  if (events.length < 2) result.push("Only one comparable observation is available.");
+  if (events.some((event) => !finite(event.avgHr))) result.push("Average HR is unavailable for one or more observations.");
+  if (events.some((event) => event.elevationGain == null)) result.push("Structured elevation is unavailable for one or more observations.");
+  if (events.some((event) => Object.values(event.metricProvenance ?? {}).includes("legacy_notes"))) result.push("One or more measurements use legacy note-derived data.");
+  const provenance = new Set(events.flatMap((event) => Object.values(event.metricProvenance ?? {})));
+  if (provenance.size > 1) result.push("Measurements use mixed provenance.");
+  if (events.length >= 2) {
+    const recentElevation = elevationMeters(events[0]);
+    const priorElevation = elevationMeters(events[1]);
+    const structuredDifference = finite(recentElevation) && finite(priorElevation)
+      && Math.abs(recentElevation - priorElevation) > Math.max(7.62, priorElevation * 0.1);
+    const legacyDifference = !finite(recentElevation) && !finite(priorElevation)
+      && !!events[0].elevationText && !!events[1].elevationText && events[0].elevationText !== events[1].elevationText;
+    if (structuredDifference || legacyDifference) result.push("Elevation differs between the latest observations.");
+  }
+  return result;
+}
+
+export function buildCardioProgressionContext(events: readonly CardioWalkEvent[], options: { asOf?: number; lookbackDays?: number; maxGroups?: number } = {}): CardioProgressionContext {
+  const source = events ?? [];
+  const asOf = options.asOf ?? (source.reduce((latest, event) => Math.max(latest, event.startedAt), 0) || Date.now());
+  const lookbackDays = options.lookbackDays ?? CARDIO_PROGRESSION_LOOKBACK_DAYS;
+  const cutoff = asOf - lookbackDays * 86400000;
   const grouped = new Map<string, CardioWalkEvent[]>();
-  for (const event of events ?? []) {
-    if (!event.activityType || !event.cardioFormat || !finite(event.paceSecondsPerMile)) continue;
-    if (getCardioPaceQuality(event) === "suspicious") continue;
+  for (const event of source) {
+    if (event.startedAt < cutoff || event.startedAt > asOf || !event.activityType || !event.cardioFormat) continue;
+    if (finite(event.paceSecondsPerMile) && getCardioPaceQuality(event) === "suspicious") continue;
     const identity = getCardioComparisonIdentity(event);
     if (!identity) continue;
     const key = [event.activityType, event.cardioFormat, event.conditioningIntent ?? "intent-unknown", identity].join("|");
-    const group = grouped.get(key) ?? [];
-    group.push(event);
-    grouped.set(key, group);
+    grouped.set(key, [...(grouped.get(key) ?? []), event]);
   }
-
-  const recentComparableGroups = Array.from(grouped.entries()).map(([key, eventsInGroup]) => {
-    const sorted = eventsInGroup.slice().sort((a, b) => b.startedAt - a.startedAt);
-    const observations = sorted.slice(0, MAX_CARDIO_PROGRESSION_OBSERVATIONS).map(observation);
-    const recent = observations[0];
-    const prior = observations[1];
+  const allGroups = Array.from(grouped.entries()).map(([identity, members]) => {
+    const sorted = members.slice().sort((a, b) => b.startedAt - a.startedAt || a.sessionId.localeCompare(b.sessionId));
+    const capped = sorted.slice(0, MAX_CARDIO_PROGRESSION_OBSERVATIONS);
+    const observations = capped.map(observation); const recent = observations[0]; const prior = observations[1];
+    const routeFamily = getCardioComparisonIdentity(sorted[0])!;
+    const comparability: CardioComparability = routeFamily.startsWith("route-id:") ? "exact_route" : sorted[0].route ? "same_activity_format_intent" : "route_unknown";
+    const direction = prior ? getCardioProgressionSignal(recent, prior) : "insufficient_context";
     return {
-      identity: key,
-      label: sorted[0].route?.trim() || sorted[0].name.trim() || sorted[0].activityType!,
-      activityType: sorted[0].activityType!,
-      intent: sorted[0].conditioningIntent,
-      cardioFormat: sorted[0].cardioFormat!,
-      routeFamily: getCardioComparisonIdentity(sorted[0])!,
-      observations: sorted.length,
-      recent,
-      prior,
-      recentObservations: observations,
-      signal: prior ? getCardioProgressionSignal(recent, prior) : "insufficient_context",
+      identity, label: sorted[0].route?.trim() || sorted[0].name.trim() || sorted[0].activityType!, activityType: sorted[0].activityType!, intent: sorted[0].conditioningIntent,
+      cardioFormat: sorted[0].cardioFormat!, routeFamily, comparability, observationCount: sorted.length, observations: sorted.length,
+      latestObservationAt: recent.startedAt, direction, signal: direction,
+      bestRecentObservation: observations.some((row) => finite(row.paceSecondsPerMile))
+        ? observations.slice().sort((a, b) => (a.paceSecondsPerMile ?? Infinity) - (b.paceSecondsPerMile ?? Infinity))[0]
+        : undefined,
+      recent, prior, recentObservations: observations, limitations: limitations(capped, comparability),
+      ...(prior ? { paceDifferenceSecondsPerMile: recent.paceSecondsPerMile! - prior.paceSecondsPerMile! } : {}),
+      ...(prior && finite(recent.avgHrBpm) && finite(prior.avgHrBpm) ? { averageHrDifferenceBpm: recent.avgHrBpm - prior.avgHrBpm } : {}),
     } satisfies CardioComparableGroup;
-  }).sort((a, b) => b.recent.startedAt - a.recent.startedAt);
-
-  return {
-    recentComparableGroups,
-    summary: {
-      comparableSessionCount: recentComparableGroups.reduce((sum, group) => sum + group.observations, 0),
-      groupsWithTrend: recentComparableGroups.filter((group) => group.observations >= 2).length,
-    },
-  };
+  });
+  allGroups.sort((a, b) => Number(b.intent === "fitness" && b.observationCount >= 2) - Number(a.intent === "fitness" && a.observationCount >= 2) || Number(b.comparability === "exact_route" && b.observationCount >= 2) - Number(a.comparability === "exact_route" && a.observationCount >= 2) || Number(b.observationCount >= 2) - Number(a.observationCount >= 2) || b.latestObservationAt - a.latestObservationAt || a.identity.localeCompare(b.identity));
+  const groups = allGroups.slice(0, options.maxGroups ?? MAX_CARDIO_PROGRESSION_GROUPS);
+  return { lookbackDays, maxObservationsPerGroup: MAX_CARDIO_PROGRESSION_OBSERVATIONS, maxGroups: options.maxGroups ?? MAX_CARDIO_PROGRESSION_GROUPS, groups, recentComparableGroups: groups, summary: { comparableSessionCount: groups.reduce((sum, group) => sum + group.observationCount, 0), groupsWithTrend: groups.filter((group) => group.observationCount >= 2).length } };
 }
