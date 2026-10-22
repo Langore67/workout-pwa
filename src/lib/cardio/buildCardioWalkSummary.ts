@@ -325,6 +325,14 @@ export function buildCardioWalkSummary(input: BuildCardioWalkSummaryInput): Card
         notes: session.notes,
         confidence,
         structuredMetrics: !!metrics,
+        metricProvenance: {
+          ...(metrics?.distance != null ? { distance: "session_structured" as const } : hasDistance ? { distance: "conditioning_sets" as const } : {}),
+          ...(metrics?.durationSeconds != null ? { duration: "session_structured" as const } : hasDuration ? { duration: "conditioning_sets" as const } : fallbackDurationSeconds != null ? { duration: "session_timestamps" as const } : {}),
+          ...(metrics?.avgHrBpm != null || metrics?.maxHrBpm != null ? { heartRate: "session_structured" as const } : parsedNotes.avgHr != null || parsedNotes.maxHr != null ? { heartRate: "legacy_notes" as const } : {}),
+          ...(metrics?.elevationGain != null ? { elevation: "session_structured" as const } : parsedNotes.elevationText ? { elevation: "legacy_notes" as const } : {}),
+          ...(metrics?.routeId || metrics?.routeName ? { route: "session_structured" as const } : parsedNotes.route ? { route: "legacy_notes" as const } : {}),
+          ...(metrics?.source ? { source: "session_structured" as const } : parsedNotes.source ? { source: "legacy_notes" as const } : {}),
+        },
       };
     })
     .filter((walk): walk is CardioWalkEvent => walk != null)

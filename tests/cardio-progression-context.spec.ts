@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
 import {
   buildCardioProgressionContext,
+  getAverageHrDirection,
   getCardioProgressionSignal,
+  MAX_CARDIO_PROGRESSION_GROUPS,
   MAX_CARDIO_PROGRESSION_OBSERVATIONS,
 } from "../src/lib/cardio/cardioProgressionContext";
 import type { CardioWalkEvent } from "../src/lib/cardio/cardioTypes";
@@ -55,21 +57,41 @@ test("comparison groups preserve route, family, type, intent, and format isolati
   );
 });
 
-test("HR and pace signals use conservative shared thresholds", () => {
+test("HR and pace directions use conservative shared thresholds", () => {
   const signal = (recentPace: number, priorPace: number, recentHr?: number, priorHr?: number) =>
     getCardioProgressionSignal(
       { paceSecondsPerMile: recentPace, avgHr: recentHr },
       { paceSecondsPerMile: priorPace, avgHr: priorHr }
     );
 
-  expect(signal(700, 730, 130, 130)).toBe("possible_efficiency_improvement");
-  expect(signal(700, 730, 125, 130)).toBe("possible_efficiency_improvement");
-  expect(signal(700, 730, 136, 130)).toBe("higher_effort");
-  expect(signal(705, 700, 124, 130)).toBe("possible_efficiency_improvement");
-  expect(signal(730, 700, 124, 130)).toBe("lower_effort");
-  expect(signal(700, 700, 132, 130)).toBe("broadly_similar");
-  expect(signal(700, 730)).toBe("pace_only_improvement");
-  expect(signal(730, 700)).toBe("pace_only_decline");
+  expect(signal(700, 730, 130, 130)).toBe("lower");
+  expect(signal(705, 700, 124, 130)).toBe("similar");
+  expect(signal(730, 700, 124, 130)).toBe("higher");
+  expect(signal(700, 700, 132, 130)).toBe("similar");
+  expect(getAverageHrDirection(133, 130)).toBe("similar");
+  expect(getAverageHrDirection(135, 130)).toBe("higher");
+  expect(getAverageHrDirection(125, 130)).toBe("lower");
+  expect(getAverageHrDirection(undefined, 130)).toBe("insufficient_context");
+});
+
+test("uses exact route identity, keeps structured facts, bounds lookback and groups, and does not mutate input", () => {
+  const source = [
+    event("exact-new", 1, { routeId: "greenway", route: "Suwanee Greenway", distance: 4.1, distanceUnit: "mi", avgHr: 112, maxHr: 128, elevationGain: 210, elevationUnit: "ft", source: "MapMyWalk" }),
+    event("exact-old", 2, { routeId: "greenway", route: "Renamed display", avgHr: 116, elevationGain: 100, elevationUnit: "ft" }),
+    event("stale", 29, { routeId: "greenway" }),
+    ...["a", "b", "c", "d"].flatMap((route, index) => [event(`${route}-1`, index + 3, { routeId: route }), event(`${route}-2`, index + 8, { routeId: route })]),
+  ];
+  const snapshot = JSON.stringify(source);
+  const context = buildCardioProgressionContext(source, { asOf: BASE });
+  const exact = context.groups.find((group) => group.routeFamily === "route-id:greenway")!;
+
+  expect(context.groups).toHaveLength(MAX_CARDIO_PROGRESSION_GROUPS);
+  expect(exact.comparability).toBe("exact_route");
+  expect(exact.observationCount).toBe(2);
+  expect(exact.recent).toMatchObject({ distance: 4.1, distanceUnit: "mi", avgHrBpm: 112, maxHrBpm: 128, elevationGain: 210, elevationUnit: "ft", source: "MapMyWalk" });
+  expect(exact.recentObservations.map((row) => row.sessionId)).toEqual(["exact-new", "exact-old"]);
+  expect(exact.limitations).toContain("Elevation differs between the latest observations.");
+  expect(JSON.stringify(source)).toBe(snapshot);
 });
 
 test("history is newest-first, capped, and excludes suspicious pace without altering source events", () => {

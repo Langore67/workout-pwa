@@ -527,7 +527,7 @@ test.describe("buildCardioExportText", () => {
     expect(text).toContain("PRP Loop — Fitness — Continuous");
     expect(text).toContain("- Recent: 17:11/mi @ 112 avg HR");
     expect(text).toContain("- Prior comparable: 17:24/mi @ 118 avg HR");
-    expect(text).toContain("similar pace at lower avg HR; possible improved aerobic efficiency signal");
+    expect(text).toContain("pace similar by 13 sec/mi; average HR lower by 6 bpm");
     expect(text).not.toContain("PRP Run/Walk Intervals — Fitness — Intervals");
     expect(text).not.toContain("Ridge Hike — Adventure — Continuous");
   });
@@ -565,10 +565,10 @@ test.describe("buildCardioExportText", () => {
     summary.recentWalks = summary.normalizedWalks;
 
     const text = buildCardioExportText(summary);
-    expect(text).toContain("faster pace at higher effort; efficiency improvement not established");
-    expect(text).toContain("faster pace; HR comparison unavailable");
-    expect(text).toContain("faster pace at similar or lower avg HR; possible improved aerobic efficiency signal");
-    expect(text).toContain("slower pace at lower effort; improvement not established");
+    expect(text).toContain("pace lower by 20 sec/mi; average HR higher by 10 bpm");
+    expect(text).toContain("pace lower by 30 sec/mi; average HR similar by 2 bpm");
+    expect(text).toContain("pace higher by 40 sec/mi; average HR lower by 10 bpm");
+    expect(text).not.toMatch(/improved aerobic|efficiency improvement|higher effort|lower effort/i);
     expect(text).not.toContain("Route A — Fitness — Intervals");
     expect(text).not.toContain("Route B — Fitness — Intervals");
     expect(text).not.toContain("Singleton — Fitness — Intervals");

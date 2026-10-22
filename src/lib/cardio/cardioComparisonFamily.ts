@@ -50,9 +50,12 @@ export function getCardioSessionFamily(name: string | undefined): string | undef
 }
 
 export function getCardioComparisonIdentity(input: {
+  routeId?: string;
   route?: string;
   name?: string;
 }): string | undefined {
+  const routeId = String(input.routeId ?? "").trim();
+  if (routeId) return `route-id:${routeId}`;
   const route = normalizeCardioComparisonText(input.route);
   if (route) return `route:${route}`;
 

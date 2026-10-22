@@ -33,6 +33,7 @@ import {
 import { buildBodyConfidence } from "../../body/bodyConfidenceEngine";
 import { buildRollingBodyMetric } from "../../body/bodyTrendAverages";
 import { buildCardioWalkSummary } from "../cardio/buildCardioWalkSummary";
+import { buildCardioProgressionContext } from "../cardio/cardioProgressionContext";
 import { buildAnchorIntelligence } from "./anchorIntelligence";
 import {
   buildSessionCoachingSignals,
@@ -728,6 +729,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     exercises: exercises ?? [],
     recentLimit: 5,
   });
+  const cardioProgression = buildCardioProgressionContext(cardioSummary.normalizedWalks, { asOf: generatedAt });
   const weeklyVolume = buildWeeklyVolume({
     sessions: sessions ?? [],
     sets: sets ?? [],
@@ -879,6 +881,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     bodyTrendInputs,
     hydration,
     cardioSummary,
+    cardioProgression,
     weeklyVolume,
     bodyConfidence,
     goalProgress,

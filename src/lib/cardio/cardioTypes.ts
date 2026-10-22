@@ -36,6 +36,7 @@ export type CardioWalkEvent = {
   notes?: string;
   confidence: CardioWalkConfidence;
   structuredMetrics?: boolean;
+  metricProvenance?: Partial<Record<"distance" | "duration" | "heartRate" | "elevation" | "route" | "source", "session_structured" | "conditioning_sets" | "session_timestamps" | "legacy_notes">>;
 };
 
 export type CardioDailyWalkSummary = {

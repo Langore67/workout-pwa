@@ -108,7 +108,10 @@ export function buildCoachProgrammingContext(args: {
         activityTypes: uniqueDefined(cardioEvents.map((event) => event.activityType)),
         intents: uniqueDefined(cardioEvents.map((event) => event.conditioningIntent)),
         formats: uniqueDefined(cardioEvents.map((event) => event.cardioFormat)),
-        progression: buildCardioProgressionContext(cardioEvents),
+        // Coach exports provide this once on CoachExportMetrics. The fallback
+        // preserves compatibility for direct callers that supply only the
+        // older cardio summary shape.
+        progression: args.metrics.cardioProgression ?? buildCardioProgressionContext(cardioEvents, { asOf: args.asOf }),
         strengthProximity: buildCardioStrengthInterferenceContext({
           sessions: args.sessions,
           sets: args.sets,

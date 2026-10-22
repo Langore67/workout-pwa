@@ -468,6 +468,7 @@ export type CoachExportMetrics = {
   bodyTrendInputs?: CoachExportBodyTrendInputs;
   hydration: CoachExportHydration;
   cardioSummary?: CardioWalkSummary;
+  cardioProgression?: CardioProgressionContext;
   bodyConfidence?: BodyConfidence;
   coachIntelligence?: CoachIntelligence | null;
   goalProgress?: GoalProgress | null;
