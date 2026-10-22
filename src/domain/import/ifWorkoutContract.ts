@@ -1,6 +1,7 @@
 import { parseCardioActivityType } from "../../lib/cardio/cardioActivityType";
 import { parseCardioFormat } from "../../lib/cardio/cardioFormat";
 import { parseCardioIntent } from "../../lib/cardio/cardioIntent";
+import { parseStructuredCardioMetrics } from "../../lib/cardio/cardioMetrics";
 
 export const IF_WORKOUT_FORMAT_VERSION = 1 as const;
 
@@ -66,6 +67,7 @@ export function inspectIfWorkoutContract(text: string): IfWorkoutContract {
   if (cardioFormat !== undefined && !parseCardioFormat(cardioFormat)) issues.push(`Invalid Cardio Format: ${cardioFormat || "missing"}.`);
   if (start !== undefined && !validClock(start)) issues.push(`Invalid Start time: ${start || "missing"}. Use HH:mm.`);
   if (end !== undefined && !validClock(end)) issues.push(`Invalid End time: ${end || "missing"}. Use HH:mm.`);
+  issues.push(...parseStructuredCardioMetrics(text).issues);
 
   if (issues.length) throw new IfWorkoutContractError(issues);
   return { formatVersion: IF_WORKOUT_FORMAT_VERSION, legacy: false };

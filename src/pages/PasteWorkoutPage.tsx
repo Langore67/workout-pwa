@@ -97,6 +97,7 @@ import {
 } from "../lib/cardio/cardioActivityType";
 import { parseCardioIntent, type CardioIntent } from "../lib/cardio/cardioIntent";
 import { parseCardioFormat, type CardioFormat } from "../lib/cardio/cardioFormat";
+import { parseStructuredCardioMetrics, type CardioMetrics } from "../lib/cardio/cardioMetrics";
 import { parseImportLoadToken } from "../domain/import/loadParsing";
 import {
   importSetClassToTrackIntentKind,
@@ -138,6 +139,7 @@ type ParsedWorkout = {
   activityType?: CardioActivityType;
   conditioningIntent?: CardioIntent;
   cardioFormat?: CardioFormat;
+  cardioMetrics?: CardioMetrics;
   date: string; // YYYY-MM-DD
   start?: string; // HH:mm
   end?: string; // HH:mm
@@ -253,6 +255,14 @@ Session: <name>
 Activity Type: <Walk|Hike|Run|Bike|Row|Other, cardio only when known>
 Intent: <Fitness|Recovery|Adventure, cardio only when known>
 Cardio Format: <Continuous|Intervals, cardio only when known>
+Distance: <positive value mi|km, cardio only when known>
+Duration: <MM:SS|HH:MM:SS, cardio only when known>
+Average HR: <1-300 bpm, cardio only when known>
+Maximum HR: <1-300 bpm, cardio only when known>
+Elevation Gain: <non-negative value ft|m, cardio only when known>
+Route ID: <explicit stable identifier, cardio only when known>
+Route Name: <explicit route name, cardio only when known>
+Source: <explicit source, cardio only when known>
 Date: YYYY-MM-DD
 Start: HH:mm
 End: HH:mm
@@ -285,6 +295,7 @@ Formatting rules:
 - Do not guess Cardio Format when it is unclear.
 - Example: Session: PRP Run/Walk Intervals | Activity Type: Run | Intent: Fitness | Cardio Format: Intervals
 - Omit Activity Type, Intent, and Cardio Format when they do not apply or cannot be determined reliably.
+- Omit structured cardio measurements, route, and source when they are unknown; never infer them from other values.
 - Keep all notes under Session Notes.
 - Return only the IronForge-formatted workout.
 
@@ -1040,6 +1051,7 @@ function formatParsedSetPreview(set: ParsedSet): string {
 
 function parseWorkoutText(text: string): ParsedWorkout {
   const contract = inspectIfWorkoutContract(text);
+  const structuredCardio = parseStructuredCardioMetrics(text);
   const lines = text.replace(/\r/g, "").split("\n");
 
   let programDay = "";
@@ -1108,6 +1120,7 @@ function parseWorkoutText(text: string): ParsedWorkout {
     }
 
     if (isBlank(line)) continue;
+    if (structuredCardio.recognizedLines.has(i)) continue;
     if (/^IF Workout$/i.test(line) || /^Format Version\s*:/i.test(line)) continue;
 
     const sessionMatch = line.match(/^session\s*:\s*(.+)$/i);
@@ -1236,6 +1249,7 @@ function parseWorkoutText(text: string): ParsedWorkout {
     activityType,
     conditioningIntent,
     cardioFormat,
+    cardioMetrics: structuredCardio.metrics,
     date,
     start: normalizeTimeString(start),
     end: normalizeTimeString(end),
@@ -1780,6 +1794,7 @@ export default function PasteWorkoutPage() {
         activityType: parsed.activityType,
         conditioningIntent: parsed.conditioningIntent,
         cardioFormat: parsed.cardioFormat,
+        cardioMetrics: parsed.cardioMetrics,
         notes: parsed.sessionNotes?.trim() || undefined,
         updatedAt: safeEndedAt,
       },

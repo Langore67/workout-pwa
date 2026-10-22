@@ -11,6 +11,7 @@ import {
 import { inferCardioActivityType, parseCardioActivityType } from "./cardioActivityType";
 import { getCardioPaceQuality } from "./cardioPaceQuality";
 import { parseCardioSessionNotes } from "./parseCardioSessionNotes";
+import { cardioDistanceMeters } from "./cardioMetrics";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const METERS_PER_MILE = 1609.344;
@@ -290,14 +291,14 @@ export function buildCardioWalkSummary(input: BuildCardioWalkSummaryInput): Card
       }
 
       const fallbackDurationSeconds = hasDuration ? undefined : getSessionDurationSeconds(session);
-      const durationSeconds = hasDuration ? totalDurationSeconds : fallbackDurationSeconds;
-      const distanceMeters = hasDistance ? totalDistanceMeters : undefined;
+      const metrics = session.cardioMetrics;
+      const durationSeconds = metrics?.durationSeconds ?? (hasDuration ? totalDurationSeconds : fallbackDurationSeconds);
+      const distanceMeters = cardioDistanceMeters(metrics) ?? (hasDistance ? totalDistanceMeters : undefined);
       const parsedNotes = parseCardioSessionNotes(session.notes);
       const derivedPace =
-        parsedNotes.paceSecondsPerMile ??
         (durationSeconds != null && distanceMeters != null && distanceMeters > 0
           ? durationSeconds / (distanceMeters / METERS_PER_MILE)
-          : undefined);
+          : parsedNotes.paceSecondsPerMile);
 
       return {
         sessionId: session.id,
@@ -308,16 +309,22 @@ export function buildCardioWalkSummary(input: BuildCardioWalkSummaryInput): Card
         activityType: session.activityType,
         conditioningIntent: session.conditioningIntent,
         cardioFormat: session.cardioFormat,
-        source: parsedNotes.source,
-        route: parsedNotes.route,
+        source: metrics?.source ?? parsedNotes.source,
+        route: metrics?.routeName ?? parsedNotes.route,
+        routeId: metrics?.routeId,
         durationSeconds,
         distanceMeters,
+        distance: metrics?.distance,
+        distanceUnit: metrics?.distanceUnit,
         paceSecondsPerMile: derivedPace,
-        elevationText: parsedNotes.elevationText,
-        avgHr: parsedNotes.avgHr,
-        maxHr: parsedNotes.maxHr,
+        elevationText: metrics?.elevationGain != null && metrics.elevationUnit ? `${metrics.elevationGain} ${metrics.elevationUnit}` : parsedNotes.elevationText,
+        elevationGain: metrics?.elevationGain,
+        elevationUnit: metrics?.elevationUnit,
+        avgHr: metrics?.avgHrBpm ?? parsedNotes.avgHr,
+        maxHr: metrics?.maxHrBpm ?? parsedNotes.maxHr,
         notes: session.notes,
         confidence,
+        structuredMetrics: !!metrics,
       };
     })
     .filter((walk): walk is CardioWalkEvent => walk != null)
