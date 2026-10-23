@@ -7,7 +7,7 @@ import { MetricRow } from "./shared/MetricRow";
 export function WeeklyVolumeCard({ weeklyVolume }: { weeklyVolume: CoachDashboardWeeklyVolume }) {
   return (
     <CoachDashboardCard testId="coach-dashboard-volume">
-      <CoachCardHeader title="Weekly Volume" />
+      <CoachCardHeader title="Rolling 7-Day Volume" />
       {weeklyVolume.note ? (
         <div className="muted" style={{ marginBottom: 8, fontSize: 12, lineHeight: 1.35 }}>
           {weeklyVolume.note}

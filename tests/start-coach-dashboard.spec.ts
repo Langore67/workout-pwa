@@ -615,7 +615,7 @@ test.describe("Start Coach Dashboard", () => {
       await expect(detailsTrigger).toBeFocused();
 
       const volume = page.getByTestId("coach-dashboard-volume");
-      await expect(volume).toContainText("Weekly Volume");
+      await expect(volume).toContainText("Rolling 7-Day Volume");
       await expect(volume).toContainText("Back / Pull");
       await expect(volume).toContainText("effective sets");
       await expect(volume).toContainText("Scapular control work");
@@ -672,7 +672,7 @@ test.describe("Start Coach Dashboard", () => {
     await waitForCoachDashboardReady(page);
     const volume = page.getByTestId("coach-dashboard-volume");
     await expect(volume).toBeVisible();
-    await expect(volume).toContainText("Weekly Volume");
+    await expect(volume).toContainText("Rolling 7-Day Volume");
     await expect(volume).toContainText("Chest / Push");
     await expect(volume).toContainText("Back / Pull");
     await expect(volume).toContainText("Shoulders / Scapula");

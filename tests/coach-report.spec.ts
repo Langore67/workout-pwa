@@ -328,7 +328,7 @@ test("coach report maps snapshot, body, performance, goals, learnings, and cardi
   expect(report.learnings?.whatsWorking).toContain("Pull: strong lat stimulus");
   expect(report.learnings?.watchNow).toContain("Trap compensation remains a carry constraint");
 
-  expect(report.weeklyVolume?.title).toBe("Weekly Volume");
+  expect(report.weeklyVolume?.title).toBe("Rolling 7-Day Volume");
   expect(report.weeklyVolume?.note).toContain("Recent pulling volume exceeds pressing volume.");
   expect(report.weeklyVolume?.rows.map((row) => row.value).join(" ")).toContain("effective sets");
   expect(report.weeklyVolume?.rows.map((row) => row.value).join(" ")).toContain("control exposures");
@@ -534,7 +534,7 @@ test("coach report weekly volume balances use corrected direction labels and mul
       today: "Keep progression balanced.",
     },
     weeklyVolume: {
-      title: "Weekly Volume",
+      title: "Rolling 7-Day Volume",
       status: "Watch",
       note: "Weekly volume is mixed.",
       rows: [],

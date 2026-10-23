@@ -56,7 +56,7 @@ function buildReport(overrides: Partial<CoachReport> = {}): CoachReport {
       },
     },
     weeklyVolume: {
-      title: "Weekly Volume",
+      title: "Rolling 7-Day Volume",
       note: "Recent pulling volume exceeds pressing volume.",
       rows: [line("Chest / Push", "4.5 effective sets | Watch"), line("Back / Pull", "6 effective sets | Target")],
       balanceRows: [

@@ -214,15 +214,19 @@ function renderExplanation(explanation: CoachReport["snapshot"]["explanation"]) 
   return [...lines, ""];
 }
 
-function renderProgrammingIntelligence(programming: CoachReport["programming"]) {
+function renderProgrammingIntelligence(programming: CoachReport["programming"], suppressLegacyCoverage = false) {
   if (!programming) return [] as string[];
+  const priorities = suppressLegacyCoverage
+    ? programming.priorities.filter((item) => item.category !== "movement" && item.category !== "volume")
+    : programming.priorities;
+  if (!priorities.length && suppressLegacyCoverage) return [] as string[];
 
   const lines: string[] = [
     "Programming Intelligence",
     `- Status: ${programming.overallStatus}`,
     `- Summary: ${programming.summary}`,
   ];
-  programming.priorities.forEach((priority, index) => {
+  priorities.forEach((priority, index) => {
     lines.push("", `${index + 1}. ${priority.title}`);
     lines.push(`- Priority: ${formatPriorityLabel(priority.priority)}`);
     lines.push(`- Why: ${priority.reason}`);
@@ -265,7 +269,7 @@ function renderProgrammingContext(context: CoachReport["programmingContext"]) {
   lines.push(...formatStrengthGoalProgressForCoach(context.strengthGoalProgress));
   lines.push(...formatIntendedWeeklyScheduleForCoach(context.intendedWeeklySchedule));
 
-  if (context.coverage.movementPatterns.length) {
+  if (!context.trainingExposure && context.coverage.movementPatterns.length) {
     lines.push("", `Movement Coverage (${context.coverage.windowDays}d)`);
     for (const pattern of context.coverage.movementPatterns) {
       lines.push(`- ${pattern.label}: ${pattern.status} | ${pattern.effectiveSets} effective sets | ${pattern.controlExposures} control exposures | ${pattern.sessions} sessions`);
@@ -468,15 +472,19 @@ function formatCardioProgressionPoint(point: CardioProgressionObservation) {
   return fields.join(" | ");
 }
 
-function renderCoachingActions(actions: CoachReport["coachingActions"]) {
+function renderCoachingActions(actions: CoachReport["coachingActions"], suppressLegacyCoverage = false) {
   if (!actions) return [] as string[];
+  const filtered = suppressLegacyCoverage
+    ? actions.actions.filter((item) => item.category !== "movement" && item.category !== "volume")
+    : actions.actions;
+  if (!filtered.length && suppressLegacyCoverage) return [] as string[];
 
   const lines: string[] = [
     "Coaching Actions",
     `- Status: ${actions.status}`,
     `- Summary: ${actions.summary}`,
   ];
-  actions.actions.forEach((action, index) => {
+  filtered.forEach((action, index) => {
     lines.push("", `Action ${index + 1}: ${action.title}`);
     lines.push(`- Objective: ${action.objective}`);
     lines.push(`- Reason: ${action.reason}`);
@@ -509,6 +517,7 @@ export function formatCoachReportText(
   const learnings = report.learnings;
   const cardio = report.cardio;
   const exportOnly = report.exportOnly;
+  const hasFactualTrainingExposure = Boolean(report.trainingExposure ?? report.programmingContext?.trainingExposure);
   const bodyHeading = options.bodyHeadingOverride ?? body?.heading ?? "Body Values";
 
   const lines = [
@@ -560,7 +569,7 @@ export function formatCoachReportText(
           "",
         ]
       : []),
-    ...(weeklyVolume ? [...renderWeeklyVolume(weeklyVolume)] : []),
+    ...(!hasFactualTrainingExposure && weeklyVolume ? [...renderWeeklyVolume(weeklyVolume)] : []),
     ...(trainingSignals ? [...renderSection(trainingSignals)] : []),
     ...(readinessNotes ? [...renderSection(readinessNotes)] : []),
     ...(dataGaps ? [...renderSection(dataGaps)] : []),
@@ -597,17 +606,17 @@ export function formatCoachReportText(
       : []),
     ...renderTrainingExposure(report.trainingExposure ?? report.programmingContext?.trainingExposure),
     ...renderProgrammingContext(report.programmingContext),
-    ...renderProgrammingIntelligence(report.programming),
-    ...renderCoachingActions(report.coachingActions),
+    ...renderProgrammingIntelligence(report.programming, hasFactualTrainingExposure),
+    ...renderCoachingActions(report.coachingActions, hasFactualTrainingExposure),
     ...(exportOnly
       ? [
           ...renderSection(exportOnly.leanPreservation),
           ...renderSection(exportOnly.visceralFat),
           ...renderSection(exportOnly.phaseQuality),
           ...renderSection(exportOnly.strengthSignalDetails),
-          ...renderMovementIntelligence(exportOnly.movementIntelligence),
-          ...(exportOnly.movementIntelligence?.entries?.length ? [] : renderMovementCoverage(exportOnly.movementCoverage)),
-          ...(exportOnly.movementIntelligence?.entries?.length ? [] : renderSection(exportOnly.currentMovementFocus)),
+          ...(!hasFactualTrainingExposure ? renderMovementIntelligence(exportOnly.movementIntelligence) : []),
+          ...(!hasFactualTrainingExposure && !exportOnly.movementIntelligence?.entries?.length ? renderMovementCoverage(exportOnly.movementCoverage) : []),
+          ...(!hasFactualTrainingExposure && !exportOnly.movementIntelligence?.entries?.length ? renderSection(exportOnly.currentMovementFocus) : []),
           ...renderSection(exportOnly.nextWorkoutFocus),
           ...renderSection(exportOnly.recentPatterns),
         ]

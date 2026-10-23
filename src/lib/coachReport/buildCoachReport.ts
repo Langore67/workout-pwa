@@ -616,7 +616,7 @@ function formatWeeklyVolumeSection(volume: CoachState["trainingVolume"]): CoachR
   const totalExposure = chestPush.exposureCount + backPull.exposureCount + shouldersScapula.exposureCount + arms.exposureCount + lowerGlutes.exposureCount + coreCarry.exposureCount;
 
   return {
-    title: "Weekly Volume",
+    title: "Rolling 7-Day Volume",
     status: weeklyVolumeStatusValue(classifyWeeklyVolumeStatus(totalEffective, totalExposure, "large")),
     note: summaryParts.slice(0, 3).join(" "),
     rows,
