@@ -220,7 +220,7 @@ test("WeeklyVolumeCard renders rows and balance details", () => {
 
   const text = textFrom(WeeklyVolumeCard({ weeklyVolume }));
 
-  expect(text).toContain("Weekly Volume");
+  expect(text).toContain("Rolling 7-Day Volume");
   expect(text).toContain("Chest / Push");
   expect(text).toContain("Balance");
   expect(text).toContain("Push Behind");

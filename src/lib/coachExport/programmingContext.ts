@@ -90,8 +90,13 @@ export function buildCoachProgrammingContext(args: {
     if (anchor.freshness === "stale") constraints.push(`${label} benchmark is stale.`);
     if (!anchor.benchmark) constraints.push(`${label} benchmark is unavailable.`);
   }
-  for (const entry of args.metrics.movementCoverage?.entries ?? []) {
-    if (entry.status === "missing") constraints.push(`${entry.label} coverage is missing in the ${args.metrics.movementCoverage?.volumeWindowDays ?? 7}-day window.`);
+  // Legacy Movement Coverage statuses are compatibility-only. Training
+  // Exposure carries the factual partial/complete-period context, so no
+  // deficiency constraint is generated from legacy status labels.
+  if (!args.metrics.trainingExposure) {
+    for (const entry of args.metrics.movementCoverage?.entries ?? []) {
+      if (entry.status === "missing") constraints.push(`${entry.label} coverage is missing in the ${args.metrics.movementCoverage?.volumeWindowDays ?? 7}-day window.`);
+    }
   }
   for (const note of args.metrics.readinessNotes ?? []) {
     const clean = note.trim();

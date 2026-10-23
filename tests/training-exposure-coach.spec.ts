@@ -4,6 +4,7 @@ import { buildCoachStateFromExportMetrics } from "../src/lib/coachState/buildCoa
 import { buildCoachReport } from "../src/lib/coachReport/buildCoachReport";
 import { formatCoachReportText } from "../src/lib/coachReport/formatCoachReportText";
 import { buildTrainingExposureContext } from "../src/domain/training/trainingExposureContext";
+import { buildMovementCoverage } from "../src/lib/coachExport/movementCoverage";
 
 const AS_OF = new Date(2026, 9, 21, 12).getTime();
 
@@ -58,5 +59,32 @@ test("Coach text preserves partial, complete, and rolling labels without exposur
   expect(text).toContain("Completed dedicated cardio sessions: 1");
   expect(text).toContain("push: 1 qualifying sets | 1 working | 1 sessions | 1 exercises");
   expect(text).not.toMatch(/behind|ahead|lagging|on track|undertrained|overtrained|recommend|add sets|remove sets/i);
+});
+
+test("legacy Movement Coverage projects the shared rolling exposure without raw recounting", () => {
+  const trainingExposure = context();
+  const coverage = buildMovementCoverage({
+    sessions: [], sets: [], tracks: [], exercises: [], anchorIntelligence: [],
+    trainingExposure, asOf: AS_OF,
+  });
+  const push = coverage.entries.find((entry) => entry.family === "horizontal_push");
+  expect(coverage).toMatchObject({
+    source: "training_exposure_rolling_14_days",
+    compatibilityOnly: true,
+    periodKind: "rolling_14_days",
+    volumeWindowDays: 14,
+  });
+  expect(push).toMatchObject({ effectiveSets7d: 1, directEffectiveSets7d: 1, supportEffectiveSets7d: 0, sessionCount7d: 1 });
+});
+
+test("Coach text suppresses legacy movement/volume prescriptions when factual exposure exists", () => {
+  const text = formatCoachReportText({
+    snapshot: { status: "Not Enough Data", confidence: "Low", why: "Factual context only.", today: "â€”" },
+    trainingExposure: context(),
+    weeklyVolume: { title: "Rolling 7-Day Volume", rows: [], balanceRows: [{ id: "push_pull", label: "Push / Pull", leftLabel: "Push", rightLabel: "Pull", leftValue: 1, rightValue: 5, ratio: 0.2, status: "watch", statusLabel: "Push Behind", direction: "right_ahead", summary: "Pull ahead.", currentText: "Push 1", explanation: "Behind.", action: "Add sets.", note: "" }] },
+    programming: { overallStatus: "Watch", summary: "Movement missing.", priorities: [{ title: "Add push", priority: "high", category: "movement", reason: "Behind", evidence: [], coachAction: "Add sets" }] },
+    coachingActions: { status: "Watch", summary: "Act", actions: [{ title: "Add push", category: "volume", priority: "high", objective: "Add sets", reason: "Behind", expectedBenefit: "Balance", constraints: [], confidence: "Low" }] },
+  } as any);
+  expect(text).not.toMatch(/What to change|Add sets|Push Behind|Movement Coverage|Rolling 7-Day Volume/i);
 });
 

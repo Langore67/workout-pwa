@@ -382,7 +382,7 @@ export type MovementCoverageEntry = {
 
 export type MovementCoverageSummary = {
   asOf?: string;
-  volumeWindowDays: 7;
+  volumeWindowDays: number;
   recencyWindowDays: number;
   status: "solid" | "watch" | "intervene" | "not_enough_data";
   entries: MovementCoverageEntry[];
@@ -390,6 +390,10 @@ export type MovementCoverageSummary = {
   developingFamilies: string[];
   coveredFamilies: string[];
   summary: string;
+  source?: "training_exposure_rolling_14_days" | "legacy_raw";
+  compatibilityOnly?: boolean;
+  periodKind?: "rolling_14_days";
+  isCompleteCalendarPeriod?: boolean;
 };
 
 export type CoachProgrammingContext = {

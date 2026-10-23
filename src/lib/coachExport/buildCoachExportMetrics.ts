@@ -847,6 +847,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
       ...trainingSignalBundle.trainingSignals.stimulusCoverage,
       ...patternSummary.constraints,
     ],
+    trainingExposure,
     asOf: generatedAt,
   });
   const nextWorkoutFocus = buildNextWorkoutFocus({

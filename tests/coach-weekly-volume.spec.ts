@@ -282,7 +282,7 @@ test("weekly volume maps through coach state and renders into the coach report",
       today: "Keep progression balanced.",
     },
     weeklyVolume: {
-      title: "Weekly Volume",
+      title: "Rolling 7-Day Volume",
       status: "Watch",
       note: volume.summary,
       rows: [
@@ -316,7 +316,7 @@ test("weekly volume maps through coach state and renders into the coach report",
   } as any;
 
   const text = formatCoachReportText(report);
-  expect(text).toContain("Weekly Volume");
+  expect(text).toContain("Rolling 7-Day Volume");
   expect(text).toContain("Rollups");
   expect(text).toContain("Antagonistic Balance");
   expect(text).toContain("Current:");
