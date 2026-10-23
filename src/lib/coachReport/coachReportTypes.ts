@@ -1,4 +1,5 @@
 import type { CoachExplanation } from "../coachState/coachStateTypes";
+import type { TrainingExposureContext } from "../../domain/training/trainingExposureContext";
 import type {
   AnchorMovementFamily,
   CoachExportAnchorCurrentMovement,
@@ -230,6 +231,7 @@ export type CoachReport = {
   learnings?: CoachReportLearnings;
   cardio?: CoachReportCardio;
   programmingContext?: CoachProgrammingContext;
+  trainingExposure?: TrainingExposureContext;
   programming?: CoachProgrammingSummary;
   coachingActions?: CoachActionSummary;
   exportOnly?: {

@@ -71,6 +71,7 @@ import {
   getWeeklyTrainingSchedule,
   resolveIntendedWeeklySchedule,
 } from "../../domain/schedule/weeklyTrainingSchedule";
+import { buildTrainingExposureContext } from "../../domain/training/trainingExposureContext";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HEIGHT_META_KEY = "profile.heightIn";
@@ -730,6 +731,12 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     recentLimit: 5,
   });
   const cardioProgression = buildCardioProgressionContext(cardioSummary.normalizedWalks, { asOf: generatedAt });
+  const trainingExposure = buildTrainingExposureContext({
+    sessions: sessions ?? [], sets: sets ?? [], tracks: tracks ?? [], exercises: exercises ?? [],
+    dedicatedCardioObservations: cardioSummary.normalizedWalks,
+    intendedWeeklySchedule,
+    asOf: generatedAt,
+  });
   const weeklyVolume = buildWeeklyVolume({
     sessions: sessions ?? [],
     sets: sets ?? [],
@@ -892,6 +899,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     recentExerciseProgression,
     strengthGoalProgress,
     intendedWeeklySchedule,
+    trainingExposure,
     currentMovementFocus,
     movementCoverage,
     exerciseVocabulary,

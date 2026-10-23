@@ -170,6 +170,7 @@ export function buildCoachProgrammingContext(args: {
     exerciseProgression: args.metrics.recentExerciseProgression ?? [],
     strengthGoalProgress: args.metrics.strengthGoalProgress ?? [],
     intendedWeeklySchedule: args.metrics.intendedWeeklySchedule,
+    trainingExposure: args.metrics.trainingExposure,
     ...(cardio ? { cardio } : {}),
   };
 }
