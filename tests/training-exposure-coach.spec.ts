@@ -41,8 +41,31 @@ test("Coach Programming Context, CoachState, and CoachReport reuse the same expo
   const state = buildCoachStateFromExportMetrics(source);
   const report = buildCoachReport({ coachState: state, metrics: source, generatedAt: AS_OF });
   expect(programmingContext.trainingExposure).toBe(trainingExposure);
+  expect(programmingContext.strengthConsistency).toEqual({
+    currentWeekToDateSessions: 1,
+    previousCompleteWeekSessions: 0,
+    rolling14DaySessions: 1,
+    latestCompletedStrengthSessionAt: new Date(2026, 9, 20, 10).getTime(),
+    daysSinceLastCompletedStrengthSession: 1,
+  });
   expect(state.trainingExposure).toBe(trainingExposure);
   expect(report.trainingExposure).toBe(trainingExposure);
+});
+
+test("Programming Context does not recount raw sessions when shared exposure exists", () => {
+  const trainingExposure = context();
+  const source = metrics(trainingExposure);
+  const rawOnlySession = { id: "raw", startedAt: AS_OF - 1000, endedAt: AS_OF } as any;
+  const result = buildCoachProgrammingContext({
+    metrics: source,
+    sessions: [rawOnlySession],
+    sets: [{ id: "raw-set", sessionId: "raw", trackId: "raw-track", setType: "working", reps: 10, completedAt: AS_OF }] as any,
+    tracks: [{ id: "raw-track", trackType: "strength" }] as any,
+    exercises: [], asOf: AS_OF,
+  });
+  expect(result.trainingExposure).toBe(trainingExposure);
+  expect(result.strengthConsistency.rolling14DaySessions).toBe(1);
+  expect(result.strengthConsistency.latestCompletedStrengthSessionAt).toBe(new Date(2026, 9, 20, 10).getTime());
 });
 
 test("Coach text preserves partial, complete, and rolling labels without exposure conclusions", () => {

@@ -2,10 +2,9 @@ import type { Exercise, Session, SetEntry, Track } from "../../db";
 import { TRAINING_ROLES, parseTrainingRole, type TrainingRole } from "../../domain/trainingRole";
 import { buildCardioProgressionContext } from "../cardio/cardioProgressionContext";
 import { buildCardioStrengthInterferenceContext } from "./cardioStrengthInterferenceContext";
-import { isStrengthBuildingSession } from "./strengthBuildingSessions";
+import { buildTrainingExposureContext } from "../../domain/training/trainingExposureContext";
+import { localCalendarDayDifference } from "../../domain/training/trainingCalendarContext";
 import type { CoachExportMetrics, CoachProgrammingContext } from "./types";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 function finite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -43,20 +42,16 @@ export function buildCoachProgrammingContext(args: {
   exercises?: Exercise[];
   asOf: number;
 }): CoachProgrammingContext {
-  const tracksById = new Map((args.tracks ?? []).map((track) => [track.id, track]));
-  const strengthSessionTimes = (args.sessions ?? [])
-    .filter((session) => {
-      const at = Number(session.endedAt ?? session.startedAt);
-      return finite(at) && at <= args.asOf && isStrengthBuildingSession({
-        session,
-        sets: args.sets,
-        tracksById,
-      });
-    })
-    .map((session) => Number(session.endedAt ?? session.startedAt))
-    .sort((a, b) => b - a);
-  const countWithin = (days: number) =>
-    strengthSessionTimes.filter((at) => args.asOf - at <= days * DAY_MS).length;
+  // Production supplies this once from CoachExportMetrics. Direct legacy
+  // callers are upgraded through the shared factual builder rather than a
+  // separate Programming Context session counter.
+  const trainingExposure = args.metrics.trainingExposure ?? buildTrainingExposureContext({
+    sessions: args.sessions,
+    sets: args.sets,
+    tracks: args.tracks,
+    exercises: args.exercises ?? [],
+    asOf: args.asOf,
+  });
 
   const anchors = (args.metrics.anchorLifts ?? []).map((anchor) => ({
     pattern: anchor.pattern,
@@ -93,11 +88,6 @@ export function buildCoachProgrammingContext(args: {
   // Legacy Movement Coverage statuses are compatibility-only. Training
   // Exposure carries the factual partial/complete-period context, so no
   // deficiency constraint is generated from legacy status labels.
-  if (!args.metrics.trainingExposure) {
-    for (const entry of args.metrics.movementCoverage?.entries ?? []) {
-      if (entry.status === "missing") constraints.push(`${entry.label} coverage is missing in the ${args.metrics.movementCoverage?.volumeWindowDays ?? 7}-day window.`);
-    }
-  }
   for (const note of args.metrics.readinessNotes ?? []) {
     const clean = note.trim();
     if (clean) constraints.push(clean);
@@ -155,11 +145,15 @@ export function buildCoachProgrammingContext(args: {
       })),
     },
     trainingRoles,
-    consistency: {
-      strengthSessions7d: countWithin(7),
-      strengthSessions14d: countWithin(14),
-      ...(strengthSessionTimes.length
-        ? { daysSinceLastStrengthSession: Math.floor((args.asOf - strengthSessionTimes[0]) / DAY_MS) }
+    strengthConsistency: {
+      currentWeekToDateSessions: trainingExposure.windows.currentWeekToDate.completedStrengthSessions,
+      previousCompleteWeekSessions: trainingExposure.windows.previousCompleteWeek.completedStrengthSessions,
+      rolling14DaySessions: trainingExposure.windows.rolling14Days.completedStrengthSessions,
+      ...(trainingExposure.latestCompletedStrengthSessionAt != null
+        ? {
+            latestCompletedStrengthSessionAt: trainingExposure.latestCompletedStrengthSessionAt,
+            daysSinceLastCompletedStrengthSession: localCalendarDayDifference(args.asOf, trainingExposure.latestCompletedStrengthSessionAt),
+          }
         : {}),
     },
     goals: {
@@ -175,7 +169,7 @@ export function buildCoachProgrammingContext(args: {
     exerciseProgression: args.metrics.recentExerciseProgression ?? [],
     strengthGoalProgress: args.metrics.strengthGoalProgress ?? [],
     intendedWeeklySchedule: args.metrics.intendedWeeklySchedule,
-    trainingExposure: args.metrics.trainingExposure,
+    trainingExposure,
     ...(cardio ? { cardio } : {}),
   };
 }

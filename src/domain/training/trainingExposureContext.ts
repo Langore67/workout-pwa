@@ -48,6 +48,7 @@ export type TrainingExposureWindow = {
 
 export type TrainingExposureContext = {
   generatedAt: number;
+  latestCompletedStrengthSessionAt?: number;
   calendar: TrainingCalendarContext;
   windows: {
     currentWeekToDate: TrainingExposureWindow;
@@ -228,6 +229,9 @@ export function buildTrainingExposureContext(args: {
   });
   return {
     generatedAt: asOf,
+    ...(completedStrengthSessions.length
+      ? { latestCompletedStrengthSessionAt: Math.max(...completedStrengthSessions.map((session) => session.endedAt)) }
+      : {}),
     calendar,
     windows: {
       currentWeekToDate: buildWindow({ kind: "week_to_date", startAt: boundaries.currentWeekStartAt, endAt: asOf, complete: false, events, completedStrengthSessions }),

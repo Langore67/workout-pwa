@@ -288,10 +288,20 @@ function renderProgrammingContext(context: CoachReport["programmingContext"]) {
     }
   }
 
-  lines.push("", "Consistency");
-  lines.push(`- Strength sessions, last 7d: ${context.consistency.strengthSessions7d}`);
-  lines.push(`- Strength sessions, last 14d: ${context.consistency.strengthSessions14d}`);
-  if (context.consistency.daysSinceLastStrengthSession != null) lines.push(`- Days since last strength session: ${context.consistency.daysSinceLastStrengthSession}`);
+  const consistency = context.strengthConsistency;
+  if (consistency) {
+    const completed = (value: number) => `${value} completed session${value === 1 ? "" : "s"}`;
+    lines.push("", "Strength Session Context");
+    lines.push(`- Current week-to-date — partial period: ${completed(consistency.currentWeekToDateSessions)}`);
+    lines.push(`- Previous complete week — complete period: ${completed(consistency.previousCompleteWeekSessions)}`);
+    lines.push(`- Rolling 14 days — rolling period: ${completed(consistency.rolling14DaySessions)}`);
+    if (consistency.latestCompletedStrengthSessionAt != null) {
+      lines.push(`- Latest completed strength session: ${new Date(consistency.latestCompletedStrengthSessionAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`);
+    }
+    if (consistency.daysSinceLastCompletedStrengthSession != null) {
+      lines.push(`- Local calendar days since latest session: ${consistency.daysSinceLastCompletedStrengthSession}`);
+    }
+  }
 
   if (context.goals.targets.length || context.goals.trajectory) {
     lines.push("", "Goals");

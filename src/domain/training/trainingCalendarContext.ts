@@ -46,6 +46,15 @@ export function localDateKey(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+/** Whole local-calendar dates between two timestamps; DST-safe. */
+export function localCalendarDayDifference(laterAt: number, earlierAt: number) {
+  const later = new Date(laterAt);
+  const earlier = new Date(earlierAt);
+  const laterDay = Date.UTC(later.getFullYear(), later.getMonth(), later.getDate());
+  const earlierDay = Date.UTC(earlier.getFullYear(), earlier.getMonth(), earlier.getDate());
+  return Math.max(0, Math.round((laterDay - earlierDay) / (24 * 60 * 60 * 1000)));
+}
+
 function localStartOfDay(date: Date) {
   const result = new Date(date);
   result.setHours(0, 0, 0, 0);
