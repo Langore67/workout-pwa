@@ -10,6 +10,7 @@ import type { TrainingRole } from "../../domain/trainingRole";
 import type { CardioProgressionContext } from "../cardio/cardioProgressionContext";
 import type { CardioStrengthInterferenceContext } from "./cardioStrengthInterferenceContext";
 import type { IntendedWeeklyScheduleContext } from "../../domain/schedule/weeklyTrainingSchedule";
+import type { TrainingExposureContext } from "../../domain/training/trainingExposureContext";
 
 export type CoachExportMetric = {
   latest: number | null;
@@ -439,6 +440,7 @@ export type CoachProgrammingContext = {
   exerciseProgression?: import("../../domain/progression/exerciseProgressionContext").ExerciseProgressionContext[];
   strengthGoalProgress?: import("../../domain/goals/strengthGoalProgress").StrengthGoalProgressContext[];
   intendedWeeklySchedule?: IntendedWeeklyScheduleContext;
+  trainingExposure?: TrainingExposureContext;
   cardio?: {
     activities7d: number;
     duration7dSeconds: number;
@@ -479,6 +481,7 @@ export type CoachExportMetrics = {
   recentExerciseProgression?: import("../../domain/progression/exerciseProgressionContext").ExerciseProgressionContext[];
   strengthGoalProgress?: import("../../domain/goals/strengthGoalProgress").StrengthGoalProgressContext[];
   intendedWeeklySchedule?: IntendedWeeklyScheduleContext;
+  trainingExposure?: TrainingExposureContext;
   currentMovementFocus?: CoachExportCurrentMovementFocus;
   movementCoverage?: MovementCoverageSummary;
   programmingContext?: CoachProgrammingContext;

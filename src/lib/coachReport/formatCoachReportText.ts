@@ -10,6 +10,71 @@ import type {
 } from "../../domain/progression/exerciseProgressionContext";
 import type { StrengthGoalProgressContext } from "../../domain/goals/strengthGoalProgress";
 import type { IntendedWeeklyScheduleContext } from "../../domain/schedule/weeklyTrainingSchedule";
+import type { TrainingExposureContext, TrainingExposureWindow } from "../../domain/training/trainingExposureContext";
+
+function formatLocalDateKey(value: string, options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" }) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, options);
+}
+
+function formatExposureWindow(window: TrainingExposureWindow, title: string) {
+  const period = window.isCompleteCalendarPeriod ? "complete period" : window.kind === "week_to_date" ? "partial period" : "rolling period";
+  const lines = [`${title} — ${period}`, `- Completed strength sessions: ${window.completedStrengthSessions}`];
+  for (const movement of window.movementPatterns) {
+    const facts = [`${movement.qualifyingSets} qualifying sets`];
+    if (movement.workingSets) facts.push(`${movement.workingSets} working`);
+    if (movement.dropSets) facts.push(`${movement.dropSets} drop`);
+    if (movement.failureSets) facts.push(`${movement.failureSets} failure`);
+    if (movement.controlExposures) facts.push(`${movement.controlExposures} control exposures`);
+    facts.push(`${movement.sessionCount} sessions`, `${movement.distinctCanonicalExerciseCount} exercises`);
+    if (movement.latestExposureAt) facts.push(`latest ${new Date(movement.latestExposureAt).toLocaleString()}`);
+    lines.push(`- ${movement.movementPattern}: ${facts.join(" | ")}`);
+  }
+  if (window.unclassifiedSetCount) lines.push(`- Unclassified: ${window.unclassifiedSetCount} qualifying sets | ${window.unclassifiedExerciseCount ?? 0} exercises`);
+  if (window.limitations.length) lines.push(`- Limitations: ${window.limitations.join(" ")}`);
+  return lines;
+}
+
+function renderTrainingExposure(context?: TrainingExposureContext) {
+  if (!context) return [] as string[];
+  const calendar = context.calendar;
+  const schedule = calendar.schedule;
+  const lines = [
+    "Training Calendar",
+    `- Today: ${calendar.dayName}, ${formatLocalDateKey(calendar.localDate, { month: "short", day: "numeric", year: "numeric" })}`,
+    `- Current week: ${formatLocalDateKey(calendar.weekStartLocalDate)}–${formatLocalDateKey(calendar.weekEndLocalDate)}`,
+    "- Current-week status: in progress",
+    `- Calendar days started: ${calendar.calendarDaysStarted} of 7`,
+    `- Calendar days remaining: ${calendar.calendarDaysRemaining}`,
+    `- Completed strength sessions: ${calendar.completedStrengthSessionsWeekToDate}`,
+    `- Completed dedicated cardio sessions: ${calendar.completedDedicatedCardioSessionsWeekToDate}`,
+    `- Schedule status: ${schedule.status}`,
+  ];
+  if (schedule.plannedTrainingDays != null) lines.push(`- Planned training days: ${schedule.plannedTrainingDays}`);
+  if (schedule.plannedTrainingDaysStarted != null) lines.push(`- Planned training days started: ${schedule.plannedTrainingDaysStarted}`);
+  if (schedule.plannedTrainingDaysRemaining != null) lines.push(`- Planned training days remaining: ${schedule.plannedTrainingDaysRemaining}`);
+  if (schedule.todayAssignment) lines.push(`- Today's assignment: ${schedule.todayAssignment}`);
+  if (schedule.todaySessionName) lines.push(`- Today's session: ${schedule.todaySessionName}`);
+  if (schedule.todayFocus) lines.push(`- Today's focus: ${schedule.todayFocus}`);
+  lines.push(
+    "",
+    "Training Exposure",
+    ...formatExposureWindow(context.windows.currentWeekToDate, "Current week-to-date"),
+    "",
+    ...formatExposureWindow(context.windows.previousCompleteWeek, "Previous complete week"),
+    "",
+    ...formatExposureWindow(context.windows.rolling14Days, "Rolling 14 days")
+  );
+  if (context.windows.currentWeekToDate.trainingRoles.length) {
+    lines.push("", "Training Roles — current week-to-date");
+    for (const role of context.windows.currentWeekToDate.trainingRoles) {
+      const label = role.trainingRole === "untagged" ? "Untagged" : getTrainingRoleLabel(role.trainingRole);
+      lines.push(`- ${label}: ${role.qualifyingSets} qualifying sets | ${role.controlExposures} control exposures | ${role.sessionCount} sessions | ${role.distinctCanonicalExerciseCount} exercises${role.latestExposureAt ? ` | latest ${new Date(role.latestExposureAt).toLocaleString()}` : ""}`);
+    }
+  }
+  lines.push("");
+  return lines;
+}
 
 function renderSection(section: CoachReportSection | undefined) {
   if (!section) return [] as string[];
@@ -530,6 +595,7 @@ export function formatCoachReportText(
             "",
           ]
       : []),
+    ...renderTrainingExposure(report.trainingExposure ?? report.programmingContext?.trainingExposure),
     ...renderProgrammingContext(report.programmingContext),
     ...renderProgrammingIntelligence(report.programming),
     ...renderCoachingActions(report.coachingActions),
