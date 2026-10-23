@@ -29,7 +29,27 @@ test("counts completed performed set types, imported payloads, and excludes warm
   expect(push).toMatchObject({ movementPattern: "push", qualifyingSets: 4, workingSets: 2, dropSets: 1, failureSets: 1, controlExposures: 0, sessionCount: 1, distinctCanonicalExerciseCount: 1 });
   expect(push.latestExposureAt).toBe(done.endedAt);
   expect(context.windows.currentWeekToDate.completedStrengthSessions).toBe(1);
+  expect(context.latestCompletedStrengthSessionAt).toBe(done.endedAt);
   expect(JSON.stringify(sourceSets)).toBe(snapshot);
+});
+
+test("latest completed strength session requires meaningful nonwarmup exposure and endedAt", () => {
+  const ex = exercise("Bench", { movementPattern: "push" });
+  const tr = track("bench", ex.id);
+  const old = session("old", at(2026, 10, 19, 23));
+  const warmupOnly = session("warmup", at(2026, 10, 20, 8));
+  const unfinished = session("unfinished");
+  const context = buildTrainingExposureContext({
+    sessions: [old, warmupOnly, unfinished],
+    sets: [
+      set("old-drop", old.id, tr.id, "drop", { completedAt: old.endedAt }),
+      set("warmup", warmupOnly.id, tr.id, "warmup", { completedAt: warmupOnly.endedAt }),
+      set("unfinished-failure", unfinished.id, tr.id, "failure", { completedAt: AS_OF }),
+    ],
+    tracks: [tr], exercises: [ex], asOf: AS_OF,
+  });
+  expect(context.latestCompletedStrengthSessionAt).toBe(old.endedAt);
+  expect(context.windows.rolling14Days.completedStrengthSessions).toBe(1);
 });
 
 test("calendar counts only completed dedicated cardio observations", () => {
@@ -41,6 +61,11 @@ test("calendar counts only completed dedicated cardio observations", () => {
     ] as any,
   });
   expect(context.calendar.completedDedicatedCardioSessionsWeekToDate).toBe(1);
+});
+
+test("omits latest completed strength timestamp when no session qualifies", () => {
+  const context = buildTrainingExposureContext({ sessions: [], sets: [], tracks: [], exercises: [], asOf: AS_OF });
+  expect(context.latestCompletedStrengthSessionAt).toBeUndefined();
 });
 
 test("corrective and mobility work becomes control exposure with explicit and untagged roles", () => {

@@ -426,10 +426,12 @@ export type CoachProgrammingContext = {
     exercises: string[];
     totalExercises: number;
   }>;
-  consistency: {
-    strengthSessions7d: number;
-    strengthSessions14d: number;
-    daysSinceLastStrengthSession?: number;
+  strengthConsistency: {
+    currentWeekToDateSessions: number;
+    previousCompleteWeekSessions: number;
+    rolling14DaySessions: number;
+    latestCompletedStrengthSessionAt?: number;
+    daysSinceLastCompletedStrengthSession?: number;
   };
   goals: {
     trajectory?: string;

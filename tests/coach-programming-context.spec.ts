@@ -60,6 +60,7 @@ function strengthHistory(names: string[]) {
     trackId: "strength-track",
     reps: 8,
     weight: 100,
+    setType: "working",
     completedAt: session.endedAt,
   })) as any;
   return { sessions, sets, tracks };
@@ -88,10 +89,12 @@ test("programming context is source-backed, neutral, and split-independent", () 
   }));
 
   for (const context of contexts) {
-    expect(context.consistency).toEqual({
-      strengthSessions7d: 3,
-      strengthSessions14d: 3,
-      daysSinceLastStrengthSession: 1,
+    expect(context.strengthConsistency).toEqual({
+      currentWeekToDateSessions: 2,
+      previousCompleteWeekSessions: 1,
+      rolling14DaySessions: 3,
+      latestCompletedStrengthSessionAt: AS_OF - 2 * DAY_MS + 60 * 60 * 1000,
+      daysSinceLastCompletedStrengthSession: 2,
     });
     expect(context.strength.anchors[0]).toMatchObject({ exerciseName: "Trap Bar Deadlift", freshness: "stale", ageDays: 31 });
     expect(context.coverage.movementPatterns).toEqual(expect.arrayContaining([
@@ -102,7 +105,6 @@ test("programming context is source-backed, neutral, and split-independent", () 
     expect(context.cardio).toMatchObject({ activities7d: 2, activities28d: 7, activityTypes: ["walk"], intents: ["fitness"], formats: ["continuous"] });
     expect(context.constraints).toEqual(expect.arrayContaining([
       "Trap Bar Deadlift benchmark is stale.",
-      "Carry coverage is missing in the 7-day window.",
     ]));
     expect(context.trainingRoles).toEqual([
       { role: "primary", exercises: ["Trap Bar Deadlift"], totalExercises: 1 },
@@ -131,9 +133,12 @@ test("Programming Context export is concise and omits unavailable goals and card
   } as any);
 
   expect(text).toContain("Programming Context");
-  expect(text).toContain("Strength sessions, last 7d: 1");
+  expect(text).toContain("Strength Session Context");
+  expect(text).toContain("Current week-to-date — partial period: 1 completed session");
+  expect(text).toContain("Previous complete week — complete period: 0 completed sessions");
+  expect(text).toContain("Rolling 14 days — rolling period: 1 completed session");
+  expect(text).not.toContain("Strength sessions, last 7d");
   expect(text).toContain("Trap Bar Deadlift: 315 lb x 5 reps | e1RM 354.4 lb | stale | 31d old");
-  expect(text).toContain("Role breakdown: Primary 3 | Accessory 2");
   expect(text).toContain("Training Priorities / Roles");
   expect(text).toContain("Corrective: TKE");
   expect(text).toContain("Deprioritized: Farmer Carry");

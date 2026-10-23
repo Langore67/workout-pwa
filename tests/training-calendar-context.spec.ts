@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { buildTrainingCalendarBoundaries, buildTrainingCalendarContext } from "../src/domain/training/trainingCalendarContext";
+import { buildTrainingCalendarBoundaries, buildTrainingCalendarContext, localCalendarDayDifference } from "../src/domain/training/trainingCalendarContext";
 import type { IntendedWeeklyScheduleContext } from "../src/domain/schedule/weeklyTrainingSchedule";
 
 function at(year: number, month: number, day: number, hour = 12) {
@@ -49,6 +49,13 @@ test("local midnight and DST weeks use local calendar dates rather than fixed UT
   expect(dst.weekStartLocalDate).toBe("2026-03-09");
   expect(dst.weekEndLocalDate).toBe("2026-03-15");
   expect(dst.rolling14DaysStartLocalDate).toBe("2026-02-26");
+});
+
+test("local calendar day differences handle midnight, week boundaries, and DST", () => {
+  expect(localCalendarDayDifference(at(2026, 10, 21, 23), at(2026, 10, 21, 1))).toBe(0);
+  expect(localCalendarDayDifference(new Date(2026, 9, 22, 0, 1).getTime(), new Date(2026, 9, 21, 23, 59).getTime())).toBe(1);
+  expect(localCalendarDayDifference(at(2026, 10, 19, 1), at(2026, 10, 18, 23))).toBe(1);
+  expect(localCalendarDayDifference(at(2026, 3, 9, 1), at(2026, 3, 8, 1))).toBe(1);
 });
 
 test("active schedule exposes generic planned-day facts and today's assignment", () => {
