@@ -81,3 +81,37 @@ export type MaintenanceDryRunResult = {
   operations: MaintenanceOperationResult[];
   dataModified: false;
 };
+
+export type MaintenanceExecutionOperationStatus = "CHANGED" | "ALREADY_SATISFIED" | "REFUSED" | "FAILED" | "ROLLED_BACK";
+export type MaintenanceExecutionOperationResult = {
+  index: number;
+  type: "updateRecord";
+  table: SupportedMaintenanceTable;
+  key: string;
+  status: MaintenanceExecutionOperationStatus;
+  changedFields: string[];
+  before: Record<string, JsonValue | { missing: true }>;
+  after: Record<string, JsonValue>;
+  error?: string;
+};
+export type MaintenanceExecutionError = {
+  phase: "refused" | "transaction" | "verification";
+  message: string;
+  operationIndex?: number;
+};
+export type MaintenanceExecutionResult = {
+  scriptId: string;
+  scriptName: string;
+  scriptSha256: string;
+  startedAt: string;
+  completedAt: string;
+  database: { name: string; schemaVersion: number; origin: string; buildId?: string };
+  operationCount: number;
+  changedCount: number;
+  alreadySatisfiedCount: number;
+  committed: boolean;
+  verified: boolean;
+  transactionStarted: boolean;
+  errors: MaintenanceExecutionError[];
+  operations: MaintenanceExecutionOperationResult[];
+};
