@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5173";
-test("Export Advanced provides read-only maintenance upload, preview, copy, and download", async ({ page, context }) => {
+test("Export Advanced provides maintenance upload, dry preview, and gated execution", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto(new URL("/export", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
   await page.evaluate(async () => {
@@ -20,5 +20,18 @@ test("Export Advanced provides read-only maintenance upload, preview, copy, and 
   const databaseRow = await page.evaluate(() => (window as any).__db.exercises.get("exercise-1")); expect(databaseRow.movementPattern).toBeNull();
   await result.getByRole("button", { name: "Copy Report" }).click(); await expect(card).toContainText("Dry-run report copied.");
   const downloadPromise = page.waitForEvent("download"); await result.getByRole("button", { name: "Download Report" }).click(); expect((await downloadPromise).suggestedFilename()).toContain("ui-script-001");
-  await expect(card.getByRole("button", { name: /execute/i })).toHaveCount(0);
+  const execute = card.getByRole("button", { name: "Execute Maintenance Script" });
+  await expect(execute).toBeDisabled();
+  const confirmations = page.getByTestId("maintenance-execution-confirmations");
+  await confirmations.getByLabel(/created and retained/i).check(); await expect(execute).toBeDisabled();
+  await confirmations.getByLabel(/reviewed every/i).check(); await expect(execute).toBeEnabled();
+  page.once("dialog", async (dialog) => { expect(dialog.message()).toContain("Normalize Row"); expect(dialog.message()).toContain("ui-script-001"); expect(dialog.message()).toContain("workout_mvp_db"); expect(dialog.message()).toContain("one transaction"); await dialog.accept(); });
+  await execute.click();
+  const execution = page.getByTestId("maintenance-execution-result");
+  await expect(execution).toContainText("Transaction committed"); await expect(execution).toContainText("Post-commit verification: passed");
+  await expect(result).toContainText("Would change: 0"); await expect(result).toContainText("Already satisfied: 1");
+  await expect(confirmations.getByLabel(/created and retained/i)).not.toBeChecked(); await expect(confirmations.getByLabel(/reviewed every/i)).not.toBeChecked();
+  expect((await page.evaluate(() => (window as any).__db.exercises.get("exercise-1"))).movementPattern).toBe("pull");
+  await execution.getByRole("button", { name: "Copy Execution Report" }).click(); await expect(card).toContainText("Execution report copied.");
+  const executionDownload = page.waitForEvent("download"); await execution.getByRole("button", { name: "Download Execution Report" }).click(); expect((await executionDownload).suggestedFilename()).toContain("ui-script-001");
 });
