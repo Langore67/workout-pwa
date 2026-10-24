@@ -48,6 +48,7 @@ import { wipeAllTables } from "../dbWipe";
 import { importMasterExecutionLogCsvText } from "../importMasterExecutionLog";
 import { wipeWorkoutHistoryOnly } from "../wipeHistoryOnly";
 import { fixImportedSessions } from "../fixImportedSessions";
+import { DatabaseMaintenanceCard } from "../components/data/DatabaseMaintenanceCard";
 
 /** ---------------------------------------------------------------------------
  *  Breadcrumb 1 — Build / Version
@@ -355,6 +356,11 @@ export default function ExportPage() {
         <b>Wipe Workout History Only</b> keeps exercises/templates/folders but removes sessions/sets.
         Use <b>Wipe DB (ALL)</b> only for a full reset.
       </p>
+
+      <details style={{ marginTop: 14 }}>
+        <summary style={{ cursor: "pointer", fontWeight: 800 }}>Advanced</summary>
+        <DatabaseMaintenanceCard />
+      </details>
 
       <hr />
 
