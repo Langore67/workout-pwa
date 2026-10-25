@@ -1,0 +1,53 @@
+{
+  "format": "ironforge-db-maintenance",
+  "version": 1,
+  "id": "repair-barbell-row-canonical-identity-2026-10-25",
+  "name": "Repair Barbell Row canonical identity and track references",
+  "createdAt": "2026-10-25T12:00:00.000Z",
+  "operationCount": 3,
+  "preconditions": {
+    "dbName": "workout_mvp_db",
+    "dexieSchemaVersion": 19,
+    "supportedBackupVersion": 2
+  },
+  "sourceBackup": {
+    "exportedAt": "2026-10-25T10:09:15.814Z",
+    "sha256": "771e929c6555a73a860b103681bcfe9fc9f0ce8ffa78775121e4ba0be283cb66",
+    "recordCounts": {
+      "exercises": 443,
+      "tracks": 522,
+      "sessions": 270,
+      "sets": 4894,
+      "bodyMetrics": 149,
+      "bodyMeasurements": 1,
+      "app_meta": 8
+    }
+  },
+  "operations": [
+    {
+      "type": "restoreMergedExercise",
+      "exerciseId": "56eade53-8089-4467-b26e-992f1634ae86",
+      "expectMergedIntoExerciseId": "32ded081-60ef-4646-9eca-4622c9730bbf",
+      "expectArchivedAt": 1776789499789,
+      "expectMergeNote": "Merged into Barbell Upright Row on 2026-04-21T16:38:19.789Z",
+      "targetExerciseId": "32ded081-60ef-4646-9eca-4622c9730bbf",
+      "expectTargetAliases": [
+        "Barbell Row",
+        "Barbell Bent Over Row"
+      ],
+      "setTargetAliases": []
+    },
+    {
+      "type": "repointTrackExercise",
+      "trackId": "67287898-2182-41c7-a8a0-10abf5e19716",
+      "expectExerciseId": "32ded081-60ef-4646-9eca-4622c9730bbf",
+      "setExerciseId": "56eade53-8089-4467-b26e-992f1634ae86"
+    },
+    {
+      "type": "repointTrackExercise",
+      "trackId": "81c46d80-0e0e-4836-933d-bfda61b32153",
+      "expectExerciseId": "32ded081-60ef-4646-9eca-4622c9730bbf",
+      "setExerciseId": "56eade53-8089-4467-b26e-992f1634ae86"
+    }
+  ]
+}

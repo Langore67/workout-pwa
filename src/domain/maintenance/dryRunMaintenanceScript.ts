@@ -57,9 +57,37 @@ export async function dryRunMaintenanceScript(
   for (let index = 0; index < (Array.isArray(script.operations) ? script.operations.length : 0); index += 1) {
     const operation: any = script.operations[index];
     const errors = operationErrors.get(index) ?? [];
-    if (preconditionErrors.length || errors.length || operation?.type !== "updateRecord" || !isSupportedMaintenanceTable(operation?.table)) {
+    if (preconditionErrors.length || errors.length) {
       operations.push(invalidResult(index, operation, [...preconditionErrors, ...errors].map((entry) => `${entry.path}: ${entry.message}`).join(" ") || "Invalid operation."));
       continue;
+    }
+    if (operation.type === "restoreMergedExercise") {
+      const exercise = await database.table("exercises").get(operation.exerciseId) as Record<string, unknown> | undefined;
+      const target = operation.targetExerciseId ? await database.table("exercises").get(operation.targetExerciseId) as Record<string, unknown> | undefined : undefined;
+      const expected = { archivedAt: operation.expectArchivedAt, mergedIntoExerciseId: operation.expectMergedIntoExerciseId, mergeNote: operation.expectMergeNote, ...(operation.targetExerciseId ? { targetAliases: operation.expectTargetAliases } : {}) };
+      const after = { archived: false, ...(operation.targetExerciseId ? { targetAliases: operation.setTargetAliases } : {}) };
+      if (!exercise || (operation.targetExerciseId && !target)) { operations.push({ index, type: operation.type, table: "exercises", key: operation.exerciseId, status: "NOT_FOUND", changedFields: [], expected, before: {}, after, error: !exercise ? "Merged exercise was not found." : "Merge target exercise was not found." }); continue; }
+      const before = { archivedAt: own(exercise, "archivedAt") ? exercise.archivedAt as JsonValue : { missing: true as const }, mergedIntoExerciseId: own(exercise, "mergedIntoExerciseId") ? exercise.mergedIntoExerciseId as JsonValue : { missing: true as const }, mergeNote: own(exercise, "mergeNote") ? exercise.mergeNote as JsonValue : { missing: true as const }, ...(target ? { targetAliases: target.aliases as JsonValue } : {}) };
+      const changedFields = ["archivedAt", "mergedIntoExerciseId", "mergeNote"].filter((field) => own(exercise, field));
+      if (target && !jsonDeepEqual(target.aliases, operation.setTargetAliases)) changedFields.push("target.aliases");
+      if (!changedFields.length) { operations.push({ index, type: operation.type, table: "exercises", key: operation.exerciseId, status: "ALREADY_SATISFIED", changedFields, expected, before, after }); continue; }
+      const sourceMatches = jsonDeepEqual(exercise.archivedAt, operation.expectArchivedAt) && jsonDeepEqual(exercise.mergedIntoExerciseId, operation.expectMergedIntoExerciseId) && jsonDeepEqual(exercise.mergeNote, operation.expectMergeNote);
+      const targetMatches = !target || jsonDeepEqual(target.aliases, operation.expectTargetAliases);
+      const status = sourceMatches && targetMatches ? "WOULD_CHANGE" : "CONFLICT";
+      operations.push({ index, type: operation.type, table: "exercises", key: operation.exerciseId, status, changedFields: changedFields.sort(), expected, before, after, ...(status === "CONFLICT" ? { error: "Current merge state or target aliases do not exactly match expected values." } : {}) }); continue;
+    }
+    if (operation.type === "repointTrackExercise") {
+      const track = await database.table("tracks").get(operation.trackId) as Record<string, unknown> | undefined;
+      const destination = await database.table("exercises").get(operation.setExerciseId);
+      const expected = { exerciseId: operation.expectExerciseId }; const after = { exerciseId: operation.setExerciseId };
+      if (!track || !destination) { operations.push({ index, type: operation.type, table: "tracks", key: operation.trackId, status: "NOT_FOUND", changedFields: [], expected, before: {}, after, error: !track ? "Track was not found." : "Destination exercise was not found." }); continue; }
+      const before = relevantBefore(track, ["exerciseId"]);
+      if (jsonDeepEqual(track.exerciseId, operation.setExerciseId)) { operations.push({ index, type: operation.type, table: "tracks", key: operation.trackId, status: "ALREADY_SATISFIED", changedFields: [], expected, before, after }); continue; }
+      const status = jsonDeepEqual(track.exerciseId, operation.expectExerciseId) ? "WOULD_CHANGE" : "CONFLICT";
+      operations.push({ index, type: operation.type, table: "tracks", key: operation.trackId, status, changedFields: ["exerciseId"], expected, before, after, ...(status === "CONFLICT" ? { error: "Current track exerciseId does not match the expected value." } : {}) }); continue;
+    }
+    if (operation?.type !== "updateRecord" || !isSupportedMaintenanceTable(operation?.table)) {
+      operations.push(invalidResult(index, operation, "Invalid operation.")); continue;
     }
     const record = await database.table(operation.table).get(operation.key) as Record<string, unknown> | undefined;
     if (!record) { operations.push({ index, type: operation.type, table: operation.table, key: operation.key, status: "NOT_FOUND", changedFields: [], expected: operation.expect, before: {}, after: operation.set, error: "Target record was not found." }); continue; }
