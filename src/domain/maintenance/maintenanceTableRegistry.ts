@@ -21,7 +21,7 @@ export const MAINTENANCE_TABLE_REGISTRY: Readonly<Record<SupportedMaintenanceTab
     metricMode: oneOf("reps", "distance", "time"), movementPattern: oneOf("push", "pull", "hinge", "squat", "carry", "lunge"),
     strengthSignalRole: oneOf("included", "secondary", "excluded"), trainingRole: oneOf("primary", "accessory", "corrective", "deprioritized"),
     anchorEligibility: oneOf("none", "conditional", "primary"), anchorSubtypes: optional(stringArray), equipmentTags: stringArray,
-    summary: optional(stringValue), directions: optional(stringValue), cuesSetup: optional(stringArray), cuesExecution: optional(stringArray),
+    focusArea: optional(stringValue), summary: optional(stringValue), directions: optional(stringValue), cuesSetup: optional(stringArray), cuesExecution: optional(stringArray),
     cues: optional(stringArray), commonMistakes: optional(stringArray), videoUrl: optional(stringValue), animationKey: optional(stringValue),
     imageUrl: optional(stringValue), aliases: optional(stringArray), mergeNote: optional(stringValue), archivedAt: optional(numberValue), updatedAt: optional(numberValue),
   }) },

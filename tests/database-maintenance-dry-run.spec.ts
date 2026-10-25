@@ -51,3 +51,23 @@ test("source counts are provenance warnings and dry run performs zero writes or 
   expect(JSON.stringify(records)).toBe(before); expect(JSON.stringify(source)).toBe(sourceBefore); expect(records.row.unrelated).toBe("preserved");
   expect(Object.keys(db.table("exercises")).sort()).toEqual(["count", "get"]);
 });
+
+test("focusArea uses unchanged would-change, already-satisfied, and conflict semantics", async () => {
+  const records = {
+    change: { id: "change", focusArea: null },
+    satisfied: { id: "satisfied", focusArea: "Upper Back" },
+    conflict: { id: "conflict", focusArea: "Lats" },
+  };
+  const before = JSON.stringify(records);
+  const result = await dryRunMaintenanceScript(memoryDb(records), script([
+    operation("change", { focusArea: null }, { focusArea: "Upper Back" }),
+    operation("satisfied", { focusArea: null }, { focusArea: "Upper Back" }),
+    operation("conflict", { focusArea: null }, { focusArea: "Upper Back" }),
+  ]));
+
+  expect(result.operations.map((row) => row.status)).toEqual(["WOULD_CHANGE", "ALREADY_SATISFIED", "CONFLICT"]);
+  expect(result.operations[0].changedFields).toEqual(["focusArea"]);
+  expect(result.operations[1].changedFields).toEqual([]);
+  expect(result.operations[2].changedFields).toEqual(["focusArea"]);
+  expect(JSON.stringify(records)).toBe(before);
+});
