@@ -12,6 +12,18 @@ test("parses and validates a version-1 maintenance script", () => {
   if (parsed.ok) expect(validateMaintenanceScript(parsed.script)).toEqual({ valid: true, errors: [] });
 });
 
+test("validation allows exercise focusArea while retaining generic field protections", () => {
+  const focusArea = validScript();
+  focusArea.operations[0].expect = { focusArea: null } as any;
+  focusArea.operations[0].set = { focusArea: "Upper Back" } as any;
+  expect(validateMaintenanceScript(focusArea)).toEqual({ valid: true, errors: [] });
+
+  const reference = validScript(); (reference.operations[0] as any).set = { mergedIntoExerciseId: "target" };
+  expect(codes(reference)).toContain("INVALID_FIELD");
+  const unknown = validScript(); (unknown.operations[0] as any).set = { unrecognizedExerciseField: "value" };
+  expect(codes(unknown)).toContain("INVALID_FIELD");
+});
+
 test("parser rejects malformed JSON, nonobject roots, format, version, depth, strings, and size", () => {
   expect(parseMaintenanceScript("{")).toMatchObject({ ok: false, errors: [expect.objectContaining({ code: "MALFORMED_JSON" })] });
   expect(parseMaintenanceScript("[]")).toMatchObject({ ok: false, errors: [expect.objectContaining({ code: "INVALID_ROOT" })] });
