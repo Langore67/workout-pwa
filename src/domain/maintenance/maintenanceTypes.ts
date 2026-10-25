@@ -27,6 +27,26 @@ export type UpdateRecordOperation = {
   set: Record<string, JsonValue>;
 };
 
+export type RestoreMergedExerciseOperation = {
+  type: "restoreMergedExercise";
+  exerciseId: string;
+  expectMergedIntoExerciseId: string;
+  expectArchivedAt: JsonValue;
+  expectMergeNote: string;
+  targetExerciseId?: string;
+  expectTargetAliases?: JsonValue[];
+  setTargetAliases?: JsonValue[];
+};
+
+export type RepointTrackExerciseOperation = {
+  type: "repointTrackExercise";
+  trackId: string;
+  expectExerciseId: string;
+  setExerciseId: string;
+};
+
+export type MaintenanceOperation = UpdateRecordOperation | RestoreMergedExerciseOperation | RepointTrackExerciseOperation;
+
 export type MaintenanceScriptV1 = {
   format: typeof MAINTENANCE_FORMAT;
   version: typeof MAINTENANCE_VERSION;
@@ -44,7 +64,7 @@ export type MaintenanceScriptV1 = {
     sha256?: string;
     recordCounts?: Partial<Record<SupportedMaintenanceTable, number>>;
   };
-  operations: UpdateRecordOperation[];
+  operations: MaintenanceOperation[];
 };
 
 export type MaintenanceIssue = { code: string; path: string; message: string };
@@ -85,7 +105,7 @@ export type MaintenanceDryRunResult = {
 export type MaintenanceExecutionOperationStatus = "CHANGED" | "ALREADY_SATISFIED" | "REFUSED" | "FAILED" | "ROLLED_BACK";
 export type MaintenanceExecutionOperationResult = {
   index: number;
-  type: "updateRecord";
+  type: MaintenanceOperation["type"];
   table: SupportedMaintenanceTable;
   key: string;
   status: MaintenanceExecutionOperationStatus;

@@ -39,7 +39,31 @@ export function validateMaintenanceScript(script: unknown): MaintenanceValidatio
   operations.forEach((raw, index) => {
     const base = `operations[${index}]`;
     if (!plainObject(raw)) { errors.push(issue("INVALID_OPERATION", base, "Operation must be an object.")); return; }
-    if (raw.type !== "updateRecord") errors.push(issue("UNKNOWN_OPERATION", `${base}.type`, "Only updateRecord is supported."));
+    if (!(["updateRecord", "restoreMergedExercise", "repointTrackExercise"] as unknown[]).includes(raw.type)) {
+      errors.push(issue("UNKNOWN_OPERATION", `${base}.type`, "Operation type is not supported.")); return;
+    }
+    const requireId = (field: string) => {
+      if (typeof raw[field] !== "string" || !(raw[field] as string).trim()) errors.push(issue("INVALID_KEY", `${base}.${field}`, `${field} is required.`));
+    };
+    if (raw.type === "restoreMergedExercise") {
+      requireId("exerciseId"); requireId("expectMergedIntoExerciseId"); requireId("expectMergeNote");
+      if (!own(raw, "expectArchivedAt") || raw.expectArchivedAt === null) errors.push(issue("INVALID_EXPECTATION", `${base}.expectArchivedAt`, "expectArchivedAt is required and must be non-null."));
+      const aliasFields = ["targetExerciseId", "expectTargetAliases", "setTargetAliases"];
+      const aliasCount = aliasFields.filter((field) => own(raw, field)).length;
+      if (aliasCount !== 0 && aliasCount !== aliasFields.length) errors.push(issue("INCOMPLETE_ALIAS_REPAIR", base, "Target exercise ID and both exact alias arrays must be supplied together."));
+      if (aliasCount === aliasFields.length) {
+        requireId("targetExerciseId");
+        for (const field of ["expectTargetAliases", "setTargetAliases"]) {
+          if (!Array.isArray(raw[field]) || !(raw[field] as unknown[]).every((value) => typeof value === "string")) errors.push(issue("INVALID_ALIASES", `${base}.${field}`, `${field} must be an array of strings.`));
+        }
+      }
+      validateJson(raw, base, errors); return;
+    }
+    if (raw.type === "repointTrackExercise") {
+      requireId("trackId"); requireId("expectExerciseId"); requireId("setExerciseId");
+      if (raw.expectExerciseId === raw.setExerciseId) errors.push(issue("NO_OP_REFERENCE", `${base}.setExerciseId`, "The old and new exercise IDs must differ."));
+      validateJson(raw, base, errors); return;
+    }
     if (!isSupportedMaintenanceTable(raw.table)) { errors.push(issue("UNKNOWN_TABLE", `${base}.table`, "Table is not allowlisted.")); return; }
     if (typeof raw.key !== "string" || !raw.key.trim()) errors.push(issue("INVALID_KEY", `${base}.key`, "Record key is required."));
     for (const patchName of ["expect", "set"] as const) {
