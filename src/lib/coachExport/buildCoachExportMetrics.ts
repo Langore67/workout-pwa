@@ -34,6 +34,9 @@ import { buildBodyConfidence } from "../../body/bodyConfidenceEngine";
 import { buildRollingBodyMetric } from "../../body/bodyTrendAverages";
 import { buildCardioWalkSummary } from "../cardio/buildCardioWalkSummary";
 import { buildCardioProgressionContext } from "../cardio/cardioProgressionContext";
+import { buildAerobicBaseContext } from "../cardio/aerobicBaseContext";
+import { getAerobicBaseGoal } from "../cardio/aerobicBaseGoal";
+import { buildAerobicBaseGoalProgress } from "../cardio/aerobicBaseGoalProgress";
 import { buildAnchorIntelligence } from "./anchorIntelligence";
 import {
   buildSessionCoachingSignals,
@@ -713,7 +716,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     hydration,
   });
   const strengthSignal = await buildStrengthSignal(generatedAt);
-  const [sessions, sets, tracks, exercises, strengthGoals, weeklySchedule, templates] = await Promise.all([
+  const [sessions, sets, tracks, exercises, strengthGoals, weeklySchedule, templates, aerobicBaseGoal] = await Promise.all([
     db.sessions.toArray(),
     db.sets.toArray(),
     db.tracks.toArray(),
@@ -721,6 +724,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     getStrengthGoals(),
     getWeeklyTrainingSchedule(),
     db.templates.toArray(),
+    getAerobicBaseGoal(),
   ]);
   const intendedWeeklySchedule = resolveIntendedWeeklySchedule(weeklySchedule, templates ?? []);
   const cardioSummary = buildCardioWalkSummary({
@@ -731,6 +735,8 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     recentLimit: 5,
   });
   const cardioProgression = buildCardioProgressionContext(cardioSummary.normalizedWalks, { asOf: generatedAt });
+  const aerobicBase = buildAerobicBaseContext(cardioSummary.normalizedWalks, { asOf: generatedAt });
+  const aerobicBaseGoalProgress = buildAerobicBaseGoalProgress(aerobicBaseGoal, aerobicBase);
   const trainingExposure = buildTrainingExposureContext({
     sessions: sessions ?? [], sets: sets ?? [], tracks: tracks ?? [], exercises: exercises ?? [],
     dedicatedCardioObservations: cardioSummary.normalizedWalks,
@@ -890,6 +896,8 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     hydration,
     cardioSummary,
     cardioProgression,
+    aerobicBase,
+    aerobicBaseGoalProgress,
     weeklyVolume,
     bodyConfidence,
     goalProgress,

@@ -152,6 +152,8 @@ export type CoachState = {
   strengthGoalProgress?: CoachExportMetrics["strengthGoalProgress"];
   cardioProgression?: CoachExportMetrics["cardioProgression"];
   trainingExposure?: CoachExportMetrics["trainingExposure"];
+  aerobicBase?: CoachExportMetrics["aerobicBase"];
+  aerobicBaseGoalProgress?: CoachExportMetrics["aerobicBaseGoalProgress"];
   explanation: CoachExplanation;
   export: CoachStateExport;
 };

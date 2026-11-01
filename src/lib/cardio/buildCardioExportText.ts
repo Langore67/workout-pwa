@@ -14,9 +14,13 @@ import {
   describeCardioProgressionSignal,
   type CardioProgressionObservation,
 } from "./cardioProgressionContext";
+import { buildAerobicBaseContext, type AerobicBaseContext, type AerobicBaseWindow } from "./aerobicBaseContext";
+import type { AerobicBaseGoalProgress } from "./aerobicBaseGoalProgress";
 
 export type BuildCardioExportTextOptions = {
   generatedAt?: Date | number | string;
+  aerobicBaseContext?: AerobicBaseContext;
+  aerobicBaseGoalProgress?: AerobicBaseGoalProgress;
 };
 
 function isFiniteNumber(value: unknown): value is number {
@@ -50,6 +54,16 @@ function formatDuration(seconds?: number): string {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return minutes ? `${hours} hr ${minutes} min` : `${hours} hr`;
+}
+
+function formatClockDuration(seconds: number): string {
+  const wholeSeconds = Math.round(seconds);
+  const hours = Math.floor(wholeSeconds / 3600);
+  const minutes = Math.floor((wholeSeconds % 3600) / 60);
+  const remainder = wholeSeconds % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`
+    : `${minutes}:${String(remainder).padStart(2, "0")}`;
 }
 
 function formatDistance(meters?: number): string {
@@ -114,6 +128,9 @@ function formatWindow(title: string, window: CardioWalkWindowSummary): string[] 
 }
 
 function formatWalkRow(walk: CardioWalkEvent, suspiciousPaceSessionIds: Set<string>): string {
+  const heartRateZoneFields = (walk.heartRateZones?.zones ?? []).map(
+    (zone) => `HR Zone ${zone.zone}: ${formatClockDuration(zone.seconds)}`
+  );
   const fields = [
     formatDateTime(walk.startedAt),
     cleanInline(walk.name) ?? "Walk",
@@ -130,6 +147,13 @@ function formatWalkRow(walk: CardioWalkEvent, suspiciousPaceSessionIds: Set<stri
     cleanInline(walk.elevationText) ? `${walk.structuredMetrics ? "Elevation Gain" : "Elevation"} ${cleanInline(walk.elevationText)}` : undefined,
     isFiniteNumber(walk.avgHr) ? `${walk.structuredMetrics ? "Average HR" : "Avg HR"} ${Math.round(walk.avgHr)}${walk.structuredMetrics ? " bpm" : ""}` : undefined,
     isFiniteNumber(walk.maxHr) ? `${walk.structuredMetrics ? "Maximum HR" : "Max HR"} ${Math.round(walk.maxHr)}${walk.structuredMetrics ? " bpm" : ""}` : undefined,
+    cleanInline(walk.provider) ? `Provider: ${cleanInline(walk.provider)}` : undefined,
+    cleanInline(walk.providerWorkoutId) ? `Provider Workout ID: ${cleanInline(walk.providerWorkoutId)}` : undefined,
+    isFiniteNumber(walk.steps) ? `Steps: ${Math.round(walk.steps)}` : undefined,
+    walk.stepsSource ? `Steps Source: ${walk.stepsSource === "recorded" ? "Recorded" : "Estimated"}` : undefined,
+    isFiniteNumber(walk.energyKcal) ? `Energy: ${walk.energyKcal} kcal` : undefined,
+    ...heartRateZoneFields,
+    cleanInline(walk.heartRateZones?.source) ? `HR Zone Source: ${cleanInline(walk.heartRateZones?.source)}` : undefined,
     extractNotesText(walk.notes) ? `Notes ${extractNotesText(walk.notes)}` : undefined,
   ].filter((field): field is string => !!field);
 
@@ -178,10 +202,23 @@ function buildLikeForLikeComparisons(walks: CardioWalkEvent[]): string[] {
   return lines;
 }
 
+function formatAerobicBaseWindow(window: AerobicBaseWindow, label: string) {
+  return [
+    `${label} — ${window.status === "in_progress" ? "partial period" : window.status === "complete" ? "complete period" : "rolling period"}`,
+    `- Documented aerobic-base proxy exposure: ${Math.round(window.totalAerobicBaseSeconds / 60)} min`,
+    `- Contributing sessions: ${window.contributingSessions}`,
+    `- Cardio sessions missing usable zone evidence: ${window.cardioSessionsWithoutUsableZoneEvidence}`,
+  ];
+}
+
 export function buildCardioExportText(
   summary: CardioWalkSummary,
   options: BuildCardioExportTextOptions = {}
 ): string {
+  const generatedAt = options.generatedAt == null ? Date.now() : new Date(options.generatedAt).getTime();
+  const aerobicBase = options.aerobicBaseContext ?? buildAerobicBaseContext(summary.normalizedWalks, {
+    asOf: Number.isFinite(generatedAt) ? generatedAt : Date.now(),
+  });
   const suspiciousPaceSessionIds = new Set(summary.dataQuality.suspiciousPaceSessionIds);
   const fitnessWalks = summary.normalizedWalks.filter(
     (walk) => isFitnessWalk(walk) || (!isRecoveryWalk(walk) && !isAdventureWalk(walk))
@@ -242,6 +279,34 @@ export function buildCardioExportText(
   if (untypedTotals.count > 0) lines.push(formatActivityTotals("Untyped", untypedTotals));
   if (!activityTypeTotals.length && untypedTotals.count === 0) lines.push("- No activity type data available.");
 
+  lines.push(
+    "",
+    "Aerobic Base Exposure",
+    ...formatAerobicBaseWindow(aerobicBase.currentWeekToDate, "Current week-to-date"),
+    "",
+    ...formatAerobicBaseWindow(aerobicBase.previousCompleteWeek, "Previous complete week"),
+    "",
+    ...formatAerobicBaseWindow(aerobicBase.rolling14Days, "Rolling 14 days"),
+    "",
+    "- Method: MapMyWalk/MapMyFitness Zone 3 proxy; documented exposure only, without physiological-zone interpretation."
+  );
+
+  const goalProgress = options.aerobicBaseGoalProgress;
+  if (goalProgress) {
+    const difference = goalProgress.previousCompleteWeek.differenceMinutes;
+    lines.push(
+      "",
+      "Aerobic Base Goal Progress",
+      `Weekly target: ${goalProgress.targetMinutes} min`,
+      `- Current week documented: ${goalProgress.currentWeek.documentedMinutes} / ${goalProgress.targetMinutes} min`,
+      `- Remaining documented amount: ${goalProgress.currentWeek.remainingDocumentedMinutes} min`,
+      `- Current-week missing usable zone evidence: ${goalProgress.currentWeek.missingUsableZoneEvidenceSessions} sessions`,
+      `- Previous complete week documented: ${goalProgress.previousCompleteWeek.documentedMinutes} / ${goalProgress.targetMinutes} min`,
+      `- Difference from target: ${difference >= 0 ? "+" : ""}${difference} min`,
+      `- Previous-week missing usable zone evidence: ${goalProgress.previousCompleteWeek.missingUsableZoneEvidenceSessions} sessions`
+    );
+  }
+
   if (comparisons.length) lines.push("", "Like-for-Like Comparisons", ...comparisons);
 
   lines.push(
@@ -255,7 +320,7 @@ export function buildCardioExportText(
     "- Suspicious rows are excluded from average pace calculations.",
     "- Walk and legacy untyped pace is suspicious below 10:00/mi or above 35:00/mi; other activity types do not inherit walking thresholds.",
     "- Structured route, elevation, HR, source, distance, and duration are used when present; legacy note-derived values remain supported.",
-    "- Zone distribution, route trends, and lifting interference are not modeled yet.",
+    "- Explicit HR-zone durations, route identity, and cardio/strength proximity evidence are retained when available; this export does not interpret them.",
     "",
     "Source Notes",
     "- Cardio data comes from History-backed conditioning sessions.",

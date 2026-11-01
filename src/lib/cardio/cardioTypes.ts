@@ -2,6 +2,7 @@ import type { Exercise, Session, SetEntry, Track } from "../../db";
 import type { CardioActivityType } from "./cardioActivityType";
 import type { CardioIntent } from "./cardioIntent";
 import type { CardioFormat } from "./cardioFormat";
+import type { CardioHeartRateZones, CardioStepsSource } from "./cardioMetrics";
 import {
   isAdventureCardioIntent,
   isFitnessCardioIntent,
@@ -24,6 +25,8 @@ export type CardioWalkEvent = {
   route?: string;
   routeId?: string;
   durationSeconds?: number;
+  /** Explicit elapsed duration retained as factual evidence; not used as a progression signal. */
+  elapsedDurationSeconds?: number;
   distanceMeters?: number;
   distance?: number;
   distanceUnit?: "mi" | "km";
@@ -33,6 +36,12 @@ export type CardioWalkEvent = {
   elevationUnit?: "ft" | "m";
   avgHr?: number;
   maxHr?: number;
+  provider?: string;
+  providerWorkoutId?: string;
+  steps?: number;
+  stepsSource?: CardioStepsSource;
+  energyKcal?: number;
+  heartRateZones?: CardioHeartRateZones;
   notes?: string;
   confidence: CardioWalkConfidence;
   structuredMetrics?: boolean;
