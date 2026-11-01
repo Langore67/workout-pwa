@@ -21,6 +21,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Page, Section } from "../components/Page.tsx";
 import { StrengthGoalsCard } from "../components/profile/StrengthGoalsCard";
+import { AerobicBaseGoalCard } from "../components/profile/AerobicBaseGoalCard";
 import { WeeklyTrainingScheduleCard } from "../components/profile/WeeklyTrainingScheduleCard";
 import { db, type Exercise, type Template } from "../db";
 import {
@@ -35,6 +36,15 @@ import {
   type WeeklyTrainingSchedule,
 } from "../domain/schedule/weeklyTrainingSchedule";
 import { getProfileGoals, setProfileGoals } from "../profile/profileGoals";
+import { buildCardioWalkSummary } from "../lib/cardio/buildCardioWalkSummary";
+import { buildAerobicBaseContext, type AerobicBaseContext } from "../lib/cardio/aerobicBaseContext";
+import {
+  clearAerobicBaseGoal,
+  getAerobicBaseGoal,
+  setAerobicBaseGoal,
+  type AerobicBaseGoal,
+} from "../lib/cardio/aerobicBaseGoal";
+import { buildAerobicBaseGoalProgress } from "../lib/cardio/aerobicBaseGoalProgress";
 
 type Sex = "male" | "female" | "other" | "";
 type ExperienceLevel = "beginner" | "intermediate" | "advanced" | "";
@@ -265,6 +275,9 @@ export default function ProfilePage() {
   const [strengthGoals, setStrengthGoalList] = useState<StrengthGoal[]>([]);
   const [strengthGoalExercises, setStrengthGoalExercises] = useState<Exercise[]>([]);
   const [strengthGoalsLoaded, setStrengthGoalsLoaded] = useState(false);
+  const [aerobicBaseGoal, setAerobicBaseGoalState] = useState<AerobicBaseGoal>();
+  const [aerobicBaseContext, setAerobicBaseContext] = useState<AerobicBaseContext>();
+  const [aerobicBaseGoalLoaded, setAerobicBaseGoalLoaded] = useState(false);
   const [weeklySchedule, setWeeklySchedule] = useState<WeeklyTrainingSchedule | null>(null);
   const [scheduleTemplates, setScheduleTemplates] = useState<Template[]>([]);
   const [weeklyScheduleLoaded, setWeeklyScheduleLoaded] = useState(false);
@@ -293,6 +306,31 @@ export default function ProfilePage() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([
+      getAerobicBaseGoal(),
+      db.sessions.toArray(), db.sets.toArray(), db.tracks.toArray(), db.exercises.toArray(),
+    ]).then(([goal, sessions, sets, tracks, exercises]) => {
+      if (cancelled) return;
+      const summary = buildCardioWalkSummary({ sessions, sets, tracks, exercises, recentLimit: 5 });
+      setAerobicBaseGoalState(goal);
+      setAerobicBaseContext(buildAerobicBaseContext(summary.normalizedWalks));
+    }).finally(() => {
+      if (!cancelled) setAerobicBaseGoalLoaded(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const persistAerobicBaseGoal = useCallback(async (minutes: number) => {
+    setAerobicBaseGoalState(await setAerobicBaseGoal(minutes));
+  }, []);
+
+  const removeAerobicBaseGoal = useCallback(async () => {
+    await clearAerobicBaseGoal();
+    setAerobicBaseGoalState(undefined);
   }, []);
 
   useEffect(() => {
@@ -582,6 +620,17 @@ export default function ProfilePage() {
           goals={strengthGoals}
           exercises={strengthGoalExercises}
           persistGoals={persistStrengthGoals}
+        />
+      </Section>
+
+      <Section>
+        <AerobicBaseGoalCard
+          isEditing={isEditing}
+          loading={!aerobicBaseGoalLoaded}
+          goal={aerobicBaseGoal}
+          progress={aerobicBaseContext ? buildAerobicBaseGoalProgress(aerobicBaseGoal, aerobicBaseContext) : undefined}
+          saveGoal={persistAerobicBaseGoal}
+          clearGoal={removeAerobicBaseGoal}
         />
       </Section>
 

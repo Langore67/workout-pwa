@@ -11,6 +11,53 @@ import type {
 import type { StrengthGoalProgressContext } from "../../domain/goals/strengthGoalProgress";
 import type { IntendedWeeklyScheduleContext } from "../../domain/schedule/weeklyTrainingSchedule";
 import type { TrainingExposureContext, TrainingExposureWindow } from "../../domain/training/trainingExposureContext";
+import type { AerobicBaseContext, AerobicBaseWindow } from "../cardio/aerobicBaseContext";
+import type { AerobicBaseGoalProgress } from "../cardio/aerobicBaseGoalProgress";
+
+function renderAerobicBaseGoalProgress(progress?: AerobicBaseGoalProgress) {
+  if (!progress) return [];
+  const difference = progress.previousCompleteWeek.differenceMinutes;
+  return [
+    "Aerobic Base Goal Progress",
+    `- Weekly target: ${progress.targetMinutes} min`,
+    "Current week-to-date â€” partial period",
+    `- Documented: ${progress.currentWeek.documentedMinutes} / ${progress.targetMinutes} min`,
+    `- Remaining documented amount: ${progress.currentWeek.remainingDocumentedMinutes} min`,
+    `- Missing usable zone evidence: ${progress.currentWeek.missingUsableZoneEvidenceSessions} cardio sessions`,
+    "Previous complete week â€” complete period",
+    `- Documented: ${progress.previousCompleteWeek.documentedMinutes} / ${progress.targetMinutes} min`,
+    `- Difference from target: ${difference >= 0 ? "+" : ""}${difference} min`,
+    `- Missing usable zone evidence: ${progress.previousCompleteWeek.missingUsableZoneEvidenceSessions} cardio sessions`,
+    "",
+  ];
+}
+
+function formatAerobicBaseWindow(window: AerobicBaseWindow, title: string) {
+  return [
+    `${title} — ${window.status === "in_progress" ? "partial period" : window.status === "complete" ? "complete period" : "rolling period"}`,
+    `- Documented aerobic-base proxy exposure: ${Math.round(window.totalAerobicBaseSeconds / 60)} min`,
+    `- Contributing sessions: ${window.contributingSessions}`,
+    `- Dedicated cardio sessions: ${window.totalCardioSessions}`,
+    `- Cardio sessions missing usable zone evidence: ${window.cardioSessionsWithoutUsableZoneEvidence}`,
+    ...(window.limitations.length ? [`- Limitations: ${window.limitations.join(" ")}`] : []),
+  ];
+}
+
+function renderAerobicBaseContext(context?: AerobicBaseContext) {
+  if (!context) return [] as string[];
+  return [
+    "Aerobic Base Exposure",
+    ...formatAerobicBaseWindow(context.currentWeekToDate, "Current week-to-date"),
+    "",
+    ...formatAerobicBaseWindow(context.previousCompleteWeek, "Previous complete week"),
+    "",
+    ...formatAerobicBaseWindow(context.rolling14Days, "Rolling 14 days"),
+    "",
+    "Method",
+    "- MapMyWalk/MapMyFitness Zone 3 proxy; this is documented exposure, not a physiological zone classification.",
+    "",
+  ];
+}
 
 function formatLocalDateKey(value: string, options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" }) {
   const [year, month, day] = value.split("-").map(Number);
@@ -615,6 +662,8 @@ export function formatCoachReportText(
           ]
       : []),
     ...renderTrainingExposure(report.trainingExposure ?? report.programmingContext?.trainingExposure),
+    ...renderAerobicBaseContext(report.aerobicBase ?? report.programmingContext?.aerobicBase),
+    ...renderAerobicBaseGoalProgress(report.aerobicBaseGoalProgress ?? report.programmingContext?.aerobicBaseGoalProgress),
     ...renderProgrammingContext(report.programmingContext),
     ...renderProgrammingIntelligence(report.programming, hasFactualTrainingExposure),
     ...renderCoachingActions(report.coachingActions, hasFactualTrainingExposure),

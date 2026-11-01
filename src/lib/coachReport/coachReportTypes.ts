@@ -1,5 +1,7 @@
 import type { CoachExplanation } from "../coachState/coachStateTypes";
 import type { TrainingExposureContext } from "../../domain/training/trainingExposureContext";
+import type { AerobicBaseContext } from "../cardio/aerobicBaseContext";
+import type { AerobicBaseGoalProgress } from "../cardio/aerobicBaseGoalProgress";
 import type {
   AnchorMovementFamily,
   CoachExportAnchorCurrentMovement,
@@ -232,6 +234,8 @@ export type CoachReport = {
   cardio?: CoachReportCardio;
   programmingContext?: CoachProgrammingContext;
   trainingExposure?: TrainingExposureContext;
+  aerobicBase?: AerobicBaseContext;
+  aerobicBaseGoalProgress?: AerobicBaseGoalProgress;
   programming?: CoachProgrammingSummary;
   coachingActions?: CoachActionSummary;
   exportOnly?: {

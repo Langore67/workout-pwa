@@ -257,12 +257,21 @@ Intent: <Fitness|Recovery|Adventure, cardio only when known>
 Cardio Format: <Continuous|Intervals, cardio only when known>
 Distance: <positive value mi|km, cardio only when known>
 Duration: <MM:SS|HH:MM:SS, cardio only when known>
+Active Duration: <MM:SS|HH:MM:SS, cardio only when explicitly known>
+Elapsed Duration: <MM:SS|HH:MM:SS, cardio only when explicitly known>
 Average HR: <1-300 bpm, cardio only when known>
 Maximum HR: <1-300 bpm, cardio only when known>
 Elevation Gain: <non-negative value ft|m, cardio only when known>
 Route ID: <explicit stable identifier, cardio only when known>
 Route Name: <explicit route name, cardio only when known>
 Source: <explicit source, cardio only when known>
+Provider: <explicit provider identity, cardio only when known>
+Provider Workout ID: <explicit provider workout ID, cardio only when known>
+Steps: <positive whole number, cardio only when known>
+Steps Source: <Recorded|Estimated, cardio only when known>
+Energy: <non-negative kcal, cardio only when known>
+HR Zone 1: <MM:SS|HH:MM:SS, cardio only when known>
+HR Zone Source: <explicit source, cardio only when known>
 Date: YYYY-MM-DD
 Start: HH:mm
 End: HH:mm
@@ -1049,7 +1058,7 @@ function formatParsedSetPreview(set: ParsedSet): string {
   }${suffixNotes}`;
 }
 
-function parseWorkoutText(text: string): ParsedWorkout {
+export function parseWorkoutText(text: string): ParsedWorkout {
   const contract = inspectIfWorkoutContract(text);
   const structuredCardio = parseStructuredCardioMetrics(text);
   const lines = text.replace(/\r/g, "").split("\n");

@@ -216,7 +216,7 @@ test("undefined conditioning intent leaves summary calculations unchanged", () =
       maxHr: 0,
       notes: 0,
     },
-    unsupportedSignals: ["routeTrend", "zoneDistribution", "liftingInterference"],
+    unsupportedSignals: [],
   });
 });
 

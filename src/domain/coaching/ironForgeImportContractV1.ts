@@ -39,15 +39,24 @@ Intent: Fitness|Recovery|Adventure
 Cardio Format: Continuous|Intervals
 Distance: <positive value> mi|km
 Duration: MM:SS|HH:MM:SS
+Active Duration: MM:SS|HH:MM:SS
+Elapsed Duration: MM:SS|HH:MM:SS
 Average HR: <integer> bpm
 Maximum HR: <integer> bpm
 Elevation Gain: <non-negative value> ft|m
 Route ID: <explicit stable identifier>
 Route Name: <explicit route name>
 Source: <explicit source>
+Provider: <explicit provider identity>
+Provider Workout ID: <explicit provider workout ID>
+Steps: <positive whole number>
+Steps Source: Recorded|Estimated
+Energy: <non-negative value> kcal
+HR Zone <positive integer>: MM:SS|HH:MM:SS
+HR Zone Source: <explicit source>
 
 Activity Type is what was performed, Intent is why, and Cardio Format is how. Never infer an unknown field.
-Distance, duration, heart rate, elevation, route, and source must also be explicit; omit unknown fields.
+Distance, duration, heart rate, elevation, route, source, provider evidence, steps, energy, and HR zones must also be explicit; omit unknown fields.
 
 Supported conditioning notation includes:
 conditioning BWx3.12mi
