@@ -8,6 +8,8 @@ import type { GoalProgress } from "./goalEngine";
 import type { LeanPreservationComposite } from "./leanPreservationComposite";
 import type { TrainingRole } from "../../domain/trainingRole";
 import type { CardioProgressionContext } from "../cardio/cardioProgressionContext";
+import type { AerobicBaseContext } from "../cardio/aerobicBaseContext";
+import type { AerobicBaseGoalProgress } from "../cardio/aerobicBaseGoalProgress";
 import type { CardioStrengthInterferenceContext } from "./cardioStrengthInterferenceContext";
 import type { IntendedWeeklyScheduleContext } from "../../domain/schedule/weeklyTrainingSchedule";
 import type { TrainingExposureContext } from "../../domain/training/trainingExposureContext";
@@ -447,6 +449,8 @@ export type CoachProgrammingContext = {
   strengthGoalProgress?: import("../../domain/goals/strengthGoalProgress").StrengthGoalProgressContext[];
   intendedWeeklySchedule?: IntendedWeeklyScheduleContext;
   trainingExposure?: TrainingExposureContext;
+  aerobicBase?: AerobicBaseContext;
+  aerobicBaseGoalProgress?: AerobicBaseGoalProgress;
   cardio?: {
     activities7d: number;
     duration7dSeconds: number;
@@ -477,6 +481,8 @@ export type CoachExportMetrics = {
   hydration: CoachExportHydration;
   cardioSummary?: CardioWalkSummary;
   cardioProgression?: CardioProgressionContext;
+  aerobicBase?: AerobicBaseContext;
+  aerobicBaseGoalProgress?: AerobicBaseGoalProgress;
   bodyConfidence?: BodyConfidence;
   coachIntelligence?: CoachIntelligence | null;
   goalProgress?: GoalProgress | null;

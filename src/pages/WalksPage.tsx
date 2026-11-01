@@ -122,7 +122,7 @@ function DataQualityNote({ summary }: { summary: CardioWalkSummary }) {
       {notes.length ? `${notes.join(" ")} ` : ""}
       Pace is shown only when both distance and duration are available. Suspicious rows remain in activity totals but
       are excluded from average pace. Walking thresholds apply only to Walk and legacy untyped rows. Route, HR,
-      elevation, and zone trends are not tracked yet.
+      Explicit route, HR, elevation, and HR-zone evidence is retained when available; this page does not interpret trends.
     </div>
   );
 }

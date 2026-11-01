@@ -239,7 +239,7 @@ function buildDataQuality(walks: CardioWalkEvent[]): CardioWalkDataQuality {
       .filter(hasSuspiciousPace)
       .map((walk) => walk.sessionId),
     notesFieldCoverage: coverage,
-    unsupportedSignals: ["routeTrend", "zoneDistribution", "liftingInterference"],
+    unsupportedSignals: [],
   };
 }
 
@@ -292,7 +292,9 @@ export function buildCardioWalkSummary(input: BuildCardioWalkSummaryInput): Card
 
       const fallbackDurationSeconds = hasDuration ? undefined : getSessionDurationSeconds(session);
       const metrics = session.cardioMetrics;
-      const durationSeconds = metrics?.durationSeconds ?? (hasDuration ? totalDurationSeconds : fallbackDurationSeconds);
+      const structuredActivityDuration = metrics?.activeDurationSeconds ?? metrics?.durationSeconds;
+      const durationSeconds = structuredActivityDuration
+        ?? (hasDuration ? totalDurationSeconds : metrics?.elapsedDurationSeconds ?? fallbackDurationSeconds);
       const distanceMeters = cardioDistanceMeters(metrics) ?? (hasDistance ? totalDistanceMeters : undefined);
       const parsedNotes = parseCardioSessionNotes(session.notes);
       const derivedPace =
@@ -313,6 +315,7 @@ export function buildCardioWalkSummary(input: BuildCardioWalkSummaryInput): Card
         route: metrics?.routeName ?? parsedNotes.route,
         routeId: metrics?.routeId,
         durationSeconds,
+        elapsedDurationSeconds: metrics?.elapsedDurationSeconds,
         distanceMeters,
         distance: metrics?.distance,
         distanceUnit: metrics?.distanceUnit,
@@ -322,12 +325,29 @@ export function buildCardioWalkSummary(input: BuildCardioWalkSummaryInput): Card
         elevationUnit: metrics?.elevationUnit,
         avgHr: metrics?.avgHrBpm ?? parsedNotes.avgHr,
         maxHr: metrics?.maxHrBpm ?? parsedNotes.maxHr,
+        provider: metrics?.provider,
+        providerWorkoutId: metrics?.providerWorkoutId,
+        steps: metrics?.steps,
+        stepsSource: metrics?.stepsSource,
+        energyKcal: metrics?.energyKcal,
+        heartRateZones: metrics?.heartRateZones
+          ? {
+              ...(metrics.heartRateZones.source ? { source: metrics.heartRateZones.source } : {}),
+              zones: metrics.heartRateZones.zones.map((zone) => ({ ...zone })),
+            }
+          : undefined,
         notes: session.notes,
         confidence,
         structuredMetrics: !!metrics,
         metricProvenance: {
           ...(metrics?.distance != null ? { distance: "session_structured" as const } : hasDistance ? { distance: "conditioning_sets" as const } : {}),
-          ...(metrics?.durationSeconds != null ? { duration: "session_structured" as const } : hasDuration ? { duration: "conditioning_sets" as const } : fallbackDurationSeconds != null ? { duration: "session_timestamps" as const } : {}),
+          ...(structuredActivityDuration != null || (!hasDuration && metrics?.elapsedDurationSeconds != null)
+            ? { duration: "session_structured" as const }
+            : hasDuration
+              ? { duration: "conditioning_sets" as const }
+              : fallbackDurationSeconds != null
+                ? { duration: "session_timestamps" as const }
+                : {}),
           ...(metrics?.avgHrBpm != null || metrics?.maxHrBpm != null ? { heartRate: "session_structured" as const } : parsedNotes.avgHr != null || parsedNotes.maxHr != null ? { heartRate: "legacy_notes" as const } : {}),
           ...(metrics?.elevationGain != null ? { elevation: "session_structured" as const } : parsedNotes.elevationText ? { elevation: "legacy_notes" as const } : {}),
           ...(metrics?.routeId || metrics?.routeName ? { route: "session_structured" as const } : parsedNotes.route ? { route: "legacy_notes" as const } : {}),

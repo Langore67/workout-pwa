@@ -33,6 +33,9 @@ import InfoStubButton from "../components/information/InfoStubButton";
 import { db } from "../db";
 import type { FitnessTestResult } from "../db";
 import { buildCardioExportText } from "../lib/cardio/buildCardioExportText";
+import { buildAerobicBaseContext } from "../lib/cardio/aerobicBaseContext";
+import { getAerobicBaseGoal } from "../lib/cardio/aerobicBaseGoal";
+import { buildAerobicBaseGoalProgress } from "../lib/cardio/aerobicBaseGoalProgress";
 import { buildCardioWalkSummary } from "../lib/cardio/buildCardioWalkSummary";
 import {
   formatCardioDuration,
@@ -677,7 +680,9 @@ export default function ProgressPage() {
       return;
     }
 
-    const text = buildCardioExportText(cardioExportSummary);
+    const aerobicBaseContext = buildAerobicBaseContext(cardioExportSummary.normalizedWalks);
+    const aerobicBaseGoalProgress = buildAerobicBaseGoalProgress(await getAerobicBaseGoal(), aerobicBaseContext);
+    const text = buildCardioExportText(cardioExportSummary, { aerobicBaseContext, aerobicBaseGoalProgress });
 
     try {
       setManualCopyText(null);

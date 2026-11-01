@@ -229,6 +229,7 @@ export function parseIfJournalText(text: string): ParsedIfWorkout {
     const raw = lines[i];
     const line = raw.trim();
     if (!line) continue;
+    if (structuredCardio.recognizedLines.has(i)) continue;
     if (/^IF Workout$/i.test(line) || /^Format Version\s*:/i.test(line)) continue;
 
     if (inNotesBlock) {
