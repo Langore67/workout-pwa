@@ -7,7 +7,7 @@
 
 export const buildInfo = {
   version: "v0.1.0",
-  commit: "4f5d895",
-  branch: "feature/coach-state-foundation",
-  builtAt: "2026-07-04T12:22:32.513Z",
+  commit: "73a5acc",
+  branch: "cardio-evidence-sprint-1a-1d",
+  builtAt: "2026-11-06T10:29:55.415Z",
 } as const;
