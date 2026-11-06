@@ -1756,19 +1756,17 @@ conditioning duration 20min`);
   });
 });
 
-test("Paste Workout formatting prompt documents activity type and conservative intent metadata", async ({ page }) => {
+test("Paste Workout formatting prompt documents the canonical cardio contract", async ({ page }) => {
   await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
 
   await page.getByText("Need help formatting a workout?").click();
 
-  await expect(page.getByText("Activity Type: <Walk|Hike|Run|Bike|Row|Other, cardio only when known>")).toBeVisible();
-  await expect(page.getByText("Intent: <Fitness|Recovery|Adventure, cardio only when known>")).toBeVisible();
-  await expect(page.getByText("- Activity Type describes WHAT the activity was.")).toBeVisible();
-  await expect(page.getByText("- Intent describes WHY the cardio was performed.")).toBeVisible();
-  await expect(page.getByText("- Cardio Format describes HOW the cardio was performed.")).toBeVisible();
-  await expect(page.getByText("- Use Continuous for steady-state cardio and Intervals for structured work/recovery sessions.")).toBeVisible();
-  await expect(page.getByText("- Do not guess Cardio Format when it is unclear.")).toBeVisible();
-  await expect(page.getByText("- Do not guess Intent when it is unclear.")).toBeVisible();
+  const help = page.locator("details");
+  await expect(help).toContainText("Activity Type: Walk|Hike|Run|Bike|Row|Other");
+  await expect(help).toContainText("Minimal walk/cardio example:");
+  await expect(help).toContainText("Expanded walk/cardio example");
+  await expect(help).toContainText("Active Duration is actual moving/active workout time");
+  await expect(help).toContainText("If only percentages are visible");
 });
 
 test("Paste Workout persists activity type from trusted cardio activity names", async ({ page }) => {

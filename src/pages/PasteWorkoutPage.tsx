@@ -107,6 +107,7 @@ import {
 import { joinImportNoteFragments, normalizeImportNoteText } from "../domain/import/noteParsing";
 import { computeAndStorePRsForSession } from "../prs";
 import { inspectIfWorkoutContract } from "../domain/import/ifWorkoutContract";
+import { IRONFORGE_FORMATTING_HELP_PROMPT } from "../domain/import/ironForgeFormattingHelp";
 
 /* ============================================================================
    Breadcrumb 1 — Types
@@ -244,72 +245,6 @@ warmup 45x10
 work 95x10 @5
 work 105x10 @4
 work 105x10 @4`;
-
-const CHATGPT_FORMAT_PROMPT = `Convert the following completed workout notes into IronForge format.
-
-Use exactly this structure:
-
-IF Workout
-Format Version: 1
-Session: <name>
-Activity Type: <Walk|Hike|Run|Bike|Row|Other, cardio only when known>
-Intent: <Fitness|Recovery|Adventure, cardio only when known>
-Cardio Format: <Continuous|Intervals, cardio only when known>
-Distance: <positive value mi|km, cardio only when known>
-Duration: <MM:SS|HH:MM:SS, cardio only when known>
-Active Duration: <MM:SS|HH:MM:SS, cardio only when explicitly known>
-Elapsed Duration: <MM:SS|HH:MM:SS, cardio only when explicitly known>
-Average HR: <1-300 bpm, cardio only when known>
-Maximum HR: <1-300 bpm, cardio only when known>
-Elevation Gain: <non-negative value ft|m, cardio only when known>
-Route ID: <explicit stable identifier, cardio only when known>
-Route Name: <explicit route name, cardio only when known>
-Source: <explicit source, cardio only when known>
-Provider: <explicit provider identity, cardio only when known>
-Provider Workout ID: <explicit provider workout ID, cardio only when known>
-Steps: <positive whole number, cardio only when known>
-Steps Source: <Recorded|Estimated, cardio only when known>
-Energy: <non-negative kcal, cardio only when known>
-HR Zone 1: <MM:SS|HH:MM:SS, cardio only when known>
-HR Zone Source: <explicit source, cardio only when known>
-Date: YYYY-MM-DD
-Start: HH:mm
-End: HH:mm
-
-Exercise Name
-warmup 95x10
-work 135x8 @2
-
-Session Notes:
-- optional notes here
-
-Supported set types:
-warmup, work, technique, mobility, corrective, conditioning
-
-Formatting rules:
-- This contract imports completed workout data; it does not schedule a planned workout.
-- One exercise name per line.
-- One set per line under the exercise.
-- Use BW for bodyweight movements.
-- Use @RIR for work sets when RIR is known.
-- Use conditioning BWx3.12mi or conditioning BWx5.39km for distance conditioning.
-- Use conditioning BWx42min or conditioning BWx2520s for time conditioning.
-- For cardio sessions, include Activity Type when it is known.
-- Activity Type describes WHAT the activity was.
-- Include Intent only when the notes/source support the purpose of the activity.
-- Intent describes WHY the cardio was performed.
-- Do not guess Intent when it is unclear.
-- Cardio Format describes HOW the cardio was performed.
-- Use Continuous for steady-state cardio and Intervals for structured work/recovery sessions.
-- Do not guess Cardio Format when it is unclear.
-- Example: Session: PRP Run/Walk Intervals | Activity Type: Run | Intent: Fitness | Cardio Format: Intervals
-- Omit Activity Type, Intent, and Cardio Format when they do not apply or cannot be determined reliably.
-- Omit structured cardio measurements, route, and source when they are unknown; never infer them from other values.
-- Keep all notes under Session Notes.
-- Return only the IronForge-formatted workout.
-
-Workout notes:
-<paste notes here>`;
 
 /* ============================================================================
    Breadcrumb 3 — Local storage helpers
@@ -1369,7 +1304,7 @@ export default function PasteWorkoutPage() {
   async function copyChatGptPrompt() {
     try {
       if (!navigator?.clipboard?.writeText) throw new Error("clipboard unavailable");
-      await navigator.clipboard.writeText(CHATGPT_FORMAT_PROMPT);
+      await navigator.clipboard.writeText(IRONFORGE_FORMATTING_HELP_PROMPT);
       setPromptCopyState("copied");
       window.setTimeout(() => {
         setPromptCopyState((current) => (current === "copied" ? "idle" : current));
@@ -2027,7 +1962,7 @@ export default function PasteWorkoutPage() {
               fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
             }}
           >
-            {CHATGPT_FORMAT_PROMPT}
+            {IRONFORGE_FORMATTING_HELP_PROMPT}
           </pre>
         </div>
       </details>
