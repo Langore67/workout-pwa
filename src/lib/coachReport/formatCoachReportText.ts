@@ -3,7 +3,7 @@ import { getTrainingRoleLabel, type TrainingRole } from "../../domain/trainingRo
 import { getCardioActivityTypeLabel } from "../cardio/cardioActivityType";
 import { getCardioIntentLabel } from "../cardio/cardioIntent";
 import { getCardioFormatLabel } from "../cardio/cardioFormat";
-import type { CardioProgressionObservation } from "../cardio/cardioProgressionContext";
+import type { CardioProgressionContext, CardioProgressionObservation } from "../cardio/cardioProgressionContext";
 import type {
   ExerciseProgressionContext,
   ExerciseProgressionObservation,
@@ -77,9 +77,87 @@ function formatExposureWindow(window: TrainingExposureWindow, title: string) {
     if (movement.latestExposureAt) facts.push(`latest ${new Date(movement.latestExposureAt).toLocaleString()}`);
     lines.push(`- ${movement.movementPattern}: ${facts.join(" | ")}`);
   }
-  if (window.unclassifiedSetCount) lines.push(`- Unclassified: ${window.unclassifiedSetCount} qualifying sets | ${window.unclassifiedExerciseCount ?? 0} exercises`);
-  if (window.limitations.length) lines.push(`- Limitations: ${window.limitations.join(" ")}`);
+  if (window.unclassifiedSetCount) {
+    const exerciseCount = window.unclassifiedExerciseCount ?? 0;
+    lines.push(`- Unclassified: ${window.unclassifiedSetCount} relevant sets | ${exerciseCount} exercise${exerciseCount === 1 ? "" : "s"}`);
+  }
+  const otherLimitations = window.limitations.filter((limitation) =>
+    !/^Movement pattern is unavailable for /i.test(limitation)
+    && !/qualifying sets? could not be classified to a movement pattern/i.test(limitation)
+  );
+  if (otherLimitations.length) lines.push(`- Limitations: ${otherLimitations.join(" ")}`);
   return lines;
+}
+
+function renderEvidenceCompleteness(report: CoachReport) {
+  const programming = report.programmingContext;
+  const exposure = report.trainingExposure ?? programming?.trainingExposure;
+  const aerobicBase = report.aerobicBase ?? programming?.aerobicBase;
+  const cardioProgression = programming?.cardio?.progression;
+  const lines: string[] = ["Evidence Completeness"];
+  let included = false;
+  const add = (line: string) => { lines.push(`- ${line}`); included = true; };
+
+  const goals = programming?.strengthGoalProgress;
+  const anchors = programming?.strength.anchors ?? [];
+  if (goals?.length) {
+    add(`Strength benchmarks: ${goals.filter((goal) => goal.freshness === "fresh").length} of ${goals.length} key goals have fresh comparable evidence`);
+  } else if (anchors.length) {
+    add(`Strength benchmarks: ${anchors.filter((anchor) => anchor.freshness === "fresh").length} of ${anchors.length} anchors have fresh evidence`);
+  }
+
+  const progression = programming?.exerciseProgression;
+  if (progression?.length) {
+    add(`Exercise progression: ${progression.filter((exercise) => exercise.observationCount >= 2).length} of ${progression.length} tracked exercises have at least 2 comparable recent observations`);
+  }
+
+  const currentExposure = exposure?.windows.currentWeekToDate;
+  if (currentExposure) {
+    const classified = currentExposure.movementPatterns.reduce((sum, row) => sum + row.qualifyingSets, 0);
+    const unclassified = currentExposure.unclassifiedSetCount ?? 0;
+    const relevant = classified + unclassified;
+    if (relevant > 0) add(`Movement classification: ${classified} of ${relevant} relevant sets classified`);
+
+    const roleRows = currentExposure.trainingRoles;
+    const roleTotal = roleRows.reduce((sum, row) => sum + row.qualifyingSets, 0);
+    const assigned = roleRows.filter((row) => row.trainingRole !== "untagged").reduce((sum, row) => sum + row.qualifyingSets, 0);
+    if (assigned > 0) add(`Training roles: ${assigned} of ${roleTotal} relevant sets assigned`);
+    else if (roleTotal > 0) add("Training roles: not configured");
+  }
+
+  const aerobicWindow = aerobicBase?.currentWeekToDate;
+  if (aerobicWindow?.totalCardioSessions) {
+    add(`Cardio zone evidence (current week-to-date): ${aerobicWindow.contributingSessions} of ${aerobicWindow.totalCardioSessions} dedicated cardio sessions have usable MapMyWalk zone evidence`);
+  }
+
+  if (cardioProgression?.groups.length) {
+    const comparableObservations = cardioProgression.groups
+      .filter((group) => group.comparability !== "route_unknown")
+      .reduce((sum, group) => sum + group.observationCount, 0);
+    if (comparableObservations > 0) add(`Cardio comparability: ${comparableObservations} recent observations have known route/type/intent/format context`);
+  }
+
+  const overallBodyConfidence = report.body?.confidenceRows.find((row) => row.label.toLowerCase() === "overall confidence");
+  if (overallBodyConfidence) add(`Body composition: ${overallBodyConfidence.value}`);
+
+  return included ? [...lines, ""] : [];
+}
+
+function compactCardioLimitations(group: CardioProgressionContext["groups"][number]) {
+  const limitations = group.limitations;
+  const points = group.recentObservations;
+  const compact: string[] = [];
+  const missingHr = points.filter((point) => point.avgHrBpm == null).length;
+  if (limitations.some((item) => /average hr is unavailable/i.test(item)) && missingHr) compact.push(`HR missing in ${missingHr} observation${missingHr === 1 ? "" : "s"}`);
+  const missingElevation = points.filter((point) => point.elevationGain == null && !point.elevationText).length;
+  if (limitations.some((item) => /structured elevation is unavailable/i.test(item)) && missingElevation) compact.push(`elevation missing in ${missingElevation} observation${missingElevation === 1 ? "" : "s"}`);
+  const legacyCount = points.filter((point) => Object.values(point.provenance ?? {}).includes("legacy_notes")).length;
+  if (limitations.some((item) => /legacy note-derived/i.test(item))) compact.push(`legacy note-derived data in ${legacyCount} observation${legacyCount === 1 ? "" : "s"}`);
+  if (limitations.some((item) => /mixed provenance/i.test(item))) compact.push("mixed provenance");
+  if (limitations.some((item) => /elevation differs/i.test(item))) compact.push("elevation differs between latest observations");
+  const recognized = /route identity is unavailable|only one comparable observation|average hr is unavailable|structured elevation is unavailable|legacy note-derived|mixed provenance|elevation differs/i;
+  for (const item of limitations) if (!recognized.test(item)) compact.push(item);
+  return [...new Set(compact)];
 }
 
 function renderTrainingExposure(context?: TrainingExposureContext) {
@@ -242,7 +320,7 @@ function titleCase(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function renderExplanation(explanation: CoachReport["snapshot"]["explanation"]) {
+function renderExplanation(explanation: CoachReport["snapshot"]["explanation"], suppressBodyConfidence = false) {
   if (!explanation) return [] as string[];
   // Coach Snapshot already supplies the one concise Why line, plus its win,
   // risk, and today fields. Re-rendering explanation.why repeats those values.
@@ -250,10 +328,13 @@ function renderExplanation(explanation: CoachReport["snapshot"]["explanation"]) 
   if (explanation.whatChanged.length) {
     lines.push("", "What Changed", ...explanation.whatChanged.map((item) => `- ${item}`));
   }
-  if (explanation.evidence.length) {
+  const evidence = explanation.evidence.filter((item) =>
+    item.label.trim().toLowerCase() !== "goal trajectory"
+    && !(suppressBodyConfidence && item.label.trim().toLowerCase() === "body composition")
+  );
+  if (evidence.length) {
     lines.push("", "Evidence Quality");
-    for (const item of explanation.evidence) {
-      if (item.label.trim().toLowerCase() === "goal trajectory") continue;
+    for (const item of evidence) {
       const quality = [
         item.freshness ? titleCase(item.freshness) : undefined,
         item.confidence ? `${titleCase(item.confidence)} confidence` : undefined,
@@ -376,7 +457,8 @@ function renderProgrammingContext(context: CoachReport["programmingContext"]) {
         lines.push(`  - Direction: ${group.direction} (pace seconds per mile)`);
         if (group.paceDifferenceSecondsPerMile != null) lines.push(`  - Pace difference: ${Math.abs(Math.round(group.paceDifferenceSecondsPerMile))} sec/mi ${group.paceDifferenceSecondsPerMile < 0 ? "lower" : group.paceDifferenceSecondsPerMile > 0 ? "higher" : "unchanged"}`);
         if (group.averageHrDifferenceBpm != null) lines.push(`  - Average HR difference: ${Math.abs(group.averageHrDifferenceBpm)} bpm ${group.averageHrDifferenceBpm < 0 ? "lower" : group.averageHrDifferenceBpm > 0 ? "higher" : "unchanged"}`);
-        if (group.limitations.length) lines.push(`  - Limitations: ${group.limitations.join(" ")}`);
+        const compactLimitations = compactCardioLimitations(group);
+        if (compactLimitations.length) lines.push(`  - Data limitations: ${compactLimitations.join("; ")}`);
         lines.push("  - Recent observations:");
         for (const point of group.recentObservations) lines.push(`    - ${formatCardioProgressionPoint(point)}`);
       }
@@ -462,6 +544,13 @@ function formatProgressionObservation(
 export function formatRecentExerciseProgressionForCoach(contexts?: ExerciseProgressionContext[]) {
   if (!contexts?.length) return [] as string[];
   const lines = ["", "Recent Exercise Progression"];
+  const limitationOwners = new Map<string, string[]>();
+  for (const context of contexts) for (const limitation of context.limitations) {
+    limitationOwners.set(limitation, [...(limitationOwners.get(limitation) ?? []), context.exerciseName]);
+  }
+  const repeatedLimitations = new Set(Array.from(limitationOwners.entries())
+    .filter(([, owners]) => owners.length > 1)
+    .map(([limitation]) => limitation));
   for (const context of contexts) {
     lines.push(
       `- ${context.exerciseName} [${context.exerciseId}] | ${context.metricMode} | direction ${context.direction} | ${context.observationCount} observation${context.observationCount === 1 ? "" : "s"}${context.latestObservationAt ? ` | latest ${new Date(context.latestObservationAt).toISOString()}` : ""}`
@@ -472,7 +561,10 @@ export function formatRecentExerciseProgressionForCoach(contexts?: ExerciseProgr
     for (const observation of context.recentObservations) {
       lines.push(`  - Observation: ${formatProgressionObservation(observation, context)}`);
     }
-    for (const limitation of context.limitations) lines.push(`  - Limitation: ${limitation}`);
+    for (const limitation of context.limitations) if (!repeatedLimitations.has(limitation)) lines.push(`  - Limitation: ${limitation}`);
+  }
+  for (const [limitation, owners] of limitationOwners) {
+    if (owners.length > 1) lines.push(`- Shared limitation (${owners.join(", ")}): ${limitation}`);
   }
   return lines;
 }
@@ -549,6 +641,8 @@ export function formatCoachReportText(
   const cardio = report.cardio;
   const exportOnly = report.exportOnly;
   const hasFactualTrainingExposure = Boolean(report.trainingExposure ?? report.programmingContext?.trainingExposure);
+  const evidenceCompleteness = renderEvidenceCompleteness(report);
+  const bodyConfidenceSummarized = evidenceCompleteness.some((line) => line.startsWith("- Body composition:"));
   const bodyHeading = options.bodyHeadingOverride ?? body?.heading ?? "Body Values";
 
   const lines = [
@@ -563,13 +657,14 @@ export function formatCoachReportText(
     ...(report.snapshot.biggestWin ? ["", "Biggest Win", `- ${report.snapshot.biggestWin}`] : []),
     ...(report.snapshot.biggestRisk ? ["", "Biggest Risk", `- ${report.snapshot.biggestRisk}`] : []),
     "",
-    ...renderExplanation(report.snapshot.explanation),
+    ...renderExplanation(report.snapshot.explanation, bodyConfidenceSummarized),
+    ...evidenceCompleteness,
     ...(body
       ? [
           bodyHeading,
           ...(body.values.length ? body.values.map((line) => line.text) : ["- No body trend values available."]),
           ...(body.note ? ["", `- ${body.note}`] : []),
-          ...(body.confidenceRows.length ? ["", "Body Confidence", ...body.confidenceRows.map((line) => line.text)] : []),
+          ...(body.confidenceRows.length ? ["", "Body Confidence", ...body.confidenceRows.filter((line) => !(bodyConfidenceSummarized && line.label.toLowerCase() === "overall confidence")).map((line) => line.text)] : []),
           "",
         ]
       : []),
