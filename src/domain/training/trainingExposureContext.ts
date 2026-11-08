@@ -65,14 +65,36 @@ type ExposureEvent = {
   movementPattern?: string;
   trainingRole: ExposureTrainingRole;
   kind: "working" | "drop" | "failure" | "control";
+  movementPatternExempt?: boolean;
   limitation?: string;
 };
 
 function meaningfulPayload(set: SetEntry) {
   return (typeof set.reps === "number" && Number.isFinite(set.reps) && set.reps > 0)
     || (typeof set.seconds === "number" && Number.isFinite(set.seconds) && set.seconds > 0)
-    || (typeof set.weight === "number" && Number.isFinite(set.weight) && set.weight > 0)
     || (typeof set.distance === "number" && Number.isFinite(set.distance) && set.distance > 0);
+}
+
+function knownAccessoryIsolation(exercise?: Exercise) {
+  if (parseTrainingRole(exercise?.trainingRole) === "accessory") return true;
+  return /\b(?:curl|lateral raise|hip abduction|calf raise)\b/i.test(String(exercise?.name ?? ""));
+}
+
+function explicitlyNamedMobilityOrDrill(exercise?: Exercise) {
+  const name = String(exercise?.name ?? "")
+    .replace(/[-_]/g, " ")
+    .replace(/\s+(?:left|right)$/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  return /^(?:90\/90 hip rotations?|arm circles?|hip flexor stretch|knee to wall(?: dorsiflexion)?|locked clamshells?|reverse y wall slides?|wall slides? with lift|hinge pattern)$/.test(name);
+}
+
+function exactCompoundMovementFallback(exercise?: Exercise) {
+  const name = String(exercise?.name ?? "").replace(/[-_]/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+  if (/\b(?:parallel bar )?dips?\b/.test(name)) return "vertical_push";
+  if (/\b(?:decline|chest)\s+press\b/.test(name)) return "horizontal_push";
+  return undefined;
 }
 
 function trackKind(track?: Track): "work" | "control" | undefined {
@@ -118,9 +140,11 @@ function buildWindow(args: {
     if (event.movementPattern) movement.set(event.movementPattern, [...(movement.get(event.movementPattern) ?? []), event]);
     roles.set(event.trainingRole, [...(roles.get(event.trainingRole) ?? []), event]);
   }
-  const unclassified = events.filter((event) => !event.movementPattern);
+  const unclassified = events.filter((event) => !event.movementPattern && event.kind !== "control" && !event.movementPatternExempt);
+  const exemptAccessoryCount = events.filter((event) => event.kind !== "control" && event.movementPatternExempt).length;
   const limitations = [...new Set(events.map((event) => event.limitation).filter((value): value is string => !!value))].sort();
   if (unclassified.length) limitations.push(`${unclassified.length} qualifying set${unclassified.length === 1 ? "" : "s"} could not be classified to a movement pattern.`);
+  if (exemptAccessoryCount) limitations.push(`${exemptAccessoryCount} qualifying set${exemptAccessoryCount === 1 ? " belongs" : "s belong"} to identified accessory exercises outside the compound movement-pattern taxonomy.`);
   const movementPatterns = Array.from(movement.entries()).map<MovementExposure>(([movementPattern, rows]) => {
     const work = rows.filter((row) => row.kind !== "control");
     return {
@@ -197,8 +221,14 @@ export function buildTrainingExposureContext(args: {
       resolved = { exercise: byName.canonicalExercise ?? byName.exercise, limitation: byName.warnings[0] };
     }
     const canonical = resolved.exercise;
+    if (kind === "work" && (
+      canonical?.category === "Mobility"
+      || canonical?.category === "Warmup"
+      || explicitlyNamedMobilityOrDrill(canonical)
+    )) continue;
     const fallback = canonical ? classifyAnchorMovementFamily(canonical.name) : "unknown";
-    const movementPattern = explicitMovement(canonical) ?? (fallback !== "unknown" ? fallback : undefined);
+    const movementPattern = explicitMovement(canonical) ?? (fallback !== "unknown" ? fallback : exactCompoundMovementFallback(canonical));
+    const movementPatternExempt = !movementPattern && kind === "work" && knownAccessoryIsolation(canonical);
     const role = parseTrainingRole(canonical?.trainingRole) ?? "untagged";
     const at = Number(set.completedAt ?? session.endedAt);
     if (!Number.isFinite(at) || at > asOf) continue;
@@ -210,7 +240,8 @@ export function buildTrainingExposureContext(args: {
       movementPattern,
       trainingRole: role,
       kind: kind === "control" ? "control" : set.setType as "working" | "drop" | "failure",
-      limitation: resolved.limitation ?? (!movementPattern ? `Movement pattern is unavailable for ${canonical?.name ?? track.displayName ?? "an unresolved exercise"}.` : undefined),
+      movementPatternExempt,
+      limitation: resolved.limitation ?? (!movementPattern && !movementPatternExempt && kind === "work" ? `Movement pattern is unavailable for ${canonical?.name ?? track.displayName ?? "an unresolved exercise"}.` : undefined),
     });
     if (kind === "work") strengthSessionIds.add(session.id);
   }

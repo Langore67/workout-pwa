@@ -84,6 +84,25 @@ test("Coach text preserves partial, complete, and rolling labels without exposur
   expect(text).not.toMatch(/behind|ahead|lagging|on track|undertrained|overtrained|recommend|add sets|remove sets/i);
 });
 
+test("Coach suppresses Training Roles when exposure is entirely untagged and shows it when tagged data exists", () => {
+  const untagged = buildTrainingExposureContext({
+    sessions: [{ id: "unassigned", startedAt: AS_OF - 3600000, endedAt: AS_OF - 1000 }] as any,
+    sets: [{ id: "set", sessionId: "unassigned", trackId: "track", setType: "working", reps: 8, completedAt: AS_OF - 1000 }] as any,
+    tracks: [{ id: "track", exerciseId: "unknown", displayName: "Accessory Exercise", trackType: "strength" }] as any,
+    exercises: [{ id: "unknown", name: "Accessory Exercise", normalizedName: "accessory exercise", equipmentTags: [], createdAt: AS_OF }] as any,
+    asOf: AS_OF,
+  });
+  const format = (trainingExposure: ReturnType<typeof context>) => formatCoachReportText({
+    snapshot: { status: "Not Enough Data", confidence: "Low", why: "Factual context only.", today: "—" },
+    trainingExposure,
+  } as any);
+  expect(format(untagged)).not.toContain("Training Roles — current week-to-date");
+
+  const tagged = context();
+  expect(format(tagged)).toContain("Training Roles — current week-to-date");
+  expect(format(tagged)).toContain("Primary:");
+});
+
 test("legacy Movement Coverage projects the shared rolling exposure without raw recounting", () => {
   const trainingExposure = context();
   const coverage = buildMovementCoverage({

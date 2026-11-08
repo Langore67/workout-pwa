@@ -112,9 +112,11 @@ function renderTrainingExposure(context?: TrainingExposureContext) {
     "",
     ...formatExposureWindow(context.windows.rolling14Days, "Rolling 14 days")
   );
-  if (context.windows.currentWeekToDate.trainingRoles.length) {
+  const currentWeekRoles = context.windows.currentWeekToDate.trainingRoles;
+  const hasTaggedRoleExposure = currentWeekRoles.some((role) => role.trainingRole !== "untagged");
+  if (hasTaggedRoleExposure) {
     lines.push("", "Training Roles — current week-to-date");
-    for (const role of context.windows.currentWeekToDate.trainingRoles) {
+    for (const role of currentWeekRoles) {
       const label = role.trainingRole === "untagged" ? "Untagged" : getTrainingRoleLabel(role.trainingRole);
       lines.push(`- ${label}: ${role.qualifyingSets} qualifying sets | ${role.controlExposures} control exposures | ${role.sessionCount} sessions | ${role.distinctCanonicalExerciseCount} exercises${role.latestExposureAt ? ` | latest ${new Date(role.latestExposureAt).toLocaleString()}` : ""}`);
     }
@@ -445,7 +447,8 @@ function formatProgressionObservation(
     const set = observation.bestWorkingSet;
     const load = set?.load ?? observation.load;
     const reps = set?.reps ?? observation.reps;
-    if (typeof load === "number" && typeof reps === "number") fields.push(`${compactNumber(load)}x${compactNumber(reps)}`);
+    if (typeof reps === "number" && set?.isBodyweight && (load == null || load === 0)) fields.push(`BWx${compactNumber(reps)}`);
+    else if (typeof load === "number" && typeof reps === "number") fields.push(`${compactNumber(load)}x${compactNumber(reps)}`);
     else if (typeof reps === "number") fields.push(`${compactNumber(reps)} reps`);
     else if (typeof observation.maxReps === "number") fields.push(`max reps ${compactNumber(observation.maxReps)}`);
     if (typeof (set?.rir ?? observation.rir) === "number") fields.push(`RIR ${compactNumber((set?.rir ?? observation.rir) as number)}`);

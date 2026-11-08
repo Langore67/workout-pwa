@@ -119,6 +119,57 @@ test("explicit movement wins, existing fallback is used, and broken/unclassified
   expect(window.limitations.join(" ")).toContain("unavailable canonical exercise");
 });
 
+test("maps deterministic compound labels, exempts accessory isolation, and excludes mobility from strength classification debt", () => {
+  const decline = exercise("decline", { name: "Hammer Strength Iso-Lateral Decline Press" });
+  const dip = exercise("dip", { name: "Parallel Bar Dip" });
+  const curl = exercise("curl", { name: "Bayesian Cable Biceps Curl Left" });
+  const raise = exercise("raise", { name: "Cross-Body Cable Lateral Raise Right" });
+  const mobility = exercise("mobility", { name: "90/90 Hip Rotation", category: "Mobility" });
+  const drill = exercise("arm-circle", { name: "Arm Circle" });
+  const control = exercise("control", { name: "Reverse Y Wall Slide", category: "Mobility" });
+  const unknown = exercise("unknown", { name: "Over and Up" });
+  const exercises = [decline, dip, curl, raise, mobility, drill, control, unknown];
+  const tracks = [
+    track("decline-track", decline.id),
+    track("dip-track", dip.id),
+    track("curl-track", curl.id),
+    track("raise-track", raise.id),
+    track("mobility-track", mobility.id),
+    track("arm-circle-track", drill.id),
+    track("control-track", control.id, "mobility"),
+    track("unknown-track", unknown.id),
+  ];
+  const done = session("classified", at(2026, 10, 20));
+  const sets = tracks.map((row, index) => set(`classified-${index}`, done.id, row.id, "working"));
+  const context = buildTrainingExposureContext({ sessions: [done], sets, tracks, exercises, asOf: AS_OF });
+  const window = context.windows.currentWeekToDate;
+
+  expect(window.movementPatterns.map((row) => [row.movementPattern, row.qualifyingSets])).toEqual([
+    ["horizontal_push", 1],
+    ["vertical_push", 1],
+  ]);
+  expect(window.unclassifiedSetCount).toBe(1);
+  expect(window.unclassifiedExerciseCount).toBe(1);
+  expect(window.limitations.join(" ")).toContain("outside the compound movement-pattern taxonomy");
+  expect(window.limitations.join(" ")).toContain("Over and Up");
+  expect(window.completedStrengthSessions).toBe(1);
+});
+
+test("weight-only payloads do not qualify as performed strength exposure", () => {
+  const ex = exercise("bench", { name: "Bench Press", movementPattern: "push" });
+  const tr = track("bench-track", ex.id);
+  const done = session("weight-only", at(2026, 10, 20));
+  const context = buildTrainingExposureContext({
+    sessions: [done],
+    sets: [set("weight-only-set", done.id, tr.id, "working", { weight: 135, reps: undefined })],
+    tracks: [tr],
+    exercises: [ex],
+    asOf: AS_OF,
+  });
+  expect(context.windows.currentWeekToDate.completedStrengthSessions).toBe(0);
+  expect(context.windows.currentWeekToDate.movementPatterns).toEqual([]);
+});
+
 test("uses week-to-date, previous complete week, and rolling local 14-day windows", () => {
   const ex = exercise("squat", { movementPattern: "squat" });
   const tr = track("squat-track", ex.id);
