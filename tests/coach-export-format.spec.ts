@@ -15,6 +15,7 @@ import { evaluatePhaseQuality } from "../src/body/phaseQualityModel";
 import { buildCurrentMovementFocus } from "../src/lib/coachExport/currentMovementFocus";
 import { buildCoachReport } from "../src/lib/coachReport/buildCoachReport";
 import { buildLeanPreservationComposite } from "../src/lib/coachExport/leanPreservationComposite";
+import { buildAerobicBaseContext } from "../src/lib/cardio/aerobicBaseContext";
 import { buildPatternSummary, type CompletedSession } from "../src/lib/coachExport/buildPatternSummary";
 import { buildExerciseVocabulary } from "../src/lib/coachExport/exerciseVocabulary";
 import { isStrengthBuildingSession, selectRecentStrengthBuildingSessions } from "../src/lib/coachExport/strengthBuildingSessions";
@@ -502,13 +503,14 @@ test("coach export low hydration lean preservation cap is driven by body confide
   });
   metrics.coachIntelligence = buildCoachIntelligence(metrics);
 
-  const summarySection = getSection(formatCoachExportText(metrics), "Coach Summary", "Hydration");
-  const leanSection = getSection(formatCoachExportText(metrics), "Lean Preservation", "Strength Signal");
+  const exportText = formatCoachExportText(metrics);
+  const leanSection = getSection(exportText, "Lean Preservation", "Strength Signal");
 
   expect(metrics.bodyConfidence?.overall).toBe("moderate");
   expect(leanSection).toContain("- Composite: Watch");
   expect(leanSection).toContain("Hydration confidence low");
-  expect(summarySection).toContain("- Overall: Watch");
+  expect(exportText).not.toContain("Coach Summary");
+  expect(exportText.match(/- Status: Watch/g) ?? []).toHaveLength(1);
 });
 
 test("coach export phase quality hydration caveat uses body confidence", async () => {
@@ -796,7 +798,7 @@ test("coach export includes waist-to-height ratio when height and waist exist", 
     ],
     { heightIn: 71.75 }
   );
-  const section = getSection(text, "Waist-to-Height Ratio", "Coach Summary");
+  const section = getSection(text, "Waist-to-Height Ratio");
 
   expect(section).toContain("- Current: 0.509");
   expect(section).toContain("- 14d trend: -0.011");
@@ -817,8 +819,8 @@ test("coach export uses prior available waist when latest body row has no waist"
     ],
     { heightIn: 71.75 }
   );
-  const section = getSection(text, "Waist-to-Height Ratio", "Coach Summary");
-  const goals = getSection(text, "Goal Trajectory", "Lean Preservation");
+  const section = getSection(text, "Waist-to-Height Ratio");
+  const goals = getSection(text, "Goal Targets", "Lean Preservation");
 
   expect(section).toContain("- Current: 0.509");
   expect(section).toContain("- 14d trend: -0.011");
@@ -846,7 +848,7 @@ test("coach export omits waist-to-height trend when sparse waist baseline is una
     ],
     { heightIn: 71.75 }
   );
-  const section = getSection(text, "Waist-to-Height Ratio", "Coach Summary");
+  const section = getSection(text, "Waist-to-Height Ratio");
 
   expect(section).toContain("- Current: 0.509");
   expect(section).not.toContain("- 14d trend:");
@@ -1134,12 +1136,9 @@ test("coach intelligence summary removes strength and lean-preservation contradi
   });
 
   const text = formatCoachExportText(metrics);
-  const summary = getSection(text, "Coach Summary", "Lean Preservation");
-
-  expect(summary).toContain("Fat Loss");
-  expect(summary).toContain("- On Track");
-  expect(summary).toContain("Muscle Preservation");
-  expect(summary).toMatch(/- (Acceptable|Watch)/);
+  expect(text).not.toContain("Coach Summary");
+  expect(text).not.toContain("Fat Loss:");
+  expect(text).not.toContain("Muscle Preservation");
   expect(text).toContain("Strength evidence is mixed");
   expect(text).not.toContain("Strength declining");
   expect(text).not.toContain("Lean Preservation: Poor");
@@ -1199,8 +1198,8 @@ test("coach export suppresses readiness notes that repeat phase, hydration, lean
   expect(text.match(/Hydration context may be distorting impedance-derived lean mass and body-fat changes\./g) ?? []).toHaveLength(1);
   expect(text.match(/Strength Preservation: Significant Drop/g) ?? []).toHaveLength(1);
   expect(text).not.toContain("Lean Preservation: Poor");
-  expect(text).toContain("Coach Summary");
-  expect(text).toContain("Muscle Preservation");
+  expect(text).not.toContain("Coach Summary");
+  expect(text).not.toContain("Muscle Preservation");
 });
 
 test("coach export keeps unique readiness notes after duplicate narrative suppression", async () => {
@@ -1227,7 +1226,7 @@ test("coach export keeps unique readiness notes after duplicate narrative suppre
     "Recovery improved.",
   ];
 
-  const section = getSection(formatCoachExportText(metrics), "Readiness / Confidence Notes", "Goals");
+  const section = getSection(formatCoachExportText(metrics), "Readiness / Confidence Notes", "Learnings");
 
   expect(section).toContain("- Sleep disrupted.");
   expect(section).toContain("- Recovery improved.");
@@ -1298,12 +1297,9 @@ test("coach summary splits weak performance trend from positive movement quality
   metrics.patternSummary.constraints = [];
 
   const text = formatCoachExportText(metrics);
-  const summary = getSection(text, "Coach Summary", "Lean Preservation");
-
-  expect(summary).toContain("- Performance Trend: Mixed");
-  expect(summary).toContain("- Movement Quality: Improving");
-  expect(summary).not.toContain("Training: Regressing");
-  expect(summary).not.toContain("- Regressing");
+  expect(text).not.toContain("Coach Summary");
+  expect(text).not.toContain("Performance Trend:");
+  expect(text).not.toContain("Movement Quality: Improving");
   expect(text).toContain("Lat Pulldown: breakthrough pattern found");
 });
 
@@ -1314,11 +1310,10 @@ test("coach summary allows improving performance with movement quality watch", a
   metrics.trainingSignals.fatigueReadiness = ["Bench Press: elbow pain showed up late"];
   metrics.patternSummary.fatigue = [];
 
-  const summary = getSection(formatCoachExportText(metrics), "Coach Summary", "Lean Preservation");
-
-  expect(summary).toContain("- Performance Trend: Improving");
-  expect(summary).toContain("- Movement Quality: Watch");
-  expect(summary).not.toContain("Training: Regressing");
+  const text = formatCoachExportText(metrics);
+  expect(text).not.toContain("Coach Summary");
+  expect(text).not.toContain("Performance Trend:");
+  expect(text).not.toContain("Movement Quality: Watch");
 });
 
 test("coach intelligence suppresses old single-factor lean preservation lines when composite exists", async () => {
@@ -1425,14 +1420,14 @@ test("coach export includes goal progress when profile targets exist", async () 
   });
 
   const text = formatCoachExportText(metrics);
-  const section = getSection(text, "Goal Trajectory", "Lean Preservation");
+  const section = getSection(text, "Goal Targets", "Lean Preservation");
 
   expect(section).toContain("- Weight: 188.6 lb -> 180.0 lb | 8.6 lb remaining");
   expect(section).toContain("- Body Fat: 20.6% -> 18.0% | 2.6 pts remaining");
   expect(section).toContain("- Waist: 36.5 in -> 35.9 in | 0.6 in remaining");
   expect(section).toContain("- Visceral Fat: 7 -> 6 | 1 remaining");
   expect(section).toContain("- Waist-to-Height Ratio: 0.509 -> < 0.500 | 0.009 remaining");
-  expect(section).toContain("Goal Trajectory: On Track");
+  expect(section).not.toContain("Goal Trajectory");
   expect(text).not.toContain("Goal Progress");
 });
 
@@ -1464,7 +1459,7 @@ test("coach export omits missing goal targets cleanly", async () => {
     bodyComp: metrics.bodyComp,
   });
 
-  const section = getSection(formatCoachExportText(metrics), "Goal Trajectory", "Lean Preservation");
+  const section = getSection(formatCoachExportText(metrics), "Goal Targets", "Lean Preservation");
 
   expect(section).toContain("- Weight: 188.6 lb -> 180.0 lb | 8.6 lb remaining");
   expect(section).not.toContain("Body Fat:");
@@ -1548,7 +1543,7 @@ test("coach export goal progress uses bodyMetrics current values, not profile cu
     return formatCoachExportText(metrics);
   });
 
-  const section = getSection(text, "Goal Trajectory", "Visceral Fat");
+  const section = getSection(text, "Goal Targets", "Visceral Fat");
 
   expect(section).toContain("- Weight: 189.4 lb -> 180.0 lb | 9.4 lb remaining");
   expect(section).toContain("- Body Fat: 20.9% -> 18.0% | 2.9 pts remaining");
@@ -1851,13 +1846,12 @@ test("coach export includes a short narrative summary and biggest win or risk", 
   };
   metrics.coachIntelligence = undefined;
 
-  const summary = getSection(formatCoachExportText(metrics), "Coach Summary", "Fat Loss");
-
-  expect(summary).toContain("Summary");
-  expect(summary).toContain("Biggest Win");
-  expect(summary).toContain("Biggest Risk");
-  expect(summary).toContain("Goal trajectory is moving in the right direction");
-  expect(summary).toContain("MTS Row: chest-supported row reinforced Gaz's cues");
+  const text = formatCoachExportText(metrics);
+  expect(text).not.toContain("Coach Summary");
+  expect(text.match(/Biggest Win/g) ?? []).toHaveLength(1);
+  expect(text.match(/Biggest Risk/g) ?? []).toHaveLength(1);
+  expect(text).toContain("Goal Targets");
+  expect(text).toContain("MTS Row: chest-supported row reinforced Gaz's cues");
 });
 
 test("coach export delegates fully to coach report rendering", async () => {
@@ -1891,6 +1885,78 @@ test("coach export preserves the structured coaching loop as plain text", async 
   expect(text).not.toContain("```");
   expect(text).not.toContain("{");
   expect(text).not.toContain("}");
+});
+
+test("Coach Export uses one executive interpretation and preserves factual cardio evidence", () => {
+  const metrics = buildMetrics();
+  metrics.coachIntelligence = buildCoachIntelligence(metrics);
+  metrics.readinessNotes = ["Lean Preservation: Good", "Hydration signal is stable."];
+  const watchComposite = buildLeanPreservationComposite({
+    leanMass: metrics.bodyComp.leanMass,
+    weight: metrics.bodyComp.weight,
+    waist: metrics.bodyComp.waist,
+    bodyFatPct: metrics.bodyComp.bodyFatPct,
+    hydration: metrics.hydration,
+    bodyConfidence: metrics.bodyConfidence,
+    strengthSignal: metrics.strengthSignal,
+  });
+  metrics.leanPreservation = { ...watchComposite, status: "Watch" };
+  metrics.phaseQuality = evaluatePhaseQuality("cut", {
+    weightDelta: -3,
+    waistDelta: -0.6,
+    correctedLeanDelta: 0.5,
+    correctedBodyFatDelta: -0.7,
+    strengthDelta: 0.04,
+    sampleCount: 4,
+    bodyConfidence: metrics.bodyConfidence,
+  });
+
+  const walk = {
+    sessionId: "walk-no-zones",
+    date: "2026-04-27",
+    name: "Walk",
+    startedAt: metrics.generatedAt - 60 * 60 * 1000,
+    activityType: "walk" as const,
+    durationSeconds: 3600,
+    distanceMeters: 5000,
+    confidence: "high" as const,
+  };
+  metrics.cardioSummary = {
+    normalizedWalks: [walk],
+    recentWalks: [walk],
+    dailySummaries: [],
+    last7d: { count: 5, totalDurationSeconds: 5 * 3600, totalDistanceMeters: 25000 },
+    last28d: { count: 5, totalDurationSeconds: 5 * 3600, totalDistanceMeters: 25000 },
+    dataQuality: { missingDistanceCount: 0, missingDurationCount: 0, suspiciousPaceCount: 0, suspiciousPaceSessionIds: [], notesFieldCoverage: {}, unsupportedSignals: [] },
+  } as any;
+  metrics.aerobicBase = buildAerobicBaseContext([walk], { asOf: metrics.generatedAt });
+
+  const text = formatCoachExportText(metrics);
+  const snapshot = getSection(text, "Coach Snapshot", "Body Composition");
+  const programmingIndex = text.indexOf("Programming Intelligence");
+  const programmingText = programmingIndex >= 0 ? text.slice(programmingIndex, text.indexOf("Lean Preservation", programmingIndex) > programmingIndex ? text.indexOf("Lean Preservation", programmingIndex) : undefined) : "";
+
+  expect(text).not.toContain("Coach Summary");
+  expect(snapshot.match(/^- Status:/gm) ?? []).toHaveLength(1);
+  expect(text.match(/Biggest Win/g) ?? []).toHaveLength(1);
+  expect(text.match(/Biggest Risk/g) ?? []).toHaveLength(1);
+  expect(snapshot.match(/^- Today:/gm) ?? []).toHaveLength(1);
+  expect(text).not.toContain("Why This Status");
+  expect(text).not.toContain("Fat Loss:");
+  expect(text).not.toContain("Muscle Preservation");
+  expect(text).not.toContain("Lean Preservation: Good");
+  expect(text).not.toMatch(/goal trajectory/i);
+  expect(text).toContain("Lean Preservation");
+  expect(text).toContain("Cut / Phase Quality");
+  expect(text).not.toContain("Goal Trajectory");
+  expect(text).not.toContain("Cardio Status: Solid");
+  expect(text).toContain("Cardio");
+  expect(text).toContain("Aerobic Base Exposure");
+  expect(text).toContain("Cardio sessions missing usable zone evidence: 1");
+  expect(text).toContain("Programming Intelligence");
+  expect(programmingText).not.toContain("- Status:");
+  expect(programmingText).not.toContain("- Summary:");
+  expect(text).not.toContain("Coaching Actions");
 });
 
 test("information registry includes the coach export and body composition explainer entries", async () => {

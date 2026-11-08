@@ -93,6 +93,7 @@ export type CoachStateStrength = {
 
 export type CoachStateCardio = {
   available: boolean;
+  /** @deprecated Count-based compatibility status used by older dashboard consumers; suppressed from Coach Export text. */
   status: CoachStateOverallStatus;
   note?: string;
   recent?: {

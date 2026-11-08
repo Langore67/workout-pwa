@@ -242,15 +242,16 @@ function titleCase(value: string) {
 
 function renderExplanation(explanation: CoachReport["snapshot"]["explanation"]) {
   if (!explanation) return [] as string[];
-  const lines = explanation.why.length
-    ? ["Why This Status", ...explanation.why.map((item) => `- ${item}`)]
-    : [];
+  // Coach Snapshot already supplies the one concise Why line, plus its win,
+  // risk, and today fields. Re-rendering explanation.why repeats those values.
+  const lines: string[] = [];
   if (explanation.whatChanged.length) {
     lines.push("", "What Changed", ...explanation.whatChanged.map((item) => `- ${item}`));
   }
   if (explanation.evidence.length) {
     lines.push("", "Evidence Quality");
     for (const item of explanation.evidence) {
+      if (item.label.trim().toLowerCase() === "goal trajectory") continue;
       const quality = [
         item.freshness ? titleCase(item.freshness) : undefined,
         item.confidence ? `${titleCase(item.confidence)} confidence` : undefined,
@@ -270,8 +271,6 @@ function renderProgrammingIntelligence(programming: CoachReport["programming"], 
 
   const lines: string[] = [
     "Programming Intelligence",
-    `- Status: ${programming.overallStatus}`,
-    `- Summary: ${programming.summary}`,
   ];
   priorities.forEach((priority, index) => {
     lines.push("", `${index + 1}. ${priority.title}`);
@@ -307,7 +306,6 @@ function renderProgrammingContext(context: CoachReport["programmingContext"]) {
       : "";
     lines.push(`- Strength Signal: ${context.strength.strengthSignal.toFixed(2)}${delta}`);
   }
-  if (context.strength.performanceTrend) lines.push(`- Performance Trend: ${context.strength.performanceTrend}`);
   for (const anchor of context.strength.anchors) {
     lines.push(`- ${anchor.exerciseName ?? anchor.pattern}: ${anchor.benchmark ?? "Benchmark unavailable"} | ${anchor.freshness}${anchor.ageDays != null ? ` | ${anchor.ageDays}d old` : ""}`);
   }
@@ -529,32 +527,6 @@ function formatCardioProgressionPoint(point: CardioProgressionObservation) {
   return fields.join(" | ");
 }
 
-function renderCoachingActions(actions: CoachReport["coachingActions"], suppressLegacyCoverage = false) {
-  if (!actions) return [] as string[];
-  const filtered = suppressLegacyCoverage
-    ? actions.actions.filter((item) => item.category !== "movement" && item.category !== "volume")
-    : actions.actions;
-  if (!filtered.length && suppressLegacyCoverage) return [] as string[];
-
-  const lines: string[] = [
-    "Coaching Actions",
-    `- Status: ${actions.status}`,
-    `- Summary: ${actions.summary}`,
-  ];
-  filtered.forEach((action, index) => {
-    lines.push("", `Action ${index + 1}: ${action.title}`);
-    lines.push(`- Objective: ${action.objective}`);
-    lines.push(`- Reason: ${action.reason}`);
-    lines.push(`- Expected Benefit: ${action.expectedBenefit}`);
-    if (action.constraints.length) {
-      lines.push("- Constraints", ...action.constraints.map((constraint) => `  - ${constraint}`));
-    }
-    lines.push(`- Confidence: ${action.confidence}`);
-  });
-  lines.push("");
-  return lines;
-}
-
 export function formatCoachReportText(
   report: CoachReport,
   options: {
@@ -563,7 +535,6 @@ export function formatCoachReportText(
 ) {
   const body = report.body;
   const waistToHeight = report.waistToHeight;
-  const summary = report.summary;
   const hydration = report.hydration;
   const trainingSignals = report.trainingSignals;
   const readinessNotes = report.readinessNotes;
@@ -600,12 +571,10 @@ export function formatCoachReportText(
         ]
       : []),
     ...(waistToHeight ? [...renderSection(waistToHeight)] : []),
-    ...(summary ? [...renderSection(summary)] : []),
     ...(hydration ? [...renderSection(hydration)] : []),
     ...(performance
       ? [
           "Performance",
-          `- Performance Trend: ${performance.trend ?? "—"}`,
           ...(performance.strengthSignal ? [`- Strength Signal: ${performance.strengthSignal}`] : []),
           ...(performance.anchor
             ? [
@@ -621,8 +590,6 @@ export function formatCoachReportText(
                 ...(performance.anchor.read ? [`- Read: ${performance.anchor.read}`] : []),
               ]
             : []),
-          `- Movement Quality: ${performance.movementQuality ?? "—"}`,
-          ...(performance.read ? [`- Performance Read: ${performance.read}`] : []),
           "",
         ]
       : []),
@@ -630,11 +597,9 @@ export function formatCoachReportText(
     ...(trainingSignals ? [...renderSection(trainingSignals)] : []),
     ...(readinessNotes ? [...renderSection(readinessNotes)] : []),
     ...(dataGaps ? [...renderSection(dataGaps)] : []),
-    ...(goals
+    ...(goals?.targets.length
       ? [
-          "Goals",
-          `- Goal Trajectory: ${goals.trajectory ?? "—"}`,
-          ...(goals.read ? [`- Goal Read: ${goals.read}`] : []),
+          "Goal Targets",
           ...(goals.targets.length ? goals.targets.map((line) => line.text) : []),
           "",
         ]
@@ -655,7 +620,6 @@ export function formatCoachReportText(
         ? ["Cardio", cardio.note ?? "Cardio summary not available yet.", ""]
         : [
             "Cardio",
-            ...(cardio.status ? [`- Cardio Status: ${cardio.status}`] : []),
             ...cardio.rows.map((line) => line.text),
             ...(cardio.note ? [`- Cardio Note: ${cardio.note}`] : []),
             "",
@@ -666,7 +630,6 @@ export function formatCoachReportText(
     ...renderAerobicBaseGoalProgress(report.aerobicBaseGoalProgress ?? report.programmingContext?.aerobicBaseGoalProgress),
     ...renderProgrammingContext(report.programmingContext),
     ...renderProgrammingIntelligence(report.programming, hasFactualTrainingExposure),
-    ...renderCoachingActions(report.coachingActions, hasFactualTrainingExposure),
     ...(exportOnly
       ? [
           ...renderSection(exportOnly.leanPreservation),

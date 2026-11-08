@@ -136,8 +136,7 @@ test("aggressive cut and carry priorities transform without exercise or workout 
     confidence: "High",
   }));
   expect(actions[1].constraints).toEqual([]);
-  expect(text).toContain("Coaching Actions");
-  expect(section(text, "Coaching Actions", "Lean Preservation")).not.toMatch(/workout|schedule|sets|reps|farmer|suitcase/i);
+  expect(text).not.toContain("Coaching Actions");
 });
 
 test("carry action constraints come only from actual trap-compensation evidence", () => {
