@@ -19,7 +19,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, normalizeName } from "../db";
-import type { Track, SetEntry } from "../db";
+import type { Track, SetEntry, BodyMetricEntry } from "../db";
+import { pickTime } from "../body/bodySignalModel";
+import { getProfileGoals } from "../profile/profileGoals";
 import { BUILD_INFO } from "../buildInfo";
 import seedCatalog from "../seed/exercises.seed.with_cues.json";
 
@@ -36,6 +38,10 @@ import {
   repairRomanianDeadliftHistory,
   type RdlRepairResult,
 } from "../maintenance/repairRdlHistory";
+
+const DevOnlyCorrectedBodyFatTrendV2 = import.meta.env.DEV
+  ? React.lazy(() => import("../components/dev/CorrectedBodyFatTrendV2"))
+  : null;
 
 type SetKind = "warmup" | "working" | "drop" | "failure";
 type SetEntryX = SetEntry & { setType?: SetKind | string; completedAt?: number };
@@ -275,6 +281,16 @@ export default function DevDiagnosticsPage() {
   const [aliasSyncStatus, setAliasSyncStatus] = useState<string>("");
   const [rdlRepairResult, setRdlRepairResult] = useState<RdlRepairResult | null>(null);
   const [anchorMetadataResult, setAnchorMetadataResult] = useState<AnchorMetadataValidationResult | null>(null);
+
+  const bodyMetricRows = useLiveQuery(async () => {
+    try {
+      const all = (await db.bodyMetrics.toArray()) as BodyMetricEntry[];
+      return all.slice().sort((a, b) => pickTime(b as any) - pickTime(a as any)).slice(0, 60);
+    } catch {
+      return [] as BodyMetricEntry[];
+    }
+  }, []);
+  const profileGoals = useLiveQuery(async () => getProfileGoals(), []);
 
   /* --------------------------------------------------------------------------
      Build / version info
@@ -797,6 +813,12 @@ export default function DevDiagnosticsPage() {
           <code>VITE_</code> (e.g., <code>VITE_GIT_SHA</code>).
         </div>
       </div>
+
+      {DevOnlyCorrectedBodyFatTrendV2 ? (
+        <React.Suspense fallback={null}>
+          <DevOnlyCorrectedBodyFatTrendV2 rows={bodyMetricRows ?? []} goal={profileGoals?.targetBodyFatPct} />
+        </React.Suspense>
+      ) : null}
 
       <div className="card">
         <h3 style={{ marginBottom: 6 }}>Issues</h3>
