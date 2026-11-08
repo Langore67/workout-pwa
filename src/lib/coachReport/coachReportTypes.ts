@@ -100,6 +100,7 @@ export type CoachReportLearnings = {
 };
 
 export type CoachReportCardio = {
+  /** @deprecated Compatibility status retained for internal/dashboard consumers; omitted from Coach export text. */
   status?: string;
   rows: CoachReportLine[];
   note?: string;

@@ -2162,8 +2162,8 @@ export function buildCoachReport({
       confidence: fmtConfidence(coachState.snapshot.confidence),
       why: fmtSnapshotWhy(coachState),
       today: coachState.snapshot.todayFocus ?? "—",
-      biggestWin: coachState.snapshot.biggestWin ?? undefined,
-      biggestRisk: coachState.snapshot.biggestRisk ?? undefined,
+      biggestWin: coachState.snapshot.biggestWin ?? summary.blocks.find((block) => block.heading === "Biggest Win")?.items[0],
+      biggestRisk: coachState.snapshot.biggestRisk ?? summary.blocks.find((block) => block.heading === "Biggest Risk")?.items[0],
       explanation: coachState.explanation,
     } satisfies CoachReportSnapshot,
     body: {
