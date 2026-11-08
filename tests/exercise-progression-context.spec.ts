@@ -4,6 +4,7 @@ import {
   EXERCISE_PROGRESSION_LOOKBACK_DAYS,
   MAX_EXERCISE_PROGRESSION_OBSERVATIONS,
 } from "../src/domain/progression/exerciseProgressionContext";
+import { formatRecentExerciseProgressionForCoach } from "../src/lib/coachReport/formatCoachReportText";
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.UTC(2026, 9, 18, 12);
@@ -97,6 +98,33 @@ test("reps-only observations compare max reps without forcing e1RM", () => {
   expect(context.recentObservations[0]).toMatchObject({ maxReps: 15 });
   expect(context.recentObservations[0].e1RM).toBeUndefined();
   expect(context.direction).toBe("higher");
+});
+
+test("weighted-rep progression excludes missing or zero loads while explicit bodyweight reps remain semantic", () => {
+  const weighted = build({
+    exercises: [exercise("bench", "Barbell Back Squat")],
+    tracks: [track("bench-track", "bench", "weightedReps")],
+    sets: [
+      set("zero-latest", "latest", "bench-track", { weight: 0, reps: 12 }),
+      set("missing-prior", "prior", "bench-track", { weight: undefined, reps: 10 }),
+    ],
+  })!;
+  expect(weighted.observationCount).toBe(0);
+  expect(weighted.direction).toBe("insufficient_context");
+  expect(weighted.limitations).toContain("2 weighted-rep working sets had missing or zero load and were excluded from progression comparison.");
+
+  const bodyweight = build({
+    exercises: [exercise("bench", "Pull Up", "reps", { category: "Bodyweight" })],
+    tracks: [track("bench-track", "bench", "weightedReps")],
+    sets: [
+      set("bw-latest", "latest", "bench-track", { weight: 0, reps: 12 }),
+      set("bw-prior", "prior", "bench-track", { weight: 0, reps: 10 }),
+    ],
+  })!;
+  expect(bodyweight.direction).toBe("higher");
+  expect(bodyweight.recentObservations[0].bestWorkingSet).toMatchObject({ load: 0, reps: 12, isBodyweight: true });
+  expect(formatRecentExerciseProgressionForCoach([bodyweight]).join("\n")).toContain("BWx12");
+  expect(formatRecentExerciseProgressionForCoach([bodyweight]).join("\n")).not.toContain("0x12");
 });
 
 test("time and distance modes use only their direct compatible metrics", () => {

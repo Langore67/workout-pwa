@@ -19,6 +19,7 @@ export type ExerciseProgressionDirection =
 export type ExerciseProgressionBestSet = {
   setId: string;
   load?: number;
+  isBodyweight?: boolean;
   reps?: number;
   rir?: number;
   e1RM?: number;
@@ -96,9 +97,10 @@ function completedWorkingSet(set: SetEntry): boolean {
   return set.setType === "working" && positive(set.completedAt) && !set.deletedAt;
 }
 
-function setSnapshot(set: SetEntry, mode: MetricMode): ExerciseProgressionBestSet {
+function setSnapshot(set: SetEntry, mode: MetricMode, options: { bodyweight: boolean; repsOnly: boolean }): ExerciseProgressionBestSet {
   const snapshot: ExerciseProgressionBestSet = { setId: set.id };
-  if (finite(set.weight)) snapshot.load = set.weight;
+  if (finite(set.weight) && !options.repsOnly) snapshot.load = set.weight;
+  if (options.bodyweight && (set.weight == null || set.weight === 0)) snapshot.isBodyweight = true;
   if (positive(set.reps)) snapshot.reps = set.reps;
   if (finite(set.rir)) snapshot.rir = set.rir;
   if (mode === "reps" && positive(set.weight) && positive(set.reps)) {
@@ -113,8 +115,11 @@ function setSnapshot(set: SetEntry, mode: MetricMode): ExerciseProgressionBestSe
   return snapshot;
 }
 
-function bestSet(sets: readonly SetEntry[], mode: MetricMode): ExerciseProgressionBestSet | undefined {
-  const snapshots = sets.map((set) => setSnapshot(set, mode));
+function bestSet(sets: readonly SetEntry[], mode: MetricMode, tracksById: Map<string, Track>, exercise: Exercise): ExerciseProgressionBestSet | undefined {
+  const snapshots = sets.map((set) => setSnapshot(set, mode, {
+    bodyweight: exercise.category === "Bodyweight",
+    repsOnly: tracksById.get(set.trackId)?.trackingMode === "repsOnly",
+  }));
   if (mode === "time") {
     return snapshots.filter((row) => positive(row.time)).sort((a, b) => (b.time as number) - (a.time as number))[0];
   }
@@ -130,8 +135,8 @@ function bestSet(sets: readonly SetEntry[], mode: MetricMode): ExerciseProgressi
   })[0];
 }
 
-function observation(sessionId: string, observedAt: number, sets: readonly SetEntry[], mode: MetricMode) {
-  const best = bestSet(sets, mode);
+function observation(sessionId: string, observedAt: number, sets: readonly SetEntry[], mode: MetricMode, tracksById: Map<string, Track>, exercise: Exercise) {
+  const best = bestSet(sets, mode, tracksById, exercise);
   const row: ExerciseProgressionObservation = { sessionId, observedAt };
   if (best) {
     row.bestWorkingSet = best;
@@ -215,6 +220,7 @@ export function buildExerciseProgressionContext(
       })
       .map((track) => track.id)
   );
+  const tracksById = new Map((input.tracks ?? []).map((track) => [track.id, track]));
   const asOf = finite(input.asOf) ? input.asOf : Date.now();
   const lookbackDays = positive(input.lookbackDays)
     ? input.lookbackDays
@@ -225,15 +231,26 @@ export function buildExerciseProgressionContext(
     .filter((row): row is { session: Session; at: number } => positive(row.at) && row.at >= cutoff && row.at <= asOf)
     .sort((a, b) => b.at - a.at);
   const setsBySession = new Map<string, SetEntry[]>();
+  const excludedUnloadedSets: SetEntry[] = [];
   for (const set of input.sets ?? []) {
     if (!canonicalTrackIds.has(set.trackId) || !completedWorkingSet(set)) continue;
+    const track = tracksById.get(set.trackId);
+    if (mode === "reps") {
+      if (!positive(set.reps)) continue;
+      const canCompareWithoutPositiveLoad = canonical.category === "Bodyweight" || track?.trackingMode === "repsOnly";
+      const hasRecordedLoad = positive(set.weight) || (finite(set.weight) && set.weight < 0);
+      if (!hasRecordedLoad && !canCompareWithoutPositiveLoad) {
+        excludedUnloadedSets.push(set);
+        continue;
+      }
+    }
     const group = setsBySession.get(set.sessionId) ?? [];
     group.push(set);
     setsBySession.set(set.sessionId, group);
   }
   const allObservations = sessions
     .filter(({ session }) => setsBySession.has(session.id))
-    .map(({ session, at }) => observation(session.id, at, setsBySession.get(session.id)!, mode))
+    .map(({ session, at }) => observation(session.id, at, setsBySession.get(session.id)!, mode, tracksById, canonical))
     .filter((row) => positive(comparisonValue(row, mode)));
   const maxObservations = positive(input.maxObservations)
     ? Math.floor(input.maxObservations)
@@ -242,6 +259,9 @@ export function buildExerciseProgressionContext(
   const limitations: string[] = [];
   if (!recentObservations.length) limitations.push("No comparable completed working-set observations in the recent window.");
   else if (recentObservations.length < 2) limitations.push("Fewer than two comparable observations in the recent window.");
+  const recentSessionIds = new Set(sessions.map(({ session }) => session.id));
+  const excludedUnloadedCount = excludedUnloadedSets.filter((set) => recentSessionIds.has(set.sessionId)).length;
+  if (excludedUnloadedCount) limitations.push(`${excludedUnloadedCount} weighted-rep working set${excludedUnloadedCount === 1 ? " had" : "s had"} missing or zero load and were excluded from progression comparison.`);
   if (mode === "reps" && recentObservations.length && !recentObservations.some((row) => positive(row.e1RM))) {
     limitations.push("No valid capped e1RM is available; direction uses directly comparable max reps.");
   }
