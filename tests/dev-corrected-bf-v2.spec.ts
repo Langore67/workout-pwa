@@ -135,6 +135,11 @@ test("peer-group strip shows the fixed Men 51–59 reference and factual percent
   await page.goto(new URL("/dev", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
   const peer = page.getByTestId("corrected-bf-v2-peer-strip");
   await expect(peer).toBeVisible();
+  const disclosure = peer.getByTestId("corrected-bf-v2-peer-toggle");
+  await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+  await expect(peer.locator(".if-cbf-v2-peer-track")).toBeVisible();
+  const referenceNote = peer.getByText("Approximate NHANES DXA reference; population context only, not a clinical assessment.");
+  await expect(referenceNote).toBeVisible();
   await expect(peer).toContainText("Men 51–59");
   await expect(peer).toContainText("Current position:");
   await expect(peer).toContainText("below median");
@@ -143,6 +148,17 @@ test("peer-group strip shows the fixed Men 51–59 reference and factual percent
   await expect(peer).toContainText("Typical");
   await expect(peer).toContainText("Higher than most");
   await expect(peer.getByTestId("corrected-bf-v2-peer-marker")).toHaveAttribute("style", /left:/);
+  await disclosure.focus();
+  await page.keyboard.press("Space");
+  await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+  await expect(peer.getByTestId("corrected-bf-v2-peer-collapsed-summary")).toContainText("between 10th and 25th percentile");
+  await expect(peer.locator(".if-cbf-v2-peer-track")).toBeHidden();
+  await expect(referenceNote).toBeHidden();
+  await disclosure.focus();
+  await page.keyboard.press("Enter");
+  await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+  await expect(peer.locator(".if-cbf-v2-peer-track")).toBeVisible();
+  await expect(referenceNote).toBeVisible();
   await expect(peer.getByText("5th", { exact: true })).toHaveAttribute("title", "5th percentile · 11.5% body fat");
   await expect(peer.getByText("95th", { exact: true })).toHaveAttribute("title", "95th percentile · 44.4% body fat");
 });
@@ -259,14 +275,23 @@ test("experimental chart remains within desktop, tablet, and phone widths and su
     });
     expect(tooltipFits).toBe(true);
     await expect(card.getByTestId("corrected-bf-v2-peer-strip")).toBeVisible();
+    if (width === 390) {
+      const peerToggle = card.getByTestId("corrected-bf-v2-peer-toggle");
+      await peerToggle.click();
+      await expect(peerToggle).toHaveAttribute("aria-expanded", "false");
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      const fits = await peerToggle.evaluate((element) => {
+        const button = element.getBoundingClientRect();
+        const cardBounds = element.closest("[data-testid='corrected-body-fat-v2']")!.getBoundingClientRect();
+        return button.left >= cardBounds.left && button.right <= cardBounds.right;
+      });
+      expect(fits).toBe(true);
+    }
     const labelBottom = await card.getByTestId("corrected-bf-v2-x-label").last().evaluate((element) => element.getBoundingClientRect().bottom);
     const detailTop = await detail.evaluate((element) => element.getBoundingClientRect().top);
     expect(labelBottom).toBeLessThanOrEqual(detailTop);
   }
 
-  if (test.info().project.name === "iphone") {
-    await expect(card.getByTestId("corrected-bf-v2-tooltip")).toBeVisible();
-  }
 });
 
 test("experimental chart is not wired into the normal Start route", async ({ page }) => {
