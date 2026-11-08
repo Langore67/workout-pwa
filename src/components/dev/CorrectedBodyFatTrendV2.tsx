@@ -149,6 +149,13 @@ const styles = `
 .if-cbf-v2-detail-period span + span::before { content:"·"; margin-right:6px; }
 .if-cbf-v2-detail-goal { color:var(--muted); }
 .if-cbf-v2-peer { padding-top:15px; border-top:1px solid var(--line); }
+.if-cbf-v2-peer-toggle { display:flex; align-items:center; gap:12px; width:100%; min-height:38px; padding:4px 0; border:0; background:transparent; color:var(--text); text-align:left; cursor:pointer; touch-action:manipulation; }
+.if-cbf-v2-peer-toggle:focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:6px; }
+.if-cbf-v2-peer-toggle-title { flex:0 0 auto; font-size:13px; font-weight:700; }
+.if-cbf-v2-peer-toggle-summary { min-width:0; margin-left:auto; overflow:hidden; color:var(--muted); font-size:11px; text-align:right; text-overflow:ellipsis; white-space:nowrap; }
+.if-cbf-v2-peer-chevron { flex:0 0 auto; color:var(--muted); font-size:13px; transition:transform .18s ease; }
+.if-cbf-v2-peer-chevron[aria-expanded=true] { transform:rotate(180deg); }
+.if-cbf-v2-peer-content { padding-top:5px; }
 .if-cbf-v2-peer-head { display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; }
 .if-cbf-v2-peer-title { margin:0; font-size:13px; font-weight:700; }
 .if-cbf-v2-peer-note { color:var(--muted); font-size:10px; }
@@ -184,6 +191,7 @@ export default function CorrectedBodyFatTrendV2({
   const [range, setRange] = useState<ChartTimeRange>(DEFAULT_CHART_TIME_RANGE);
   const [width, setWidth] = useState(0);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [peerExpanded, setPeerExpanded] = useState(true);
   const chartRef = useRef<HTMLDivElement | null>(null);
   const effectiveWidth = width > 0 ? width : Math.max(320, window.innerWidth - 32);
   const data = useMemo<Datum[]>(
@@ -392,8 +400,13 @@ export default function CorrectedBodyFatTrendV2({
 
       {latest && (
         <section className="if-cbf-v2-peer" aria-label="Peer-group body-fat reference" data-testid="corrected-bf-v2-peer-strip">
+          <button type="button" className="if-cbf-v2-peer-toggle" aria-expanded={peerExpanded} aria-controls="corrected-bf-v2-peer-content" onClick={() => setPeerExpanded((expanded) => !expanded)} data-testid="corrected-bf-v2-peer-toggle">
+            <span className="if-cbf-v2-peer-toggle-title" role="heading" aria-level={4}>Peer-group reference</span>
+            <span className="if-cbf-v2-peer-toggle-summary" data-testid="corrected-bf-v2-peer-collapsed-summary">{peerBracket ?? peerPositionText}</span>
+            <span className="if-cbf-v2-peer-chevron" aria-hidden="true" aria-expanded={peerExpanded}>⌄</span>
+          </button>
+          <div id="corrected-bf-v2-peer-content" className="if-cbf-v2-peer-content" hidden={!peerExpanded}>
           <div className="if-cbf-v2-peer-head">
-            <h4 className="if-cbf-v2-peer-title">Peer-group reference</h4>
             <span className="if-cbf-v2-peer-note">Prototype reference · {PEER_REFERENCE.label}</span>
           </div>
           <div className="if-cbf-v2-peer-summary">
@@ -428,6 +441,7 @@ export default function CorrectedBodyFatTrendV2({
             </div>
           </div>
           <div className="if-cbf-v2-peer-disclaimer">Approximate NHANES DXA reference; population context only, not a clinical assessment.</div>
+          </div>
         </section>
       )}
     </section>
