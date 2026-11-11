@@ -76,6 +76,7 @@ import { db } from "../db";
 import { Page, Section } from "../components/Page.tsx";
 import VisxTrendChartCard from "../components/charts/VisxTrendChartCard";
 import ChartRangeSelector from "../components/charts/ChartRangeSelector";
+import PeerReferenceStrip from "../components/charts/PeerReferenceStrip";
 import {
   buildAverageChartRangeSeries,
   CHART_TIME_RANGES,
@@ -111,6 +112,7 @@ import {
   waistToHeightStatus,
 } from "../body/bodyCalculations";
 import { computeHydrationConfidenceFromBodyRows } from "../body/hydrationConfidence";
+import { buildCorrectedBodyFatPeerReference } from "../body/correctedBodyFatPeerReference";
 import {
   buildPhaseQualityInputsFromBodyRows,
   computeStrengthDeltaFromStrengthTrend,
@@ -809,6 +811,39 @@ export default function BodyCompositionPage() {
           },
         ] satisfies ChartSeriesConfig[],
         yDomainMode: "tight" as const,
+        modernProps: {
+          curveMode: "smooth" as const,
+          areaFill: true,
+          selectedDetailMode: "card" as const,
+          selectedDetailRangeLabel:
+            correctedBodyFatRange === "D" ? "Daily" : correctedBodyFatRange === "W" ? "Weekly" : "Monthly",
+          selectedDetailDeltaFormatter: (value: number, previousValue: number, previousLabel: string) => {
+            const difference = Number((value - previousValue).toFixed(1));
+            if (difference === 0) return `No change from ${previousLabel}`;
+            return `${difference < 0 ? "Down" : "Up"} ${Math.abs(difference).toFixed(1)} points from ${previousLabel}`;
+          },
+          referenceLines: Number.isFinite(latestSnapshot.targetBodyFatPct)
+            ? [{
+                value: latestSnapshot.targetBodyFatPct as number,
+                label: `Goal ${formatBodyFatPct(latestSnapshot.targetBodyFatPct)}`,
+                kind: "goal" as const,
+              }]
+            : [],
+          selectedDetailGoalFormatter: (value: number, reference: { value: number }) => {
+            const difference = Number((value - reference.value).toFixed(1));
+            if (difference === 0) return `At ${formatBodyFatPct(reference.value)} goal`;
+            return `${Math.abs(difference).toFixed(1)} points ${difference > 0 ? "above" : "below"} ${formatBodyFatPct(reference.value)} goal`;
+          },
+          supplementalContent: (() => {
+            const model = buildCorrectedBodyFatPeerReference(Number(latestSnapshot.correctedBodyFatPct));
+            return model ? (
+              <PeerReferenceStrip
+                model={model}
+                testIdBase="Corrected Body Fat % Trend"
+              />
+            ) : undefined;
+          })(),
+        },
         valueFormatter: (value: number | null | undefined) => formatBodyFatPct(value),
         emptyMessage: "Add body fat %, weight, and ideally ECW / ICW to see corrected body fat.",
       },
@@ -946,6 +981,8 @@ export default function BodyCompositionPage() {
     waistRange,
     weightRange,
     chartRows,
+    latestSnapshot.correctedBodyFatPct,
+    latestSnapshot.targetBodyFatPct,
   ]);
 
   /* ==========================================================================
@@ -1445,6 +1482,7 @@ export default function BodyCompositionPage() {
               dragScrollEnabled={true}
               yAxisSide="right"
               yDomainMode={chart.yDomainMode}
+              {...("modernProps" in chart ? chart.modernProps : {})}
               headerControls={
                 chart.range && chart.rangeOptions && chart.onRangeChange ? (
                   <ChartRangeSelector

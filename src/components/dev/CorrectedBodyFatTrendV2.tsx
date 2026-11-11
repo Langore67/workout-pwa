@@ -11,6 +11,9 @@ import {
   type ChartTimeRange,
 } from "../charts/chartRange";
 import { buildBodyCompositionCorrectedBodyFatRangeChartData } from "../../pages/BodyCompositionPage";
+import SelectedPointDetail from "../charts/SelectedPointDetail";
+import PeerReferenceStrip from "../charts/PeerReferenceStrip";
+import { buildCorrectedBodyFatPeerReference } from "../../body/correctedBodyFatPeerReference";
 
 type Datum = { label: string; value: number; date?: string; unitStartMs?: number };
 
@@ -78,33 +81,6 @@ function goalDifferenceText(value: number, goal: number): string {
   return `${Math.abs(displayedDelta).toFixed(1)} points ${displayedDelta > 0 ? "above" : "below"} ${percent(goal)} goal`;
 }
 
-// Prototype reference profile derived from NHANES DXA male age/sex reference data.
-// These approximate population percentiles are for visual context only, not diagnosis.
-const PEER_REFERENCE = {
-  label: "Men 51–59",
-  percentiles: [
-    { percentile: 5, value: 11.5 },
-    { percentile: 10, value: 14.9 },
-    { percentile: 25, value: 19.1 },
-    { percentile: 50, value: 24.4 },
-    { percentile: 75, value: 29.3 },
-    { percentile: 90, value: 36.6 },
-    { percentile: 95, value: 44.4 },
-  ],
-} as const;
-
-function percentileBracket(value: number): string {
-  const p = PEER_REFERENCE.percentiles;
-  if (value < p[0].value) return "below 5th percentile";
-  if (value <= p[1].value) return "between 5th and 10th percentile";
-  if (value <= p[2].value) return "between 10th and 25th percentile";
-  if (value <= p[3].value) return "between 25th and 50th percentile";
-  if (value <= p[4].value) return "between 50th and 75th percentile";
-  if (value <= p[5].value) return "between 75th and 90th percentile";
-  if (value <= p[6].value) return "between 90th and 95th percentile";
-  return "95th percentile or above";
-}
-
 function selectXAxisIndexes(data: readonly Datum[], range: ChartTimeRange, plotWidth: number): number[] {
   if (data.length <= 0) return [];
   const [maxLabels, minLabelWidth] = range === "M" ? [8, 42] : range === "W" ? [6, 62] : [6, 56];
@@ -141,42 +117,13 @@ const styles = `
 .if-cbf-v2-tooltip { position:absolute; z-index:2; display:flex; align-items:baseline; flex-wrap:wrap; gap:8px; width:max-content; max-width:calc(100vw - 40px); padding:6px 9px; border:1px solid color-mix(in srgb,var(--line) 82%,transparent); border-radius:12px; background:color-mix(in srgb,var(--card) 94%,transparent); box-shadow:0 8px 24px rgba(15,23,42,.12); backdrop-filter:blur(12px); pointer-events:none; transform:translate(-50%,-100%); animation:if-cbf-v2-in .18s ease-out both; }
 .if-cbf-v2-tooltip-date { color:var(--muted); font-size:10px; }
 .if-cbf-v2-tooltip-value { font-size:16px; font-weight:700; font-variant-numeric:tabular-nums; }
-.if-cbf-v2-detail { display:flex; flex-direction:column; gap:5px; margin:0 2px 14px; padding:8px 12px; border:1px solid var(--line); border-radius:13px; background:color-mix(in srgb,var(--text) 2.5%,var(--card)); font-size:12px; }
-.if-cbf-v2-detail-header { display:flex; align-items:baseline; justify-content:space-between; gap:10px; min-width:0; }
-.if-cbf-v2-detail-date { color:var(--muted); }
-.if-cbf-v2-detail-value { flex:0 0 auto; font-size:15px; font-weight:700; font-variant-numeric:tabular-nums; }
-.if-cbf-v2-detail-period { display:flex; gap:6px; flex-wrap:wrap; color:var(--muted); }
-.if-cbf-v2-detail-period span + span::before { content:"·"; margin-right:6px; }
-.if-cbf-v2-detail-goal { color:var(--muted); }
-.if-cbf-v2-peer { padding-top:15px; border-top:1px solid var(--line); }
-.if-cbf-v2-peer-toggle { display:flex; align-items:center; gap:12px; width:100%; min-height:38px; padding:4px 0; border:0; background:transparent; color:var(--text); text-align:left; cursor:pointer; touch-action:manipulation; }
-.if-cbf-v2-peer-toggle:focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:6px; }
-.if-cbf-v2-peer-toggle-title { flex:0 0 auto; font-size:13px; font-weight:700; }
-.if-cbf-v2-peer-toggle-summary { min-width:0; margin-left:auto; overflow:hidden; color:var(--muted); font-size:11px; text-align:right; text-overflow:ellipsis; white-space:nowrap; }
-.if-cbf-v2-peer-chevron { flex:0 0 auto; color:var(--muted); font-size:13px; transition:transform .18s ease; }
-.if-cbf-v2-peer-chevron[aria-expanded=true] { transform:rotate(180deg); }
-.if-cbf-v2-peer-content { padding-top:5px; }
-.if-cbf-v2-peer-head { display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; }
-.if-cbf-v2-peer-title { margin:0; font-size:13px; font-weight:700; }
-.if-cbf-v2-peer-note { color:var(--muted); font-size:10px; }
-.if-cbf-v2-peer-summary { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; margin:8px 0 12px; color:var(--muted); font-size:11px; }
-.if-cbf-v2-peer-summary strong { color:var(--text); font-weight:650; }
-.if-cbf-v2-peer-track-wrap { padding:0 3px; }
-.if-cbf-v2-peer-ticks { position:relative; height:15px; margin-bottom:4px; color:var(--muted); font-size:9px; font-variant-numeric:tabular-nums; }
-.if-cbf-v2-peer-tick { position:absolute; transform:translateX(-50%); }
-.if-cbf-v2-peer-tick:first-child { transform:translateX(0); }
-.if-cbf-v2-peer-tick:last-child { transform:translateX(-100%); }
-.if-cbf-v2-peer-track { position:relative; height:10px; overflow:visible; border-radius:999px; background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 23%,var(--line)) 0%,color-mix(in srgb,var(--accent) 10%,var(--line)) 48%,color-mix(in srgb,var(--text) 20%,var(--line)) 100%); }
-.if-cbf-v2-peer-marker { position:absolute; top:50%; width:16px; height:16px; border:3px solid var(--card); border-radius:50%; background:var(--accent); box-shadow:0 1px 6px rgba(15,23,42,.25); transform:translate(-50%,-50%); }
-.if-cbf-v2-peer-labels { display:flex; justify-content:space-between; gap:8px; margin-top:9px; color:var(--muted); font-size:10px; }
-.if-cbf-v2-peer-disclaimer { margin-top:8px; color:var(--muted); font-size:10px; }
 .if-cbf-v2-empty { display:grid; place-items:center; height:${HEIGHT}px; margin-top:17px; border-radius:14px; color:var(--muted); background:color-mix(in srgb,var(--text) 2%,var(--card)); font-size:14px; text-align:center; }
 .if-cbf-v2-draw { stroke-dasharray:1; stroke-dashoffset:1; animation:if-cbf-v2-draw 1s cubic-bezier(.22,.72,.2,1) forwards; }
 .if-cbf-v2-area-in { animation:if-cbf-v2-area-in .65s ease-out both; }
 @keyframes if-cbf-v2-draw { to { stroke-dashoffset:0; } }
 @keyframes if-cbf-v2-area-in { from { opacity:0; } to { opacity:.14; } }
 @keyframes if-cbf-v2-in { from { opacity:0; transform:translate(-50%,-94%); } to { opacity:1; transform:translate(-50%,-100%); } }
-@media (max-width:520px) { .if-cbf-v2 { border-radius:17px; } .if-cbf-v2-metric-row { gap:10px; } .if-cbf-v2-value { font-size:clamp(28px,8vw,36px); } .if-cbf-v2-controls { flex-shrink:0; } .if-cbf-v2-chart { height:240px; } .if-cbf-v2-empty { height:240px; } .if-cbf-v2-tooltip { gap:6px; padding:6px 8px; } .if-cbf-v2-detail { gap:5px; padding:8px 10px; } .if-cbf-v2-detail-header { gap:7px; } .if-cbf-v2-detail-value { font-size:14px; } .if-cbf-v2-detail-period { gap:5px; } .if-cbf-v2-detail-period span + span::before { margin-right:5px; } .if-cbf-v2-peer-labels { font-size:9px; } }
+@media (max-width:520px) { .if-cbf-v2 { border-radius:17px; } .if-cbf-v2-metric-row { gap:10px; } .if-cbf-v2-value { font-size:clamp(28px,8vw,36px); } .if-cbf-v2-controls { flex-shrink:0; } .if-cbf-v2-chart { height:240px; } .if-cbf-v2-empty { height:240px; } .if-cbf-v2-tooltip { gap:6px; padding:6px 8px; } }
 @media (max-width:350px) { .if-cbf-v2-metric-row { align-items:flex-start; flex-wrap:wrap; } .if-cbf-v2-controls { margin-left:auto; } }
 @media (prefers-reduced-motion:reduce) { .if-cbf-v2 *, .if-cbf-v2 *::before, .if-cbf-v2 *::after { animation-duration:.01ms!important; transition-duration:.01ms!important; } }
 `;
@@ -191,7 +138,6 @@ export default function CorrectedBodyFatTrendV2({
   const [range, setRange] = useState<ChartTimeRange>(DEFAULT_CHART_TIME_RANGE);
   const [width, setWidth] = useState(0);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const [peerExpanded, setPeerExpanded] = useState(true);
   const chartRef = useRef<HTMLDivElement | null>(null);
   const effectiveWidth = width > 0 ? width : Math.max(320, window.innerWidth - 32);
   const data = useMemo<Datum[]>(
@@ -260,19 +206,7 @@ export default function CorrectedBodyFatTrendV2({
   const goalDelta = displayedPoint && Number.isFinite(goal)
     ? displayedPoint.value - (goal as number)
     : undefined;
-  const peerMin = PEER_REFERENCE.percentiles[0].value;
-  const peerMax = PEER_REFERENCE.percentiles[PEER_REFERENCE.percentiles.length - 1].value;
-  const peerPosition = latest ? Math.min(100, Math.max(0,
-    ((latest.value - peerMin) / (peerMax - peerMin)) * 100
-  )) : 0;
-  const peerBracket = latest ? percentileBracket(latest.value) : undefined;
-  const peerPositionText = latest
-    ? latest.value < PEER_REFERENCE.percentiles[3].value
-      ? "below median"
-      : latest.value > PEER_REFERENCE.percentiles[3].value
-        ? "above median"
-        : "at median"
-    : undefined;
+  const peerReference = latest ? buildCorrectedBodyFatPeerReference(latest.value) : undefined;
 
   const setPointFromPointer = (event: { currentTarget: SVGRectElement; clientX: number }) => {
     if (!chart || !data.length) return;
@@ -379,71 +313,40 @@ export default function CorrectedBodyFatTrendV2({
       )}
 
       {displayedPoint && (
-        <div className="if-cbf-v2-detail" data-testid="corrected-bf-v2-detail" aria-live="polite">
-          <div className="if-cbf-v2-detail-header" data-testid="corrected-bf-v2-detail-header">
-            <div className="if-cbf-v2-detail-date">
-              {chart?.active ? "Selected point" : "Latest visible point"} · {formatDetailDate(displayedPoint, range)}
-            </div>
-            <div className="if-cbf-v2-detail-value">{percent(displayedPoint.value)}</div>
-          </div>
-          <div className="if-cbf-v2-detail-period">
-            <span data-testid="corrected-bf-v2-range-name">{rangeName(range)}</span>
-            {pointDelta != null && displayedPreviousPoint && (
-              <span data-testid="corrected-bf-v2-point-change">
-                {pointChangeText(displayedPoint.value, displayedPreviousPoint.value, formatDetailDate(displayedPreviousPoint, range, displayedPoint))}
-              </span>
-            )}
-          </div>
-          {goalDelta != null && <div className="if-cbf-v2-detail-goal" data-testid="corrected-bf-v2-goal-difference">{goalDifferenceText(displayedPoint.value, goal as number)}</div>}
-        </div>
+        <SelectedPointDetail
+          testIdBase="corrected-bf-v2"
+          pointLabel={formatDetailDate(displayedPoint, range)}
+          value={percent(displayedPoint.value)}
+          rangeLabel={rangeName(range)}
+          deltaText={pointDelta != null && displayedPreviousPoint
+            ? pointChangeText(displayedPoint.value, displayedPreviousPoint.value, formatDetailDate(displayedPreviousPoint, range, displayedPoint))
+            : undefined}
+          goalDistanceText={goalDelta != null ? goalDifferenceText(displayedPoint.value, goal as number) : undefined}
+          selected={Boolean(chart?.active)}
+          testIds={{
+            root: "corrected-bf-v2-detail",
+            header: "corrected-bf-v2-detail-header",
+            value: "corrected-bf-v2-detail-value",
+            range: "corrected-bf-v2-range-name",
+            delta: "corrected-bf-v2-point-change",
+            goal: "corrected-bf-v2-goal-difference",
+          }}
+        />
       )}
 
-      {latest && (
-        <section className="if-cbf-v2-peer" aria-label="Peer-group body-fat reference" data-testid="corrected-bf-v2-peer-strip">
-          <button type="button" className="if-cbf-v2-peer-toggle" aria-expanded={peerExpanded} aria-controls="corrected-bf-v2-peer-content" onClick={() => setPeerExpanded((expanded) => !expanded)} data-testid="corrected-bf-v2-peer-toggle">
-            <span className="if-cbf-v2-peer-toggle-title" role="heading" aria-level={4}>Peer-group reference</span>
-            <span className="if-cbf-v2-peer-toggle-summary" data-testid="corrected-bf-v2-peer-collapsed-summary">{peerBracket ?? peerPositionText}</span>
-            <span className="if-cbf-v2-peer-chevron" aria-hidden="true" aria-expanded={peerExpanded}>⌄</span>
-          </button>
-          <div id="corrected-bf-v2-peer-content" className="if-cbf-v2-peer-content" hidden={!peerExpanded}>
-          <div className="if-cbf-v2-peer-head">
-            <span className="if-cbf-v2-peer-note">Prototype reference · {PEER_REFERENCE.label}</span>
-          </div>
-          <div className="if-cbf-v2-peer-summary">
-            <span>Current position: <strong>{peerPositionText}</strong></span>
-            <span>{peerBracket}</span>
-          </div>
-          <div className="if-cbf-v2-peer-track-wrap">
-            <div className="if-cbf-v2-peer-ticks" aria-hidden="true">
-              {PEER_REFERENCE.percentiles.map(({ percentile, value }) => (
-                <span
-                  key={percentile}
-                  className="if-cbf-v2-peer-tick"
-                  style={{ left: `${((value - peerMin) / (peerMax - peerMin)) * 100}%` }}
-                  title={`${percentile}th percentile · ${percent(value)} body fat`}
-                >
-                  {percentile}th
-                </span>
-              ))}
-            </div>
-            <div className="if-cbf-v2-peer-track" role="img" aria-label={`Current corrected body fat ${percent(latest.value)}; ${peerPositionText}, ${peerBracket}`}>
-              {PEER_REFERENCE.percentiles.slice(1, -1).map(({ percentile, value }) => (
-                <span
-                  key={percentile}
-                  aria-hidden="true"
-                  style={{ position: "absolute", left: `${((value - peerMin) / (peerMax - peerMin)) * 100}%`, top: 0, height: "100%", borderLeft: "1px solid color-mix(in srgb,var(--card) 75%,transparent)" }}
-                />
-              ))}
-              <span className="if-cbf-v2-peer-marker" style={{ left: `${peerPosition}%` }} data-testid="corrected-bf-v2-peer-marker" />
-            </div>
-            <div className="if-cbf-v2-peer-labels" aria-hidden="true">
-              <span>Leaner than most</span><span>Typical</span><span>Higher than most</span>
-            </div>
-          </div>
-          <div className="if-cbf-v2-peer-disclaimer">Approximate NHANES DXA reference; population context only, not a clinical assessment.</div>
-          </div>
-        </section>
-      )}
+      {peerReference ? (
+        <PeerReferenceStrip
+          model={peerReference}
+          testIdBase="corrected-bf-v2"
+          testIds={{
+            root: "corrected-bf-v2-peer-strip",
+            toggle: "corrected-bf-v2-peer-toggle",
+            summary: "corrected-bf-v2-peer-collapsed-summary",
+            content: "corrected-bf-v2-peer-content",
+            marker: "corrected-bf-v2-peer-marker",
+          }}
+        />
+      ) : null}
     </section>
   );
 }
