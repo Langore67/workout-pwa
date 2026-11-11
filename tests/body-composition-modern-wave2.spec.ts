@@ -24,6 +24,7 @@ async function openWaveTwo(page: Page) {
         icwLb: 57 + index * 0.05,
       };
     }));
+    await db.app_meta.put({ key: "profile.heightIn", valueJson: JSON.stringify({ heightIn: 70 }), updatedAt: now });
   });
   await page.goto(new URL("/body-composition", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
 }
@@ -31,7 +32,7 @@ async function openWaveTwo(page: Page) {
 test.beforeEach(async ({ page }) => openWaveTwo(page));
 
 for (const id of WAVE_TWO_CHARTS) {
-  test(`${id} uses the modern green mass-chart treatment without goals or peers`, async ({ page }) => {
+  test(`${id} uses the modern green mass-chart treatment and normalized peer metric`, async ({ page }) => {
     const card = page.getByTestId(`${id}:card`);
     await card.scrollIntoViewIfNeeded();
     const svg = card.getByTestId(`${id}:svg`);
@@ -44,7 +45,11 @@ for (const id of WAVE_TWO_CHARTS) {
     await expect(card.getByTestId(`${id}:selected-detail-range`)).toHaveText("Weekly");
     await expect(card.getByTestId(`${id}:reference-line`)).toHaveCount(0);
     await expect(card.getByTestId(`${id}:selected-detail-goal`)).toHaveCount(0);
-    await expect(card.getByTestId(`${id}:peer-reference`)).toHaveCount(0);
+    const peer = card.getByTestId(`${id}:peer-reference`);
+    await expect(peer).toBeVisible();
+    await expect(peer).toContainText(id === "Fat Mass Trend" ? "Peer-group reference · FMI" : "Peer-group reference · LMI");
+    await expect(peer).toContainText("kg/m²");
+    await expect(peer).not.toContainText(/healthy|unhealthy|obese|sarcopen/i);
   });
 }
 
@@ -80,4 +85,27 @@ test("non-modernized Body Composition charts retain their existing defaults", as
     await expect(card.getByTestId(`${id}:selected-detail`)).toHaveCount(0);
     await expect(card.getByTestId(`${id}:area-fill`)).toHaveCount(0);
   }
+});
+
+test("FMI, LMI, corrected LMI, and waist resolvers use published ordered landmarks", async ({ page }) => {
+  const resolved = await page.evaluate(async () => {
+    const reference = await import("/src/body/bodyCompositionPeerReferences.ts");
+    return {
+      fmi: reference.MEN_50_59_FMI_REFERENCE.landmarks,
+      lmi: reference.MEN_50_59_LMI_REFERENCE.landmarks,
+      waist: reference.MEN_50_59_WAIST_REFERENCE_CM.landmarks,
+      lean: reference.buildLeanMassIndexPeerReference(140, 70)?.landmarks,
+      corrected: reference.buildLeanMassIndexPeerReference(138, 70, true)?.landmarks,
+      missingHeight: reference.buildFatMassIndexPeerReference(30, Number.NaN),
+    };
+  });
+  expect(resolved.fmi).toEqual([
+    { percentile: 10, value: 4.7 }, { percentile: 20, value: 5.9 }, { percentile: 30, value: 6.7 },
+    { percentile: 40, value: 7.8 }, { percentile: 50, value: 8.7 }, { percentile: 60, value: 9.4 },
+    { percentile: 70, value: 10.3 }, { percentile: 80, value: 11.7 }, { percentile: 90, value: 13.4 },
+  ]);
+  expect(resolved.lmi.map(({ value }) => value)).toEqual([16.3, 17.2, 17.8, 18.3, 18.8, 19.4, 20.1, 20.8, 21.6]);
+  expect(resolved.waist.map(({ value }) => value)).toEqual([83.2, 88.2, 90.5, 94.2, 104.3, 114.8, 123.4, 128.4, 137]);
+  expect(resolved.lean).toEqual(resolved.corrected);
+  expect(resolved.missingHeight).toBeUndefined();
 });

@@ -78,7 +78,8 @@ test("Waist uses the modern family with factual inch-specific goal wording", asy
   await expect(card.getByTestId(`${id}:selected-detail-value`)).toContainText("in");
   await expect(card.getByTestId(`${id}:selected-detail-delta`)).toHaveText(/(Up|Down) \d+(?:\.\d)? in from |No change from /);
   await expect(card.getByTestId(`${id}:selected-detail-goal`)).toHaveText(/\d+(?:\.\d)? in (above|below) 34 in goal|At 34 in goal/);
-  await expect(card.getByTestId(`${id}:peer-reference`)).toHaveCount(0);
+  await expect(card.getByTestId(`${id}:peer-reference`)).toContainText("Peer-group reference · Waist");
+  await expect(card.getByTestId(`${id}:peer-reference-content`)).toContainText("Current waist:");
 });
 
 test("raw Body Fat uses percentage-point wording and the shared BF peer profile", async ({ page }) => {
