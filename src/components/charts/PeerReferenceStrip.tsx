@@ -12,6 +12,9 @@ export type PeerReferenceViewModel = {
   landmarks: PeerReferenceLandmark[];
   sourceLabel: string;
   disclaimer?: string;
+  currentMetricLabel?: string;
+  landmarkValueLabel?: (value: number) => string;
+  categoryLabels?: [string, string, string];
 };
 
 export type PeerReferenceStripTestIds = {
@@ -56,6 +59,7 @@ export default function PeerReferenceStrip({ model, testIdBase, defaultExpanded 
   const position = Math.max(0, Math.min(100, toPosition(model.currentValue)));
   const contentId = `${testIdBase.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-${generatedId}-peer-content`;
   const summary = model.percentileBracket ?? model.positionLabel ?? model.currentValueLabel;
+  const categoryLabels = model.categoryLabels ?? ["Leaner than most", "Typical", "Higher than most"];
 
   return (
     <section className="if-peer" aria-label={model.title} data-testid={testIds.root ?? `${testIdBase}:peer-reference`}>
@@ -68,18 +72,18 @@ export default function PeerReferenceStrip({ model, testIdBase, defaultExpanded 
       <div id={contentId} className="if-peer-content" hidden={!expanded} data-testid={testIds.content ?? `${testIdBase}:peer-reference-content`}>
         <div className="if-peer-note">{model.sourceLabel} · {model.peerGroupLabel}</div>
         <div className="if-peer-summary">
-          <span>Current position: <strong>{model.positionLabel ?? model.currentValueLabel}</strong></span>
+          <span>{model.currentMetricLabel ?? "Current position"}: <strong>{model.currentMetricLabel ? model.currentValueLabel : model.positionLabel ?? model.currentValueLabel}</strong></span>
           {model.percentileBracket ? <span>{model.percentileBracket}</span> : null}
         </div>
         <div className="if-peer-track-wrap">
           <div className="if-peer-ticks" aria-hidden="true">
-            {ordered.map((landmark) => <span key={landmark.percentile} className="if-peer-tick" style={{ left: `${toPosition(landmark.value)}%` }} title={`${landmark.percentile}th percentile · ${landmark.value}% body fat`}>{landmark.percentile}th</span>)}
+            {ordered.map((landmark) => <span key={landmark.percentile} className="if-peer-tick" style={{ left: `${toPosition(landmark.value)}%` }} title={`${landmark.percentile}th percentile · ${model.landmarkValueLabel?.(landmark.value) ?? landmark.value}`}>{landmark.percentile}th</span>)}
           </div>
           <div className="if-peer-track" role="img" aria-label={`${model.currentValueLabel}; ${summary}`}>
             {ordered.slice(1, -1).map((landmark) => <span key={landmark.percentile} className="if-peer-divider" aria-hidden="true" style={{ left: `${toPosition(landmark.value)}%` }} />)}
             <span className="if-peer-marker" style={{ left: `${position}%` }} data-testid={testIds.marker ?? `${testIdBase}:peer-reference-marker`} />
           </div>
-          <div className="if-peer-labels" aria-hidden="true"><span>Leaner than most</span><span>Typical</span><span>Higher than most</span></div>
+          <div className="if-peer-labels" aria-hidden="true">{categoryLabels.map((label) => <span key={label}>{label}</span>)}</div>
         </div>
         {model.disclaimer ? <div className="if-peer-disclaimer">{model.disclaimer}</div> : null}
       </div>

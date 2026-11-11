@@ -114,6 +114,11 @@ import {
 import { computeHydrationConfidenceFromBodyRows } from "../body/hydrationConfidence";
 import { buildBodyFatPeerReference } from "../body/bodyFatPeerReference";
 import {
+  buildFatMassIndexPeerReference,
+  buildLeanMassIndexPeerReference,
+  buildWaistPeerReference,
+} from "../body/bodyCompositionPeerReferences";
+import {
   buildPhaseQualityInputsFromBodyRows,
   computeStrengthDeltaFromStrengthTrend,
 } from "../body/phaseQualityModel";
@@ -609,6 +614,7 @@ export default function BodyCompositionPage() {
     const currentWaistToHeightRatio = waistToHeightRatio(latestWaistMetric?.waistIn, heightIn);
     const bodyFatPct = latest ? sharedPickBodyFatPct(latest) : undefined;
     const correctedBodyFatPct = latest ? getCorrectedBodyFatPct(latest as any) : undefined;
+    const fatMass = latest ? getFatMassLb(latest as any) : undefined;
     const leanMass = latest ? getLeanMassLb(latest as any) : undefined;
     const correctedLeanMass = latest ? getCorrectedLeanMassLb(latest as any) : undefined;
 
@@ -648,12 +654,15 @@ export default function BodyCompositionPage() {
       weightChange: computePercentChange(weight, prevWeightAvg),
 
       waist,
+      peerWaist: latestWaistMetric?.waistIn,
       waistChange: computePercentChange(waist, prevWaistAvg),
       waistToHeightRatio: currentWaistToHeightRatio,
       waistToHeightStatus: waistToHeightStatus(currentWaistToHeightRatio),
 
       bodyFatPct,
       bfChange: computePercentChange(bodyFatPct, prevBodyFatPctAvg),
+
+      fatMass,
 
       correctedBodyFatPct,
       correctedBfChange: computePercentChange(
@@ -820,6 +829,10 @@ export default function BodyCompositionPage() {
             if (difference === 0) return `At ${formatCompactMetric(reference.value, "in")} goal`;
             return `${Math.abs(difference).toFixed(1)} in ${difference > 0 ? "above" : "below"} ${formatCompactMetric(reference.value, "in")} goal`;
           },
+          supplementalContent: (() => {
+            const model = buildWaistPeerReference(Number(latestSnapshot.peerWaist));
+            return model ? <PeerReferenceStrip model={model} testIdBase="Waist Trend" /> : undefined;
+          })(),
         },
         valueFormatter: (value: number | null | undefined) => formatInches(value),
         emptyMessage: "Add a few waist entries to see the trend.",
@@ -947,6 +960,10 @@ export default function BodyCompositionPage() {
             if (difference === 0) return `No change from ${previousLabel}`;
             return `${difference < 0 ? "Down" : "Up"} ${Math.abs(difference).toFixed(1)} lb from ${previousLabel}`;
           },
+          supplementalContent: (() => {
+            const model = buildFatMassIndexPeerReference(Number(latestSnapshot.fatMass), Number(heightIn));
+            return model ? <PeerReferenceStrip model={model} testIdBase="Fat Mass Trend" /> : undefined;
+          })(),
         },
         valueFormatter: (value: number | null | undefined) => formatLbs(value),
         emptyMessage: "Add weight and body fat % entries to see fat mass.",
@@ -978,6 +995,10 @@ export default function BodyCompositionPage() {
             if (difference === 0) return `No change from ${previousLabel}`;
             return `${difference < 0 ? "Down" : "Up"} ${Math.abs(difference).toFixed(1)} lb from ${previousLabel}`;
           },
+          supplementalContent: (() => {
+            const model = buildLeanMassIndexPeerReference(Number(latestSnapshot.leanMass), Number(heightIn));
+            return model ? <PeerReferenceStrip model={model} testIdBase="Lean Mass Trend" /> : undefined;
+          })(),
         },
         valueFormatter: (value: number | null | undefined) => formatLbs(value),
         emptyMessage: "Add weight and body fat % entries to see lean mass.",
@@ -1010,6 +1031,10 @@ export default function BodyCompositionPage() {
             if (difference === 0) return `No change from ${previousLabel}`;
             return `${difference < 0 ? "Down" : "Up"} ${Math.abs(difference).toFixed(1)} lb from ${previousLabel}`;
           },
+          supplementalContent: (() => {
+            const model = buildLeanMassIndexPeerReference(Number(latestSnapshot.correctedLeanMass), Number(heightIn), true);
+            return model ? <PeerReferenceStrip model={model} testIdBase="Corrected Lean Mass Trend" /> : undefined;
+          })(),
         },
         valueFormatter: (value: number | null | undefined) => formatLbs(value),
         emptyMessage: "Add weight, body fat %, and ideally ECW / ICW to see corrected lean mass.",
@@ -1088,10 +1113,15 @@ export default function BodyCompositionPage() {
     weightRange,
     chartRows,
     latestSnapshot.bodyFatPct,
+    latestSnapshot.fatMass,
+    latestSnapshot.leanMass,
+    latestSnapshot.peerWaist,
     latestSnapshot.correctedBodyFatPct,
+    latestSnapshot.correctedLeanMass,
     latestSnapshot.targetWeightLb,
     latestSnapshot.targetWaistIn,
     latestSnapshot.targetBodyFatPct,
+    heightIn,
   ]);
 
   /* ==========================================================================
