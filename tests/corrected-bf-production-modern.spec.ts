@@ -25,7 +25,7 @@ async function seed(page: Page, includeGoal = true) {
     if (withGoal) {
       await db.app_meta.put({
         key: "profile.goals.v1",
-        valueJson: JSON.stringify({ targetBodyFatPct: 15 }),
+        valueJson: JSON.stringify({ targetWeightLb: 167, targetWaistIn: 34, targetBodyFatPct: 15 }),
         updatedAt: now,
       });
     }
@@ -46,6 +46,8 @@ test("production Corrected BF opts into the modern shared-archetype capabilities
   const svg = card.getByTestId(`${CARD_ID}:svg`);
   await expect(svg).toHaveAttribute("data-curve-mode", "smooth");
   await expect(svg).toHaveAttribute("data-area-fill", "true");
+  await expect(card.getByTestId(`${CARD_ID}:series-line`)).toHaveAttribute("stroke", "var(--accent)");
+  await expect(card.getByTestId(`${CARD_ID}:point`).first()).toHaveAttribute("fill", "var(--accent)");
   await expect(card.getByTestId(`${CARD_ID}:area-fill`)).toBeVisible();
   await expect(card.getByTestId(`${CARD_ID}:selected-detail`)).toBeVisible();
   await expect(card.getByTestId(`${CARD_ID}:selected-detail-range`)).toHaveText("Weekly");
@@ -108,7 +110,7 @@ test("goal line is omitted without a configured goal", async ({ page }) => {
 
 test("new archetype visuals remain off for representative existing charts", async ({ page }) => {
   await openProductionChart(page, true);
-  for (const id of ["Weight Trend", "Waist Trend", "Body Fat % Trend", "Fat Mass Trend"]) {
+  for (const id of ["Confidence Trend"]) {
     const card = page.getByTestId(`${id}:card`);
     await card.scrollIntoViewIfNeeded();
     const svg = card.getByTestId(`${id}:svg`);
@@ -124,12 +126,12 @@ test("new archetype visuals remain off for representative existing charts", asyn
 test("peer reference domain resolution is deterministic and presentation-only", async ({ page }) => {
   await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
   const result = await page.evaluate(async () => {
-    const module = await import("/src/body/correctedBodyFatPeerReference.ts");
+    const module = await import("/src/body/bodyFatPeerReference.ts");
     return {
-      low: module.resolvePercentileBracket(10),
-      middle: module.resolvePercentileBracket(24.4),
-      high: module.resolvePercentileBracket(50),
-      model: module.buildCorrectedBodyFatPeerReference(20),
+      low: module.resolveBodyFatPercentileBracket(10),
+      middle: module.resolveBodyFatPercentileBracket(24.4),
+      high: module.resolveBodyFatPercentileBracket(50),
+      model: module.buildBodyFatPeerReference(20),
     };
   });
   expect(result.low).toBe("below 5th percentile");

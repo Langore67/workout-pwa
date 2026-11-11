@@ -13,7 +13,7 @@ import {
 import { buildBodyCompositionCorrectedBodyFatRangeChartData } from "../../pages/BodyCompositionPage";
 import SelectedPointDetail from "../charts/SelectedPointDetail";
 import PeerReferenceStrip from "../charts/PeerReferenceStrip";
-import { buildCorrectedBodyFatPeerReference } from "../../body/correctedBodyFatPeerReference";
+import { buildBodyFatPeerReference } from "../../body/bodyFatPeerReference";
 
 type Datum = { label: string; value: number; date?: string; unitStartMs?: number };
 
@@ -206,7 +206,7 @@ export default function CorrectedBodyFatTrendV2({
   const goalDelta = displayedPoint && Number.isFinite(goal)
     ? displayedPoint.value - (goal as number)
     : undefined;
-  const peerReference = latest ? buildCorrectedBodyFatPeerReference(latest.value) : undefined;
+  const peerReference = latest ? buildBodyFatPeerReference(latest.value) : undefined;
 
   const setPointFromPointer = (event: { currentTarget: SVGRectElement; clientX: number }) => {
     if (!chart || !data.length) return;

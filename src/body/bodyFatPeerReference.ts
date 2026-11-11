@@ -15,7 +15,7 @@ export const MEN_51_59_DXA_BODY_FAT_REFERENCE = Object.freeze({
   ]),
 });
 
-export function resolvePercentileBracket(value: number): string {
+export function resolveBodyFatPercentileBracket(value: number): string {
   const points = MEN_51_59_DXA_BODY_FAT_REFERENCE.landmarks;
   if (value < points[0].value) return "below 5th percentile";
   for (let index = 1; index < points.length; index += 1) {
@@ -26,20 +26,16 @@ export function resolvePercentileBracket(value: number): string {
   return "95th percentile or above";
 }
 
-export function buildCorrectedBodyFatPeerReference(value: number): PeerReferenceViewModel | undefined {
+export function buildBodyFatPeerReference(value: number): PeerReferenceViewModel | undefined {
   if (!Number.isFinite(value)) return undefined;
+  const median = MEN_51_59_DXA_BODY_FAT_REFERENCE.landmarks[3].value;
   return {
     title: "Peer-group reference",
     peerGroupLabel: MEN_51_59_DXA_BODY_FAT_REFERENCE.peerGroupLabel,
     currentValue: value,
     currentValueLabel: `${value.toFixed(1)}%`,
-    positionLabel:
-      value < MEN_51_59_DXA_BODY_FAT_REFERENCE.landmarks[3].value
-        ? "below median"
-        : value > MEN_51_59_DXA_BODY_FAT_REFERENCE.landmarks[3].value
-          ? "above median"
-          : "at median",
-    percentileBracket: resolvePercentileBracket(value),
+    positionLabel: value < median ? "below median" : value > median ? "above median" : "at median",
+    percentileBracket: resolveBodyFatPercentileBracket(value),
     landmarks: [...MEN_51_59_DXA_BODY_FAT_REFERENCE.landmarks],
     sourceLabel: MEN_51_59_DXA_BODY_FAT_REFERENCE.sourceLabel,
     disclaimer: MEN_51_59_DXA_BODY_FAT_REFERENCE.disclaimer,
