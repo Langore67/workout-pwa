@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useId,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -11,10 +12,12 @@ import { AxisBottom, AxisLeft, AxisRight } from "@visx/axis";
 import { GridColumns, GridRows } from "@visx/grid";
 import { Group } from "@visx/group";
 import { scaleLinear, scalePoint } from "@visx/scale";
-import { LinePath } from "@visx/shape";
+import { AreaClosed, LinePath } from "@visx/shape";
+import { curveMonotoneX } from "@visx/curve";
 
 import InfoStubButton from "../information/InfoStubButton";
 import ChartViewportSlider from "./ChartViewportSlider";
+import SelectedPointDetail from "./SelectedPointDetail";
 import {
   getLatestPaneStartIndex,
   getNewerPaneStartIndex,
@@ -248,6 +251,14 @@ export default function VisxTrendChartCard({
   dragScrollEnabled = false,
   yDomainMode = "auto",
   yAxisSide = "left",
+  curveMode = "linear",
+  areaFill = false,
+  selectedDetailMode = "statRow",
+  selectedDetailRangeLabel,
+  selectedDetailDeltaFormatter,
+  selectedDetailGoalFormatter,
+  referenceLines = [],
+  supplementalContent,
   showTrendLine = false,
   readoutMode = "auto",
   headerBadgeText,
@@ -267,6 +278,7 @@ export default function VisxTrendChartCard({
   tooltipLabelFormatter,
   emptyMessage = "Not enough data yet.",
 }: TrendChartCardProps) {
+  const gradientId = `chart-area-${useId().replace(/:/g, "")}`;
   const resolvedTestIdBase = testIdBase || title;
   const safeWindowSize = Math.max(1, windowSize);
   const safeHeight = Number.isFinite(height) && height > 0 ? height : 280;
@@ -397,14 +409,17 @@ export default function VisxTrendChartCard({
 
   const yDomain = useMemo(() => {
     const values = getSeriesValues(chartData, series);
+    const referenceValues = referenceLines
+      .map((line) => line.value)
+      .filter((value) => Number.isFinite(value));
     if (showRenderedTrendLine && isSingleSeries) {
       const trendValues = chartData
         .map((row) => row[trendKey])
         .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-      return getPaddedDomain([...values, ...trendValues], yDomainMode);
+      return getPaddedDomain([...values, ...trendValues, ...referenceValues], yDomainMode);
     }
-    return getPaddedDomain(values, yDomainMode);
-  }, [chartData, isSingleSeries, series, showRenderedTrendLine, trendKey, yDomainMode]);
+    return getPaddedDomain([...values, ...referenceValues], yDomainMode);
+  }, [chartData, isSingleSeries, referenceLines, series, showRenderedTrendLine, trendKey, yDomainMode]);
 
   const latestDatum = data.length ? data[data.length - 1] : undefined;
   const latestSeries = series[0];
@@ -483,6 +498,38 @@ export default function VisxTrendChartCard({
     valueFormatter?.(statNumeric, latestSeries?.key) ??
     (statNumeric == null ? "—" : `${statNumeric}`);
   const statLabel = hoverPoint?.label ?? latestLabel;
+  const selectedDetailIndex = hoverPoint?.index ?? Math.max(0, visibleData.length - 1);
+  const selectedDetailDatum = visibleData[selectedDetailIndex];
+  const selectedDetailPreviousDatum = selectedDetailIndex > 0 ? visibleData[selectedDetailIndex - 1] : undefined;
+  const selectedDetailNumeric = selectedDetailDatum && latestSeries && typeof selectedDetailDatum[latestSeries.key] === "number"
+    ? selectedDetailDatum[latestSeries.key] as number
+    : null;
+  const selectedDetailPreviousNumeric = selectedDetailPreviousDatum && latestSeries && typeof selectedDetailPreviousDatum[latestSeries.key] === "number"
+    ? selectedDetailPreviousDatum[latestSeries.key] as number
+    : null;
+  const selectedDetailValue = latestSeries?.formatter?.(selectedDetailNumeric)
+    ?? valueFormatter?.(selectedDetailNumeric, latestSeries?.key)
+    ?? (selectedDetailNumeric == null ? "—" : String(selectedDetailNumeric));
+  const selectedDetailLabel = selectedDetailDatum
+    ? tooltipLabelFormatter?.(String(selectedDetailDatum[xKey] ?? ""), selectedDetailDatum)
+      ?? String(selectedDetailDatum[xKey] ?? "")
+    : "";
+  const selectedDetailPreviousLabel = selectedDetailPreviousDatum
+    ? tooltipLabelFormatter?.(String(selectedDetailPreviousDatum[xKey] ?? ""), selectedDetailPreviousDatum)
+      ?? String(selectedDetailPreviousDatum[xKey] ?? "")
+    : "";
+  const selectedDetailDelta = selectedDetailNumeric != null && selectedDetailPreviousNumeric != null
+    ? selectedDetailNumeric - selectedDetailPreviousNumeric
+    : null;
+  const selectedDetailDeltaText = selectedDetailDelta == null || selectedDetailPreviousNumeric == null
+    ? undefined
+    : selectedDetailDeltaFormatter
+      ? selectedDetailDeltaFormatter(selectedDetailNumeric as number, selectedDetailPreviousNumeric, selectedDetailPreviousLabel)
+      : `${selectedDetailDelta > 0 ? "Up" : selectedDetailDelta < 0 ? "Down" : "No change"}${selectedDetailDelta === 0 ? "" : ` ${Math.abs(selectedDetailDelta).toFixed(1)}`} ${selectedDetailPreviousLabel ? `from ${selectedDetailPreviousLabel}` : ""}`.trim();
+  const selectedDetailGoal = referenceLines.find((line) => line.kind === "goal");
+  const selectedDetailGoalText = selectedDetailNumeric != null && selectedDetailGoal && selectedDetailGoalFormatter
+    ? selectedDetailGoalFormatter(selectedDetailNumeric, selectedDetailGoal)
+    : undefined;
   const hasRangeSummary = !hideWindowSummary && Boolean(firstVisibleLabel && lastVisibleLabel);
   const hasDeltaSummary = !hideDeltaSummary && Boolean(deltaSummary);
 
@@ -893,7 +940,7 @@ export default function VisxTrendChartCard({
     >
       {!hideChartHeader ? renderHeader() : null}
 
-      {resolvedReadoutMode === "statRow" ? (
+      {selectedDetailMode !== "card" && resolvedReadoutMode === "statRow" ? (
         <div
           data-testid={`${resolvedTestIdBase}:readout`}
           className="mb-4 grid"
@@ -993,7 +1040,17 @@ export default function VisxTrendChartCard({
             aria-label={title}
             data-testid={`${resolvedTestIdBase}:svg`}
             data-y-axis-side={yAxisSide}
+            data-curve-mode={curveMode}
+            data-area-fill={areaFill ? "true" : "false"}
           >
+            {areaFill ? (
+              <defs>
+                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.2} />
+                  <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.015} />
+                </linearGradient>
+              </defs>
+            ) : null}
             <Group left={margin.left} top={margin.top}>
               <GridRows
                 scale={yScale}
@@ -1074,6 +1131,22 @@ export default function VisxTrendChartCard({
                   />
                 ) : null}
 
+                {referenceLines.map((reference, index) => {
+                  if (!Number.isFinite(reference.value)) return null;
+                  const y = yScale(reference.value);
+                  if (y < 0 || y > innerHeight) return null;
+                  return (
+                    <g key={`${reference.kind ?? "reference"}-${reference.value}-${index}`} data-testid={`${resolvedTestIdBase}:reference-line`}>
+                      <line x1={0} x2={innerWidth} y1={y} y2={y} stroke="var(--muted)" strokeOpacity={0.55} strokeWidth={1.25} strokeDasharray="4 5" />
+                      {reference.label ? (
+                        <text x={innerWidth - 4} y={Math.max(11, y - 6)} textAnchor="end" fill="var(--muted)" fontSize={10} fontWeight={600}>
+                          {reference.label}
+                        </text>
+                      ) : null}
+                    </g>
+                  );
+                })}
+
                 {series.map((item) => {
                   const seriesPoints = chartPoints.filter(
                     (point) =>
@@ -1084,12 +1157,25 @@ export default function VisxTrendChartCard({
 
                   return (
                     <g key={item.key}>
+                      {areaFill && item === series[0] ? (
+                        <AreaClosed<ChartPoint>
+                          data-testid={`${resolvedTestIdBase}:area-fill`}
+                          data={seriesPoints}
+                          x={(point) => point.x}
+                          y={(point) => yScale(point.datum[item.key] as number)}
+                          yScale={yScale}
+                          fill={`url(#${gradientId})`}
+                          curve={curveMode === "smooth" ? curveMonotoneX : undefined}
+                        />
+                      ) : null}
                       <LinePath<ChartPoint>
+                        data-testid={`${resolvedTestIdBase}:series-line`}
                         data={seriesPoints}
                         x={(point) => point.x}
                         y={(point) => yScale(point.datum[item.key] as number)}
                         stroke={stroke}
                         strokeWidth={3}
+                        curve={curveMode === "smooth" ? curveMonotoneX : undefined}
                       />
                       {seriesPoints.map((point) => (
                         <circle
@@ -1164,6 +1250,20 @@ export default function VisxTrendChartCard({
           <div aria-hidden="true" style={{ width: "100%", height: "100%", minHeight: safeHeight }} />
         )}
       </div>
+
+      {selectedDetailMode === "card" && selectedDetailDatum && selectedDetailNumeric != null ? (
+        <SelectedPointDetail
+          testIdBase={resolvedTestIdBase}
+          pointLabel={selectedDetailLabel}
+          value={selectedDetailValue}
+          rangeLabel={selectedDetailRangeLabel}
+          deltaText={selectedDetailDeltaText}
+          goalDistanceText={selectedDetailGoalText}
+          selected={Boolean(hoverPoint)}
+        />
+      ) : null}
+
+      {supplementalContent}
 
       {data.length > safeWindowSize && !suppressLegacyViewportUi ? (
         paneNavigationMode === "movingPane" ? (

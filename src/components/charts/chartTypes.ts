@@ -56,6 +56,14 @@ export type ReadoutMode = "auto" | "statRow" | "tooltipOnly" | "none";
 export type HeaderBadgeMode = "auto" | "hidden";
 export type PaneNavigationMode = "default" | "movingPane";
 export type YAxisSide = "left" | "right";
+export type CurveMode = "linear" | "smooth";
+export type SelectedDetailMode = "statRow" | "card";
+
+export type ChartReferenceLine = {
+  value: number;
+  label?: string;
+  kind?: "goal" | "reference";
+};
 
 export type TrendChartCardProps = {
   title: string;
@@ -76,6 +84,16 @@ export type TrendChartCardProps = {
 
   yDomainMode?: YDomainMode;
   yAxisSide?: YAxisSide;
+
+  /* optional visual treatments; defaults preserve the established chart style */
+  curveMode?: CurveMode;
+  areaFill?: boolean;
+  selectedDetailMode?: SelectedDetailMode;
+  selectedDetailRangeLabel?: string;
+  selectedDetailDeltaFormatter?: (value: number, previousValue: number, previousLabel: string) => string;
+  selectedDetailGoalFormatter?: (value: number, reference: ChartReferenceLine) => string;
+  referenceLines?: ChartReferenceLine[];
+  supplementalContent?: ReactNode;
 
   /* optional single-series linear trend overlay */
   showTrendLine?: boolean;

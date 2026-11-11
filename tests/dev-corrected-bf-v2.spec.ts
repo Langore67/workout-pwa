@@ -70,7 +70,7 @@ test("Dev renders real corrected body-fat evidence, D/W/M aggregation and config
   await expect(detail).toContainText("Selected point");
   const detailHeader = card.getByTestId("corrected-bf-v2-detail-header");
   await expect(detailHeader).toContainText("Selected point");
-  await expect(detailHeader.locator(".if-cbf-v2-detail-value")).toContainText("%");
+  await expect(detailHeader.locator(".if-chart-detail-value")).toContainText("%");
   await expect(card.getByTestId("corrected-bf-v2-point-change")).toContainText(/Down [\d.]+ points from Oct/);
   await expect(card.getByTestId("corrected-bf-v2-goal-difference")).toContainText(/[\d.]+ points above 15% goal/);
   await expect(detail).not.toContainText("pp");
@@ -106,7 +106,7 @@ test("selected-point detail uses No change and At-goal wording at displayed prec
   await page.goto(new URL("/dev", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
   const card = page.getByTestId("corrected-body-fat-v2");
   await card.getByTestId("corrected-bf-v2-range-W").click();
-  const detailValue = await card.getByTestId("corrected-bf-v2-detail").locator(".if-cbf-v2-detail-value").textContent();
+  const detailValue = await card.getByTestId("corrected-bf-v2-detail").locator(".if-chart-detail-value").textContent();
   const goal = Number.parseFloat(detailValue ?? "");
   expect(Number.isFinite(goal)).toBe(true);
   await page.evaluate(async (targetBodyFatPct) => {
@@ -137,7 +137,7 @@ test("peer-group strip shows the fixed Men 51–59 reference and factual percent
   await expect(peer).toBeVisible();
   const disclosure = peer.getByTestId("corrected-bf-v2-peer-toggle");
   await expect(disclosure).toHaveAttribute("aria-expanded", "true");
-  await expect(peer.locator(".if-cbf-v2-peer-track")).toBeVisible();
+  await expect(peer.locator(".if-peer-track")).toBeVisible();
   const referenceNote = peer.getByText("Approximate NHANES DXA reference; population context only, not a clinical assessment.");
   await expect(referenceNote).toBeVisible();
   await expect(peer).toContainText("Men 51–59");
@@ -152,12 +152,12 @@ test("peer-group strip shows the fixed Men 51–59 reference and factual percent
   await page.keyboard.press("Space");
   await expect(disclosure).toHaveAttribute("aria-expanded", "false");
   await expect(peer.getByTestId("corrected-bf-v2-peer-collapsed-summary")).toContainText("between 10th and 25th percentile");
-  await expect(peer.locator(".if-cbf-v2-peer-track")).toBeHidden();
+  await expect(peer.locator(".if-peer-track")).toBeHidden();
   await expect(referenceNote).toBeHidden();
   await disclosure.focus();
   await page.keyboard.press("Enter");
   await expect(disclosure).toHaveAttribute("aria-expanded", "true");
-  await expect(peer.locator(".if-cbf-v2-peer-track")).toBeVisible();
+  await expect(peer.locator(".if-peer-track")).toBeVisible();
   await expect(referenceNote).toBeVisible();
   await expect(peer.getByText("5th", { exact: true })).toHaveAttribute("title", "5th percentile · 11.5% body fat");
   await expect(peer.getByText("95th", { exact: true })).toHaveAttribute("title", "95th percentile · 44.4% body fat");
@@ -251,8 +251,8 @@ test("experimental chart remains within desktop, tablet, and phone widths and su
     const detail = card.getByTestId("corrected-bf-v2-detail");
     const geometry = await detail.evaluate((element) => {
       const header = element.querySelector('[data-testid="corrected-bf-v2-detail-header"]')!;
-      const date = header.querySelector(".if-cbf-v2-detail-date")!.getBoundingClientRect();
-      const value = header.querySelector(".if-cbf-v2-detail-value")!.getBoundingClientRect();
+      const date = header.querySelector(".if-chart-detail-date")!.getBoundingClientRect();
+      const value = header.querySelector(".if-chart-detail-value")!.getBoundingClientRect();
       const card = element.getBoundingClientRect();
       return {
         dateVisible: date.width > 0 && date.height > 0,
