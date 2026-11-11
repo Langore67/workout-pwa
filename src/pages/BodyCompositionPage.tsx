@@ -112,7 +112,7 @@ import {
   waistToHeightStatus,
 } from "../body/bodyCalculations";
 import { computeHydrationConfidenceFromBodyRows } from "../body/hydrationConfidence";
-import { buildCorrectedBodyFatPeerReference } from "../body/correctedBodyFatPeerReference";
+import { buildBodyFatPeerReference } from "../body/bodyFatPeerReference";
 import {
   buildPhaseQualityInputsFromBodyRows,
   computeStrengthDeltaFromStrengthTrend,
@@ -127,6 +127,8 @@ import {
   type CurrentPhase,
 } from "../config/appConfig";
 import { getProfileGoals } from "../profile/profileGoals";
+
+const MODERN_BODY_COMPOSITION_SERIES_STROKE = "var(--accent)";
 
 type Mode = CurrentPhase;
 type WeekMonthChartTimeRange = Extract<ChartTimeRange, "W" | "M">;
@@ -203,6 +205,15 @@ function fmtSnapshotDate(ms?: number) {
 function formatBodyFatPct(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return "—";
   return `${value.toFixed(1)}%`;
+}
+
+function formatCompactMetric(value: number, unit: "lb" | "in" | "%"): string {
+  const rounded = Number(value.toFixed(1));
+  return `${rounded}${unit === "%" ? "" : " "}${unit}`;
+}
+
+function rangeName(range: ChartTimeRange): string {
+  return range === "D" ? "Daily" : range === "W" ? "Weekly" : "Monthly";
 }
 
 function formatRatioValue(value: number | null | undefined): string {
@@ -661,6 +672,7 @@ export default function BodyCompositionPage() {
 
       targetWeightLb: goals.targetWeightLb,
       targetBodyFatPct: goals.targetBodyFatPct,
+      targetWaistIn: goals.targetWaistIn,
 
       remainingWeightLb:
         weight != null && goals.targetWeightLb != null
@@ -747,10 +759,29 @@ export default function BodyCompositionPage() {
             key: "value",
             label: "Weight",
             formatter: formatLbs,
-            stroke: "var(--accent)",
+            stroke: MODERN_BODY_COMPOSITION_SERIES_STROKE,
           },
         ] satisfies ChartSeriesConfig[],
         yDomainMode: "auto" as const,
+        modernProps: {
+          curveMode: "smooth" as const,
+          areaFill: true,
+          selectedDetailMode: "card" as const,
+          selectedDetailRangeLabel: rangeName(weightRange),
+          selectedDetailDeltaFormatter: (value: number, previousValue: number, previousLabel: string) => {
+            const difference = Number((value - previousValue).toFixed(1));
+            if (difference === 0) return `No change from ${previousLabel}`;
+            return `${difference < 0 ? "Down" : "Up"} ${Math.abs(difference).toFixed(1)} lb from ${previousLabel}`;
+          },
+          referenceLines: Number.isFinite(latestSnapshot.targetWeightLb)
+            ? [{ value: latestSnapshot.targetWeightLb as number, label: `Goal ${formatCompactMetric(latestSnapshot.targetWeightLb as number, "lb")}`, kind: "goal" as const }]
+            : [],
+          selectedDetailGoalFormatter: (value: number, reference: { value: number }) => {
+            const difference = Number((value - reference.value).toFixed(1));
+            if (difference === 0) return `At ${formatCompactMetric(reference.value, "lb")} goal`;
+            return `${Math.abs(difference).toFixed(1)} lb ${difference > 0 ? "above" : "below"} ${formatCompactMetric(reference.value, "lb")} goal`;
+          },
+        },
         valueFormatter: (value: number | null | undefined) => formatLbs(value),
         emptyMessage: "Add a few weight entries to see the trend.",
       },
@@ -767,10 +798,29 @@ export default function BodyCompositionPage() {
             key: "value",
             label: "Waist",
             formatter: formatInches,
-            stroke: "var(--text)",
+            stroke: MODERN_BODY_COMPOSITION_SERIES_STROKE,
           },
         ] satisfies ChartSeriesConfig[],
         yDomainMode: "tight" as const,
+        modernProps: {
+          curveMode: "smooth" as const,
+          areaFill: true,
+          selectedDetailMode: "card" as const,
+          selectedDetailRangeLabel: rangeName(waistRange),
+          selectedDetailDeltaFormatter: (value: number, previousValue: number, previousLabel: string) => {
+            const difference = Number((value - previousValue).toFixed(1));
+            if (difference === 0) return `No change from ${previousLabel}`;
+            return `${difference < 0 ? "Down" : "Up"} ${Math.abs(difference).toFixed(1)} in from ${previousLabel}`;
+          },
+          referenceLines: Number.isFinite(latestSnapshot.targetWaistIn)
+            ? [{ value: latestSnapshot.targetWaistIn as number, label: `Goal ${formatCompactMetric(latestSnapshot.targetWaistIn as number, "in")}`, kind: "goal" as const }]
+            : [],
+          selectedDetailGoalFormatter: (value: number, reference: { value: number }) => {
+            const difference = Number((value - reference.value).toFixed(1));
+            if (difference === 0) return `At ${formatCompactMetric(reference.value, "in")} goal`;
+            return `${Math.abs(difference).toFixed(1)} in ${difference > 0 ? "above" : "below"} ${formatCompactMetric(reference.value, "in")} goal`;
+          },
+        },
         valueFormatter: (value: number | null | undefined) => formatInches(value),
         emptyMessage: "Add a few waist entries to see the trend.",
       },
@@ -787,10 +837,33 @@ export default function BodyCompositionPage() {
             key: "value",
             label: "Body Fat %",
             formatter: formatBodyFatPct,
-            stroke: "var(--text)",
+            stroke: MODERN_BODY_COMPOSITION_SERIES_STROKE,
           },
         ] satisfies ChartSeriesConfig[],
         yDomainMode: "tight" as const,
+        modernProps: {
+          curveMode: "smooth" as const,
+          areaFill: true,
+          selectedDetailMode: "card" as const,
+          selectedDetailRangeLabel: rangeName(bodyFatRange),
+          selectedDetailDeltaFormatter: (value: number, previousValue: number, previousLabel: string) => {
+            const difference = Number((value - previousValue).toFixed(1));
+            if (difference === 0) return `No change from ${previousLabel}`;
+            return `${difference < 0 ? "Down" : "Up"} ${Math.abs(difference).toFixed(1)} points from ${previousLabel}`;
+          },
+          referenceLines: Number.isFinite(latestSnapshot.targetBodyFatPct)
+            ? [{ value: latestSnapshot.targetBodyFatPct as number, label: `Goal ${formatCompactMetric(latestSnapshot.targetBodyFatPct as number, "%")}`, kind: "goal" as const }]
+            : [],
+          selectedDetailGoalFormatter: (value: number, reference: { value: number }) => {
+            const difference = Number((value - reference.value).toFixed(1));
+            if (difference === 0) return `At ${formatCompactMetric(reference.value, "%")} goal`;
+            return `${Math.abs(difference).toFixed(1)} points ${difference > 0 ? "above" : "below"} ${formatCompactMetric(reference.value, "%")} goal`;
+          },
+          supplementalContent: (() => {
+            const model = buildBodyFatPeerReference(Number(latestSnapshot.bodyFatPct));
+            return model ? <PeerReferenceStrip model={model} testIdBase="Body Fat % Trend" /> : undefined;
+          })(),
+        },
         valueFormatter: (value: number | null | undefined) => formatBodyFatPct(value),
         emptyMessage: "Add body fat % entries to see the trend.",
       },
@@ -807,7 +880,7 @@ export default function BodyCompositionPage() {
             key: "value",
             label: "Corrected BF %",
             formatter: formatBodyFatPct,
-            stroke: "var(--accent)",
+            stroke: MODERN_BODY_COMPOSITION_SERIES_STROKE,
           },
         ] satisfies ChartSeriesConfig[],
         yDomainMode: "tight" as const,
@@ -835,7 +908,7 @@ export default function BodyCompositionPage() {
             return `${Math.abs(difference).toFixed(1)} points ${difference > 0 ? "above" : "below"} ${formatBodyFatPct(reference.value)} goal`;
           },
           supplementalContent: (() => {
-            const model = buildCorrectedBodyFatPeerReference(Number(latestSnapshot.correctedBodyFatPct));
+            const model = buildBodyFatPeerReference(Number(latestSnapshot.correctedBodyFatPct));
             return model ? (
               <PeerReferenceStrip
                 model={model}
@@ -860,10 +933,21 @@ export default function BodyCompositionPage() {
             key: "value",
             label: "Fat Mass",
             formatter: formatLbs,
-            stroke: "var(--text)",
+            stroke: MODERN_BODY_COMPOSITION_SERIES_STROKE,
           },
         ] satisfies ChartSeriesConfig[],
         yDomainMode: "auto" as const,
+        modernProps: {
+          curveMode: "smooth" as const,
+          areaFill: true,
+          selectedDetailMode: "card" as const,
+          selectedDetailRangeLabel: rangeName(fatMassRange),
+          selectedDetailDeltaFormatter: (value: number, previousValue: number, previousLabel: string) => {
+            const difference = Number((value - previousValue).toFixed(1));
+            if (difference === 0) return `No change from ${previousLabel}`;
+            return `${difference < 0 ? "Down" : "Up"} ${Math.abs(difference).toFixed(1)} lb from ${previousLabel}`;
+          },
+        },
         valueFormatter: (value: number | null | undefined) => formatLbs(value),
         emptyMessage: "Add weight and body fat % entries to see fat mass.",
       },
@@ -880,10 +964,21 @@ export default function BodyCompositionPage() {
             key: "value",
             label: "Lean Mass",
             formatter: formatLbs,
-            stroke: "var(--accent)",
+            stroke: MODERN_BODY_COMPOSITION_SERIES_STROKE,
           },
         ] satisfies ChartSeriesConfig[],
         yDomainMode: "auto" as const,
+        modernProps: {
+          curveMode: "smooth" as const,
+          areaFill: true,
+          selectedDetailMode: "card" as const,
+          selectedDetailRangeLabel: rangeName(leanMassRange),
+          selectedDetailDeltaFormatter: (value: number, previousValue: number, previousLabel: string) => {
+            const difference = Number((value - previousValue).toFixed(1));
+            if (difference === 0) return `No change from ${previousLabel}`;
+            return `${difference < 0 ? "Down" : "Up"} ${Math.abs(difference).toFixed(1)} lb from ${previousLabel}`;
+          },
+        },
         valueFormatter: (value: number | null | undefined) => formatLbs(value),
         emptyMessage: "Add weight and body fat % entries to see lean mass.",
       },
@@ -901,10 +996,21 @@ export default function BodyCompositionPage() {
             label: "Corrected Lean Mass",
             shortLabel: "Corr Lean",
             formatter: formatLbs,
-            stroke: "var(--accent)",
+            stroke: MODERN_BODY_COMPOSITION_SERIES_STROKE,
           },
         ] satisfies ChartSeriesConfig[],
         yDomainMode: "auto" as const,
+        modernProps: {
+          curveMode: "smooth" as const,
+          areaFill: true,
+          selectedDetailMode: "card" as const,
+          selectedDetailRangeLabel: rangeName(correctedLeanMassRange),
+          selectedDetailDeltaFormatter: (value: number, previousValue: number, previousLabel: string) => {
+            const difference = Number((value - previousValue).toFixed(1));
+            if (difference === 0) return `No change from ${previousLabel}`;
+            return `${difference < 0 ? "Down" : "Up"} ${Math.abs(difference).toFixed(1)} lb from ${previousLabel}`;
+          },
+        },
         valueFormatter: (value: number | null | undefined) => formatLbs(value),
         emptyMessage: "Add weight, body fat %, and ideally ECW / ICW to see corrected lean mass.",
       },
@@ -981,7 +1087,10 @@ export default function BodyCompositionPage() {
     waistRange,
     weightRange,
     chartRows,
+    latestSnapshot.bodyFatPct,
     latestSnapshot.correctedBodyFatPct,
+    latestSnapshot.targetWeightLb,
+    latestSnapshot.targetWaistIn,
     latestSnapshot.targetBodyFatPct,
   ]);
 
