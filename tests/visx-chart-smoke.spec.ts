@@ -597,7 +597,7 @@ test.describe("VisX chart smoke", () => {
     await expectRenderedVisxTrendChart(page, "performance-strength-signal-trend");
   });
 
-  test("Strength VisX chart hover/readout stays wired", async ({
+  test("Strength VisX chart hover/selected detail stays wired", async ({
     page,
   }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium", "Pointer interaction coverage is chromium-only");
@@ -608,18 +608,114 @@ test.describe("VisX chart smoke", () => {
     await expectRenderedVisxTrendChart(page, "strength-signal-trend");
 
     const card = page.getByTestId("strength-signal-trend:card");
-    const readoutValue = card.getByTestId("strength-signal-trend:readout-value");
-    const readoutLabel = card.getByTestId("strength-signal-trend:readout-label");
+    const detailValue = card.getByTestId("strength-signal-trend:selected-detail-value");
+    const detailLabel = card.getByTestId("strength-signal-trend:selected-detail-label");
     const chart = card.getByTestId("strength-signal-trend:svg");
     const baselineCircles = await chart.locator("circle").count();
 
-    expect(((await readoutValue.textContent()) ?? "").trim()).not.toBe("");
-    expect(((await readoutLabel.textContent()) ?? "").trim()).not.toBe("");
+    expect(((await detailValue.textContent()) ?? "").trim()).not.toBe("");
+    await expect(detailLabel).toContainText("Latest visible point");
     await expect(card.getByTestId("strength-signal-trend:slider-input")).toHaveCount(0);
 
     await hoverVisxChart(page, "strength-signal-trend", 0.5);
 
     await expect.poll(async () => chart.locator("circle").count()).toBeGreaterThan(baselineCircles);
+    await expect(detailLabel).toContainText("Selected point");
+  });
+
+  test("Strength charts opt into modern presentation with their existing range semantics", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium", "Pointer interaction coverage is chromium-only");
+    await seedSharedStrengthTrendData(page);
+    await goto(page, "/strength");
+
+    const id = "relative-strength-trend";
+    const card = page.getByTestId(`${id}:card`);
+    const svg = card.getByTestId(`${id}:svg`);
+    await expect(svg).toHaveAttribute("data-curve-mode", "smooth");
+    await expect(svg).toHaveAttribute("data-area-fill", "true");
+    await expect(card.getByTestId(`${id}:series-line`)).toHaveAttribute("stroke", "var(--accent)");
+    await expect(card.getByTestId(`${id}:selected-detail`)).toBeVisible();
+    await expect(card.getByTestId(`${id}:selected-detail-value`)).toHaveText(/^\d+\.\d{2}$/);
+    await expect(card.getByTestId(`${id}:selected-detail-range`)).toHaveText("Weekly");
+    await expect(card.getByRole("button", { name: "D", exact: true })).toBeVisible();
+    await expect(card.getByRole("button", { name: "W", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(card.getByRole("button", { name: "M", exact: true })).toBeVisible();
+    await expect(card.getByTestId(`${id}:peer-reference`)).toHaveCount(0);
+    await expect(card.getByTestId(`${id}:reference-line`)).toHaveCount(0);
+    await expect(card.getByTestId(`${id}:trend-line`)).toHaveCount(0);
+
+    const overlay = card.getByTestId(`${id}:overlay`);
+    const box = await overlay.boundingBox();
+    if (!box) throw new Error("Relative Strength overlay missing");
+    await overlay.hover({ position: { x: box.width * 0.5, y: box.height / 2 } });
+    await expect(card.getByTestId(`${id}:selected-detail-delta`)).toHaveText(/^(Up|Down) \d+\.\d{2} from |^No change from /);
+
+    const signalId = "strength-signal-trend";
+    const signal = page.getByTestId(`${signalId}:card`);
+    await expect(signal.getByTestId(`${signalId}:svg`)).toHaveAttribute("data-curve-mode", "smooth");
+    await expect(signal.getByTestId(`${signalId}:svg`)).toHaveAttribute("data-area-fill", "true");
+    await expect(signal.getByTestId(`${signalId}:series-line`)).toHaveAttribute("stroke", "var(--accent)");
+    await expect(signal.getByTestId(`${signalId}:selected-detail`)).toBeVisible();
+    await expect(signal.getByTestId(`${signalId}:selected-detail-value`)).toHaveText(/^\d+\.\d{2}$/);
+    await expect(signal.getByTestId(`${signalId}:selected-detail-range`)).toHaveText("Weekly");
+    const signalSection = page
+      .getByText("Strength Signal", { exact: true })
+      .locator("xpath=ancestor::div[contains(@class,'card')][1]");
+    await expect(signalSection.getByRole("button", { name: "W", exact: true }).first()).toHaveClass(/primary/);
+    await expect(signalSection.getByRole("button", { name: "M", exact: true }).first()).toBeVisible();
+    await expect(signal.getByTestId(`${signalId}:peer-reference`)).toHaveCount(0);
+    await expect(signal.getByTestId(`${signalId}:reference-line`)).toHaveCount(0);
+    await expect(signal.getByTestId(`${signalId}:trend-line`)).toHaveCount(0);
+
+    const signalOverlay = signal.getByTestId(`${signalId}:overlay`);
+    const signalBox = await signalOverlay.boundingBox();
+    if (!signalBox) throw new Error("Strength Signal overlay missing");
+    await signalOverlay.hover({ position: { x: signalBox.width * 0.35, y: signalBox.height / 2 } });
+    await expect(signal.getByTestId(`${signalId}:selected-detail-delta`)).toHaveText(/^(Up|Down) \d+\.\d{2} from |^No change from /);
+  });
+
+  test("Strength Signal modern detail is responsive and touch-selectable", async ({ page }, testInfo) => {
+    test.skip(!["chromium", "iphone"].includes(testInfo.project.name), "Responsive coverage uses desktop and iPhone projects");
+    await seedSharedStrengthTrendData(page);
+    await goto(page, "/strength");
+
+    const id = "strength-signal-trend";
+    const card = page.getByTestId(`${id}:card`);
+    await card.scrollIntoViewIfNeeded();
+    await expect(card.getByTestId(`${id}:selected-detail`)).toBeVisible();
+    expect(await card.evaluate((element) => element.scrollWidth <= element.clientWidth && document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+    const overlay = card.getByTestId(`${id}:overlay`);
+    const box = await overlay.boundingBox();
+    if (!box) throw new Error("Strength Signal overlay missing");
+    if (testInfo.project.name === "iphone") {
+      await page.touchscreen.tap(box.x + box.width * 0.35, box.y + box.height / 2);
+    } else {
+      await overlay.hover({ position: { x: box.width * 0.35, y: box.height / 2 } });
+    }
+    await expect(card.getByText(/^Selected point ·/)).toBeVisible();
+  });
+
+  test("Relative Strength modern detail remains responsive and touch-selectable", async ({ page }, testInfo) => {
+    test.skip(!["chromium", "iphone"].includes(testInfo.project.name), "Responsive coverage uses desktop and iPhone projects");
+    await seedSharedStrengthTrendData(page);
+    await goto(page, "/strength");
+
+    const id = "relative-strength-trend";
+    const card = page.getByTestId(`${id}:card`);
+    await card.scrollIntoViewIfNeeded();
+    await expect(card.getByTestId(`${id}:selected-detail`)).toBeVisible();
+    expect(await card.evaluate((element) => element.scrollWidth <= element.clientWidth && document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+    const overlay = card.getByTestId(`${id}:overlay`);
+    const box = await overlay.boundingBox();
+    if (!box) throw new Error("Relative Strength overlay missing");
+    if (testInfo.project.name === "iphone") {
+      await page.touchscreen.tap(box.x + box.width * 0.35, box.y + box.height / 2);
+    } else {
+      await overlay.hover({ position: { x: box.width * 0.35, y: box.height / 2 } });
+    }
+    await expect(card.getByText(/^Selected point ·/)).toBeVisible();
   });
 
   test("Strength page strength signal uses W/M timeline controls and drag surface", async ({
@@ -676,6 +772,9 @@ test.describe("VisX chart smoke", () => {
 
     expect(((await readoutValue.textContent()) ?? "").trim()).not.toBe("");
     expect(((await readoutLabel.textContent()) ?? "").trim()).not.toBe("");
+    await expect(chart).toHaveAttribute("data-curve-mode", "linear");
+    await expect(chart).toHaveAttribute("data-area-fill", "false");
+    await expect(card.getByTestId("performance-strength-signal-trend:selected-detail")).toHaveCount(0);
 
     await hoverVisxChart(page, "performance-strength-signal-trend", 0.5);
 

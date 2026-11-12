@@ -737,7 +737,15 @@ export default function StrengthPage() {
                   </span>
                 }
                 valueFormatter={formatTwoDecimals}
-                readoutMode="statRow"
+                curveMode="smooth"
+                areaFill={true}
+                selectedDetailMode="card"
+                selectedDetailRangeLabel={strengthResolution === "W" ? "Weekly" : "Monthly"}
+                selectedDetailDeltaFormatter={(value, previousValue, previousLabel) => {
+                  const difference = Number((value - previousValue).toFixed(2));
+                  if (difference === 0) return `No change from ${previousLabel}`;
+                  return `${difference < 0 ? "Down" : "Up"} ${Math.abs(difference).toFixed(2)} from ${previousLabel}`;
+                }}
                 compactMetaLineText={strengthSignalCompactMetaLine}
               />
 
@@ -1206,7 +1214,17 @@ export default function StrengthPage() {
                 yAxisSide="right"
                 yDomainMode="auto"
                 showTrendLine={true}
-                readoutMode="statRow"
+                curveMode="smooth"
+                areaFill={true}
+                selectedDetailMode="card"
+                selectedDetailRangeLabel={
+                  relativeStrengthRange === "D" ? "Daily" : relativeStrengthRange === "W" ? "Weekly" : "Monthly"
+                }
+                selectedDetailDeltaFormatter={(value, previousValue, previousLabel) => {
+                  const difference = Number((value - previousValue).toFixed(2));
+                  if (difference === 0) return `No change from ${previousLabel}`;
+                  return `${difference < 0 ? "Down" : "Up"} ${Math.abs(difference).toFixed(2)} from ${previousLabel}`;
+                }}
                 headerControls={
                   <ChartRangeSelector
                     value={relativeStrengthRange}

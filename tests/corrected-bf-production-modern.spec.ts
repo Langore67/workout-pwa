@@ -108,19 +108,9 @@ test("goal line is omitted without a configured goal", async ({ page }) => {
   await expect(card.getByTestId(`${CARD_ID}:selected-detail-goal`)).toHaveCount(0);
 });
 
-test("new archetype visuals remain off for representative existing charts", async ({ page }) => {
+test("retired Confidence Trend remains absent from production", async ({ page }) => {
   await openProductionChart(page, true);
-  for (const id of ["Confidence Trend"]) {
-    const card = page.getByTestId(`${id}:card`);
-    await card.scrollIntoViewIfNeeded();
-    const svg = card.getByTestId(`${id}:svg`);
-    await expect(svg).toHaveAttribute("data-curve-mode", "linear");
-    await expect(svg).toHaveAttribute("data-area-fill", "false");
-    await expect(card.getByTestId(`${id}:readout`)).toBeVisible();
-    await expect(card.getByTestId(`${id}:selected-detail`)).toHaveCount(0);
-    await expect(card.getByTestId(`${id}:reference-line`)).toHaveCount(0);
-    await expect(card.getByTestId(`${id}:peer-reference`)).toHaveCount(0);
-  }
+  await expect(page.getByTestId("Confidence Trend:card")).toHaveCount(0);
 });
 
 test("peer reference domain resolution is deterministic and presentation-only", async ({ page }) => {

@@ -914,25 +914,6 @@ export const informationRegistry = {
         "Log ECW and ICW consistently.",
       ],
     }),
-    confidenceTrend: buildMovingPaneChartEntry({
-      title: "Confidence Trend",
-      ownerPage: "BodyCompositionPage",
-      ownerComponent: "Shared Visx trend chart card",
-      lastReviewedBuild: "2026-04-29-INFO-CHARTS-01",
-      lastReviewedAt: "2026-04-29",
-      summary:
-        "Confidence Trend shows how complete and coherent recent body-composition data has been over time.",
-      whyItMatters:
-        "A clean-looking trend can still be weak if the underlying body data is thin or inconsistent.",
-      howItWorks:
-        "The chart plots recent body-composition confidence values in the shared moving-window chart view.",
-      interpretation: [
-        "Higher confidence means the surrounding body-composition charts are easier to trust.",
-      ],
-      improveConfidence: [
-        "Log weight, waist, body-fat, and hydration markers more consistently.",
-      ],
-    }),
     phaseQuality: {
       title: "Phase Quality",
       ownerPage: "BodyCompositionPage",

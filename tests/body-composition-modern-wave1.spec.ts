@@ -116,13 +116,5 @@ test("Wave 1 remains responsive and non-Wave-1 charts retain archetype defaults"
     const fits = await card.evaluate((element) => element.scrollWidth <= element.clientWidth && document.documentElement.scrollWidth <= window.innerWidth);
     expect(fits).toBe(true);
   }
-  for (const id of ["Confidence Trend"]) {
-    const card = page.getByTestId(`${id}:card`);
-    await card.scrollIntoViewIfNeeded();
-    const svg = card.getByTestId(`${id}:svg`);
-    await expect(svg).toHaveAttribute("data-curve-mode", "linear");
-    await expect(svg).toHaveAttribute("data-area-fill", "false");
-    await expect(card.getByTestId(`${id}:area-fill`)).toHaveCount(0);
-    await expect(card.getByTestId(`${id}:selected-detail`)).toHaveCount(0);
-  }
+  await expect(page.getByTestId("Confidence Trend:card")).toHaveCount(0);
 });
