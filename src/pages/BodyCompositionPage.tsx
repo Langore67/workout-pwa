@@ -189,14 +189,6 @@ const BODY_COMP_INFO_CONTENT = {
    Breadcrumb 1 — Helpers
    ============================================================================ */
 
-function fmtShortDate(ms: number) {
-  const d = new Date(ms);
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-}
-
 function fmtSnapshotDate(ms?: number) {
   if (!ms || !Number.isFinite(ms)) return "—";
   const d = new Date(ms);
@@ -746,14 +738,6 @@ export default function BodyCompositionPage() {
      ========================================================================== */
 
   const chartConfigs = useMemo(() => {
-    const confidenceData: ChartDatum[] = chartRows
-      .map((r) => ({
-        label: fmtShortDate(sharedPickTime(r)),
-        value: getBodyCompConfidence(r as any),
-        date: fmtShortDate(sharedPickTime(r)),
-      }))
-      .filter((r) => r.value != null);
-
     return [
       {
         title: "Weight Trend",
@@ -1052,10 +1036,21 @@ export default function BodyCompositionPage() {
             key: "value",
             label: "TBW",
             formatter: formatLbs,
-            stroke: "var(--text)",
+            stroke: MODERN_BODY_COMPOSITION_SERIES_STROKE,
           },
         ] satisfies ChartSeriesConfig[],
         yDomainMode: "auto" as const,
+        modernProps: {
+          curveMode: "smooth" as const,
+          areaFill: true,
+          selectedDetailMode: "card" as const,
+          selectedDetailRangeLabel: rangeName(tbwRange),
+          selectedDetailDeltaFormatter: (value: number, previousValue: number, previousLabel: string) => {
+            const difference = Number((value - previousValue).toFixed(1));
+            if (difference === 0) return `No change from ${previousLabel}`;
+            return `${difference < 0 ? "Down" : "Up"} ${Math.abs(difference).toFixed(1)} lb from ${previousLabel}`;
+          },
+        },
         valueFormatter: (value: number | null | undefined) => formatLbs(value),
         emptyMessage: "Add ECW and ICW entries to see TBW.",
       },
@@ -1073,32 +1068,24 @@ export default function BodyCompositionPage() {
             label: "Fluid Ratio",
             formatter: (value: number | null | undefined) =>
               value == null || !Number.isFinite(value) ? "—" : value.toFixed(3),
-            stroke: "var(--text)",
+            stroke: MODERN_BODY_COMPOSITION_SERIES_STROKE,
           },
         ] satisfies ChartSeriesConfig[],
         yDomainMode: "tight" as const,
+        modernProps: {
+          curveMode: "smooth" as const,
+          areaFill: true,
+          selectedDetailMode: "card" as const,
+          selectedDetailRangeLabel: rangeName(fluidRatioRange),
+          selectedDetailDeltaFormatter: (value: number, previousValue: number, previousLabel: string) => {
+            const difference = Number((value - previousValue).toFixed(3));
+            if (difference === 0) return `No change from ${previousLabel}`;
+            return `${difference < 0 ? "Down" : "Up"} ${Math.abs(difference).toFixed(3)} from ${previousLabel}`;
+          },
+        },
         valueFormatter: (value: number | null | undefined) =>
           value == null || !Number.isFinite(value) ? "—" : value.toFixed(3),
         emptyMessage: "Add ECW and ICW entries to see fluid ratio.",
-      },
-      {
-        title: "Confidence Trend",
-        infoKey: "confidenceTrend",
-        subtitle: "Body composition data completeness and coherence",
-        data: confidenceData,
-        series: [
-          {
-            key: "value",
-            label: "Confidence",
-            formatter: (value: number | null | undefined) =>
-              value == null || !Number.isFinite(value) ? "—" : `${value.toFixed(0)}/8`,
-            stroke: "var(--accent)",
-          },
-        ] satisfies ChartSeriesConfig[],
-        yDomainMode: "tight" as const,
-        valueFormatter: (value: number | null | undefined) =>
-          value == null || !Number.isFinite(value) ? "—" : `${value.toFixed(0)}/8`,
-        emptyMessage: "Add body composition entries to see confidence trend.",
       },
     ];
   }, [

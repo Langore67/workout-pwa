@@ -8,25 +8,6 @@ async function goto(page: Page, path: string) {
   await page.goto(new URL(path, BASE_URL).toString(), { waitUntil: "domcontentloaded" });
 }
 
-async function setSliderValue(
-  page: Page,
-  sliderAriaLabel: string,
-  nextValue: number,
-) {
-  await page.evaluate(
-    ({ sliderAriaLabel, nextValue }) => {
-      const slider = document.querySelector<HTMLInputElement>(
-        `input[type="range"][aria-label="${sliderAriaLabel}"]`,
-      );
-      if (!slider) throw new Error(`Slider not found: ${sliderAriaLabel}`);
-      slider.value = String(nextValue);
-      slider.dispatchEvent(new Event("input", { bubbles: true }));
-      slider.dispatchEvent(new Event("change", { bubbles: true }));
-    },
-    { sliderAriaLabel, nextValue },
-  );
-}
-
 async function seedStrengthViewportData(page: Page) {
   return await page.evaluate(async () => {
     // @ts-ignore
@@ -117,41 +98,28 @@ async function seedStrengthViewportData(page: Page) {
   });
 }
 
-test.describe("Strength viewport slider", () => {
+test.describe("Strength moving-pane viewport", () => {
   test.beforeEach(async ({ page }) => {
     await goto(page, "/");
     await resetDexieDb(page);
   });
 
-  test("dragging the Strength Signal viewport updates the visible chart window", async ({
+  test("Strength Signal exposes the current five-point drag surface without a legacy slider", async ({
     page,
   }) => {
     await seedStrengthViewportData(page);
 
     await goto(page, "/strength");
-    await expect(page.getByText("Strength Signal Trend")).toBeVisible({ timeout: 15000 });
-
-    const slider = page.getByRole("slider", { name: "Strength Signal Trend viewport" });
-    await slider.scrollIntoViewIfNeeded();
-    await expect(slider).toBeVisible({ timeout: 15000 });
-    await expect(slider).toHaveAttribute("aria-valuenow", "7");
-    await expect(page.getByText("7-12 of 12")).toBeVisible();
-
-    await setSliderValue(page, "Strength Signal Trend viewport", 2);
-
-    const afterFirstDrag = Number(await slider.getAttribute("aria-valuenow"));
-    expect(Number.isFinite(afterFirstDrag)).toBe(true);
-    expect(afterFirstDrag).toBeLessThan(7);
-    await expect(page.getByText("7-12 of 12")).toBeHidden();
-
-    await setSliderValue(page, "Strength Signal Trend viewport", 5);
-
-    const afterSecondDrag = Number(await slider.getAttribute("aria-valuenow"));
-    expect(Number.isFinite(afterSecondDrag)).toBe(true);
-    expect(afterSecondDrag).toBeGreaterThan(afterFirstDrag);
+    const id = "strength-signal-trend";
+    const overlay = page.getByTestId(`${id}:overlay`);
+    await expect(overlay).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId(`${id}:slider-input`)).toHaveCount(0);
+    const points = page.locator(`[data-testid="${id}:point"]`);
+    await expect(points).toHaveCount(5);
+    await expect(overlay).toHaveCSS("cursor", "grab");
   });
 
-  test("changing the Strength Signal viewport slider updates the visible chart window on iPhone", async ({
+  test("Strength Signal keeps touch selection and omits the retired slider on iPhone", async ({
     page,
   }, testInfo) => {
     test.skip(testInfo.project.name !== "iphone", "Mobile touch path only");
@@ -159,20 +127,15 @@ test.describe("Strength viewport slider", () => {
     await seedStrengthViewportData(page);
 
     await goto(page, "/strength");
-    const slider = page.getByRole("slider", { name: "Strength Signal Trend viewport" });
-    await slider.scrollIntoViewIfNeeded();
-    await expect(slider).toBeVisible({ timeout: 15000 });
-    await expect(slider).toHaveAttribute("aria-valuenow", "7");
-
-    await setSliderValue(page, "Strength Signal Trend viewport", 3);
-
-    await expect.poll(async () => Number(await slider.getAttribute("aria-valuenow"))).toBeLessThan(7);
-
-    const afterFirstTouchDrag = Number(await slider.getAttribute("aria-valuenow"));
-    await setSliderValue(page, "Strength Signal Trend viewport", 6);
-
-    await expect.poll(async () => Number(await slider.getAttribute("aria-valuenow"))).toBeGreaterThan(
-      afterFirstTouchDrag,
-    );
+    const id = "strength-signal-trend";
+    const overlay = page.getByTestId(`${id}:overlay`);
+    await overlay.scrollIntoViewIfNeeded();
+    await expect(overlay).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId(`${id}:slider-input`)).toHaveCount(0);
+    await expect(page.locator(`[data-testid="${id}:point"]`)).toHaveCount(5);
+    const box = await overlay.boundingBox();
+    if (!box) throw new Error("Strength Signal touch surface missing");
+    await page.touchscreen.tap(box.x + box.width * 0.35, box.y + box.height * 0.45);
+    await expect(page.getByTestId(`${id}:selected-detail`)).toContainText("Selected point");
   });
 });

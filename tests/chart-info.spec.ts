@@ -210,36 +210,34 @@ test.describe("Chart info buttons", () => {
     expect(subtitleBox.y).toBeGreaterThan(titleRowBox.y + titleRowBox.height - 2);
   });
 
-  test("Strength chart readout renders value, date, and summary as separate rows", async ({ page }) => {
+  test("Strength chart selected detail keeps label/value together and context below", async ({ page }) => {
     await goto(page, "/strength");
 
-    const value = page.getByTestId("strength-signal-trend:readout-value");
-    const valueRow = page.getByTestId("strength-signal-trend:readout-value-row");
-    const datePill = page.getByTestId("strength-signal-trend:readout-label");
-    const summaryRow = page.getByTestId("strength-signal-trend:readout-summary-row");
+    const detail = page.getByTestId("strength-signal-trend:selected-detail");
+    const value = page.getByTestId("strength-signal-trend:selected-detail-value");
+    const label = page.getByTestId("strength-signal-trend:selected-detail-label");
+    const range = page.getByTestId("strength-signal-trend:selected-detail-range");
 
-    await value.scrollIntoViewIfNeeded();
+    await detail.scrollIntoViewIfNeeded();
+    await expect(detail).toBeVisible();
     await expect(value).toBeVisible();
-    await expect(valueRow).toBeVisible();
-    await expect(datePill).toBeVisible();
-    await expect(summaryRow).toBeVisible();
+    await expect(label).toBeVisible();
+    await expect(range).toHaveText("Weekly");
 
-    const [valueBox, valueRowBox, dateBox, summaryBox] = await Promise.all([
+    const [valueBox, labelBox, rangeBox] = await Promise.all([
       value.boundingBox(),
-      valueRow.boundingBox(),
-      datePill.boundingBox(),
-      summaryRow.boundingBox(),
+      label.boundingBox(),
+      range.boundingBox(),
     ]);
 
     expect(valueBox).not.toBeNull();
-    expect(valueRowBox).not.toBeNull();
-    expect(dateBox).not.toBeNull();
-    expect(summaryBox).not.toBeNull();
+    expect(labelBox).not.toBeNull();
+    expect(rangeBox).not.toBeNull();
 
-    if (!valueBox || !valueRowBox || !dateBox || !summaryBox) return;
+    if (!valueBox || !labelBox || !rangeBox) return;
 
-    expect(dateBox.y + dateBox.height).toBeLessThanOrEqual(valueRowBox.y + valueRowBox.height + 8);
-    expect(summaryBox.y).toBeGreaterThan(valueRowBox.y + valueRowBox.height - 2);
+    expect(Math.abs(valueBox.y - labelBox.y)).toBeLessThanOrEqual(8);
+    expect(rangeBox.y).toBeGreaterThan(labelBox.y);
   });
 
   test("Body charts render info buttons and open chart info modal", async ({ page }) => {
