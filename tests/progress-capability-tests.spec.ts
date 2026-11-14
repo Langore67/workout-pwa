@@ -23,6 +23,15 @@ async function installClipboardMock(page: Page) {
       },
       configurable: true,
     });
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: (command: string) => {
+        if (command !== "copy") return false;
+        const textarea = document.querySelector<HTMLTextAreaElement>('textarea[readonly]');
+        if (textarea) clipboardState.text = textarea.value;
+        return Boolean(textarea);
+      },
+    });
   });
 }
 

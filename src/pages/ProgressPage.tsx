@@ -51,6 +51,7 @@ import { loadPersistedCoachComparisonSnapshot } from "../lib/coachState/coachCom
 import { formatCapabilityDate, labelForCapabilityCategory } from "../lib/capabilityTests";
 import { buildCapabilityTestsSummary } from "../lib/capabilityTestsSummary";
 import { deriveCarryCapabilityResultsFromHistory } from "../lib/deriveCapabilityTestsFromHistory";
+import { copyTextToClipboard } from "../lib/clipboard/copyTextToClipboard";
 
 /* ============================================================================
    Breadcrumb 1 — Tile component
@@ -489,58 +490,6 @@ function CapabilityTestsTile({
       </div>
     </div>
   );
-}
-
-type FallbackCopyResult =
-  | { ok: true; method: "execCommand" }
-  | { ok: false; method: "execCommand"; detail: string };
-
-type CopyResult =
-  | { ok: true; method: "clipboard" | "execCommand" }
-  | { ok: false; method: "clipboard" | "execCommand"; detail: string };
-
-async function fallbackCopyTextToClipboard(text: string): Promise<FallbackCopyResult> {
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.setAttribute("readonly", "true");
-    ta.style.position = "fixed";
-    ta.style.left = "-9999px";
-    ta.style.top = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    ta.setSelectionRange(0, ta.value.length);
-    const ok = document.execCommand("copy");
-    document.body.removeChild(ta);
-    if (!ok) {
-      return { ok: false, method: "execCommand", detail: "execCommand returned false" };
-    }
-    return { ok: true, method: "execCommand" };
-  } catch (err: any) {
-    return {
-      ok: false,
-      method: "execCommand",
-      detail: err?.message || "textarea fallback threw",
-    };
-  }
-}
-
-async function copyTextToClipboard(text: string): Promise<CopyResult> {
-  try {
-    if (!navigator?.clipboard?.writeText) {
-      return { ok: false, method: "clipboard", detail: "clipboard unavailable" };
-    }
-    await navigator.clipboard.writeText(text);
-    return { ok: true, method: "clipboard" };
-  } catch (err: any) {
-    const fallback = await fallbackCopyTextToClipboard(text);
-    if (fallback.ok) return fallback;
-    return {
-      ok: false,
-      method: fallback.method,
-      detail: err?.message || fallback.detail || "copy failed",
-    };
-  }
 }
 
 /* ============================================================================
