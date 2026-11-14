@@ -232,6 +232,58 @@ test("coach export includes recent training signals section", async () => {
   expect(text).not.toContain("Lower B");
 });
 
+test("tightened canonical export removes repeated values and internal progression ids", () => {
+  const metrics = buildMetrics();
+  metrics.goalProgress = buildGoalProgress({
+    goals: { targetWeightLb: 190 },
+    bodyComp: metrics.bodyComp,
+  });
+  metrics.phaseQuality = {
+    title: "CUT QUALITY",
+    quadrant: "ideal_cut",
+    quadrantLabel: "IDEAL CUT",
+    quadrantNote: "Weight down / strength stable",
+    finalStatus: "Aggressive Cut / Muscle-Risk Cut",
+    confidence: "High",
+    tone: "watch",
+    cells: [],
+    metricCards: [],
+    drivers: ["Weight loss rate is aggressive."],
+  } as any;
+  metrics.programmingContext = {
+    strength: { strengthSignal: 1.92, strengthSignalDelta14d: 0.04, anchors: [] },
+    coverage: { windowDays: 7, movementPatterns: [] },
+    trainingRoles: [],
+    strengthConsistency: { currentWeekToDateSessions: 1, previousCompleteWeekSessions: 2, rolling14DaySessions: 3 },
+    goals: { targets: [{ label: "Weight", current: 198, target: 190, unit: "lb" }] },
+    constraints: [],
+    exerciseProgression: [{
+      exerciseId: "internal-exercise-uuid",
+      exerciseName: "Bench Press",
+      metricMode: "reps",
+      direction: "similar",
+      observationCount: 2,
+      latestObservationAt: Date.parse("2026-04-25T10:00:00Z"),
+      recentObservations: [
+        { sessionId: "one", observedAt: Date.parse("2026-04-25T10:00:00Z"), load: 225, reps: 5, rir: 2 },
+        { sessionId: "two", observedAt: Date.parse("2026-04-18T10:00:00Z"), load: 220, reps: 5, rir: 2 },
+      ],
+      bestRecentObservation: { sessionId: "one", observedAt: Date.parse("2026-04-25T10:00:00Z"), load: 225, reps: 5, rir: 2 },
+      limitations: [],
+    }],
+  } as any;
+
+  const text = formatCoachExportText(metrics);
+  expect(text.match(/^- Strength Signal: \d/gm)).toHaveLength(1);
+  expect(text.match(/^Goal Targets$/gm)).toHaveLength(1);
+  expect(text).not.toContain("internal-exercise-uuid");
+  expect(text).toContain("Latest: 2026-04-25 | 225x5 | @2 RIR");
+  expect(text).not.toContain("Observation:");
+  expect(text).not.toContain("Strength Session Context");
+  expect(text).toContain("IronForge phase status: Aggressive Cut / Muscle-Risk Cut");
+  expect(text).toContain("Body-change quadrant: IDEAL CUT");
+});
+
 test("coach export weekly volume balance wording uses the larger-over-smaller multiplier and corrected status label", async () => {
   const metrics = buildMetrics();
   metrics.weeklyVolume = {
@@ -550,7 +602,7 @@ test("coach export phase quality hydration caveat uses body confidence", async (
   const phaseSection = getSection(formatCoachExportText(metrics), "Cut / Phase Quality", "Hydration");
 
   expect(phaseSection).toContain("Rapid bodyweight loss may distort impedance-derived metrics.");
-  expect(phaseSection).toContain("- Confidence: Low");
+  expect(phaseSection).toContain("Low confidence");
 });
 
 test("coach export renders validated learnings from coaching memory", async () => {
@@ -709,7 +761,7 @@ test("coach export includes visceral fat section when estimate data exists", asy
   expect(section).toContain("- Direction: Improving");
   expect(section).toContain("- Confidence: Moderate");
   expect(section).toContain(
-    "- Note: Hume visceral fat is an estimate. Use trend alongside waist circumference rather than as an absolute measurement."
+    "- Visceral fat limitation: Hume visceral fat is an estimate. Use trend alongside waist circumference rather than as an absolute measurement."
   );
 });
 
@@ -1082,17 +1134,14 @@ test("coach export lean preservation composite replaces single-factor lean prese
   const text = formatCoachExportText(metrics);
   const section = getSection(text, "Lean Preservation", "Visceral Fat");
 
-  expect(section).toContain("Raw Metrics");
-  expect(section).toContain("- Raw Metrics: Lean Mass: 146.7 lb (14d -1 lb)");
-  expect(section).toContain("Composite");
-  expect(section).toContain("- Composite: Acceptable");
-  expect(section).toContain("- Confidence: High");
-  expect(section).toContain("✓ Strength improving");
-  expect(section).toContain("✓ Waist decreasing");
+  expect(section).toContain("- Composite: Acceptable · High confidence");
+  expect(section).toContain("Lean-preservation evidence:");
+  expect(section).toContain("Strength improving");
+  expect(section).toContain("Waist decreasing");
   expect(section).toContain("Lean mass estimate down 1.0 lb");
   expect(section).toContain("Aggressive rate of weight loss");
   expect(section).toContain("Bioimpedance lean-mass estimates can fluctuate with hydration");
-  expect(text).toContain("- Status: Aggressive Cut / Muscle-Risk Cut");
+  expect(text).toContain("IronForge phase status: Aggressive Cut / Muscle-Risk Cut");
   expect(text).not.toContain("- Lean Preservation: Poor");
 });
 
@@ -1459,7 +1508,7 @@ test("coach export omits missing goal targets cleanly", async () => {
     bodyComp: metrics.bodyComp,
   });
 
-  const section = getSection(formatCoachExportText(metrics), "Goal Targets", "Lean Preservation");
+  const section = getSection(formatCoachExportText(metrics), "Goal Targets", "Performance");
 
   expect(section).toContain("- Weight: 188.6 lb -> 180.0 lb | 8.6 lb remaining");
   expect(section).not.toContain("Body Fat:");
@@ -1848,8 +1897,8 @@ test("coach export includes a short narrative summary and biggest win or risk", 
 
   const text = formatCoachExportText(metrics);
   expect(text).not.toContain("Coach Summary");
-  expect(text.match(/Biggest Win/g) ?? []).toHaveLength(1);
-  expect(text.match(/Biggest Risk/g) ?? []).toHaveLength(1);
+  expect(text).not.toContain("Biggest Win");
+  expect(text).not.toContain("Biggest Risk");
   expect(text).toContain("Goal Targets");
   expect(text).toContain("MTS Row: chest-supported row reinforced Gaz's cues");
 });
@@ -1932,15 +1981,13 @@ test("Coach Export uses one executive interpretation and preserves factual cardi
   metrics.aerobicBase = buildAerobicBaseContext([walk], { asOf: metrics.generatedAt });
 
   const text = formatCoachExportText(metrics);
-  const snapshot = getSection(text, "Coach Snapshot", "Body Composition");
-  const programmingIndex = text.indexOf("Programming Intelligence");
-  const programmingText = programmingIndex >= 0 ? text.slice(programmingIndex, text.indexOf("Lean Preservation", programmingIndex) > programmingIndex ? text.indexOf("Lean Preservation", programmingIndex) : undefined) : "";
+  const snapshot = getSection(text, "Current Context", "Evidence Quality");
 
   expect(text).not.toContain("Coach Summary");
   expect(snapshot.match(/^- Status:/gm) ?? []).toHaveLength(1);
-  expect(text.match(/Biggest Win/g) ?? []).toHaveLength(1);
-  expect(text.match(/Biggest Risk/g) ?? []).toHaveLength(1);
-  expect(snapshot.match(/^- Today:/gm) ?? []).toHaveLength(1);
+  expect(text).not.toContain("Biggest Win");
+  expect(text).not.toContain("Biggest Risk");
+  expect(snapshot.match(/^- Current focus:/gm) ?? []).toHaveLength(1);
   expect(text).not.toContain("Why This Status");
   expect(text).not.toContain("Fat Loss:");
   expect(text).not.toContain("Muscle Preservation");
@@ -1952,10 +1999,8 @@ test("Coach Export uses one executive interpretation and preserves factual cardi
   expect(text).not.toContain("Cardio Status: Solid");
   expect(text).toContain("Cardio");
   expect(text).toContain("Aerobic Base Exposure");
-  expect(text).toContain("Cardio sessions missing usable zone evidence: 1");
-  expect(text).toContain("Programming Intelligence");
-  expect(programmingText).not.toContain("- Status:");
-  expect(programmingText).not.toContain("- Summary:");
+  expect(text).toContain("Missing usable zone evidence: 1 current week");
+  expect(text).not.toContain("Programming Intelligence");
   expect(text).not.toContain("Coaching Actions");
 });
 

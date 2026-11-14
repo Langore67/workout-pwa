@@ -45,16 +45,20 @@ function formatAerobicBaseWindow(window: AerobicBaseWindow, title: string) {
 
 function renderAerobicBaseContext(context?: AerobicBaseContext) {
   if (!context) return [] as string[];
+  const windows = [
+    ["current week", context.currentWeekToDate],
+    ["previous week", context.previousCompleteWeek],
+    ["rolling 14d", context.rolling14Days],
+  ] as const;
+  const limitationSet = [...new Set(windows.flatMap(([, window]) => window.limitations))];
   return [
     "Aerobic Base Exposure",
-    ...formatAerobicBaseWindow(context.currentWeekToDate, "Current week-to-date"),
-    "",
-    ...formatAerobicBaseWindow(context.previousCompleteWeek, "Previous complete week"),
-    "",
-    ...formatAerobicBaseWindow(context.rolling14Days, "Rolling 14 days"),
-    "",
-    "Method",
-    "- MapMyWalk/MapMyFitness Zone 3 proxy; this is documented exposure, not a physiological zone classification.",
+    `- Exposure: ${windows.map(([label, window]) => `${Math.round(window.totalAerobicBaseSeconds / 60)} min ${label}`).join(" · ")}`,
+    `- Contributing sessions: ${windows.map(([label, window]) => `${window.contributingSessions}/${window.totalCardioSessions} ${label}`).join(" · ")}`,
+    ...(windows.some(([, window]) => window.cardioSessionsWithoutUsableZoneEvidence > 0)
+      ? [`- Missing usable zone evidence: ${windows.map(([label, window]) => `${window.cardioSessionsWithoutUsableZoneEvidence} ${label}`).join(" · ")}`]
+      : []),
+    ...(limitationSet.length ? [`- Limitations: ${limitationSet.join(" ")}`] : []),
     "",
   ];
 }
@@ -139,6 +143,8 @@ function renderEvidenceCompleteness(report: CoachReport) {
 
   const overallBodyConfidence = report.body?.confidenceRows.find((row) => row.label.toLowerCase() === "overall confidence");
   if (overallBodyConfidence) add(`Body composition: ${overallBodyConfidence.value}`);
+  const exportConfidence = report.exportOnly?.strengthSignalDetails?.rows?.find((row) => row.label === "Export Confidence");
+  if (exportConfidence) add(`Strength export: ${exportConfidence.value}`);
 
   return included ? [...lines, ""] : [];
 }
@@ -160,27 +166,30 @@ function compactCardioLimitations(group: CardioProgressionContext["groups"][numb
   return [...new Set(compact)];
 }
 
-function renderTrainingExposure(context?: TrainingExposureContext) {
+function compactWeeklySchedule(schedule?: IntendedWeeklyScheduleContext) {
+  if (!schedule) return [] as string[];
+  if (schedule.status === "unconfigured") return ["- Week: not configured"];
+  const entries = schedule.entries.map((entry) =>
+    entry.dayType === "recovery"
+      ? `${entry.dayName.slice(0, 3)} Recovery`
+      : `${entry.dayName.slice(0, 3)} ${entry.sessionName}${entry.focus ? ` (${entry.focus})` : ""}`
+  );
+  return [
+    `- Schedule: ${schedule.status}${schedule.status === "inactive" ? " (inactive)" : ""}`,
+    `- Week: ${entries.join(" · ")}`,
+  ];
+}
+
+function renderTrainingExposure(context?: TrainingExposureContext, intendedSchedule?: IntendedWeeklyScheduleContext) {
   if (!context) return [] as string[];
   const calendar = context.calendar;
   const schedule = calendar.schedule;
   const lines = [
-    "Training Calendar",
-    `- Today: ${calendar.dayName}, ${formatLocalDateKey(calendar.localDate, { month: "short", day: "numeric", year: "numeric" })}`,
-    `- Current week: ${formatLocalDateKey(calendar.weekStartLocalDate)}–${formatLocalDateKey(calendar.weekEndLocalDate)}`,
-    "- Current-week status: in progress",
-    `- Calendar days started: ${calendar.calendarDaysStarted} of 7`,
-    `- Calendar days remaining: ${calendar.calendarDaysRemaining}`,
-    `- Completed strength sessions: ${calendar.completedStrengthSessionsWeekToDate}`,
-    `- Completed dedicated cardio sessions: ${calendar.completedDedicatedCardioSessionsWeekToDate}`,
-    `- Schedule status: ${schedule.status}`,
+    "Training Exposure / Schedule",
+    `- Today: ${calendar.dayName}, ${formatLocalDateKey(calendar.localDate, { month: "short", day: "numeric", year: "numeric" })}${schedule.todaySessionName ? ` — ${schedule.todaySessionName}` : schedule.todayAssignment ? ` — ${schedule.todayAssignment}` : ""}${schedule.todayFocus ? ` (${schedule.todayFocus})` : ""}`,
+    `- Current week: ${formatLocalDateKey(calendar.weekStartLocalDate)}–${formatLocalDateKey(calendar.weekEndLocalDate)} · day ${calendar.calendarDaysStarted} of 7`,
+    ...compactWeeklySchedule(intendedSchedule),
   ];
-  if (schedule.plannedTrainingDays != null) lines.push(`- Planned training days: ${schedule.plannedTrainingDays}`);
-  if (schedule.plannedTrainingDaysStarted != null) lines.push(`- Planned training days started: ${schedule.plannedTrainingDaysStarted}`);
-  if (schedule.plannedTrainingDaysRemaining != null) lines.push(`- Planned training days remaining: ${schedule.plannedTrainingDaysRemaining}`);
-  if (schedule.todayAssignment) lines.push(`- Today's assignment: ${schedule.todayAssignment}`);
-  if (schedule.todaySessionName) lines.push(`- Today's session: ${schedule.todaySessionName}`);
-  if (schedule.todayFocus) lines.push(`- Today's focus: ${schedule.todayFocus}`);
   lines.push(
     "",
     "Training Exposure",
@@ -190,6 +199,9 @@ function renderTrainingExposure(context?: TrainingExposureContext) {
     "",
     ...formatExposureWindow(context.windows.rolling14Days, "Rolling 14 days")
   );
+  if (context.latestCompletedStrengthSessionAt != null) {
+    lines.push(`- Latest completed strength session: ${new Date(context.latestCompletedStrengthSessionAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`);
+  }
   const currentWeekRoles = context.windows.currentWeekToDate.trainingRoles;
   const hasTaggedRoleExposure = currentWeekRoles.some((role) => role.trainingRole !== "untagged");
   if (hasTaggedRoleExposure) {
@@ -234,6 +246,11 @@ function renderSection(section: CoachReportSection | undefined) {
   }
   lines.push("");
   return lines;
+}
+
+function renderSectionBlocks(section?: CoachReportSection) {
+  if (!section?.blocks?.length) return [] as string[];
+  return section.blocks.flatMap((block) => ["", block.heading, ...block.items.map((item) => `- ${item}`)]);
 }
 
 function renderWeeklyVolume(volume: CoachReport["weeklyVolume"]) {
@@ -381,21 +398,12 @@ function renderProgrammingIntelligence(programming: CoachReport["programming"], 
 
 function renderProgrammingContext(context: CoachReport["programmingContext"]) {
   if (!context) return [] as string[];
-  const number = (value: number) => Number(value.toFixed(3)).toString();
   const lines = ["Programming Context", "", "Strength"];
-  if (typeof context.strength.strengthSignal === "number") {
-    const delta = typeof context.strength.strengthSignalDelta14d === "number"
-      ? ` | 14d ${context.strength.strengthSignalDelta14d >= 0 ? "+" : ""}${context.strength.strengthSignalDelta14d.toFixed(2)}`
-      : "";
-    lines.push(`- Strength Signal: ${context.strength.strengthSignal.toFixed(2)}${delta}`);
-  }
   for (const anchor of context.strength.anchors) {
     lines.push(`- ${anchor.exerciseName ?? anchor.pattern}: ${anchor.benchmark ?? "Benchmark unavailable"} | ${anchor.freshness}${anchor.ageDays != null ? ` | ${anchor.ageDays}d old` : ""}`);
   }
 
   lines.push(...formatRecentExerciseProgressionForCoach(context.exerciseProgression));
-  lines.push(...formatStrengthGoalProgressForCoach(context.strengthGoalProgress));
-  lines.push(...formatIntendedWeeklyScheduleForCoach(context.intendedWeeklySchedule));
 
   if (!context.trainingExposure && context.coverage.movementPatterns.length) {
     lines.push("", `Movement Coverage (${context.coverage.windowDays}d)`);
@@ -416,26 +424,6 @@ function renderProgrammingContext(context: CoachReport["programmingContext"]) {
     }
   }
 
-  const consistency = context.strengthConsistency;
-  if (consistency) {
-    const completed = (value: number) => `${value} completed session${value === 1 ? "" : "s"}`;
-    lines.push("", "Strength Session Context");
-    lines.push(`- Current week-to-date — partial period: ${completed(consistency.currentWeekToDateSessions)}`);
-    lines.push(`- Previous complete week — complete period: ${completed(consistency.previousCompleteWeekSessions)}`);
-    lines.push(`- Rolling 14 days — rolling period: ${completed(consistency.rolling14DaySessions)}`);
-    if (consistency.latestCompletedStrengthSessionAt != null) {
-      lines.push(`- Latest completed strength session: ${new Date(consistency.latestCompletedStrengthSessionAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`);
-    }
-    if (consistency.daysSinceLastCompletedStrengthSession != null) {
-      lines.push(`- Local calendar days since latest session: ${consistency.daysSinceLastCompletedStrengthSession}`);
-    }
-  }
-
-  if (context.goals.targets.length || context.goals.trajectory) {
-    lines.push("", "Goals");
-    if (context.goals.trajectory) lines.push(`- Trajectory: ${context.goals.trajectory}`);
-    for (const target of context.goals.targets) lines.push(`- ${target.label}: ${number(target.current)}${target.unit ? ` ${target.unit}` : ""} current | ${number(target.target)}${target.unit ? ` ${target.unit}` : ""} target`);
-  }
   if (context.constraints.length) lines.push("", "Constraints / Data Quality", ...context.constraints.map((item) => `- ${item}`));
 
   if (context.cardio) {
@@ -459,11 +447,11 @@ function renderProgrammingContext(context: CoachReport["programmingContext"]) {
         if (group.averageHrDifferenceBpm != null) lines.push(`  - Average HR difference: ${Math.abs(group.averageHrDifferenceBpm)} bpm ${group.averageHrDifferenceBpm < 0 ? "lower" : group.averageHrDifferenceBpm > 0 ? "higher" : "unchanged"}`);
         const compactLimitations = compactCardioLimitations(group);
         if (compactLimitations.length) lines.push(`  - Data limitations: ${compactLimitations.join("; ")}`);
-        lines.push("  - Recent observations:");
-        for (const point of group.recentObservations) lines.push(`    - ${formatCardioProgressionPoint(point)}`);
       }
     }
-    const proximity = cardio.strengthProximity?.observations?.slice(0, 5) ?? [];
+    const proximity = (cardio.strengthProximity?.observations ?? [])
+      .filter((observation) => Boolean(observation.strength.performanceSignal))
+      .slice(0, 5);
     if (proximity.length) {
       lines.push("", "Cardio / Strength Proximity");
       for (const observation of proximity) {
@@ -533,10 +521,8 @@ function formatProgressionObservation(
     else if (typeof load === "number" && typeof reps === "number") fields.push(`${compactNumber(load)}x${compactNumber(reps)}`);
     else if (typeof reps === "number") fields.push(`${compactNumber(reps)} reps`);
     else if (typeof observation.maxReps === "number") fields.push(`max reps ${compactNumber(observation.maxReps)}`);
-    if (typeof (set?.rir ?? observation.rir) === "number") fields.push(`RIR ${compactNumber((set?.rir ?? observation.rir) as number)}`);
+    if (typeof (set?.rir ?? observation.rir) === "number") fields.push(`@${compactNumber((set?.rir ?? observation.rir) as number)} RIR`);
     if (typeof observation.e1RM === "number") fields.push(`scored e1RM ${compactNumber(observation.e1RM)}`);
-    if (typeof observation.volume === "number") fields.push(`volume ${compactNumber(observation.volume)}`);
-    if (typeof observation.maxReps === "number" && observation.maxReps !== reps) fields.push(`max reps ${compactNumber(observation.maxReps)}`);
   }
   return fields.join(" | ");
 }
@@ -552,14 +538,14 @@ export function formatRecentExerciseProgressionForCoach(contexts?: ExerciseProgr
     .filter(([, owners]) => owners.length > 1)
     .map(([limitation]) => limitation));
   for (const context of contexts) {
-    lines.push(
-      `- ${context.exerciseName} [${context.exerciseId}] | ${context.metricMode} | direction ${context.direction} | ${context.observationCount} observation${context.observationCount === 1 ? "" : "s"}${context.latestObservationAt ? ` | latest ${new Date(context.latestObservationAt).toISOString()}` : ""}`
-    );
+    const observationLabel = context.observationCount >= 2 ? "comparable observations" : "recent observation";
+    lines.push(`- ${context.exerciseName} — ${context.direction.replace(/_/g, " ")} · ${context.observationCount} ${observationLabel}${context.latestObservationAt ? ` · latest ${new Date(context.latestObservationAt).toISOString().slice(0, 10)}` : ""}`);
+    const latest = context.recentObservations[0];
+    if (latest) lines.push(`  - Latest: ${formatProgressionObservation(latest, context)}`);
     if (context.bestRecentObservation) {
-      lines.push(`  - Best recent: ${formatProgressionObservation(context.bestRecentObservation, context)}`);
-    }
-    for (const observation of context.recentObservations) {
-      lines.push(`  - Observation: ${formatProgressionObservation(observation, context)}`);
+      const best = formatProgressionObservation(context.bestRecentObservation, context);
+      const latestText = latest ? formatProgressionObservation(latest, context) : undefined;
+      if (best !== latestText) lines.push(`  - Best recent: ${best}`);
     }
     for (const limitation of context.limitations) if (!repeatedLimitations.has(limitation)) lines.push(`  - Limitation: ${limitation}`);
   }
@@ -588,21 +574,93 @@ export function formatStrengthGoalProgressForCoach(contexts?: StrengthGoalProgre
   const lines = ["", "Strength Goal Progress"];
   for (const context of contexts) {
     const unit = context.targetMetric === "load" ? "lb" : "reps";
-    lines.push(`- ${context.label ?? context.exerciseName} [${context.exerciseId}]`);
-    lines.push(`  - Goal: ${compactNumber(context.targetValue)} ${unit} ${context.targetMetric === "load" ? "performed load" : "reps"}`);
+    lines.push(`- ${context.label ?? context.exerciseName} — goal ${compactNumber(context.targetValue)} ${unit} ${context.targetMetric === "load" ? "performed load" : "reps"}`);
     const current = formatGoalObservation(context);
     if (current) lines.push(`  - Current comparable: ${current}`);
-    if (typeof context.currentValue === "number") lines.push(`  - Current ${context.targetMetric === "load" ? "performed load" : "reps"}: ${compactNumber(context.currentValue)} ${unit}`);
-    if (typeof context.bestValue === "number") lines.push(`  - Best known ${context.targetMetric === "load" ? "performed load" : "reps"}: ${compactNumber(context.bestValue)} ${unit}`);
-    if (typeof context.supportingScoredE1RM === "number") lines.push(`  - Supporting scored e1RM: ${compactNumber(context.supportingScoredE1RM)} lb`);
+    if (typeof context.bestValue === "number" && context.bestValue !== context.currentValue) lines.push(`  - Best known ${context.targetMetric === "load" ? "performed load" : "reps"}: ${compactNumber(context.bestValue)} ${unit}`);
     if (typeof context.absoluteDistance === "number") lines.push(`  - Distance to goal: ${compactNumber(context.absoluteDistance)} ${unit}`);
-    if (typeof context.percentOfGoal === "number") lines.push(`  - Percent of goal: ${compactNumber(context.percentOfGoal)}%`);
-    lines.push(`  - Direction: ${context.direction}`);
-    lines.push(`  - Observations: ${context.observationCount}`);
-    lines.push(`  - Freshness: ${context.freshness}`);
-    lines.push(`  - Comparability: ${context.comparability}`);
+    else if (typeof context.percentOfGoal === "number") lines.push(`  - Progress: ${compactNumber(context.percentOfGoal)}% of goal`);
+    lines.push(`  - Evidence: ${context.direction} · ${context.freshness} · ${context.comparability}`);
     for (const limitation of context.limitations) lines.push(`  - Limitation: ${limitation}`);
   }
+  return lines;
+}
+
+function renderGoals(report: CoachReport) {
+  const bodyTargets = report.goals?.targets ?? [];
+  const strengthGoals = report.programmingContext?.strengthGoalProgress ?? [];
+  const aerobicGoal = report.aerobicBaseGoalProgress ?? report.programmingContext?.aerobicBaseGoalProgress;
+  if (!bodyTargets.length && !strengthGoals.length && !aerobicGoal) return [] as string[];
+
+  const lines = ["Goals"];
+  if (bodyTargets.length) lines.push("Goal Targets", ...bodyTargets.map((line) => line.text));
+  if (strengthGoals.length) {
+    lines.push("", "Strength", ...formatStrengthGoalProgressForCoach(strengthGoals).slice(2));
+  }
+  if (aerobicGoal) {
+    lines.push(
+      "",
+      "Aerobic Base",
+      `- Weekly target: ${aerobicGoal.targetMinutes} min`,
+      `- Current week: ${aerobicGoal.currentWeek.documentedMinutes} min documented · ${aerobicGoal.currentWeek.remainingDocumentedMinutes} min remaining`,
+      `- Previous complete week: ${aerobicGoal.previousCompleteWeek.documentedMinutes} min documented · ${aerobicGoal.previousCompleteWeek.differenceMinutes >= 0 ? "+" : ""}${aerobicGoal.previousCompleteWeek.differenceMinutes} min vs target`
+    );
+    const missing = aerobicGoal.currentWeek.missingUsableZoneEvidenceSessions + aerobicGoal.previousCompleteWeek.missingUsableZoneEvidenceSessions;
+    if (missing) lines.push(`- Limitation: ${missing} cardio session${missing === 1 ? "" : "s"} missing usable zone evidence across reported goal periods`);
+  }
+  lines.push("");
+  return lines;
+}
+
+function renderMethods(report: CoachReport) {
+  const lines: string[] = [];
+  if (report.performance?.strengthSignal) {
+    lines.push("- Strength Signal: Epley-based e1RM with BW^0.67 normalization and weekly snapshots from overlapping 28-day windows.");
+  }
+  if (report.aerobicBase ?? report.programmingContext?.aerobicBase) {
+    lines.push("- Aerobic-base exposure: MapMyWalk/MapMyFitness Zone 3 proxy; documented exposure, not a physiological zone classification.");
+  }
+  return lines.length ? ["Methods / Definitions", ...lines, ""] : [];
+}
+
+function renderBodyRecovery(report: CoachReport, heading: string, suppressOverallConfidence: boolean) {
+  const body = report.body;
+  const lean = report.exportOnly?.leanPreservation;
+  const visceral = report.exportOnly?.visceralFat;
+  const phase = report.exportOnly?.phaseQuality;
+  if (!body && !report.waistToHeight && !report.hydration && !lean && !visceral && !phase) return [] as string[];
+
+  const lines = ["Body / Recovery", heading];
+  if (body) {
+    lines.push(...(body.values.length ? body.values.map((line) => line.text) : ["- No body trend values available."]));
+    if (body.note) lines.push(`- Method: ${body.note}`);
+  }
+  if (report.waistToHeight?.rows?.length) lines.push(...report.waistToHeight.rows.map((row) => row.text));
+  if (report.hydration?.rows?.length) lines.push(...report.hydration.rows.map((row) => `- Hydration ${row.label.toLowerCase()}: ${row.value}`));
+  if (report.hydration?.note) lines.push(`- Hydration limitation: ${report.hydration.note}`);
+  if (visceral?.rows?.length) lines.push("", "Visceral Fat", ...visceral.rows.map((row) => `- ${row.label}: ${row.value}`));
+  if (visceral?.note) lines.push(`- Visceral fat limitation: ${visceral.note}`);
+  if (body?.confidenceRows.length) {
+    const confidenceRows = body.confidenceRows.filter((row) => !(suppressOverallConfidence && row.label.toLowerCase() === "overall confidence"));
+    if (confidenceRows.length) lines.push("", "Body confidence", ...confidenceRows.map((row) => row.text));
+  }
+  if (phase || lean) {
+    lines.push("", "IronForge derived status");
+    if (phase?.status) lines.push("Cut / Phase Quality", `- IronForge phase status: ${phase.status}${phase.confidence ? ` · ${phase.confidence} confidence` : ""}`);
+    const quadrant = phase?.rows?.find((row) => row.label === "Quadrant");
+    const quadrantNote = phase?.rows?.find((row) => row.label === "Quadrant Note");
+    if (quadrant) lines.push(`- Body-change quadrant: ${quadrant.value}${quadrantNote ? ` · ${quadrantNote.value}` : ""}`);
+    const leanStatus = lean?.rows?.find((row) => row.label === "Composite");
+    const leanConfidence = lean?.rows?.find((row) => row.label === "Confidence");
+    if (leanStatus) lines.push("Lean Preservation", `- Composite: ${leanStatus.value}${leanConfidence ? ` · ${leanConfidence.value} confidence` : ""}`);
+    const phaseDrivers = phase?.blocks?.flatMap((block) => block.items) ?? [];
+    if (phaseDrivers.length) lines.push(`- Phase evidence: ${phaseDrivers.join("; ")}`);
+    const leanEvidence = [...(lean?.positive ?? []), ...(lean?.negative ?? [])];
+    if (leanEvidence.length) lines.push(`- Lean-preservation evidence: ${leanEvidence.join("; ")}`);
+    const leanInterpretation = lean?.blocks?.flatMap((block) => block.items) ?? [];
+    if (leanInterpretation.length) lines.push(`- Lean-preservation limitation: ${leanInterpretation.join(" ")}`);
+  }
+  lines.push("");
   return lines;
 }
 
@@ -628,48 +686,32 @@ export function formatCoachReportText(
     bodyHeadingOverride?: string;
   } = {}
 ) {
-  const body = report.body;
-  const waistToHeight = report.waistToHeight;
-  const hydration = report.hydration;
   const trainingSignals = report.trainingSignals;
   const readinessNotes = report.readinessNotes;
   const dataGaps = report.dataGaps;
   const performance = report.performance;
   const weeklyVolume = report.weeklyVolume;
-  const goals = report.goals;
   const learnings = report.learnings;
   const cardio = report.cardio;
   const exportOnly = report.exportOnly;
   const hasFactualTrainingExposure = Boolean(report.trainingExposure ?? report.programmingContext?.trainingExposure);
   const evidenceCompleteness = renderEvidenceCompleteness(report);
   const bodyConfidenceSummarized = evidenceCompleteness.some((line) => line.startsWith("- Body composition:"));
-  const bodyHeading = options.bodyHeadingOverride ?? body?.heading ?? "Body Values";
+  const bodyHeading = options.bodyHeadingOverride ?? report.body?.heading ?? "Body Values";
 
   const lines = [
     "IronForge Coach Export",
     report.generatedAt ? `Generated: ${report.generatedAt}` : "Generated: Unknown",
     "",
-    "Coach Snapshot",
+    "Current Context",
     `- Status: ${report.snapshot.status}`,
     `- Confidence: ${report.snapshot.confidence}`,
     `- Why: ${report.snapshot.why}`,
-    `- Today: ${report.snapshot.today}`,
-    ...(report.snapshot.biggestWin ? ["", "Biggest Win", `- ${report.snapshot.biggestWin}`] : []),
-    ...(report.snapshot.biggestRisk ? ["", "Biggest Risk", `- ${report.snapshot.biggestRisk}`] : []),
+    `- Current focus: ${report.snapshot.today}`,
     "",
     ...renderExplanation(report.snapshot.explanation, bodyConfidenceSummarized),
     ...evidenceCompleteness,
-    ...(body
-      ? [
-          bodyHeading,
-          ...(body.values.length ? body.values.map((line) => line.text) : ["- No body trend values available."]),
-          ...(body.note ? ["", `- ${body.note}`] : []),
-          ...(body.confidenceRows.length ? ["", "Body Confidence", ...body.confidenceRows.filter((line) => !(bodyConfidenceSummarized && line.label.toLowerCase() === "overall confidence")).map((line) => line.text)] : []),
-          "",
-        ]
-      : []),
-    ...(waistToHeight ? [...renderSection(waistToHeight)] : []),
-    ...(hydration ? [...renderSection(hydration)] : []),
+    ...renderGoals(report),
     ...(performance
       ? [
           "Performance",
@@ -688,20 +730,15 @@ export function formatCoachReportText(
                 ...(performance.anchor.read ? [`- Read: ${performance.anchor.read}`] : []),
               ]
             : []),
+          ...renderSectionBlocks(exportOnly?.strengthSignalDetails),
           "",
         ]
       : []),
     ...(!hasFactualTrainingExposure && weeklyVolume ? [...renderWeeklyVolume(weeklyVolume)] : []),
+    ...renderBodyRecovery(report, bodyHeading, bodyConfidenceSummarized),
     ...(trainingSignals ? [...renderSection(trainingSignals)] : []),
     ...(readinessNotes ? [...renderSection(readinessNotes)] : []),
     ...(dataGaps ? [...renderSection(dataGaps)] : []),
-    ...(goals?.targets.length
-      ? [
-          "Goal Targets",
-          ...(goals.targets.length ? goals.targets.map((line) => line.text) : []),
-          "",
-        ]
-      : []),
     ...(learnings
       ? [
           "Learnings",
@@ -723,17 +760,11 @@ export function formatCoachReportText(
             "",
           ]
       : []),
-    ...renderTrainingExposure(report.trainingExposure ?? report.programmingContext?.trainingExposure),
+    ...renderTrainingExposure(report.trainingExposure ?? report.programmingContext?.trainingExposure, report.programmingContext?.intendedWeeklySchedule),
     ...renderAerobicBaseContext(report.aerobicBase ?? report.programmingContext?.aerobicBase),
-    ...renderAerobicBaseGoalProgress(report.aerobicBaseGoalProgress ?? report.programmingContext?.aerobicBaseGoalProgress),
     ...renderProgrammingContext(report.programmingContext),
-    ...renderProgrammingIntelligence(report.programming, hasFactualTrainingExposure),
     ...(exportOnly
       ? [
-          ...renderSection(exportOnly.leanPreservation),
-          ...renderSection(exportOnly.visceralFat),
-          ...renderSection(exportOnly.phaseQuality),
-          ...renderSection(exportOnly.strengthSignalDetails),
           ...(!hasFactualTrainingExposure ? renderMovementIntelligence(exportOnly.movementIntelligence) : []),
           ...(!hasFactualTrainingExposure && !exportOnly.movementIntelligence?.entries?.length ? renderMovementCoverage(exportOnly.movementCoverage) : []),
           ...(!hasFactualTrainingExposure && !exportOnly.movementIntelligence?.entries?.length ? renderSection(exportOnly.currentMovementFocus) : []),
@@ -741,6 +772,7 @@ export function formatCoachReportText(
           ...renderSection(exportOnly.recentPatterns),
         ]
       : []),
+    ...renderMethods(report),
   ];
 
   return lines.join("\n");
