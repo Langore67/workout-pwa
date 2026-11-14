@@ -1,3 +1,29 @@
+import { IF_WORKOUT_FORMAT_VERSION } from "./ifWorkoutContract";
+
+export const IRONFORGE_COMPLETED_WORKOUT_EXAMPLE = `IF Workout
+Format Version: ${IF_WORKOUT_FORMAT_VERSION}
+Session: Upper A
+Date: 2026-10-24
+Start: 07:45
+End: 08:45
+
+Barbell Bench Press
+warmup 95x10
+work 135x8 @2
+
+Session Notes:
+- Optional factual notes`;
+
+export const IRONFORGE_HANDOFF_RETURN_INSTRUCTIONS = `IronForge import format represents completed work, not a planned workout.
+Do not return planned work as if it were completed. Only confirmed session results belong in the final IF Workout block.
+If the workout was already logged directly in IronForge Gym, do not import it again.
+
+When asked for IF format, return only one parser-compatible completed workout in a plain-text code block using Format Version: ${IF_WORKOUT_FORMAT_VERSION}. Omit unknown values instead of inventing them.
+
+${IRONFORGE_COMPLETED_WORKOUT_EXAMPLE}
+
+Use one exercise name per line and one confirmed set per line beneath it. Supported set types are warmup, work, technique, mobility, corrective, and conditioning. Use BW for body-weight movements and @RIR only when known. Keep observations under Session Notes.`;
+
 export const IRONFORGE_MINIMAL_WALK_EXAMPLE = `IF Workout
 Format Version: 1
 Session: MapMyWalk Walk
@@ -48,19 +74,7 @@ Use the exact IronForge labels shown. Do not rename labels or invent synonyms. O
 
 Minimal strength example:
 
-IF Workout
-Format Version: 1
-Session: Upper A
-Date: 2026-10-24
-Start: 07:45
-End: 08:45
-
-Barbell Bench Press
-warmup 95x10
-work 135x8 @2
-
-Session Notes:
-- Optional factual notes
+${IRONFORGE_COMPLETED_WORKOUT_EXAMPLE}
 
 Minimal walk/cardio example:
 

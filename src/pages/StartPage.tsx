@@ -54,6 +54,7 @@ import { ProgrammingIntelligenceCard } from "../components/coachDashboard/Progra
 import { AICoachingPromptCard } from "../components/AICoachingPromptCard";
 import { WeeklyVolumeCard } from "../components/coachDashboard/WeeklyVolumeCard";
 import { buildCoachExportMetrics } from "../lib/coachExport/buildCoachExportMetrics";
+import { formatCoachExportText } from "../lib/coachExport/formatCoachExportText";
 import type { CoachExportMetrics } from "../lib/coachExport/types";
 import { buildCoachStateFromExportMetrics } from "../lib/coachState/buildCoachState";
 import {
@@ -246,6 +247,7 @@ export default function StartPage() {
   const [coachState, setCoachState] = useState<CoachState | null>(null);
   const [coachMetrics, setCoachMetrics] = useState<CoachExportMetrics | null>(null);
   const [coachReport, setCoachReport] = useState<CoachReport | null>(null);
+  const [coachExportText, setCoachExportText] = useState("");
   const [coachLoading, setCoachLoading] = useState<boolean>(true);
   const [coachStateError, setCoachStateError] = useState<string | null>(null);
   const [hasLoadedCoachDashboard, setHasLoadedCoachDashboard] = useState(false);
@@ -336,6 +338,7 @@ export default function StartPage() {
 
       setCoachMetrics(metrics);
       setCoachState(nextCoachState);
+      setCoachExportText(formatCoachExportText(metrics, priorComparisonSnapshot));
       setCoachReport(
         buildCoachReport({
           coachState: nextCoachState,
@@ -356,6 +359,7 @@ export default function StartPage() {
         setCoachMetrics(null);
         setCoachState(null);
         setCoachReport(null);
+        setCoachExportText("");
         setCoachStateError(err?.message || "Coach dashboard unavailable.");
         setHasLoadedCoachDashboard(true);
       }
@@ -515,6 +519,27 @@ export default function StartPage() {
       completed,
     };
   }, [sessions, templates, weeklySchedule]);
+
+  const gymCoachTodayIntent = useMemo(() => {
+    if (!todaySchedule) {
+      return {
+        dayLabel: new Date().toLocaleDateString(undefined, { weekday: "long" }),
+        assignment: "No scheduled session configured",
+      };
+    }
+    if (todaySchedule.kind === "recovery") {
+      return {
+        dayLabel: todaySchedule.weekday,
+        assignment: "Recovery Day",
+      };
+    }
+    return {
+      dayLabel: todaySchedule.weekday,
+      assignment: todaySchedule.entry.sessionName,
+      focus: todaySchedule.entry.focus,
+      completed: todaySchedule.completed,
+    };
+  }, [todaySchedule]);
 
   /* --------------------------------------------------------------------------
      Breadcrumb 8 — Build template previews + group into folders
@@ -817,7 +842,11 @@ export default function StartPage() {
       ) : null}
 
       <Section>
-        <AICoachingPromptCard />
+        <AICoachingPromptCard
+          coachExportText={coachExportText}
+          coachContextLoading={coachLoading && !hasLoadedCoachDashboard}
+          todayIntent={gymCoachTodayIntent}
+        />
       </Section>
 
       <Section>
