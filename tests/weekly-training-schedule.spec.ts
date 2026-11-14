@@ -244,7 +244,8 @@ test("Coach export reads the persisted schedule without changing training metric
     };
   });
   expect(result.schedule?.status).toBe("active");
-  expect(result.text).toContain("Intended Weekly Schedule");
+  expect(result.text).toContain("Training Exposure / Schedule");
+  expect(result.text).toContain("Week: Mon Recovery");
   expect(result.text).toContain("Upper A");
   expect(result.strengthUnchanged).toBe(true);
   expect(result.volumeUnchanged).toBe(true);

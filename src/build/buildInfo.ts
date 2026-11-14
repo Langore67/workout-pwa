@@ -7,7 +7,7 @@
 
 export const buildInfo = {
   version: "v0.1.0",
-  commit: "296250d",
-  branch: "paste-workout-format-help",
-  builtAt: "2026-11-08T11:38:42.517Z",
+  commit: "6f3cd2f",
+  branch: "feature/gym-coach-handoff-clipboard",
+  builtAt: "2026-11-14T01:25:06.407Z",
 } as const;

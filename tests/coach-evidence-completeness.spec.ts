@@ -82,7 +82,7 @@ test("Evidence Completeness summarizes only existing factual contexts and omits 
   expect(text).toContain("Body composition: High confidence");
   expect(text).not.toContain("Movement classification: 0 of 0");
   expect(text).not.toMatch(/good coverage|poor coverage|needs improvement|coach should|on track/i);
-  expect(text.indexOf("Evidence Completeness")).toBeLessThan(text.indexOf("Training Calendar"));
+  expect(text.indexOf("Evidence Completeness")).toBeLessThan(text.indexOf("Training Exposure / Schedule"));
   expect(text).toContain("Body composition: High confidence");
   expect(text).not.toContain("Overall confidence: High confidence");
   expect(text.match(/Body composition:/g)).toHaveLength(1);
@@ -122,8 +122,8 @@ test("cardio progression limitations are compact while observations and comparis
 
   expect(text).toContain("Comparability: route unknown");
   expect(text).toContain("Data limitations: HR missing in 1 observation; elevation missing in 2 observations; legacy note-derived data in 1 observation; mixed provenance");
-  expect(text).toContain("Recent observations:");
   expect(text).toContain("18:47/mi");
+  expect(text).not.toContain("Recent observations:");
   expect(text).not.toContain("Average HR is unavailable for one or more observations.");
 });
 

@@ -96,7 +96,7 @@ test("Start shows one compact Gym Coach Handoff with resolved today context", as
   await card.getByRole("button", { name: "Advanced / Preview" }).click();
   const preview = await card.getByLabel("Gym Coach Handoff preview").inputValue();
   expect(preview.match(/IronForge Coach Export/g)).toHaveLength(1);
-  expect(preview.match(/Intended Weekly Schedule/g)).toHaveLength(1);
+  expect(preview.match(/Training Exposure \/ Schedule/g)).toHaveLength(1);
   expect(preview).not.toContain("ATHLETE CONTEXT");
 });
 
