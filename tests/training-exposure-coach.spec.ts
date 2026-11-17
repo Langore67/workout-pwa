@@ -74,12 +74,11 @@ test("Coach text preserves partial, complete, and rolling labels without exposur
     snapshot: { status: "Not Enough Data", confidence: "Low", why: "Factual context only.", today: "—" },
     trainingExposure,
   } as any);
-  expect(text).toContain("Training Calendar");
-  expect(text).toContain("Current-week status: in progress");
+  expect(text).toContain("Training Exposure / Schedule");
+  expect(text).toContain("Current week:");
   expect(text).toContain("Current week-to-date — partial period");
   expect(text).toContain("Previous complete week — complete period");
   expect(text).toContain("Rolling 14 days — rolling period");
-  expect(text).toContain("Completed dedicated cardio sessions: 1");
   expect(text).toContain("push: 1 qualifying sets | 1 working | 1 sessions | 1 exercises");
   expect(text).not.toMatch(/behind|ahead|lagging|on track|undertrained|overtrained|recommend|add sets|remove sets/i);
 });

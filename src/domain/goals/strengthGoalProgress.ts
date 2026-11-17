@@ -91,7 +91,14 @@ export function buildStrengthGoalProgressContexts(args: {
       .filter((observation) => finite(valueFor(goal, observation)));
     const allComparable = directlyComparableObservations(goal, canonicalExercise, allHistory)
       .filter((observation) => finite(valueFor(goal, observation)));
-    const currentComparableObservation = recentComparable[0] ?? allComparable[0];
+    const isBodyweightRepGoal = goal.targetMetric === "reps" && canonicalExercise.equipment === "Bodyweight";
+    const bestRecentComparable = recentComparable
+      .slice()
+      .sort((a, b) =>
+        (valueFor(goal, b) as number) - (valueFor(goal, a) as number)
+        || b.observedAt - a.observedAt
+      )[0];
+    const currentComparableObservation = (isBodyweightRepGoal ? bestRecentComparable : recentComparable[0]) ?? allComparable[0];
     const bestComparableObservation = allComparable
       .slice()
       .sort((a, b) => (valueFor(goal, b) as number) - (valueFor(goal, a) as number))[0];
@@ -100,6 +107,9 @@ export function buildStrengthGoalProgressContexts(args: {
     const limitations = [...recent.limitations];
     if (goal.targetMetric === "reps" && canonicalExercise.equipment === "Bodyweight" && recent.recentObservations.length > recentComparable.length) {
       limitations.push("Loaded or assisted observations are not comparable to this bodyweight rep goal.");
+    }
+    if (isBodyweightRepGoal && recentComparable.length) {
+      limitations.push("Bodyweight rep-goal progress uses the best directly comparable completed working set in the recent window; max-test versus submaximal set intent is not structurally recorded.");
     }
     if (!currentComparableObservation) limitations.push("No directly comparable completed working-set observation is available in the recent window.");
     const supportingScoredE1RM = currentComparableObservation?.e1RM;

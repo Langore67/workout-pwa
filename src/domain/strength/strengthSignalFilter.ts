@@ -5,6 +5,7 @@
 /* ========================================================================== */
 
 import { isStrengthTrackType } from "../trackingMode";
+import { resolvePerformedSetIntent } from "../sets/performedSetIntent";
 
 export function isSetEligibleForStrengthSignal(args: {
   set: any;
@@ -15,28 +16,13 @@ export function isSetEligibleForStrengthSignal(args: {
   
   if (!set || !track || !exercise) return false;
   if (!isStrengthTrackType(track.trackType)) return false;
+  if (resolvePerformedSetIntent(set, track) !== "working") return false;
 
   const reps = Number(set?.reps);
   const weight = Number(set?.weight);
 
   if (!Number.isFinite(reps) || reps <= 0) return false;
   if (!Number.isFinite(weight)) return false;
-
-  const setType = String(set?.setType ?? set?.type ?? "")
-    .trim()
-    .toLowerCase();
-
-  if (
-    setType === "warmup" ||
-    setType === "warm-up" ||
-    setType === "warm up" ||
-    setType === "wu" ||
-    setType === "drop" ||
-    setType === "dropset" ||
-    setType === "drop set"
-  ) {
-    return false;
-  }
 
   const role = String(exercise?.strengthSignalRole ?? "")
     .trim()

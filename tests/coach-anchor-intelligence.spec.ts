@@ -142,6 +142,8 @@ test.describe("Anchor Intelligence", () => {
     expect(result.latestFamilyMovement.exerciseName).toBe("Assisted Pull Up");
     expect(result.interpretation).toContain("stale benchmark is Lat Pulldown");
     expect(result.interpretation).toContain("Current vertical pull work uses Assisted Pull Up");
+    expect(result.interpretation).toContain("not direct evidence of Lat Pulldown regression");
+    expect(result.interpretation).toContain("comparison confidence is low");
     expect(result.interpretation).not.toContain("replaced");
   });
 

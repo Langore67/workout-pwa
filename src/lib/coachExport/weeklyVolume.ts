@@ -1,4 +1,5 @@
 ﻿import type { Exercise, Session, SetEntry, Track } from "../../db";
+import { resolvePerformedSetIntent } from "../../domain/sets/performedSetIntent";
 import type {
   CoachExportOverallStatus,
   CoachExportWeeklyVolume,
@@ -207,9 +208,9 @@ function normalizeName(value: string) {
   return String(value ?? "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-function hasMeaningfulSetPayload(set: SetEntry) {
+function hasMeaningfulSetPayload(set: SetEntry, track?: Track) {
   if (set.deletedAt) return false;
-  if (set.setType === "warmup") return false;
+  if (resolvePerformedSetIntent(set, track) !== "working") return false;
   if (typeof set.reps === "number" && Number.isFinite(set.reps) && set.reps > 0) return true;
   if (typeof set.seconds === "number" && Number.isFinite(set.seconds) && set.seconds > 0) return true;
   if (typeof set.weight === "number" && Number.isFinite(set.weight) && set.weight > 0) return true;
@@ -218,10 +219,11 @@ function hasMeaningfulSetPayload(set: SetEntry) {
   return false;
 }
 
-function hasExposureSetPayload(set: SetEntry) {
+function hasExposureSetPayload(set: SetEntry, track?: Track) {
   if (set.deletedAt) return false;
-  if (set.setType === "warmup") return false;
-  return hasMeaningfulSetPayload(set) || set.completedAt != null;
+  const intent = resolvePerformedSetIntent(set, track);
+  if (intent === "warmup") return false;
+  return intent === "technique" || intent === "control" || hasMeaningfulSetPayload(set, track) || set.completedAt != null;
 }
 
 function isStrengthLikeTrackType(trackType: unknown) {
@@ -764,11 +766,12 @@ export function buildWeeklyVolume(args: {
       if (!name) continue;
 
       const contribution = buildContribution(name, exercise, track);
-      const hasSetWork = hasMeaningfulSetPayload(set);
-      const hasExposure = hasExposureSetPayload(set);
+      const hasSetWork = hasMeaningfulSetPayload(set, track);
+      const hasExposure = hasExposureSetPayload(set, track);
       if (!contribution && !hasSetWork && !hasExposure) continue;
 
-      const isExposureTrack = isExposureTrackType(track.trackType);
+      const performedIntent = resolvePerformedSetIntent(set, track);
+      const isExposureTrack = isExposureTrackType(track.trackType) || performedIntent === "technique" || performedIntent === "control";
       const isWorkTrack = isStrengthLikeTrackType(track.trackType);
 
       if (contribution?.prime?.length || contribution?.support?.length) {

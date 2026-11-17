@@ -7,9 +7,9 @@
 
 export const buildInfo = {
   version: "v0.1.0",
-  commit: "49fda27",
-  displayCommit: "49fda27 + local changes",
+  commit: "03b01ed",
+  displayCommit: "03b01ed + local changes",
   branch: "feature/coach-export-tightening",
-  builtAt: "2026-11-17T17:30:32.098Z",
+  builtAt: "2026-11-17T19:32:27.772Z",
   dirty: true,
 } as const;

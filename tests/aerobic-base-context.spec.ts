@@ -102,7 +102,25 @@ test("empty and all-unknown periods distinguish undocumented evidence from docum
     event({ sessionId: "b", startedAt: new Date(2026, 9, 21, 8).getTime(), provider: "other", heartRateZones: zones(600, "Other") }),
   ], { asOf: AS_OF });
   expect(unknown.currentWeekToDate).toMatchObject({ totalAerobicBaseSeconds: 0, totalCardioSessions: 2, contributingSessions: 0, cardioSessionsWithoutUsableZoneEvidence: 2 });
+  expect(unknown.currentWeekToDate.exposureStatus).toBe("unquantified");
   expect(unknown.currentWeekToDate.limitations[0]).toContain("does not estimate that work");
+});
+
+test("Coach Export labels cardio without usable zone evidence as unquantified rather than zero", () => {
+  const aerobicBase = buildAerobicBaseContext([
+    event({ sessionId: "walk-a", startedAt: new Date(2026, 9, 20, 8).getTime() }),
+    event({ sessionId: "walk-b", startedAt: new Date(2026, 9, 21, 8).getTime(), provider: "other" }),
+  ], { asOf: AS_OF });
+  const metrics = minimalMetrics(aerobicBase);
+  const programming = buildCoachProgrammingContext({ metrics, sessions: [], sets: [], tracks: [], exercises: [], asOf: AS_OF });
+  metrics.programmingContext = programming;
+  const state = buildCoachStateFromExportMetrics(metrics);
+  const report = buildCoachReport({ coachState: state, metrics, generatedAt: AS_OF });
+  const text = formatCoachReportText(report);
+  const section = text.split("Aerobic Base Exposure")[1]?.split("Programming Context")[0] ?? "";
+  expect(section).toContain("unquantified current week");
+  expect(section).not.toContain("0 min current week");
+  expect(section).toContain("2 current week");
 });
 
 function minimalMetrics(aerobicBase: ReturnType<typeof buildAerobicBaseContext>) {
@@ -133,9 +151,8 @@ test("Coach layers reuse the same context and render only factual partial-period
   expect(state.aerobicBase).toBe(aerobicBase);
   expect(report.aerobicBase).toBe(aerobicBase);
   expect(text).toContain("Aerobic Base Exposure");
-  expect(text).toContain("Current week-to-date — partial period");
-  expect(text).toContain("Documented aerobic-base proxy exposure: 73 min");
-  expect(text).toContain("Cardio sessions missing usable zone evidence: 1");
+  expect(text).toContain("Exposure: 73 min current week");
+  expect(text).toContain("Missing usable zone evidence: 1 current week");
   const section = text.split("Aerobic Base Exposure")[1]?.split("Programming Context")[0] ?? "";
   expect(section).not.toMatch(/below goal|needs more cardio|on track|insufficient fitness|remaining minutes|recommend/i);
 });

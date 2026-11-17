@@ -203,9 +203,14 @@ function buildLikeForLikeComparisons(walks: CardioWalkEvent[]): string[] {
 }
 
 function formatAerobicBaseWindow(window: AerobicBaseWindow, label: string) {
+  const exposure = window.exposureStatus === "unquantified"
+    ? "unquantified (cardio documented; usable Zone 3 proxy unavailable)"
+    : window.exposureStatus === "none"
+      ? "none documented"
+      : `${Math.round(window.totalAerobicBaseSeconds / 60)} min`;
   return [
     `${label} — ${window.status === "in_progress" ? "partial period" : window.status === "complete" ? "complete period" : "rolling period"}`,
-    `- Documented aerobic-base proxy exposure: ${Math.round(window.totalAerobicBaseSeconds / 60)} min`,
+    `- Documented aerobic-base proxy exposure: ${exposure}`,
     `- Contributing sessions: ${window.contributingSessions}`,
     `- Cardio sessions missing usable zone evidence: ${window.cardioSessionsWithoutUsableZoneEvidence}`,
   ];

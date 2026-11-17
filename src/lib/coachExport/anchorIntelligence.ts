@@ -297,7 +297,10 @@ function interpretationForAnchor(args: {
     return `${anchorName} is ${args.movementStatus === "current" ? "current" : "recently trained"}, while the recorded performance benchmark is ${benchmarkText}.`;
   }
   if (args.latestFamilyMovement) {
-    return `The ${benchmarkText} benchmark is ${anchorName}. Current ${familyName} work uses ${args.latestFamilyMovement.exerciseName}.`;
+    const comparisonLimit = args.movementStatus === "inactive"
+      ? ` This is not direct evidence of ${anchorName} regression; same-exercise comparison confidence is low until that movement is performed again.`
+      : "";
+    return `The ${benchmarkText} benchmark is ${anchorName}. Current ${familyName} work uses ${args.latestFamilyMovement.exerciseName}.${comparisonLimit}`;
   }
   return `The performance benchmark is ${benchmarkText}, and no recent movement in this family was found.`;
 }

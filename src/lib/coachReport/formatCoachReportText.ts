@@ -33,9 +33,14 @@ function renderAerobicBaseGoalProgress(progress?: AerobicBaseGoalProgress) {
 }
 
 function formatAerobicBaseWindow(window: AerobicBaseWindow, title: string) {
+  const exposure = window.exposureStatus === "unquantified"
+    ? "unquantified (cardio documented; usable Zone 3 proxy unavailable)"
+    : window.exposureStatus === "none"
+      ? "none documented"
+      : `${Math.round(window.totalAerobicBaseSeconds / 60)} min`;
   return [
     `${title} — ${window.status === "in_progress" ? "partial period" : window.status === "complete" ? "complete period" : "rolling period"}`,
-    `- Documented aerobic-base proxy exposure: ${Math.round(window.totalAerobicBaseSeconds / 60)} min`,
+    `- Documented aerobic-base proxy exposure: ${exposure}`,
     `- Contributing sessions: ${window.contributingSessions}`,
     `- Dedicated cardio sessions: ${window.totalCardioSessions}`,
     `- Cardio sessions missing usable zone evidence: ${window.cardioSessionsWithoutUsableZoneEvidence}`,
@@ -51,9 +56,14 @@ function renderAerobicBaseContext(context?: AerobicBaseContext) {
     ["rolling 14d", context.rolling14Days],
   ] as const;
   const limitationSet = [...new Set(windows.flatMap(([, window]) => window.limitations))];
+  const exposureText = (window: AerobicBaseWindow) => window.exposureStatus === "unquantified"
+    ? "unquantified"
+    : window.exposureStatus === "none"
+      ? "none documented"
+      : `${Math.round(window.totalAerobicBaseSeconds / 60)} min`;
   return [
     "Aerobic Base Exposure",
-    `- Exposure: ${windows.map(([label, window]) => `${Math.round(window.totalAerobicBaseSeconds / 60)} min ${label}`).join(" · ")}`,
+    `- Exposure: ${windows.map(([label, window]) => `${exposureText(window)} ${label}`).join(" · ")}`,
     `- Contributing sessions: ${windows.map(([label, window]) => `${window.contributingSessions}/${window.totalCardioSessions} ${label}`).join(" · ")}`,
     ...(windows.some(([, window]) => window.cardioSessionsWithoutUsableZoneEvidence > 0)
       ? [`- Missing usable zone evidence: ${windows.map(([label, window]) => `${window.cardioSessionsWithoutUsableZoneEvidence} ${label}`).join(" · ")}`]
@@ -77,6 +87,7 @@ function formatExposureWindow(window: TrainingExposureWindow, title: string) {
     if (movement.dropSets) facts.push(`${movement.dropSets} drop`);
     if (movement.failureSets) facts.push(`${movement.failureSets} failure`);
     if (movement.controlExposures) facts.push(`${movement.controlExposures} control exposures`);
+    if (movement.unilateralSideSets) facts.push(`${movement.unilateralSideSets} side-specific unilateral sets`);
     facts.push(`${movement.sessionCount} sessions`, `${movement.distinctCanonicalExerciseCount} exercises`);
     if (movement.latestExposureAt) facts.push(`latest ${new Date(movement.latestExposureAt).toLocaleString()}`);
     lines.push(`- ${movement.movementPattern}: ${facts.join(" | ")}`);
