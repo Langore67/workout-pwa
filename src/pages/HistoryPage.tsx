@@ -36,6 +36,13 @@ import {
   RECENT_SESSION_NOTES_DEFAULT_DAYS,
   type RecentSessionNoteEvidence,
 } from "../domain/coaching/recentSessionNotes";
+import {
+  buildRecentNotesHandoff,
+  getRecentNotesHandoffDays,
+  RECENT_NOTES_HANDOFF_WINDOWS,
+  type RecentNotesHandoffWindow,
+} from "../domain/coaching/recentNotesHandoff";
+import { copyTextToClipboard } from "../lib/clipboard/copyTextToClipboard";
 
 /* =============================================================================
    Breadcrumb 0 — Types + helpers
@@ -255,6 +262,9 @@ export default function HistoryPage() {
   const activeFilter = parseHistoryFilterKey(searchParams.get("kind"));
   const [expandedPrSessionIds, setExpandedPrSessionIds] = useState<string[]>([]);
   const [visibleCompletedCount, setVisibleCompletedCount] = useState(HISTORY_COMPLETED_BATCH_SIZE);
+  const [handoffWindow, setHandoffWindow] = useState<RecentNotesHandoffWindow>("21d");
+  const [handoffStatus, setHandoffStatus] = useState("");
+  const [handoffBusy, setHandoffBusy] = useState(false);
 
   const sessions = useLiveQuery(async () => {
     const all = (await db.sessions.toArray()) as any[];
@@ -289,6 +299,11 @@ export default function HistoryPage() {
     []
   );
 
+  const handoffNotes = useLiveQuery(
+    () => queryRecentSessionNoteEvidence({ days: getRecentNotesHandoffDays(handoffWindow) }),
+    [handoffWindow]
+  );
+
   const recentNoteGroups = useMemo(() => {
     const groups: Array<{ sessionId: string; sessionName: string; occurredAt: number; notes: RecentSessionNoteEvidence[] }> = [];
     const bySession = new Map<string, (typeof groups)[number]>();
@@ -303,6 +318,46 @@ export default function HistoryPage() {
     }
     return groups;
   }, [recentNotes]);
+
+  const handoffSessionCount = useMemo(
+    () => new Set((handoffNotes ?? []).map((note) => note.sessionId)).size,
+    [handoffNotes]
+  );
+
+  function createHandoff() {
+    return buildRecentNotesHandoff(handoffNotes ?? [], {
+      window: handoffWindow,
+      generatedAt: Date.now(),
+    });
+  }
+
+  async function copyRecentNotesHandoff() {
+    if (!handoffNotes?.length || handoffBusy) return;
+    setHandoffBusy(true);
+    setHandoffStatus("");
+    const handoff = createHandoff();
+    const result = await copyTextToClipboard(handoff.markdown);
+    if (result.ok) {
+      setHandoffStatus(`Copied ${handoff.noteCount} notes from ${handoff.sessionCount} sessions.`);
+    } else {
+      setHandoffStatus("Could not copy the handoff. Use Download .md instead.");
+    }
+    setHandoffBusy(false);
+  }
+
+  function downloadRecentNotesHandoff() {
+    if (!handoffNotes?.length || handoffBusy) return;
+    const handoff = createHandoff();
+    const url = URL.createObjectURL(new Blob([handoff.markdown], { type: "text/markdown;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = handoff.filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    setHandoffStatus(`Downloaded ${handoff.noteCount} notes from ${handoff.sessionCount} sessions.`);
+  }
 
   const trackById = useMemo(() => {
     return new Map((tracks ?? []).map((track) => [track.id, track]));
@@ -805,6 +860,69 @@ export default function HistoryPage() {
             </div>
           </div>
           {recentNotes !== undefined ? <span className="badge">{recentNotes.length}</span> : null}
+        </div>
+
+        <div data-testid="recent-notes-handoff" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
+          <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 7 }}>Handoff window</div>
+          <div className="row" role="group" aria-label="Recent notes handoff window" style={{ gap: 6 }}>
+            {RECENT_NOTES_HANDOFF_WINDOWS.map((option) => {
+              const selected = option.value === handoffWindow;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  className="btn small"
+                  data-testid={`recent-notes-handoff-window:${option.value}`}
+                  aria-pressed={selected}
+                  onClick={() => {
+                    setHandoffWindow(option.value);
+                    setHandoffStatus("");
+                  }}
+                  style={{
+                    background: selected ? "rgba(15,23,42,0.08)" : undefined,
+                    boxShadow: selected ? "inset 0 0 0 1px rgba(15,23,42,0.12)" : undefined,
+                  }}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="muted" data-testid="recent-notes-handoff-counts" style={{ marginTop: 8, fontSize: 12 }}>
+            {handoffNotes === undefined
+              ? "Loading handoff evidence…"
+              : `${handoffSessionCount} ${handoffSessionCount === 1 ? "session" : "sessions"} · ${handoffNotes.length} ${handoffNotes.length === 1 ? "note" : "notes"}`}
+          </div>
+          <div className="row" style={{ gap: 8, marginTop: 9 }}>
+            <button
+              type="button"
+              className="btn primary small"
+              data-testid="copy-recent-notes-handoff"
+              disabled={!handoffNotes?.length || handoffBusy}
+              onClick={copyRecentNotesHandoff}
+            >
+              Copy for AI / OODA
+            </button>
+            <button
+              type="button"
+              className="btn small"
+              data-testid="download-recent-notes-handoff"
+              disabled={!handoffNotes?.length || handoffBusy}
+              onClick={downloadRecentNotesHandoff}
+            >
+              Download .md
+            </button>
+          </div>
+          {handoffNotes !== undefined && handoffNotes.length === 0 ? (
+            <div className="muted" data-testid="recent-notes-handoff-empty" style={{ marginTop: 8, fontSize: 12 }}>
+              No session or set notes are available for this handoff window.
+            </div>
+          ) : null}
+          {handoffStatus ? (
+            <div role="status" data-testid="recent-notes-handoff-status" style={{ marginTop: 8, fontSize: 12 }}>
+              {handoffStatus}
+            </div>
+          ) : null}
         </div>
 
         {recentNotes === undefined ? (
