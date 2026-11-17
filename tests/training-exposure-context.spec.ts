@@ -82,6 +82,38 @@ test("corrective and mobility work becomes control exposure with explicit and un
   ]));
 });
 
+test("technique work is control exposure and unilateral sides remain explicitly side-specific", () => {
+  const rdl = exercise("rdl", { name: "Romanian Deadlift", movementPattern: "hinge" });
+  const left = exercise("bss-left", { name: "Bulgarian Split Squat - Left", movementPattern: "lunge" });
+  const right = exercise("bss-right", { name: "Bulgarian Split Squat - Right", movementPattern: "lunge" });
+  const tracks = [
+    track("rdl-technique", rdl.id, "technique"),
+    track("left-track", left.id),
+    track("right-track", right.id),
+  ];
+  const done = session("done", at(2026, 10, 20));
+  const context = buildTrainingExposureContext({
+    sessions: [done],
+    sets: [
+      set("technique-1", done.id, "rdl-technique", "working"),
+      set("technique-2", done.id, "rdl-technique", "working"),
+      set("left-1", done.id, "left-track", "working"),
+      set("left-2", done.id, "left-track", "working"),
+      set("right-1", done.id, "right-track", "working"),
+      set("right-2", done.id, "right-track", "working"),
+    ],
+    tracks,
+    exercises: [rdl, left, right],
+    asOf: AS_OF,
+  });
+
+  const hinge = context.windows.currentWeekToDate.movementPatterns.find((row) => row.movementPattern === "hinge");
+  const lunge = context.windows.currentWeekToDate.movementPatterns.find((row) => row.movementPattern === "lunge");
+  expect(hinge).toMatchObject({ qualifyingSets: 0, workingSets: 0, controlExposures: 2 });
+  expect(lunge).toMatchObject({ qualifyingSets: 4, workingSets: 4, unilateralSideSets: 4 });
+  expect(context.windows.currentWeekToDate.limitations.join(" ")).toContain("performed sides, not bilateral-equivalent working sets");
+});
+
 test("preserves every explicit training role without inference", () => {
   const roles = ["primary", "accessory", "corrective", "deprioritized"] as const;
   const exercises = roles.map((role) => exercise(role, { movementPattern: "pull", trainingRole: role }));

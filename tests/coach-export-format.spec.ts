@@ -2465,7 +2465,6 @@ test("strength-building session windows exclude cardio-only and class-only sessi
     "upper-c",
     "lower-b",
     "upper-b",
-    "body-core-strength",
     "lower-a",
     "upper-a",
   ]);

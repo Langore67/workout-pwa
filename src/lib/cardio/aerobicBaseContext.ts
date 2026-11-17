@@ -29,6 +29,7 @@ export type AerobicBaseWindow = {
   startLocalDate: string;
   endLocalDate: string;
   status: AerobicBaseWindowStatus;
+  exposureStatus: "documented" | "unquantified" | "none";
   totalAerobicBaseSeconds: number;
   totalCardioSessions: number;
   contributingSessions: number;
@@ -98,6 +99,7 @@ function buildWindow(args: {
   const contributing = observations.filter((observation) => observation.method === "mapmywalk_zone_3_proxy" && observation.aerobicBaseSeconds != null);
   const withZoneData = observations.filter((observation) => observation.hasZoneData).length;
   const withoutUsable = observations.length - contributing.length;
+  const exposureStatus = contributing.length ? "documented" : observations.length ? "unquantified" : "none";
   const limitations: string[] = [];
   if (!observations.length) limitations.push("No dedicated cardio sessions are documented in this period.");
   else if (withoutUsable) limitations.push(`${withoutUsable} cardio session${withoutUsable === 1 ? "" : "s"} ${withoutUsable === 1 ? "lacks" : "lack"} usable MapMyWalk Zone 3 proxy evidence; documented exposure does not estimate that work.`);
@@ -107,6 +109,7 @@ function buildWindow(args: {
     startLocalDate: localDateKey(new Date(args.startAt)),
     endLocalDate: localDateKey(new Date(args.endExclusive ? args.endAt - 1 : args.endAt)),
     status: args.status,
+    exposureStatus,
     totalAerobicBaseSeconds: contributing.reduce((sum, observation) => sum + (observation.aerobicBaseSeconds ?? 0), 0),
     totalCardioSessions: observations.length,
     contributingSessions: contributing.length,

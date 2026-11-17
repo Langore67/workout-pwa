@@ -113,6 +113,26 @@ test("bodyweight rep goals exclude assisted identity and loaded observations", (
   expect(context.supportingScoredE1RM).toBeUndefined();
 });
 
+test("bodyweight rep goals do not treat the latest submaximal ladder rung as current capacity", () => {
+  const context = build({
+    goals: [goal("pull-goal", "pull-up", "reps", 10)],
+    exercises: [exercise("pull-up", "Pull Up", { equipment: "Bodyweight" })],
+    tracks: [track("pull-track", "pull-up", "repsOnly")],
+    sessions: [session("ladder", 1), session("fresh-test", 5)],
+    sets: [
+      working("ladder-1", "ladder", "pull-track", { weight: 0, reps: 1, rir: 4 }),
+      working("ladder-2", "ladder", "pull-track", { weight: 0, reps: 2, rir: 3 }),
+      working("ladder-3", "ladder", "pull-track", { weight: 0, reps: 3, rir: 1 }),
+      working("fresh-six", "fresh-test", "pull-track", { weight: 0, reps: 6, rir: 0 }),
+    ],
+  })[0];
+
+  expect(context).toMatchObject({ currentValue: 6, absoluteDistance: 4, observationCount: 2 });
+  expect(context.currentComparableObservation?.reps).toBe(6);
+  expect(context.limitations.join(" ")).toContain("max-test versus submaximal set intent is not structurally recorded");
+  expect(formatStrengthGoalProgressForCoach([context]).join("\n")).toContain("Current comparable: 6 reps");
+});
+
 test("missing and stale evidence remain factual, and inactive goals are excluded", () => {
   const none = build({ goals: [goal("none", "bench", "load", 200)], sessions: [], sets: [] });
   expect(none[0]).toMatchObject({ observationCount: 0, direction: "insufficient_context", freshness: "unknown", comparability: "unavailable" });
@@ -153,8 +173,8 @@ test("goal progress is read-only and Coach layers reuse the same object", () => 
   const state = buildCoachStateFromExportMetrics({ ...metrics, generatedAt: NOW, bodyComp: {} } as any);
   expect(state.strengthGoalProgress).toBe(progress);
   const text = formatStrengthGoalProgressForCoach(progress).join("\n");
-  expect(text).toContain("Goal: 200 lb performed load");
-  expect(text).toContain("Current performed load: 145 lb");
+  expect(text).toContain("goal 200 lb performed load");
+  expect(text).toContain("Current comparable: 145x8");
   expect(text).toContain("Distance to goal: 55 lb");
   expect(text).not.toMatch(/next weight|deload|plateau|increase load/i);
 });

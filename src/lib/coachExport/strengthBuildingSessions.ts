@@ -1,5 +1,7 @@
 import type { Session, SetEntry, Track } from "../../db";
 
+import { resolvePerformedSetIntent } from "../../domain/sets/performedSetIntent";
+
 function sortRecentCompletedSessions(sessions: Session[]) {
   return (sessions ?? [])
     .filter((session) => !session.deletedAt && Number.isFinite(session.endedAt ?? session.startedAt))
@@ -37,7 +39,7 @@ export function isStrengthBuildingSession(args: {
     if (!hasMeaningfulCompletedWorkData(set)) return false;
     const track = tracksById.get(set.trackId);
     if (!track) return false;
-    return isStrengthBuildingTrackType(track.trackType);
+    return isStrengthBuildingTrackType(track.trackType) && resolvePerformedSetIntent(set, track) === "working";
   });
 }
 

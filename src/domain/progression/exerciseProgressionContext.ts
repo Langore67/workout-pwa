@@ -5,6 +5,7 @@ import {
   type ExerciseResolverIndex,
 } from "../exercises/exerciseResolver";
 import { computeScoredE1RM } from "../../strength/Strength";
+import { resolvePerformedSetIntent } from "../sets/performedSetIntent";
 
 export const EXERCISE_PROGRESSION_LOOKBACK_DAYS = 28;
 export const MAX_EXERCISE_PROGRESSION_OBSERVATIONS = 5;
@@ -93,8 +94,8 @@ function completedSessionTime(session: Session): number | undefined {
   return positive(session.endedAt) && !session.deletedAt ? session.endedAt : undefined;
 }
 
-function completedWorkingSet(set: SetEntry): boolean {
-  return set.setType === "working" && positive(set.completedAt) && !set.deletedAt;
+function completedWorkingSet(set: SetEntry, track?: Track): boolean {
+  return resolvePerformedSetIntent(set, track) === "working" && positive(set.completedAt) && !set.deletedAt;
 }
 
 function setSnapshot(set: SetEntry, mode: MetricMode, options: { bodyweight: boolean; repsOnly: boolean }): ExerciseProgressionBestSet {
@@ -233,7 +234,7 @@ export function buildExerciseProgressionContext(
   const setsBySession = new Map<string, SetEntry[]>();
   const excludedUnloadedSets: SetEntry[] = [];
   for (const set of input.sets ?? []) {
-    if (!canonicalTrackIds.has(set.trackId) || !completedWorkingSet(set)) continue;
+    if (!canonicalTrackIds.has(set.trackId) || !completedWorkingSet(set, tracksById.get(set.trackId))) continue;
     const track = tracksById.get(set.trackId);
     if (mode === "reps") {
       if (!positive(set.reps)) continue;

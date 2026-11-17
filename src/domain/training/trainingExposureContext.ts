@@ -4,6 +4,7 @@ import { classifyAnchorMovementFamily } from "../../lib/coachExport/anchorIntell
 import { buildExerciseResolverIndex, resolveExerciseFromIndex } from "../exercises/exerciseResolver";
 import type { IntendedWeeklyScheduleContext } from "../schedule/weeklyTrainingSchedule";
 import { parseTrainingRole, type TrainingRole } from "../trainingRole";
+import { resolvePerformedSetIntent } from "../sets/performedSetIntent";
 import { buildTrainingCalendarBoundaries, buildTrainingCalendarContext, localDateKey, type TrainingCalendarContext } from "./trainingCalendarContext";
 
 export type ExposureTrainingRole = TrainingRole | "untagged";
@@ -16,6 +17,7 @@ export type MovementExposure = {
   dropSets: number;
   failureSets: number;
   controlExposures: number;
+  unilateralSideSets: number;
   sessionCount: number;
   distinctCanonicalExerciseCount: number;
   latestExposureAt?: number;
@@ -65,6 +67,7 @@ type ExposureEvent = {
   movementPattern?: string;
   trainingRole: ExposureTrainingRole;
   kind: "working" | "drop" | "failure" | "control";
+  unilateralSide: boolean;
   movementPatternExempt?: boolean;
   limitation?: string;
 };
@@ -99,9 +102,13 @@ function exactCompoundMovementFallback(exercise?: Exercise) {
 
 function trackKind(track?: Track): "work" | "control" | undefined {
   const value = String(track?.trackType ?? "").trim().toLowerCase();
-  if (value === "strength" || value === "hypertrophy" || value === "technique") return "work";
-  if (value === "corrective" || value === "mobility") return "control";
+  if (value === "strength" || value === "hypertrophy") return "work";
+  if (value === "technique" || value === "corrective" || value === "mobility") return "control";
   return undefined;
+}
+
+function isSideSpecificExercise(exercise?: Exercise) {
+  return /(?:^|\s|[-–—])(left|right)$/i.test(String(exercise?.name ?? "").trim());
 }
 
 function terminalExercise(source: Exercise | undefined, exercisesById: Map<string, Exercise>) {
@@ -142,9 +149,11 @@ function buildWindow(args: {
   }
   const unclassified = events.filter((event) => !event.movementPattern && event.kind !== "control" && !event.movementPatternExempt);
   const exemptAccessoryCount = events.filter((event) => event.kind !== "control" && event.movementPatternExempt).length;
+  const unilateralSideCount = events.filter((event) => event.kind !== "control" && event.unilateralSide).length;
   const limitations = [...new Set(events.map((event) => event.limitation).filter((value): value is string => !!value))].sort();
   if (unclassified.length) limitations.push(`${unclassified.length} qualifying set${unclassified.length === 1 ? "" : "s"} could not be classified to a movement pattern.`);
   if (exemptAccessoryCount) limitations.push(`${exemptAccessoryCount} qualifying set${exemptAccessoryCount === 1 ? " belongs" : "s belong"} to identified accessory exercises outside the compound movement-pattern taxonomy.`);
+  if (unilateralSideCount) limitations.push(`${unilateralSideCount} side-specific unilateral set${unilateralSideCount === 1 ? " is" : "s are"} counted as performed sides, not bilateral-equivalent working sets.`);
   const movementPatterns = Array.from(movement.entries()).map<MovementExposure>(([movementPattern, rows]) => {
     const work = rows.filter((row) => row.kind !== "control");
     return {
@@ -154,6 +163,7 @@ function buildWindow(args: {
       dropSets: work.filter((row) => row.kind === "drop").length,
       failureSets: work.filter((row) => row.kind === "failure").length,
       controlExposures: rows.filter((row) => row.kind === "control").length,
+      unilateralSideSets: work.filter((row) => row.unilateralSide).length,
       sessionCount: new Set(rows.map((row) => row.sessionId)).size,
       distinctCanonicalExerciseCount: new Set(rows.map((row) => row.canonicalExerciseId).filter(Boolean)).size,
       latestExposureAt: Math.max(...rows.map((row) => row.at)),
@@ -213,7 +223,9 @@ export function buildTrainingExposureContext(args: {
     const track = tracksById.get(set.trackId);
     const kind = trackKind(track);
     if (!track || !kind) continue;
-    if (kind === "work" && set.setType !== "working" && set.setType !== "drop" && set.setType !== "failure") continue;
+    const performedIntent = resolvePerformedSetIntent(set, track);
+    const isControlIntent = performedIntent === "technique" || performedIntent === "control";
+    if (kind === "work" && !isControlIntent && performedIntent !== "working" && performedIntent !== "drop" && performedIntent !== "failure") continue;
     const source = track.exerciseId ? exercisesById.get(track.exerciseId) : undefined;
     let resolved = terminalExercise(source, exercisesById);
     if (!source && track.displayName) {
@@ -239,11 +251,12 @@ export function buildTrainingExposureContext(args: {
       sourceExerciseId: source?.id,
       movementPattern,
       trainingRole: role,
-      kind: kind === "control" ? "control" : set.setType as "working" | "drop" | "failure",
+      kind: kind === "control" || isControlIntent ? "control" : performedIntent as "working" | "drop" | "failure",
+      unilateralSide: isSideSpecificExercise(canonical),
       movementPatternExempt,
       limitation: resolved.limitation ?? (!movementPattern && !movementPatternExempt && kind === "work" ? `Movement pattern is unavailable for ${canonical?.name ?? track.displayName ?? "an unresolved exercise"}.` : undefined),
     });
-    if (kind === "work") strengthSessionIds.add(session.id);
+    if (kind === "work" && !isControlIntent) strengthSessionIds.add(session.id);
   }
 
   const completedStrengthSessions = completedSessions
