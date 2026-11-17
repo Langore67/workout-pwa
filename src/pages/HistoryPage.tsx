@@ -31,6 +31,11 @@ import { summarizeSessionActivityMetrics } from "../lib/activityMetrics";
 import { buildCardioWalkSummary } from "../lib/cardio/buildCardioWalkSummary";
 import { dispatchCoachDashboardRefresh } from "../lib/coachDashboardEvents";
 import type { PRHit } from "../prs";
+import {
+  queryRecentSessionNoteEvidence,
+  RECENT_SESSION_NOTES_DEFAULT_DAYS,
+  type RecentSessionNoteEvidence,
+} from "../domain/coaching/recentSessionNotes";
 
 /* =============================================================================
    Breadcrumb 0 — Types + helpers
@@ -218,6 +223,27 @@ function hasMeaningfulHistorySetData(se: SetEntry) {
   );
 }
 
+function formatRecentNoteSetContext(note: RecentSessionNoteEvidence) {
+  const context = note.setContext;
+  if (!context) return "";
+  const typeLabel = context.setType ? `${context.setType === "working" ? "Work" : context.setType[0].toUpperCase() + context.setType.slice(1)} set` : "Set";
+  const ordinal = context.setNumber ? ` ${context.setNumber}` : "";
+  const performance =
+    typeof context.weight === "number" && typeof context.reps === "number"
+      ? `${context.weight === 0 ? "BW" : context.weight} x ${context.reps}`
+      : typeof context.reps === "number"
+        ? `${context.reps} reps`
+        : typeof context.seconds === "number"
+          ? `${context.seconds}s`
+          : typeof context.distance === "number"
+            ? `${context.distance}${context.distanceUnit ?? "m"}`
+            : "";
+  const rir = typeof context.rir === "number" ? `@${context.rir}` : "";
+  return [note.exerciseName, `${typeLabel}${ordinal}`, [performance, rir].filter(Boolean).join(" ")]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 /* =============================================================================
    Breadcrumb 2 — Page component
    ============================================================================= */
@@ -257,6 +283,26 @@ export default function HistoryPage() {
     if (!table || typeof table.toArray !== "function") return [] as BodyMetricEntry[];
     return (await table.toArray()) as BodyMetricEntry[];
   }, []);
+
+  const recentNotes = useLiveQuery(
+    () => queryRecentSessionNoteEvidence({ days: RECENT_SESSION_NOTES_DEFAULT_DAYS }),
+    []
+  );
+
+  const recentNoteGroups = useMemo(() => {
+    const groups: Array<{ sessionId: string; sessionName: string; occurredAt: number; notes: RecentSessionNoteEvidence[] }> = [];
+    const bySession = new Map<string, (typeof groups)[number]>();
+    for (const note of recentNotes ?? []) {
+      let group = bySession.get(note.sessionId);
+      if (!group) {
+        group = { sessionId: note.sessionId, sessionName: note.sessionName, occurredAt: note.occurredAt, notes: [] };
+        bySession.set(note.sessionId, group);
+        groups.push(group);
+      }
+      group.notes.push(note);
+    }
+    return groups;
+  }, [recentNotes]);
 
   const trackById = useMemo(() => {
     return new Map((tracks ?? []).map((track) => [track.id, track]));
@@ -749,6 +795,55 @@ export default function HistoryPage() {
         })}
       </div>
       <hr />
+
+      <div className="card" data-testid="recent-notes" style={{ marginBottom: 14 }}>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Recent Notes</h3>
+            <div className="muted" data-testid="recent-notes-window" style={{ marginTop: 3, fontSize: 12 }}>
+              Last {RECENT_SESSION_NOTES_DEFAULT_DAYS} days
+            </div>
+          </div>
+          {recentNotes !== undefined ? <span className="badge">{recentNotes.length}</span> : null}
+        </div>
+
+        {recentNotes === undefined ? (
+          <div className="muted" data-testid="recent-notes-loading" style={{ marginTop: 12 }}>Loading…</div>
+        ) : recentNoteGroups.length === 0 ? (
+          <p className="muted" data-testid="recent-notes-empty" style={{ marginTop: 12, marginBottom: 0 }}>
+            No session or set notes recorded in the last 21 days.
+          </p>
+        ) : (
+          <div className="list" data-testid="recent-notes-list" style={{ marginTop: 12, display: "grid", gap: 10 }}>
+            {recentNoteGroups.map((group) => (
+              <div key={group.sessionId} className="card list-card" data-testid={`recent-notes-session:${group.sessionId}`} style={{ padding: 10 }}>
+                <button
+                  type="button"
+                  data-testid={`recent-notes-link:${group.sessionId}`}
+                  onClick={() => openSessionDetails(group.sessionId)}
+                  style={{ border: 0, background: "transparent", padding: 0, cursor: "pointer", textAlign: "left", color: "inherit", font: "inherit" }}
+                >
+                  <span style={{ fontWeight: 600 }}>{fmtDayShort(group.occurredAt)} · {group.sessionName}</span>
+                </button>
+                <div style={{ display: "grid", gap: 10, marginTop: 9 }}>
+                  {group.notes.map((note) => {
+                    const context = formatRecentNoteSetContext(note);
+                    return (
+                      <div key={note.evidenceId} data-testid={`recent-note:${note.evidenceId}`} style={{ borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+                        {context ? <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 3 }}>{context}</div> : null}
+                        <div className="muted" style={{ fontSize: 11, letterSpacing: "0.03em", textTransform: "uppercase" }}>
+                          {note.sourceKind === "session_note" ? "Session note" : "Set note"}
+                        </div>
+                        <div style={{ marginTop: 3, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{note.rawText}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {sessions === undefined ? (
         <div className="muted" data-testid="history-loading">
