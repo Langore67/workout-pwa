@@ -49,11 +49,11 @@ function compareEvidence(a: RecentSessionNoteEvidence, b: RecentSessionNoteEvide
  */
 export function buildRecentSessionNoteEvidence(
   source: RecentSessionNotesSource,
-  options: { now?: number; days?: number } = {}
+  options: { now?: number; days?: number | null } = {}
 ): RecentSessionNoteEvidence[] {
   const now = options.now ?? Date.now();
-  const days = options.days ?? RECENT_SESSION_NOTES_DEFAULT_DAYS;
-  const cutoff = now - days * DAY_MS;
+  const days = options.days === undefined ? RECENT_SESSION_NOTES_DEFAULT_DAYS : options.days;
+  const cutoff = days === null ? Number.NEGATIVE_INFINITY : now - days * DAY_MS;
   const sessions = source.sessions.filter((session) => {
     const endedAt = Number(session.endedAt);
     return (
@@ -128,12 +128,16 @@ export function buildRecentSessionNoteEvidence(
 }
 
 export async function queryRecentSessionNoteEvidence(
-  options: { now?: number; days?: number } = {}
+  options: { now?: number; days?: number | null } = {}
 ): Promise<RecentSessionNoteEvidence[]> {
   const now = options.now ?? Date.now();
-  const days = options.days ?? RECENT_SESSION_NOTES_DEFAULT_DAYS;
-  const cutoff = now - days * DAY_MS;
-  const sessions = (await db.sessions.where("endedAt").between(cutoff, now, true, true).toArray()).filter(
+  const days = options.days === undefined ? RECENT_SESSION_NOTES_DEFAULT_DAYS : options.days;
+  const sessionsInWindow = days === null
+    ? await db.sessions.where("endedAt").above(0).toArray()
+    : await db.sessions.where("endedAt").between(now - days * DAY_MS, now, true, true).toArray();
+  const sessions = sessionsInWindow.filter(
+    (session) => Number(session.endedAt) <= now
+  ).filter(
     (session) => !session.deletedAt
   );
   const sessionIds = sessions.map((session) => session.id);
