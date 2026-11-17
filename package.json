@@ -4,10 +4,12 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/write-build-info.cjs",
     "dev": "vite",
     "prebuild": "node scripts/write-build-info.cjs",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:build-info": "node --test scripts/write-build-info.test.cjs"
   },
   "dependencies": {
     "@visx/axis": "^3.12.0",

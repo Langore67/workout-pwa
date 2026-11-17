@@ -42,6 +42,7 @@ import PasteWorkoutPage from "./pages/PasteWorkoutPage";
 import PerformanceDashboardPage from "./pages/PerformanceDashboardPage";
 import ProfilePage from "./pages/ProfilePage";
 import AboutPage from "./pages/AboutPage";
+import { buildInfo } from "./build/buildInfo";
 /* ============================================================================
    Breadcrumb 1 — Runtime switches
    ============================================================================ */
@@ -425,6 +426,16 @@ export default function App() {
           </Routes>
         </AppErrorBoundary>
       </div>
+
+      <footer className="build-identity-footer" data-testid="build-identity-footer">
+        <NavLink to="/about" aria-label="Open build details">
+          <span>{buildInfo.version}</span>
+          <span aria-hidden="true"> · </span>
+          <span>{buildInfo.displayCommit}</span>
+          <span aria-hidden="true"> · </span>
+          <span>{buildInfo.branch}</span>
+        </NavLink>
+      </footer>
     </>
   );
 }
