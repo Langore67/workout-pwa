@@ -129,7 +129,15 @@ export default function AboutPage() {
             />
             <AboutRow
               label="Build"
-              value={<span style={{ fontFamily: "monospace" }}>{buildInfo.commit}</span>}
+              value={<span data-testid="about-build-id" style={{ fontFamily: "monospace" }}>{buildInfo.displayCommit}</span>}
+            />
+            <AboutRow
+              label="Branch"
+              value={<span data-testid="about-build-branch" style={{ fontFamily: "monospace" }}>{buildInfo.branch}</span>}
+            />
+            <AboutRow
+              label="Source"
+              value={<span data-testid="about-build-source">{buildInfo.dirty ? "Local changes present" : "Clean checkout"}</span>}
             />
             <AboutRow
               label="Built"

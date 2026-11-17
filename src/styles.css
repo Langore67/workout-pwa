@@ -41,6 +41,26 @@ hr{ border:0; border-top:1px solid var(--line); margin:10px 0; }
 .container{ max-width:980px; margin:0 auto; padding:16px; }
 .row{ display:flex; gap:8px; flex-wrap:wrap; }
 
+.build-identity-footer{
+  max-width:980px;
+  margin:0 auto;
+  padding:4px 16px 14px;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.4;
+  text-align:center;
+  overflow-wrap:anywhere;
+}
+.build-identity-footer a{
+  border-radius:6px;
+  padding:3px 5px;
+}
+.build-identity-footer a:hover,
+.build-identity-footer a:focus-visible{
+  color:var(--text);
+  outline:1px solid var(--line2);
+}
+
 .grid{
   display:grid;
   grid-template-columns: 1fr;
