@@ -13,6 +13,8 @@ import type { AerobicBaseGoalProgress } from "../cardio/aerobicBaseGoalProgress"
 import type { CardioStrengthInterferenceContext } from "./cardioStrengthInterferenceContext";
 import type { IntendedWeeklyScheduleContext } from "../../domain/schedule/weeklyTrainingSchedule";
 import type { TrainingExposureContext } from "../../domain/training/trainingExposureContext";
+import type { RecentSessionNoteEvidence } from "../../domain/coaching/recentSessionNotes";
+import type { TodayObservationContext } from "./todayObservationContext";
 
 export type CoachExportMetric = {
   latest: number | null;
@@ -491,6 +493,8 @@ export type CoachExportMetrics = {
   phaseQuality: PhaseQualityResult | null;
   anchorLifts: CoachExportAnchorLift[];
   recentExerciseProgression?: import("../../domain/progression/exerciseProgressionContext").ExerciseProgressionContext[];
+  recentSessionNoteEvidence?: RecentSessionNoteEvidence[];
+  todayObservationContext?: TodayObservationContext;
   strengthGoalProgress?: import("../../domain/goals/strengthGoalProgress").StrengthGoalProgressContext[];
   intendedWeeklySchedule?: IntendedWeeklyScheduleContext;
   trainingExposure?: TrainingExposureContext;

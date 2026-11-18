@@ -40,6 +40,24 @@ export type CoachReportSection = {
   blocks?: CoachReportSectionBlock[];
 };
 
+export type CoachRecentObservation = {
+  evidenceId: string;
+  occurredAt: number;
+  sessionId: string;
+  sessionName: string;
+  sourceKind: "session_note" | "set_note";
+  rawText: string;
+  exerciseName?: string;
+  setId?: string;
+  setContext?: string;
+};
+
+export type CoachRecentObservations = {
+  observations: CoachRecentObservation[];
+  totalCount: number;
+  additionalCount: number;
+};
+
 export type CoachReportAnchor = {
   label: string;
   text: string;
@@ -226,6 +244,7 @@ export type CoachReport = {
   summary?: CoachReportSection;
   hydration?: CoachReportSection;
   trainingSignals?: CoachReportSection;
+  recentSessionObservations?: CoachRecentObservations;
   readinessNotes?: CoachReportSection;
   dataGaps?: CoachReportSection;
   performance?: CoachReportPerformance;
