@@ -48,6 +48,35 @@ function formatAerobicBaseWindow(window: AerobicBaseWindow, title: string) {
   ];
 }
 
+function formatRecentSessionObservations(report: CoachReport) {
+  const section = report.recentSessionObservations;
+  if (!section?.observations.length) return [];
+  const lines = ["Recent Session Observations"];
+  let previousSessionKey = "";
+  for (const observation of section.observations) {
+    const sessionKey = `${observation.sessionId}:${observation.occurredAt}`;
+    if (sessionKey !== previousSessionKey) {
+      if (previousSessionKey) lines.push("");
+      lines.push(
+        `${new Date(observation.occurredAt).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        })} · ${observation.sessionName}`
+      );
+      previousSessionKey = sessionKey;
+    }
+    const provenance = observation.sourceKind === "session_note"
+      ? "Session note"
+      : [observation.exerciseName, observation.setContext ?? "Set note"].filter(Boolean).join(" · ");
+    lines.push(`- ${provenance}`, `  "${observation.rawText}"`);
+  }
+  if (section.additionalCount > 0) {
+    lines.push(`- ${section.additionalCount} additional recent observation${section.additionalCount === 1 ? "" : "s"} available in IronForge.`);
+  }
+  lines.push("");
+  return lines;
+}
+
 function renderAerobicBaseContext(context?: AerobicBaseContext) {
   if (!context) return [] as string[];
   const windows = [
@@ -746,6 +775,7 @@ export function formatCoachReportText(
         ]
       : []),
     ...(!hasFactualTrainingExposure && weeklyVolume ? [...renderWeeklyVolume(weeklyVolume)] : []),
+    ...formatRecentSessionObservations(report),
     ...renderBodyRecovery(report, bodyHeading, bodyConfidenceSummarized),
     ...(trainingSignals ? [...renderSection(trainingSignals)] : []),
     ...(readinessNotes ? [...renderSection(readinessNotes)] : []),
