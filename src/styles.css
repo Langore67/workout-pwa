@@ -40,6 +40,9 @@ hr{ border:0; border-top:1px solid var(--line); margin:10px 0; }
    ========================================= */
 .container{ max-width:980px; margin:0 auto; padding:16px; }
 .row{ display:flex; gap:8px; flex-wrap:wrap; }
+.recent-notes-toggle{ transition:opacity .15s ease; }
+.recent-notes-toggle:hover{ opacity:.82; }
+.recent-notes-toggle:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
 
 .build-identity-footer{
   max-width:980px;

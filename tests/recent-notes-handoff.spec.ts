@@ -88,6 +88,7 @@ test("switches handoff windows and copies the canonical Markdown", async ({ page
   });
   await seedWindowEvidence(page);
   await page.goto("/history");
+  await page.getByTestId("recent-notes-toggle").click();
 
   await expect(page.getByTestId("recent-notes-handoff-window:21d")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("recent-notes-handoff-counts")).toHaveText("1 session · 1 note");
@@ -108,6 +109,7 @@ test("switches handoff windows and copies the canonical Markdown", async ({ page
 test("downloads the same canonical Markdown with a safe filename", async ({ page }) => {
   await seedWindowEvidence(page);
   await page.goto("/history");
+  await page.getByTestId("recent-notes-toggle").click();
   await page.getByTestId("recent-notes-handoff-window:all").click();
   await expect(page.getByTestId("recent-notes-handoff-counts")).toHaveText("3 sessions · 3 notes");
   const downloadPromise = page.waitForEvent("download");
@@ -126,6 +128,7 @@ test("downloads the same canonical Markdown with a safe filename", async ({ page
 
 test("disables empty handoffs without implying workout history is empty", async ({ page }) => {
   await page.goto("/history");
+  await page.getByTestId("recent-notes-toggle").click();
   await expect(page.getByTestId("recent-notes-handoff-empty")).toBeVisible();
   await expect(page.getByTestId("copy-recent-notes-handoff")).toBeDisabled();
   await expect(page.getByTestId("download-recent-notes-handoff")).toBeDisabled();
@@ -142,9 +145,48 @@ test("shows actionable feedback when clipboard copy fails", async ({ page }) => 
   });
   await seedWindowEvidence(page);
   await page.goto("/history");
+  await page.getByTestId("recent-notes-toggle").click();
   await page.getByTestId("copy-recent-notes-handoff").click();
   await expect(page.getByTestId("recent-notes-handoff-status")).toHaveText(
     "Could not copy the handoff. Use Download .md instead."
   );
   await expect(page.getByTestId("download-recent-notes-handoff")).toBeEnabled();
+});
+
+test("Recent Notes is collapsed by default and toggles accessibly by mouse and keyboard", async ({ page }) => {
+  await seedWindowEvidence(page);
+  await page.goto("/history");
+
+  const toggle = page.getByTestId("recent-notes-toggle");
+  const panel = page.getByTestId("recent-notes-panel");
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(toggle).toHaveAttribute("aria-controls", "recent-notes-panel");
+  await expect(page.getByTestId("recent-notes-window")).toHaveText("Last 21 days");
+  await expect(page.getByTestId("recent-notes-count")).toHaveText("1");
+  await expect(panel).toBeHidden();
+  await expect(page.getByTestId("copy-recent-notes-handoff")).toBeHidden();
+  await expect(page.getByTestId("recent-notes-session:recent")).toBeHidden();
+  await expect(page.getByTestId("history-completed")).toBeVisible();
+  const sectionBottom = await page.getByTestId("recent-notes").evaluate((element) => element.getBoundingClientRect().bottom);
+  const historyTop = await page.getByTestId("history-completed").evaluate((element) => element.getBoundingClientRect().top);
+  expect(historyTop).toBeGreaterThanOrEqual(sectionBottom);
+
+  const collapsedChevron = await page.getByTestId("recent-notes-chevron").textContent();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(panel).toBeVisible();
+  await expect(page.getByTestId("copy-recent-notes-handoff")).toBeVisible();
+  await expect(page.getByTestId("recent-notes-session:recent")).toBeVisible();
+  await expect(page.getByTestId("recent-notes-link:recent")).toBeVisible();
+  expect(await page.getByTestId("recent-notes-chevron").textContent()).not.toBe(collapsedChevron);
+
+  await toggle.focus();
+  await page.keyboard.press("Enter");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(panel).toBeHidden();
+  await toggle.focus();
+  await page.keyboard.press("Space");
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(panel).toBeVisible();
 });
