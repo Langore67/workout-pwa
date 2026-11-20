@@ -137,6 +137,7 @@ test.describe("recent session note evidence", () => {
     await goto(page, "/history");
     await expect(page.getByTestId("recent-notes")).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId("recent-notes-window")).toHaveText("Last 21 days");
+    await page.getByTestId("recent-notes-toggle").click();
     const group = page.getByTestId(`recent-notes-session:${seeded.sessionId}`);
     await expect(group).toContainText("Upper B");
     await expect(group).toContainText("Session note");
@@ -152,6 +153,7 @@ test.describe("recent session note evidence", () => {
 
   test("History shows the recent-notes empty state without implying history is empty", async ({ page }) => {
     await goto(page, "/history");
+    await page.getByTestId("recent-notes-toggle").click();
     await expect(page.getByTestId("recent-notes-empty")).toHaveText(
       "No session or set notes recorded in the last 21 days."
     );

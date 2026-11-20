@@ -262,6 +262,7 @@ export default function HistoryPage() {
   const activeFilter = parseHistoryFilterKey(searchParams.get("kind"));
   const [expandedPrSessionIds, setExpandedPrSessionIds] = useState<string[]>([]);
   const [visibleCompletedCount, setVisibleCompletedCount] = useState(HISTORY_COMPLETED_BATCH_SIZE);
+  const [recentNotesExpanded, setRecentNotesExpanded] = useState(false);
   const [handoffWindow, setHandoffWindow] = useState<RecentNotesHandoffWindow>("21d");
   const [handoffStatus, setHandoffStatus] = useState("");
   const [handoffBusy, setHandoffBusy] = useState(false);
@@ -852,17 +853,46 @@ export default function HistoryPage() {
       <hr />
 
       <div className="card" data-testid="recent-notes" style={{ marginBottom: 14 }}>
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
-          <div>
+        <button
+          type="button"
+          className="row recent-notes-toggle"
+          data-testid="recent-notes-toggle"
+          aria-expanded={recentNotesExpanded}
+          aria-controls="recent-notes-panel"
+          onClick={() => setRecentNotesExpanded((expanded) => !expanded)}
+          style={{
+            width: "100%",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+            border: 0,
+            borderRadius: 6,
+            padding: 0,
+            background: "transparent",
+            color: "inherit",
+            textAlign: "left",
+            cursor: "pointer",
+          }}
+        >
+          <span className="row" style={{ gap: 9, alignItems: "center", minWidth: 0 }}>
             <h3 style={{ margin: 0 }}>Recent Notes</h3>
-            <div className="muted" data-testid="recent-notes-window" style={{ marginTop: 3, fontSize: 12 }}>
+            {recentNotes !== undefined ? <span className="badge" data-testid="recent-notes-count">{recentNotes.length}</span> : null}
+            <span className="muted" data-testid="recent-notes-window" style={{ fontSize: 12 }}>
               Last {RECENT_SESSION_NOTES_DEFAULT_DAYS} days
-            </div>
-          </div>
-          {recentNotes !== undefined ? <span className="badge">{recentNotes.length}</span> : null}
-        </div>
+            </span>
+          </span>
+          <span aria-hidden="true" data-testid="recent-notes-chevron" data-expanded={recentNotesExpanded} style={{ fontSize: 19, lineHeight: 1, flex: "0 0 auto" }}>
+            {recentNotesExpanded ? "⌄" : "›"}
+          </span>
+        </button>
 
-        <div data-testid="recent-notes-handoff" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
+        <div
+          id="recent-notes-panel"
+          data-testid="recent-notes-panel"
+          hidden={!recentNotesExpanded}
+          style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--line)" }}
+        >
+        <div data-testid="recent-notes-handoff">
           <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 7 }}>Handoff window</div>
           <div className="row" role="group" aria-label="Recent notes handoff window" style={{ gap: 6 }}>
             {RECENT_NOTES_HANDOFF_WINDOWS.map((option) => {
@@ -961,6 +991,7 @@ export default function HistoryPage() {
             ))}
           </div>
         )}
+        </div>
       </div>
 
       {sessions === undefined ? (
