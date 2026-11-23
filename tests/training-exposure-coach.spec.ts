@@ -79,8 +79,23 @@ test("Coach text preserves partial, complete, and rolling labels without exposur
   expect(text).toContain("Current week-to-date — partial period");
   expect(text).toContain("Previous complete week — complete period");
   expect(text).toContain("Rolling 14 days — rolling period");
-  expect(text).toContain("push: 1 qualifying sets | 1 working | 1 sessions | 1 exercises");
+  expect(text).toContain("push: 1 qualifying set | 1 working | 1 session | 1 exercise");
   expect(text).not.toMatch(/behind|ahead|lagging|on track|undertrained|overtrained|recommend|add sets|remove sets/i);
+});
+
+test("training exposure formatting pluralizes counts and preserves their exact values", () => {
+  const trainingExposure = context();
+  const row = trainingExposure.windows.currentWeekToDate.movementPatterns[0];
+  row.qualifyingSets = 2;
+  row.workingSets = 2;
+  row.controlExposures = 3;
+  row.sessionCount = 1;
+  row.distinctCanonicalExerciseCount = 2;
+  const text = formatCoachReportText({
+    snapshot: { status: "Not Enough Data", confidence: "Low", why: "Factual context only.", today: "—" },
+    trainingExposure,
+  } as any);
+  expect(text).toContain("push: 2 qualifying sets | 2 working | 3 control exposures | 1 session | 2 exercises");
 });
 
 test("Coach suppresses Training Roles when exposure is entirely untagged and shows it when tagged data exists", () => {

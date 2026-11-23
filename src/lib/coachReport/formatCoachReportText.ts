@@ -14,6 +14,10 @@ import type { TrainingExposureContext, TrainingExposureWindow } from "../../doma
 import type { AerobicBaseContext, AerobicBaseWindow } from "../cardio/aerobicBaseContext";
 import type { AerobicBaseGoalProgress } from "../cardio/aerobicBaseGoalProgress";
 
+function countLabel(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 function renderAerobicBaseGoalProgress(progress?: AerobicBaseGoalProgress) {
   if (!progress) return [];
   const difference = progress.previousCompleteWeek.differenceMinutes;
@@ -23,11 +27,11 @@ function renderAerobicBaseGoalProgress(progress?: AerobicBaseGoalProgress) {
     "Current week-to-date â€” partial period",
     `- Documented: ${progress.currentWeek.documentedMinutes} / ${progress.targetMinutes} min`,
     `- Remaining documented amount: ${progress.currentWeek.remainingDocumentedMinutes} min`,
-    `- Missing usable zone evidence: ${progress.currentWeek.missingUsableZoneEvidenceSessions} cardio sessions`,
+    `- Missing usable zone evidence: ${countLabel(progress.currentWeek.missingUsableZoneEvidenceSessions, "cardio session")}`,
     "Previous complete week â€” complete period",
     `- Documented: ${progress.previousCompleteWeek.documentedMinutes} / ${progress.targetMinutes} min`,
     `- Difference from target: ${difference >= 0 ? "+" : ""}${difference} min`,
-    `- Missing usable zone evidence: ${progress.previousCompleteWeek.missingUsableZoneEvidenceSessions} cardio sessions`,
+    `- Missing usable zone evidence: ${countLabel(progress.previousCompleteWeek.missingUsableZoneEvidenceSessions, "cardio session")}`,
     "",
   ];
 }
@@ -111,13 +115,13 @@ function formatExposureWindow(window: TrainingExposureWindow, title: string) {
   const period = window.isCompleteCalendarPeriod ? "complete period" : window.kind === "week_to_date" ? "partial period" : "rolling period";
   const lines = [`${title} — ${period}`, `- Completed strength sessions: ${window.completedStrengthSessions}`];
   for (const movement of window.movementPatterns) {
-    const facts = [`${movement.qualifyingSets} qualifying sets`];
+    const facts = [countLabel(movement.qualifyingSets, "qualifying set")];
     if (movement.workingSets) facts.push(`${movement.workingSets} working`);
     if (movement.dropSets) facts.push(`${movement.dropSets} drop`);
     if (movement.failureSets) facts.push(`${movement.failureSets} failure`);
-    if (movement.controlExposures) facts.push(`${movement.controlExposures} control exposures`);
-    if (movement.unilateralSideSets) facts.push(`${movement.unilateralSideSets} side-specific unilateral sets`);
-    facts.push(`${movement.sessionCount} sessions`, `${movement.distinctCanonicalExerciseCount} exercises`);
+    if (movement.controlExposures) facts.push(countLabel(movement.controlExposures, "control exposure"));
+    if (movement.unilateralSideSets) facts.push(countLabel(movement.unilateralSideSets, "side-specific unilateral set"));
+    facts.push(countLabel(movement.sessionCount, "session"), countLabel(movement.distinctCanonicalExerciseCount, "exercise"));
     if (movement.latestExposureAt) facts.push(`latest ${new Date(movement.latestExposureAt).toLocaleString()}`);
     lines.push(`- ${movement.movementPattern}: ${facts.join(" | ")}`);
   }
@@ -248,7 +252,7 @@ function renderTrainingExposure(context?: TrainingExposureContext, intendedSched
     lines.push("", "Training Roles — current week-to-date");
     for (const role of currentWeekRoles) {
       const label = role.trainingRole === "untagged" ? "Untagged" : getTrainingRoleLabel(role.trainingRole);
-      lines.push(`- ${label}: ${role.qualifyingSets} qualifying sets | ${role.controlExposures} control exposures | ${role.sessionCount} sessions | ${role.distinctCanonicalExerciseCount} exercises${role.latestExposureAt ? ` | latest ${new Date(role.latestExposureAt).toLocaleString()}` : ""}`);
+      lines.push(`- ${label}: ${countLabel(role.qualifyingSets, "qualifying set")} | ${countLabel(role.controlExposures, "control exposure")} | ${countLabel(role.sessionCount, "session")} | ${countLabel(role.distinctCanonicalExerciseCount, "exercise")}${role.latestExposureAt ? ` | latest ${new Date(role.latestExposureAt).toLocaleString()}` : ""}`);
     }
   }
   lines.push("");
@@ -448,7 +452,7 @@ function renderProgrammingContext(context: CoachReport["programmingContext"]) {
   if (!context.trainingExposure && context.coverage.movementPatterns.length) {
     lines.push("", `Movement Coverage (${context.coverage.windowDays}d)`);
     for (const pattern of context.coverage.movementPatterns) {
-      lines.push(`- ${pattern.label}: ${pattern.status} | ${pattern.effectiveSets} effective sets | ${pattern.controlExposures} control exposures | ${pattern.sessions} sessions`);
+      lines.push(`- ${pattern.label}: ${pattern.status} | ${countLabel(pattern.effectiveSets, "effective set")} | ${countLabel(pattern.controlExposures, "control exposure")} | ${countLabel(pattern.sessions, "session")}`);
       const breakdown = Object.entries(pattern.roleBreakdown)
         .filter(([, count]) => typeof count === "number" && count > 0)
         .map(([role, count]) => `${role === "untagged" ? "Untagged" : getTrainingRoleLabel(role as TrainingRole)} ${count}`);
@@ -469,8 +473,8 @@ function renderProgrammingContext(context: CoachReport["programmingContext"]) {
   if (context.cardio) {
     const cardio = context.cardio;
     lines.push("", "Cardio Context");
-    lines.push(`- Last 7d: ${cardio.activities7d} activities | ${Math.round(cardio.duration7dSeconds / 60)} min${cardio.distance7dMeters > 0 ? ` | ${(cardio.distance7dMeters / 1609.344).toFixed(1)} mi` : ""}`);
-    lines.push(`- Last 28d: ${cardio.activities28d} activities`);
+    lines.push(`- Last 7d: ${countLabel(cardio.activities7d, "activity", "activities")} | ${Math.round(cardio.duration7dSeconds / 60)} min${cardio.distance7dMeters > 0 ? ` | ${(cardio.distance7dMeters / 1609.344).toFixed(1)} mi` : ""}`);
+    lines.push(`- Last 28d: ${countLabel(cardio.activities28d, "activity", "activities")}`);
     if (cardio.activityTypes.length) lines.push(`- Activity types: ${cardio.activityTypes.join(", ")}`);
     if (cardio.intents.length) lines.push(`- Intents: ${cardio.intents.join(", ")}`);
     if (cardio.formats.length) lines.push(`- Formats: ${cardio.formats.join(", ")}`);
@@ -614,7 +618,7 @@ export function formatStrengthGoalProgressForCoach(contexts?: StrengthGoalProgre
   const lines = ["", "Strength Goal Progress"];
   for (const context of contexts) {
     const unit = context.targetMetric === "load" ? "lb" : "reps";
-    lines.push(`- ${context.label ?? context.exerciseName} — goal ${compactNumber(context.targetValue)} ${unit} ${context.targetMetric === "load" ? "performed load" : "reps"}`);
+    lines.push(`- ${context.label ?? context.exerciseName} — goal ${compactNumber(context.targetValue)} ${unit}${context.targetMetric === "load" ? " performed load" : ""}`);
     const current = formatGoalObservation(context);
     if (current) lines.push(`  - Current comparable: ${current}`);
     if (typeof context.bestValue === "number" && context.bestValue !== context.currentValue) lines.push(`  - Best known ${context.targetMetric === "load" ? "performed load" : "reps"}: ${compactNumber(context.bestValue)} ${unit}`);
@@ -633,7 +637,7 @@ function renderGoals(report: CoachReport) {
   if (!bodyTargets.length && !strengthGoals.length && !aerobicGoal) return [] as string[];
 
   const lines = ["Goals"];
-  if (bodyTargets.length) lines.push("Goal Targets", ...bodyTargets.map((line) => line.text));
+  if (bodyTargets.length) lines.push(...bodyTargets.map((line) => line.text));
   if (strengthGoals.length) {
     lines.push("", "Strength", ...formatStrengthGoalProgressForCoach(strengthGoals).slice(2));
   }
@@ -677,7 +681,7 @@ function renderBodyRecovery(report: CoachReport, heading: string, suppressOveral
   }
   if (report.waistToHeight?.rows?.length) lines.push(...report.waistToHeight.rows.map((row) => row.text));
   if (report.hydration?.rows?.length) lines.push(...report.hydration.rows.map((row) => `- Hydration ${row.label.toLowerCase()}: ${row.value}`));
-  if (report.hydration?.note) lines.push(`- Hydration limitation: ${report.hydration.note}`);
+  if (report.hydration?.note) lines.push(`- Hydration note: ${report.hydration.note}`);
   if (visceral?.rows?.length) lines.push("", "Visceral Fat", ...visceral.rows.map((row) => `- ${row.label}: ${row.value}`));
   if (visceral?.note) lines.push(`- Visceral fat limitation: ${visceral.note}`);
   if (body?.confidenceRows.length) {
