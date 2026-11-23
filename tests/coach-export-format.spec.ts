@@ -275,7 +275,8 @@ test("tightened canonical export removes repeated values and internal progressio
 
   const text = formatCoachExportText(metrics);
   expect(text.match(/^- Strength Signal: \d/gm)).toHaveLength(1);
-  expect(text.match(/^Goal Targets$/gm)).toHaveLength(1);
+  expect(text.match(/^Goals$/gm)).toHaveLength(1);
+  expect(text).not.toContain("Goal Targets");
   expect(text).not.toContain("internal-exercise-uuid");
   expect(text).toContain("Latest: 2026-04-25 | 225x5 | @2 RIR");
   expect(text).not.toContain("Observation:");
@@ -872,7 +873,7 @@ test("coach export uses prior available waist when latest body row has no waist"
     { heightIn: 71.75 }
   );
   const section = getSection(text, "Waist-to-Height Ratio");
-  const goals = getSection(text, "Goal Targets", "Lean Preservation");
+  const goals = getSection(text, "Goals", "Lean Preservation");
 
   expect(section).toContain("- Current: 0.509");
   expect(section).toContain("- 14d trend: -0.011");
@@ -1469,7 +1470,7 @@ test("coach export includes goal progress when profile targets exist", async () 
   });
 
   const text = formatCoachExportText(metrics);
-  const section = getSection(text, "Goal Targets", "Lean Preservation");
+  const section = getSection(text, "Goals", "Lean Preservation");
 
   expect(section).toContain("- Weight: 188.6 lb -> 180.0 lb | 8.6 lb remaining");
   expect(section).toContain("- Body Fat: 20.6% -> 18.0% | 2.6 pts remaining");
@@ -1508,7 +1509,7 @@ test("coach export omits missing goal targets cleanly", async () => {
     bodyComp: metrics.bodyComp,
   });
 
-  const section = getSection(formatCoachExportText(metrics), "Goal Targets", "Performance");
+  const section = getSection(formatCoachExportText(metrics), "Goals", "Performance");
 
   expect(section).toContain("- Weight: 188.6 lb -> 180.0 lb | 8.6 lb remaining");
   expect(section).not.toContain("Body Fat:");
@@ -1592,7 +1593,7 @@ test("coach export goal progress uses bodyMetrics current values, not profile cu
     return formatCoachExportText(metrics);
   });
 
-  const section = getSection(text, "Goal Targets", "Visceral Fat");
+  const section = getSection(text, "Goals", "Visceral Fat");
 
   expect(section).toContain("- Weight: 189.4 lb -> 180.0 lb | 9.4 lb remaining");
   expect(section).toContain("- Body Fat: 20.9% -> 18.0% | 2.9 pts remaining");
@@ -1899,7 +1900,8 @@ test("coach export includes a short narrative summary and biggest win or risk", 
   expect(text).not.toContain("Coach Summary");
   expect(text).not.toContain("Biggest Win");
   expect(text).not.toContain("Biggest Risk");
-  expect(text).toContain("Goal Targets");
+  expect(text).toContain("Goals");
+  expect(text).not.toContain("Goal Targets");
   expect(text).toContain("MTS Row: chest-supported row reinforced Gaz's cues");
 });
 

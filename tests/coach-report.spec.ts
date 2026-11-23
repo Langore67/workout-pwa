@@ -4,7 +4,7 @@ import { evaluatePhaseQuality } from "../src/body/phaseQualityModel";
 import { buildLeanPreservationComposite } from "../src/lib/coachExport/leanPreservationComposite";
 import { formatCoachExportText } from "../src/lib/coachExport/formatCoachExportText";
 import { buildCoachReport, hasCoachReportDashboardContent } from "../src/lib/coachReport/buildCoachReport";
-import { formatCoachReportText } from "../src/lib/coachReport/formatCoachReportText";
+import { formatCoachReportText, formatStrengthGoalProgressForCoach } from "../src/lib/coachReport/formatCoachReportText";
 import { buildCoachStateFromExportMetrics } from "../src/lib/coachState/buildCoachState";
 import { buildPersistedCoachComparisonSnapshot, withCoachStateComparison } from "../src/lib/coachState/coachExplainability";
 
@@ -296,6 +296,28 @@ function buildFixture(overrides: any = {}) {
     ...overrides,
   };
 }
+
+test("Coach Export formatter avoids duplicated rep units and labels positive hydration context accurately", () => {
+  const goalText = formatStrengthGoalProgressForCoach([{
+    label: "Pull Up",
+    exerciseName: "Pull Up",
+    targetMetric: "reps",
+    targetValue: 10,
+    direction: "improving",
+    freshness: "fresh",
+    comparability: "direct",
+    limitations: [],
+  } as any]);
+  const text = formatCoachReportText({
+    snapshot: { status: "Not Enough Data", confidence: "Low", why: "Factual context only.", today: "—" },
+    hydration: { note: "Today's body comp reading is likely trustworthy." },
+  } as any);
+
+  expect(goalText.join("\n")).toContain("Pull Up — goal 10 reps");
+  expect(goalText.join("\n")).not.toContain("Pull Up — goal 10 reps reps");
+  expect(text).toContain("Hydration note: Today's body comp reading is likely trustworthy.");
+  expect(text).not.toContain("Hydration limitation: Today's body comp reading is likely trustworthy.");
+});
 
 test("coach report maps snapshot, body, performance, goals, learnings, and cardio", async () => {
   const fixture = buildFixture();
