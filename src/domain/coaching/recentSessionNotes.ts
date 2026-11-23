@@ -1,4 +1,5 @@
 import { db, type Exercise, type Session, type SetEntry, type Track } from "../../db";
+import { extractHumanSetNoteText } from "../sets/performedSetIntent";
 
 export const RECENT_SESSION_NOTES_DEFAULT_DAYS = 21;
 export const DAY_MS = 24 * 60 * 60 * 1000;
@@ -95,7 +96,8 @@ export function buildRecentSessionNoteEvidence(
     const ordinalKey = `${set.sessionId}:${set.trackId}:${set.setType}`;
     const setNumber = (setCountByTrackAndType.get(ordinalKey) ?? 0) + 1;
     setCountByTrackAndType.set(ordinalKey, setNumber);
-    if (!hasText(set.notes)) continue;
+    const humanNote = extractHumanSetNoteText(set.notes);
+    if (!humanNote) continue;
 
     const session = sessionById.get(set.sessionId)!;
     const track = trackById.get(set.trackId);
@@ -106,7 +108,7 @@ export function buildRecentSessionNoteEvidence(
       sessionId: session.id,
       sessionName: session.templateName?.trim() || "Ad-hoc",
       sourceKind: "set_note",
-      rawText: set.notes,
+      rawText: humanNote,
       trackId: set.trackId,
       exerciseId: track?.exerciseId,
       exerciseName: exercise?.name || track?.displayName,

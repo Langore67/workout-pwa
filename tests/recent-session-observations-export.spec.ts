@@ -252,6 +252,14 @@ test("canonical Coach Export and Gym Coach Handoff contain recent observations e
       id: "recent-set", sessionId: "recent", trackId: "pull-up-track", createdAt: now - DAY_MS,
       completedAt: now - DAY_MS, setType: "working", weight: 0, reps: 3, rir: 1, notes: "Set exact note.",
     });
+    await db.sets.add({
+      id: "machine-only-set", sessionId: "recent", trackId: "pull-up-track", createdAt: now - DAY_MS + 1,
+      completedAt: now - DAY_MS + 1, setType: "working", reps: 3, notes: "corrective",
+    });
+    await db.sets.add({
+      id: "mixed-set", sessionId: "recent", trackId: "pull-up-track", createdAt: now - DAY_MS + 2,
+      completedAt: now - DAY_MS + 2, setType: "working", reps: 3, notes: "set_type=conditioning | grip gave out first",
+    });
     const metrics = await buildCoachExportMetrics();
     const coachExport = formatCoachExportText(metrics);
     const handoff = buildGymCoachHandoff({
@@ -260,16 +268,34 @@ test("canonical Coach Export and Gym Coach Handoff contain recent observations e
       coachExportText: coachExport,
       workoutReturnInstructions: "Return completed work only.",
     });
-    return { coachExport, handoff, evidence: metrics.recentSessionNoteEvidence };
+    return {
+      coachExport,
+      handoff,
+      evidence: metrics.recentSessionNoteEvidence,
+      storedMachineOnly: (await db.sets.get("machine-only-set"))?.notes,
+      storedMixed: (await db.sets.get("mixed-set"))?.notes,
+    };
   });
 
-  expect(result.evidence?.map((item) => item.rawText)).toEqual(["Recent exact note.", "Set exact note."]);
+  expect(result.evidence?.map((item) => item.rawText)).toContain("Recent exact note.");
+  expect(result.evidence?.map((item) => item.rawText)).toContain("Set exact note.");
+  expect(result.evidence?.map((item) => item.rawText)).toContain("grip gave out first");
+  expect(result.evidence?.map((item) => item.rawText)).not.toContain("corrective");
+  expect(result.evidence?.map((item) => item.rawText)).not.toContain("set_type=conditioning");
   expect(result.coachExport.match(/Recent Session Observations/g)).toHaveLength(1);
   expect(result.coachExport).toContain("Recent exact note.");
   expect(result.coachExport).toContain("Set exact note.");
+  expect(result.coachExport).toContain("grip gave out first");
+  expect(result.coachExport).not.toContain("corrective");
+  expect(result.coachExport).not.toContain("set_type=conditioning");
   expect(result.coachExport).not.toContain("Outside window.");
   expect(result.handoff.match(/Recent Session Observations/g)).toHaveLength(1);
   expect(result.handoff.match(/Recent exact note\./g)).toHaveLength(1);
+  expect(result.handoff).toContain("grip gave out first");
+  expect(result.handoff).not.toContain("corrective");
+  expect(result.handoff).not.toContain("set_type=conditioning");
+  expect(result.storedMachineOnly).toBe("corrective");
+  expect(result.storedMixed).toBe("set_type=conditioning | grip gave out first");
 });
 
 test("pure handoff remains a wrapper around one canonical Coach Export", () => {

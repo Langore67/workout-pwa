@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { resolvePerformedSetIntent } from "../src/domain/sets/performedSetIntent";
+import { extractHumanSetNoteText, resolvePerformedSetIntent } from "../src/domain/sets/performedSetIntent";
 import { buildExerciseProgressionContext } from "../src/domain/progression/exerciseProgressionContext";
 import { buildTrainingExposureContext } from "../src/domain/training/trainingExposureContext";
 
@@ -34,4 +34,35 @@ test("mixed RDL import preserves work evidence and treats exact technique proven
   const exposure = buildTrainingExposureContext({ exercises: [exercise], tracks: [track], sessions: [session], sets, asOf: NOW });
   const hinge = exposure.windows.rolling14Days.movementPatterns.find((row) => row.movementPattern === "hinge");
   expect(hinge).toMatchObject({ qualifyingSets: 2, workingSets: 2, controlExposures: 2 });
+});
+
+test("exact intent tokens are removed from human evidence without changing intent or human prose", () => {
+  const cases = [
+    ["technique", "technique"],
+    ["mobility", "control"],
+    ["corrective", "control"],
+    ["diagnostic", "control"],
+    ["rehab", "control"],
+    ["conditioning", "conditioning"],
+    ["test", "test"],
+    ["set_type=technique", "technique"],
+    ["set_type=mobility", "control"],
+    ["set_type=corrective", "control"],
+    ["set_type=diagnostic", "control"],
+    ["set_type=rehab", "control"],
+    ["set_type=conditioning", "conditioning"],
+    ["set_type=test", "test"],
+  ] as const;
+  for (const [token, expectedIntent] of cases) {
+    expect(resolvePerformedSetIntent(set(`intent-${token}`, "working", 0, 1, token), track)).toBe(expectedIntent);
+    expect(extractHumanSetNoteText(token)).toBeUndefined();
+  }
+
+  expect(extractHumanSetNoteText("technique felt better today")).toBe("technique felt better today");
+  expect(extractHumanSetNoteText("conditioning was harder than expected")).toBe("conditioning was harder than expected");
+  expect(extractHumanSetNoteText("corrective work reduced shoulder irritation")).toBe("corrective work reduced shoulder irritation");
+  expect(extractHumanSetNoteText("mobility felt limited on right")).toBe("mobility felt limited on right");
+  expect(extractHumanSetNoteText("technique | lost hamstring tension on final reps")).toBe("lost hamstring tension on final reps");
+  expect(extractHumanSetNoteText("set_type=conditioning | grip gave out first")).toBe("grip gave out first");
+  expect(resolvePerformedSetIntent(set("human-prose", "working", 0, 1, "technique felt better"), track)).toBe("working");
 });

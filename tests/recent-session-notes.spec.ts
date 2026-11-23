@@ -77,6 +77,8 @@ test.describe("recent session note evidence", () => {
         { id: "set-empty", sessionId: "newer", trackId, createdAt: now - DAY_MS + 1, completedAt: now - DAY_MS + 1, setType: "working", reps: 5, notes: "" },
         { id: "set-note", sessionId: "newer", trackId, createdAt: now - DAY_MS + 2, completedAt: now - DAY_MS + 2, setType: "working", weight: 0, reps: 3, rir: 1, notes: "Form broke\ndown." },
         { id: "set-deleted", sessionId: "newer", trackId, createdAt: now - DAY_MS + 3, completedAt: now - DAY_MS + 3, setType: "working", notes: "deleted set", deletedAt: now },
+        { id: "set-machine-only", sessionId: "newer", trackId, createdAt: now - DAY_MS + 4, completedAt: now - DAY_MS + 4, setType: "working", notes: "mobility" },
+        { id: "set-mixed", sessionId: "newer", trackId, createdAt: now - DAY_MS + 5, completedAt: now - DAY_MS + 5, setType: "working", notes: "technique | lost hamstring tension" },
         { id: "orphan", sessionId: "missing", trackId, createdAt: now - DAY_MS, completedAt: now - DAY_MS, setType: "working", notes: "orphan" },
       ]);
 
@@ -95,6 +97,7 @@ test.describe("recent session note evidence", () => {
     expect(result.after).toEqual(result.before);
     expect(result.evidence.map((row) => row.evidenceId)).toEqual([
       "session:newer",
+      "set:set-mixed",
       "set:set-note",
       "session:tie-a",
       "session:tie-b",
@@ -103,6 +106,8 @@ test.describe("recent session note evidence", () => {
     expect(result.evidence.map((row) => row.rawText)).not.toContain("too old");
     expect(result.evidence.map((row) => row.rawText)).not.toContain("planned template note");
     expect(result.evidence.map((row) => row.rawText)).not.toContain("planned session item note");
+    expect(result.evidence.map((row) => row.rawText)).not.toContain("mobility");
+    expect(result.evidence.find((row) => row.evidenceId === "set:set-mixed")?.rawText).toBe("lost hamstring tension");
     expect(result.evidence.filter((row) => row.rawText === "same text")).toHaveLength(2);
 
     const sessionNote = result.evidence.find((row) => row.evidenceId === "session:newer")!;
@@ -121,6 +126,8 @@ test.describe("recent session note evidence", () => {
       setId: "set-note",
       setContext: { setType: "working", setNumber: 2, weight: 0, reps: 3, rir: 1 },
     });
+    expect(JSON.parse(result.after.sets).find((row: { id: string }) => row.id === "set-machine-only")?.notes).toBe("mobility");
+    expect(JSON.parse(result.after.sets).find((row: { id: string }) => row.id === "set-mixed")?.notes).toBe("technique | lost hamstring tension");
   });
 
   test("History renders grouped notes, provenance, deep links, and the fixed window", async ({ page }) => {
@@ -131,7 +138,13 @@ test.describe("recent session note evidence", () => {
       await db.tracks.add({ id: "track", exerciseId: "ex", trackType: "strength", displayName: "Pull Up", trackingMode: "weightedReps", warmupSetsDefault: 0, workingSetsDefault: 1, repMin: 3, repMax: 8, restSecondsDefault: 120, weightJumpDefault: 5, createdAt: now });
       await db.sessions.add({ id: "session", templateName: "Upper B", startedAt: now - 3600000, endedAt: now, notes: "Shoulder felt better." });
       await db.sets.add({ id: "set", sessionId: "session", trackId: "track", createdAt: now - 1800000, completedAt: now - 1800000, setType: "working", weight: 0, reps: 3, rir: 1, notes: "Form broke down." });
-      return { sessionId: "session" };
+      await db.sets.add({ id: "machine-only", sessionId: "session", trackId: "track", createdAt: now - 1200000, completedAt: now - 1200000, setType: "working", reps: 10, notes: "conditioning" });
+      await db.sets.add({ id: "mixed", sessionId: "session", trackId: "track", createdAt: now - 600000, completedAt: now - 600000, setType: "working", reps: 10, notes: "set_type=conditioning | grip gave out first" });
+      return {
+        sessionId: "session",
+        storedMachineOnly: (await db.sets.get("machine-only"))?.notes,
+        storedMixed: (await db.sets.get("mixed"))?.notes,
+      };
     });
 
     await goto(page, "/history");
@@ -145,6 +158,10 @@ test.describe("recent session note evidence", () => {
     await expect(group).toContainText("Pull Up · Work set 1 · BW x 3 @1");
     await expect(group).toContainText("Set note");
     await expect(group).toContainText("Form broke down.");
+    await expect(group).not.toContainText('"conditioning"');
+    await expect(group).toContainText("grip gave out first");
+    expect(seeded.storedMachineOnly).toBe("conditioning");
+    expect(seeded.storedMixed).toBe("set_type=conditioning | grip gave out first");
 
     await page.getByTestId(`recent-notes-link:${seeded.sessionId}`).click();
     await expect(page).toHaveURL(new RegExp(`/session/${seeded.sessionId}$`));

@@ -21,6 +21,22 @@ function machineNoteIntent(notes: unknown): PerformedSetIntent | undefined {
   return undefined;
 }
 
+/** Removes only exact pipe-delimited machine intent fragments from a note. */
+export function extractHumanSetNoteText(notes: unknown): string | undefined {
+  if (typeof notes !== "string" || !notes.trim()) return undefined;
+  const fragments = notes.split(/\s*\|\s*/);
+  const hasMachineFragment = fragments.some((fragment) =>
+    Object.prototype.hasOwnProperty.call(NOTE_INTENTS, fragment.trim().toLowerCase())
+  );
+  if (!hasMachineFragment) return notes;
+
+  const humanFragments = fragments
+    .filter((fragment) => !Object.prototype.hasOwnProperty.call(NOTE_INTENTS, fragment.trim().toLowerCase()))
+    .map((fragment) => fragment.trim())
+    .filter(Boolean);
+  return humanFragments.length ? humanFragments.join(" | ") : undefined;
+}
+
 export function resolvePerformedSetIntent(set: Pick<SetEntry, "setType" | "notes"> | null | undefined, track?: Pick<Track, "trackType"> | null): PerformedSetIntent {
   if (!set) return "unknown";
   if (set.setType === "warmup" || set.setType === "drop" || set.setType === "failure") return set.setType;
