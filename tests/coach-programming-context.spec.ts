@@ -133,10 +133,12 @@ test("Programming Context export is concise and omits unavailable goals and card
   } as any);
 
   expect(text).toContain("Programming Context");
-  expect(text).toContain("Strength Session Context");
-  expect(text).toContain("Current week-to-date — partial period: 1 completed session");
-  expect(text).toContain("Previous complete week — complete period: 0 completed sessions");
-  expect(text).toContain("Rolling 14 days — rolling period: 1 completed session");
+  expect(text).toContain("Training Exposure / Schedule");
+  expect(text).toContain("Current week-to-date — partial period");
+  expect(text).toContain("- Completed strength sessions: 1");
+  expect(text).toContain("Previous complete week — complete period");
+  expect(text).toContain("- Completed strength sessions: 0");
+  expect(text).toContain("Rolling 14 days — rolling period");
   expect(text).not.toContain("Strength sessions, last 7d");
   expect(text).toContain("Trap Bar Deadlift: 315 lb x 5 reps | e1RM 354.4 lb | stale | 31d old");
   expect(text).toContain("Training Priorities / Roles");
