@@ -358,7 +358,7 @@ test.describe("history and ad hoc session workflows", () => {
     await expect(page.getByText("Ad-hoc")).toHaveCount(0);
   });
 
-  test("history and session detail use the same effective-load total lifted math", async ({ page }) => {
+  test("history and session detail use the same assisted effective-load total lifted math", async ({ page }) => {
     await goto(page, "/");
     await resetDexieDb(page);
 
@@ -418,6 +418,7 @@ test.describe("history and ad hoc session workflows", () => {
         trackId,
         createdAt: now - 25 * 60 * 1000,
         setType: "working",
+        // Positive logged load on an explicitly assisted exercise is assistance to subtract.
         weight: 30,
         reps: 10,
         completedAt: now - 25 * 60 * 1000 + 5_000,
@@ -428,11 +429,11 @@ test.describe("history and ad hoc session workflows", () => {
 
     await goto(page, "/history");
     await expect(page.getByTestId(`history-completed-card:${seeded.sessionId}`)).toBeVisible({ timeout: 15000 });
-    await expect(page.getByTestId(`history-total:${seeded.sessionId}`)).toContainText("2100 lb");
+    await expect(page.getByTestId(`history-total:${seeded.sessionId}`)).toContainText("1500 lb");
 
     await goto(page, `/session/${seeded.sessionId}`);
     await expect(page.getByTestId("session-detail")).toBeVisible({ timeout: 15000 });
-    await expect(page.getByTestId("session-total-lifted")).toContainText("2100 lb");
+    await expect(page.getByTestId("session-total-lifted")).toContainText("1500 lb");
   });
 
   test("history to coach export copies the structured coaching loop without workout prediction", async ({
