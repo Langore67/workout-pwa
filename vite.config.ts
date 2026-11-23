@@ -1,8 +1,13 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { collectBuildInfo } from './scripts/build-info.mjs';
+const buildInfo = collectBuildInfo();
 
 export default defineConfig({
+  define: {
+    'globalThis.__IRONFORGE_BUILD_INFO__': JSON.stringify(buildInfo),
+  },
   plugins: [
     react(),
     VitePWA({

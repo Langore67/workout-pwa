@@ -12,6 +12,8 @@ test("shows the generated build identity on every page and links to About", asyn
   await expect(footer).toContainText(expected.version);
   await expect(footer).toContainText(expected.displayCommit);
   await expect(footer).toContainText(expected.branch);
+  expect(expected.commit).toMatch(/^[0-9a-f]+$/i);
+  expect(Number.isFinite(Date.parse(expected.builtAt))).toBe(true);
 
   await footer.getByRole("link", { name: "Open build details" }).click();
   await expect(page).toHaveURL(/\/about$/);
