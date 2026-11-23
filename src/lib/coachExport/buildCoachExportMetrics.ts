@@ -43,7 +43,6 @@ import {
   type SessionSnapshotTrackSummary,
 } from "../../domain/coaching/sessionSnapshot";
 import { buildRecentSessionNoteEvidence } from "../../domain/coaching/recentSessionNotes";
-import { buildTodayObservationContext } from "./todayObservationContext";
 import {
   buildPatternSummary,
   type CompletedSession,
@@ -718,7 +717,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     hydration,
   });
   const strengthSignal = await buildStrengthSignal(generatedAt);
-  const [sessions, sets, tracks, exercises, strengthGoals, weeklySchedule, templates, templateItems, aerobicBaseGoal] = await Promise.all([
+  const [sessions, sets, tracks, exercises, strengthGoals, weeklySchedule, templates, aerobicBaseGoal] = await Promise.all([
     db.sessions.toArray(),
     db.sets.toArray(),
     db.tracks.toArray(),
@@ -726,19 +725,9 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     getStrengthGoals(),
     getWeeklyTrainingSchedule(),
     db.templates.toArray(),
-    db.templateItems.toArray(),
     getAerobicBaseGoal(),
   ]);
   const intendedWeeklySchedule = resolveIntendedWeeklySchedule(weeklySchedule, templates ?? []);
-  const todayObservationContext = buildTodayObservationContext({
-    schedule: weeklySchedule,
-    templates: templates ?? [],
-    templateItems: templateItems ?? [],
-    tracks: tracks ?? [],
-    exercises: exercises ?? [],
-    sessions: sessions ?? [],
-    asOf: generatedAt,
-  });
   const cardioSummary = buildCardioWalkSummary({
     sessions: sessions ?? [],
     sets: sets ?? [],
@@ -928,7 +917,6 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     anchorLifts: anchorIntelligence,
     recentExerciseProgression,
     recentSessionNoteEvidence,
-    todayObservationContext,
     strengthGoalProgress,
     intendedWeeklySchedule,
     trainingExposure,

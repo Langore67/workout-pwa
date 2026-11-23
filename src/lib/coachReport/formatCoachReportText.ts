@@ -53,11 +53,11 @@ function formatAerobicBaseWindow(window: AerobicBaseWindow, title: string) {
 }
 
 function formatRecentSessionObservations(report: CoachReport) {
-  const section = report.recentSessionObservations;
-  if (!section?.observations.length) return [];
+  const observations = report.recentSessionObservations;
+  if (!observations?.length) return [];
   const lines = ["Recent Session Observations"];
   let previousSessionKey = "";
-  for (const observation of section.observations) {
+  for (const observation of observations) {
     const sessionKey = `${observation.sessionId}:${observation.occurredAt}`;
     if (sessionKey !== previousSessionKey) {
       if (previousSessionKey) lines.push("");
@@ -73,9 +73,6 @@ function formatRecentSessionObservations(report: CoachReport) {
       ? "Session note"
       : [observation.exerciseName, observation.setContext ?? "Set note"].filter(Boolean).join(" · ");
     lines.push(`- ${provenance}`, `  "${observation.rawText}"`);
-  }
-  if (section.additionalCount > 0) {
-    lines.push(`- ${section.additionalCount} additional recent observation${section.additionalCount === 1 ? "" : "s"} available in IronForge.`);
   }
   lines.push("");
   return lines;
