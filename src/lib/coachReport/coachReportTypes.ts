@@ -52,12 +52,6 @@ export type CoachRecentObservation = {
   setContext?: string;
 };
 
-export type CoachRecentObservations = {
-  observations: CoachRecentObservation[];
-  totalCount: number;
-  additionalCount: number;
-};
-
 export type CoachReportAnchor = {
   label: string;
   text: string;
@@ -244,7 +238,7 @@ export type CoachReport = {
   summary?: CoachReportSection;
   hydration?: CoachReportSection;
   trainingSignals?: CoachReportSection;
-  recentSessionObservations?: CoachRecentObservations;
+  recentSessionObservations?: CoachRecentObservation[];
   readinessNotes?: CoachReportSection;
   dataGaps?: CoachReportSection;
   performance?: CoachReportPerformance;

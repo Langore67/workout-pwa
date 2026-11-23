@@ -1,6 +1,5 @@
 import type { CoachExportMetrics } from "../coachExport/types";
 import { normalizeName } from "../../db";
-import type { TodayObservationContext } from "../coachExport/todayObservationContext";
 import type { CoachState } from "../coachState/coachStateTypes";
 import { buildCoachIntelligence, clarifyCoachExportLine } from "../coachExport/coachIntelligence";
 import {
@@ -30,13 +29,11 @@ import type {
   CoachProgrammingPriority,
   CoachProgrammingSummary,
   CoachReportSection,
-  CoachRecentObservations,
+  CoachRecentObservation,
   CoachReportWeeklyVolumeBalance,
   CoachReportWeeklyVolume,
   CoachReportSnapshot,
 } from "./coachReportTypes";
-
-export const MAX_COACH_RECENT_OBSERVATIONS = 8;
 
 function formatRecentObservationSetContext(
   context: NonNullable<NonNullable<CoachExportMetrics["recentSessionNoteEvidence"]>[number]["setContext"]>
@@ -62,56 +59,31 @@ function formatRecentObservationSetContext(
 }
 
 export function buildRecentSessionObservationsReport(
-  evidence: CoachExportMetrics["recentSessionNoteEvidence"],
-  limit = MAX_COACH_RECENT_OBSERVATIONS,
-  todayContext?: TodayObservationContext
-): CoachRecentObservations | undefined {
+  evidence: CoachExportMetrics["recentSessionNoteEvidence"]
+): CoachRecentObservation[] | undefined {
   if (!evidence?.length) return undefined;
-  const matchingSessionIds = new Set(todayContext?.matchingSessionIds ?? []);
-  const todayTrackIds = new Set(todayContext?.trackIds ?? []);
-  const todayExerciseIds = new Set(todayContext?.exerciseIds ?? []);
-  const todayExerciseNames = new Set(todayContext?.exerciseNameKeys ?? []);
-  const relevanceTier = (item: (typeof evidence)[number]) => {
-    if (todayContext?.status !== "training") return 3;
-    if (item.sourceKind === "set_note" && item.trackId && todayTrackIds.has(item.trackId)) return 0;
-    if (item.sourceKind === "set_note" && item.exerciseId && todayExerciseIds.has(item.exerciseId)) return 0;
-    if (matchingSessionIds.has(item.sessionId)) return 1;
-    if (item.sourceKind === "set_note" && item.exerciseName && todayExerciseNames.has(normalizeName(item.exerciseName))) return 2;
-    return 3;
-  };
   const sorted = evidence.slice().sort((a, b) => {
-    const relevanceDifference = relevanceTier(a) - relevanceTier(b);
-    if (relevanceDifference !== 0) return relevanceDifference;
     if (a.occurredAt !== b.occurredAt) return b.occurredAt - a.occurredAt;
     if (a.sessionId !== b.sessionId) return a.sessionId.localeCompare(b.sessionId);
-    if (a.sourceKind !== b.sourceKind) return a.sourceKind === "set_note" ? -1 : 1;
+    if (a.sourceKind !== b.sourceKind) return a.sourceKind === "session_note" ? -1 : 1;
+    if (a.sourceKind === "set_note" && b.sourceKind === "set_note") {
+      const setNumberDifference = (a.setContext?.setNumber ?? Number.MAX_SAFE_INTEGER)
+        - (b.setContext?.setNumber ?? Number.MAX_SAFE_INTEGER);
+      if (setNumberDifference !== 0) return setNumberDifference;
+    }
     return a.evidenceId.localeCompare(b.evidenceId);
   });
-  const seenRawText = new Set<string>();
-  const observations: CoachRecentObservations["observations"] = [];
-  const safeLimit = Math.max(0, Math.floor(limit));
-  for (const item of sorted) {
-    const duplicateKey = item.rawText.trim();
-    if (seenRawText.has(duplicateKey)) continue;
-    seenRawText.add(duplicateKey);
-    if (observations.length >= safeLimit) continue;
-    observations.push({
-      evidenceId: item.evidenceId,
-      occurredAt: item.occurredAt,
-      sessionId: item.sessionId,
-      sessionName: item.sessionName,
-      sourceKind: item.sourceKind,
-      rawText: item.rawText,
-      exerciseName: item.exerciseName,
-      setId: item.setId,
-      setContext: item.setContext ? formatRecentObservationSetContext(item.setContext) : undefined,
-    });
-  }
-  return {
-    observations,
-    totalCount: evidence.length,
-    additionalCount: Math.max(0, evidence.length - observations.length),
-  };
+  return sorted.map((item) => ({
+    evidenceId: item.evidenceId,
+    occurredAt: item.occurredAt,
+    sessionId: item.sessionId,
+    sessionName: item.sessionName,
+    sourceKind: item.sourceKind,
+    rawText: item.rawText,
+    exerciseName: item.exerciseName,
+    setId: item.setId,
+    setContext: item.setContext ? formatRecentObservationSetContext(item.setContext) : undefined,
+  }));
 }
 
 function fmtNumber(value?: number | null, decimals = 1) {
@@ -2220,9 +2192,7 @@ export function buildCoachReport({
   const hydration = buildHydrationReportSection(metrics);
   const trainingSignals = buildTrainingSignalsReportSection(metrics);
   const recentSessionObservations = buildRecentSessionObservationsReport(
-    metrics.recentSessionNoteEvidence,
-    MAX_COACH_RECENT_OBSERVATIONS,
-    metrics.todayObservationContext
+    metrics.recentSessionNoteEvidence
   );
   const readinessNotes = buildReadinessNotesReportSection(metrics);
   const dataGaps = buildDataGapsReportSection(metrics);
