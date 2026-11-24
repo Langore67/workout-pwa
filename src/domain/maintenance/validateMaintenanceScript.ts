@@ -39,7 +39,7 @@ export function validateMaintenanceScript(script: unknown): MaintenanceValidatio
   operations.forEach((raw, index) => {
     const base = `operations[${index}]`;
     if (!plainObject(raw)) { errors.push(issue("INVALID_OPERATION", base, "Operation must be an object.")); return; }
-    if (!(["updateRecord", "restoreMergedExercise", "repointTrackExercise"] as unknown[]).includes(raw.type)) {
+    if (!(["updateRecord", "restoreMergedExercise", "repointTrackExercise", "mergeExercise"] as unknown[]).includes(raw.type)) {
       errors.push(issue("UNKNOWN_OPERATION", `${base}.type`, "Operation type is not supported.")); return;
     }
     const requireId = (field: string) => {
@@ -64,6 +64,15 @@ export function validateMaintenanceScript(script: unknown): MaintenanceValidatio
       if (raw.expectExerciseId === raw.setExerciseId) errors.push(issue("NO_OP_REFERENCE", `${base}.setExerciseId`, "The old and new exercise IDs must differ."));
       validateJson(raw, base, errors); return;
     }
+    if (raw.type === "mergeExercise") {
+      requireId("sourceExerciseId"); requireId("targetExerciseId"); requireId("expectSourceName"); requireId("expectSourceNormalizedName");
+      requireId("expectTargetName"); requireId("expectTargetNormalizedName");
+      if (raw.sourceExerciseId === raw.targetExerciseId) errors.push(issue("NO_OP_REFERENCE", base, "Merge source and target must differ."));
+      for (const field of ["expectSourceAliases", "expectTargetAliases", "setTargetAliases", "expectedTrackIds"]) {
+        if (!Array.isArray(raw[field]) || !(raw[field] as unknown[]).every((value) => typeof value === "string")) errors.push(issue("INVALID_MERGE_ARRAY", `${base}.${field}`, `${field} must be an array of strings.`));
+      }
+      validateJson(raw, base, errors); return;
+    }
     if (!isSupportedMaintenanceTable(raw.table)) { errors.push(issue("UNKNOWN_TABLE", `${base}.table`, "Table is not allowlisted.")); return; }
     if (typeof raw.key !== "string" || !raw.key.trim()) errors.push(issue("INVALID_KEY", `${base}.key`, "Record key is required."));
     for (const patchName of ["expect", "set"] as const) {
@@ -71,9 +80,18 @@ export function validateMaintenanceScript(script: unknown): MaintenanceValidatio
       if (!plainObject(patch) || !Object.keys(patch).length) { errors.push(issue("EMPTY_PATCH", path, `${patchName} must be a nonempty object.`)); continue; }
       if (Object.keys(patch).length > MAINTENANCE_LIMITS.maxPatchFields || JSON.stringify(patch).length > MAINTENANCE_LIMITS.maxPatchBytes) errors.push(issue("PATCH_LIMIT", path, "Patch exceeds the field or byte limit."));
       for (const [field, value] of Object.entries(patch)) {
-        const message = validateMaintenanceField(raw.table, field, value as JsonValue);
+        const exactExerciseCreatedAtExpectation = patchName === "expect" && raw.table === "exercises" && field === "createdAt" && typeof value === "number" && Number.isFinite(value);
+        const message = exactExerciseCreatedAtExpectation ? undefined : validateMaintenanceField(raw.table, field, value as JsonValue);
         if (message) errors.push(issue(field === MAINTENANCE_TABLE_REGISTRY[raw.table].primaryKey ? "PRIMARY_KEY_MUTATION" : PROTOTYPE_SENSITIVE_FIELDS.has(field) ? "PROTOTYPE_FIELD" : "INVALID_FIELD", `${path}.${field}`, message));
         validateJson(value, `${path}.${field}`, errors);
+      }
+    }
+    if (own(raw, "expectUnsetFields")) {
+      if (!Array.isArray(raw.expectUnsetFields) || !raw.expectUnsetFields.every((field) => typeof field === "string")) errors.push(issue("INVALID_UNSET_EXPECTATION", `${base}.expectUnsetFields`, "expectUnsetFields must be an array of field names."));
+      else for (const field of raw.expectUnsetFields as string[]) {
+        const message = validateMaintenanceField(raw.table, field, null);
+        if (message) errors.push(issue("INVALID_UNSET_EXPECTATION", `${base}.expectUnsetFields`, message));
+        if (!plainObject(raw.set) || !own(raw.set, field)) errors.push(issue("UNSET_FIELD_NOT_PATCHED", `${base}.expectUnsetFields`, "Each field expected to be unset must be included in set."));
       }
     }
   });

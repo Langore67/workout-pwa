@@ -2,7 +2,7 @@ import { MAINTENANCE_TABLE_REGISTRY, isSupportedMaintenanceTable } from "./maint
 import { SUPPORTED_MAINTENANCE_TABLES, type JsonValue, type MaintenanceDryRunResult, type MaintenanceIssue, type MaintenanceOperationResult, type MaintenanceScriptV1 } from "./maintenanceTypes";
 import { validateMaintenanceScript } from "./validateMaintenanceScript";
 
-export type ReadonlyMaintenanceTable = { get(key: string): Promise<unknown>; count(): Promise<number> };
+export type ReadonlyMaintenanceTable = { get(key: string): Promise<unknown>; count(): Promise<number>; tracksForExercise?(exerciseId: string): Promise<unknown[]> };
 export type ReadonlyMaintenanceDatabase = { name: string; verno: number; table(name: string): ReadonlyMaintenanceTable };
 const own = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key);
 
@@ -22,6 +22,9 @@ export function jsonDeepEqual(left: unknown, right: unknown): boolean {
 
 function fieldsMatch(record: Record<string, unknown>, patch: Record<string, JsonValue>) {
   return Object.entries(patch).every(([field, expected]) => own(record, field) && jsonDeepEqual(record[field], expected));
+}
+function unsetFieldsMatch(record: Record<string, unknown>, fields: string[] = []) {
+  return fields.every((field) => !own(record, field) || record[field] === null);
 }
 function relevantBefore(record: Record<string, unknown>, fields: string[]) {
   return Object.fromEntries(fields.sort().map((field) => [field, own(record, field) ? record[field] as JsonValue : { missing: true as const }]));
@@ -86,6 +89,27 @@ export async function dryRunMaintenanceScript(
       const status = jsonDeepEqual(track.exerciseId, operation.expectExerciseId) ? "WOULD_CHANGE" : "CONFLICT";
       operations.push({ index, type: operation.type, table: "tracks", key: operation.trackId, status, changedFields: ["exerciseId"], expected, before, after, ...(status === "CONFLICT" ? { error: "Current track exerciseId does not match the expected value." } : {}) }); continue;
     }
+    if (operation.type === "mergeExercise") {
+      const source = await database.table("exercises").get(operation.sourceExerciseId) as Record<string, unknown> | undefined;
+      const target = await database.table("exercises").get(operation.targetExerciseId) as Record<string, unknown> | undefined;
+      const tracks = await database.table("tracks").tracksForExercise?.(operation.sourceExerciseId);
+      const expected = { sourceName: operation.expectSourceName, sourceNormalizedName: operation.expectSourceNormalizedName, sourceAliases: operation.expectSourceAliases, targetName: operation.expectTargetName, targetNormalizedName: operation.expectTargetNormalizedName, targetAliases: operation.expectTargetAliases, trackIds: operation.expectedTrackIds };
+      const after = { targetAliases: operation.setTargetAliases, sourceMergedInto: operation.targetExerciseId, trackExerciseId: operation.targetExerciseId };
+      if (!source || !target || !tracks) { operations.push({ index, type: operation.type, table: "exercises", key: operation.sourceExerciseId, status: "NOT_FOUND", changedFields: [], expected, before: {}, after, error: !source ? "Merge source was not found." : !target ? "Merge target was not found." : "Database adapter cannot verify source tracks." }); continue; }
+      const sourceAlreadyMerged = source.mergedIntoExerciseId === operation.targetExerciseId && !!source.archivedAt;
+      const actualTrackIds = tracks.map((track: any) => String(track.id)).sort();
+      const expectedTrackIds = [...operation.expectedTrackIds].sort();
+      const tracksAlreadyMoved = actualTrackIds.length === 0;
+      const aliasesAlready = jsonDeepEqual(target.aliases ?? [], operation.setTargetAliases);
+      if (sourceAlreadyMerged && tracksAlreadyMoved && aliasesAlready) {
+        operations.push({ index, type: operation.type, table: "exercises", key: operation.sourceExerciseId, status: "ALREADY_SATISFIED", changedFields: [], expected, before: { sourceName: String(source.name ?? ""), targetName: String(target.name ?? ""), trackIds: actualTrackIds }, after }); continue;
+      }
+      const sourceMatches = source.name === operation.expectSourceName && source.normalizedName === operation.expectSourceNormalizedName && jsonDeepEqual(source.aliases ?? [], operation.expectSourceAliases) && !source.archivedAt && !source.mergedIntoExerciseId;
+      const targetMatches = target.name === operation.expectTargetName && target.normalizedName === operation.expectTargetNormalizedName && jsonDeepEqual(target.aliases ?? [], operation.expectTargetAliases) && !target.archivedAt && !target.mergedIntoExerciseId;
+      const trackSetMatches = jsonDeepEqual(actualTrackIds, expectedTrackIds);
+      const status = sourceMatches && targetMatches && trackSetMatches ? "WOULD_CHANGE" : "CONFLICT";
+      operations.push({ index, type: operation.type, table: "exercises", key: operation.sourceExerciseId, status, changedFields: ["target.aliases", "source.mergedIntoExerciseId", "source.archivedAt", "source.mergeNote", ...expectedTrackIds.map((id) => `track:${id}.exerciseId`)].sort(), expected, before: { sourceName: String(source.name ?? ""), sourceNormalizedName: String(source.normalizedName ?? ""), sourceAliases: (source.aliases ?? []) as JsonValue, sourceArchivedAt: (source.archivedAt ?? null) as JsonValue, sourceMergedInto: (source.mergedIntoExerciseId ?? null) as JsonValue, targetName: String(target.name ?? ""), targetNormalizedName: String(target.normalizedName ?? ""), targetAliases: (target.aliases ?? []) as JsonValue, trackIds: actualTrackIds }, after, ...(status === "CONFLICT" ? { error: !trackSetMatches ? "Source track IDs differ from the reviewed backup; no merge is safe." : "Source or target identity/state/aliases differ from the reviewed backup." } : {}) }); continue;
+    }
     if (operation?.type !== "updateRecord" || !isSupportedMaintenanceTable(operation?.table)) {
       operations.push(invalidResult(index, operation, "Invalid operation.")); continue;
     }
@@ -95,8 +119,9 @@ export async function dryRunMaintenanceScript(
     const before = relevantBefore(record, fields);
     const changedFields = Object.keys(operation.set).filter((field) => !own(record, field) || !jsonDeepEqual(record[field], operation.set[field])).sort();
     if (!changedFields.length) { operations.push({ index, type: operation.type, table: operation.table, key: operation.key, status: "ALREADY_SATISFIED", changedFields, expected: operation.expect, before, after: operation.set }); continue; }
-    const status = fieldsMatch(record, operation.expect) ? "WOULD_CHANGE" : "CONFLICT";
-    operations.push({ index, type: operation.type, table: operation.table, key: operation.key, status, changedFields, expected: operation.expect, before, after: operation.set, ...(status === "CONFLICT" ? { error: "Current values do not match expected values." } : {}) });
+    const expected = { ...operation.expect, ...(operation.expectUnsetFields?.length ? { unsetFields: operation.expectUnsetFields } : {}) };
+    const status = fieldsMatch(record, operation.expect) && unsetFieldsMatch(record, operation.expectUnsetFields) ? "WOULD_CHANGE" : "CONFLICT";
+    operations.push({ index, type: operation.type, table: operation.table, key: operation.key, status, changedFields, expected, before, after: operation.set, ...(status === "CONFLICT" ? { error: "Current values do not match the exact identity and unset-field expectations." } : {}) });
   }
   const count = (status: MaintenanceOperationResult["status"]) => operations.filter((operation) => operation.status === status).length;
   return {
