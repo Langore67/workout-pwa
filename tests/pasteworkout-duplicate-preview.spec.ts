@@ -371,6 +371,97 @@ work 250x10`);
   await expect(page.getByText(/Imported/i)).toBeVisible();
 });
 
+test("Paste Workout reuses an existing alias match without replacing canonical exercise metadata", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+  await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    const now = Date.now();
+    await db.exercises.add({
+      id: "canonical-cable-row",
+      name: "Seated Cable Row",
+      normalizedName: "seated cable row",
+      aliases: ["Cable Row Alias"],
+      equipmentTags: ["cable"],
+      category: "Strength",
+      movementPattern: "pull",
+      strengthSignalRole: "included",
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
+  await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox").first().fill(`Session: Alias Reuse\nDate: 2026-06-01\n\nCable Row Alias\nwork 50x10`);
+  await page.getByRole("button", { name: "Parse Preview" }).click();
+  await page.getByLabel(/Dry run/i).uncheck();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+
+  const catalog = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    return db.exercises.toArray();
+  });
+  expect(catalog).toHaveLength(1);
+  expect(catalog[0]).toMatchObject({
+    id: "canonical-cable-row",
+    movementPattern: "pull",
+    strengthSignalRole: "included",
+    category: "Strength",
+  });
+});
+
+test("Paste Workout creates a safe new exercise once and reuses it on a repeated paste", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+
+  const paste = async (date: string) => {
+    await page.goto(new URL("/paste-workout", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+    await page.getByRole("textbox").first().fill(`Session: New Exercise ${date}\nDate: ${date}\n\nCable Row\nwork 50x10`);
+    await page.getByRole("button", { name: "Parse Preview" }).click();
+    await page.getByLabel(/Dry run/i).uncheck();
+    await page.getByRole("button", { name: "Import Now" }).click();
+    await expect(page.getByText(/Imported/i)).toBeVisible();
+  };
+
+  await paste("2026-06-02");
+  const first = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    return db.exercises.where("normalizedName").equals("cable row").first();
+  });
+  expect(first).toMatchObject({
+    name: "Cable Row",
+    normalizedName: "cable row",
+    aliases: [],
+    equipmentTags: [],
+  });
+  expect(first.id).toBeTruthy();
+  expect(first.createdAt).toBeGreaterThan(0);
+  expect(first.updatedAt).toBe(first.createdAt);
+  expect(first.metricMode).toBeUndefined();
+  expect(first.movementPattern).toBeUndefined();
+  expect(first.strengthSignalRole).toBeUndefined();
+  expect(first.category).toBeUndefined();
+  expect(first.equipment).toBeUndefined();
+  expect(first.bodyPart).toBeUndefined();
+
+  await paste("2026-06-03");
+  const repeated = await page.evaluate(async () => {
+    // @ts-ignore
+    const db = window.__db;
+    return {
+      count: await db.exercises.where("normalizedName").equals("cable row").count(),
+      exercise: await db.exercises.where("normalizedName").equals("cable row").first(),
+    };
+  });
+  expect(repeated.count).toBe(1);
+  expect(repeated.exercise.id).toBe(first.id);
+  expect(repeated.exercise.createdAt).toBe(first.createdAt);
+});
+
 test("Paste Workout still warns on same session with slightly edited set content", async ({ page }) => {
   await seedExistingPasteSession(page, {
     title: "Upper A",

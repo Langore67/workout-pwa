@@ -70,6 +70,7 @@ import {
   Track,
   TrackType,
   TrackingMode,
+  MetricMode,
   normalizeName,
 } from "../db";
 import { uuid } from "../utils";
@@ -79,6 +80,7 @@ import {
   buildExerciseResolverIndex,
   resolveExerciseFromIndex,
 } from "../domain/exercises/exerciseResolver";
+import { createExerciseRecord } from "../domain/exercises/createExercise";
 import { dispatchCoachDashboardRefresh } from "../lib/coachDashboardEvents";
 import {
   buildExerciseDuplicateCandidates,
@@ -1634,18 +1636,12 @@ export default function PasteWorkoutPage() {
         return;
       }
 
-      const norm = normalizeName(ex.exercise);
       const metricMode = inferExerciseMetricModeFromParsedSets(ex.sets);
-      const newEx: Exercise = {
-        id: uuid(),
+      const newEx = createExerciseRecord({
         name: ex.exercise,
-        normalizedName: norm,
-        aliases: [],
-        equipmentTags: [],
         metricMode,
-        createdAt: now,
-        updatedAt: now,
-      };
+        now,
+      });
 
       newExercises.push(newEx);
       exerciseByImportedName.set(ex.exercise, newEx);
