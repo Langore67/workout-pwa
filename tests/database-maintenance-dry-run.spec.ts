@@ -31,6 +31,16 @@ test("missing properties differ from null and nested arrays use strict determini
   expect(result.operations[0].before.movementPattern).toEqual({ missing: true });
 });
 
+test("reviewed backfill unset-field guards allow absent/null fields and refuse metadata added since backup", async () => {
+  const backfill = { type: "updateRecord", table: "exercises", key: "row", expect: { createdAt: 17 }, expectUnsetFields: ["movementPattern", "strengthSignalRole"], set: { movementPattern: "pull", strengthSignalRole: "secondary" } };
+  const allowed = await dryRunMaintenanceScript(memoryDb({ row: { id: "row", createdAt: 17, movementPattern: null } }), script([backfill]));
+  expect(allowed.operations[0].status).toBe("WOULD_CHANGE");
+  const changedSinceBackup = await dryRunMaintenanceScript(memoryDb({ row: { id: "row", createdAt: 17, movementPattern: "push" } }), script([backfill]));
+  expect(changedSinceBackup.operations[0].status).toBe("CONFLICT");
+  const already = await dryRunMaintenanceScript(memoryDb({ row: { id: "row", createdAt: 17, movementPattern: "pull", strengthSignalRole: "secondary" } }), script([backfill]));
+  expect(already.operations[0].status).toBe("ALREADY_SATISFIED");
+});
+
 test("runtime preconditions and invalid operations are factual INVALID results", async () => {
   const db = memoryDb({ row: { id: "row", movementPattern: null } });
   const mismatch = await dryRunMaintenanceScript(db, script([operation("row", { movementPattern: null }, { movementPattern: "pull" })], { dbName: "wrong", dexieSchemaVersion: 18 }));

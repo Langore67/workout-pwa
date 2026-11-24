@@ -1,0 +1,488 @@
+{
+  "format": "ironforge-db-maintenance",
+  "version": 1,
+  "id": "reconcile-thin-strength-exercises-2026-11-23",
+  "name": "Reviewed reconciliation of active thin strength/hypertrophy exercises",
+  "createdAt": "2026-11-24T00:00:00.000Z",
+  "operationCount": 25,
+  "preconditions": {
+    "dbName": "workout_mvp_db",
+    "dexieSchemaVersion": 19,
+    "supportedBackupVersion": 2
+  },
+  "sourceBackup": {
+    "exportedAt": "2026-11-23T19:31:08.979Z",
+    "sha256": "faff9501bc092b02846c472a058513b86d800f3d502ffadeec4d3fa9482029eb",
+    "recordCounts": {
+      "exercises": 491,
+      "tracks": 584,
+      "sessions": 296,
+      "sets": 5587,
+      "bodyMetrics": 161,
+      "bodyMeasurements": 13,
+      "app_meta": 8
+    }
+  },
+  "operations": [
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "bece34e0-0713-4d7f-8f1d-470f446a079f",
+      "expect": {
+        "createdAt": 1791555162496
+      },
+      "expectUnsetFields": [
+        "strengthSignalRole",
+        "bodyPart",
+        "category",
+        "equipment"
+      ],
+      "set": {
+        "strengthSignalRole": "excluded",
+        "bodyPart": "Legs",
+        "category": "Machine",
+        "equipment": "Machine"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "f3e8882d-abcb-4df7-9909-ea03970257b0",
+      "expect": {
+        "createdAt": 1792419834884
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "push",
+        "strengthSignalRole": "secondary",
+        "bodyPart": "Shoulders"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "adc15a81-4b95-45c3-82f4-24ed2aabef78",
+      "expect": {
+        "createdAt": 1792419834884
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "push",
+        "strengthSignalRole": "secondary",
+        "bodyPart": "Shoulders"
+      }
+    },
+    {
+      "type": "mergeExercise",
+      "sourceExerciseId": "ec7c96b9-23dc-45ef-872a-2d13ccef20f8",
+      "targetExerciseId": "130692cb-6cff-4e24-b460-21a29d16a636",
+      "expectSourceName": "Leg Press (Quad Bias)",
+      "expectSourceNormalizedName": "leg press (quad bias)",
+      "expectSourceAliases": [],
+      "expectTargetName": "Leg Press - Quad Biased",
+      "expectTargetNormalizedName": "leg press quad biased",
+      "expectTargetAliases": [],
+      "setTargetAliases": [
+        "Leg Press (Quad Bias)"
+      ],
+      "expectedTrackIds": [
+        "342c7f87-dfa0-4ee9-9db3-a17801ea60d8"
+      ]
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "36dac45f-a191-43e3-9fa7-261751e416ae",
+      "expect": {
+        "createdAt": 1793462775723
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "pull",
+        "strengthSignalRole": "secondary",
+        "bodyPart": "Arms"
+      }
+    },
+    {
+      "type": "mergeExercise",
+      "sourceExerciseId": "c8f6c844-a659-4554-bb8d-2c7a4fc07d11",
+      "targetExerciseId": "f65c6c1f-6d92-40d1-906f-285c4b9be65e",
+      "expectSourceName": "Pull-Ups",
+      "expectSourceNormalizedName": "pull ups",
+      "expectSourceAliases": [],
+      "expectTargetName": "Pull Up",
+      "expectTargetNormalizedName": "pull up",
+      "expectTargetAliases": [],
+      "setTargetAliases": [
+        "Pull-Ups"
+      ],
+      "expectedTrackIds": [
+        "0b18abed-6413-4aa8-aed3-221f23ffd24b"
+      ]
+    },
+    {
+      "type": "mergeExercise",
+      "sourceExerciseId": "915302b6-5f1b-4e61-924f-dec9cd80ae7b",
+      "targetExerciseId": "ae5e18fb-ec02-457b-9198-363c3084f95b",
+      "expectSourceName": "Push-Ups",
+      "expectSourceNormalizedName": "push ups",
+      "expectSourceAliases": [],
+      "expectTargetName": "Push Up",
+      "expectTargetNormalizedName": "push up",
+      "expectTargetAliases": [],
+      "setTargetAliases": [
+        "Push-Ups"
+      ],
+      "expectedTrackIds": [
+        "2992589b-a906-4b8f-a70e-6e84769c7b5e"
+      ]
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "da470bde-9a60-43e4-a8ee-5a8330ec8bf9",
+      "expect": {
+        "createdAt": 1792099812137
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "pull",
+        "strengthSignalRole": "included",
+        "bodyPart": "Back"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "29cd48c7-8007-4ba2-964a-4e0e3b12b74d",
+      "expect": {
+        "createdAt": 1793875899390
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "pull",
+        "strengthSignalRole": "secondary",
+        "bodyPart": "Arms"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "78237c64-dfea-4e09-bba7-37bd3c8d5c21",
+      "expect": {
+        "createdAt": 1794910824799
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "push",
+        "strengthSignalRole": "secondary",
+        "bodyPart": "Shoulders"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "9f310c5b-c41d-438b-9687-20e55bab7bef",
+      "expect": {
+        "createdAt": 1793979365020
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "push",
+        "strengthSignalRole": "included",
+        "bodyPart": "Chest"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "1536f9df-a29a-47cb-8724-0749683e7953",
+      "expect": {
+        "createdAt": 1793462775723
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "push",
+        "strengthSignalRole": "included",
+        "bodyPart": "Chest"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "c1adb26c-c62b-4635-9f3a-d189d9bbcca6",
+      "expect": {
+        "createdAt": 1793633972011
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "push",
+        "strengthSignalRole": "included",
+        "bodyPart": "Chest"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "04a9cbbd-2ae3-4e56-b4f1-2ac2a4503235",
+      "expect": {
+        "createdAt": 1793633972011
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "push",
+        "strengthSignalRole": "included",
+        "bodyPart": "Chest"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "2ee9bde0-8f05-49ac-b298-14664326df41",
+      "expect": {
+        "createdAt": 1793875899390
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "pull",
+        "strengthSignalRole": "secondary",
+        "bodyPart": "Arms"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "10f55192-2186-41bb-b068-70fc5cb78afb",
+      "expect": {
+        "createdAt": 1793875899390
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "pull",
+        "strengthSignalRole": "secondary",
+        "bodyPart": "Arms"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "c7a8c739-c4f5-4d25-bb9a-d9eb973a7cee",
+      "expect": {
+        "createdAt": 1794258136884
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "pull",
+        "strengthSignalRole": "secondary",
+        "bodyPart": "Arms"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "2bfd0007-424e-434c-aa24-ca68bcbd0209",
+      "expect": {
+        "createdAt": 1794258136884
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "pull",
+        "strengthSignalRole": "secondary",
+        "bodyPart": "Arms"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "7f91662d-a5f6-4bf5-b16e-6f55a50fc65d",
+      "expect": {
+        "createdAt": 1794910824799
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "push",
+        "strengthSignalRole": "secondary",
+        "bodyPart": "Shoulders"
+      }
+    },
+    {
+      "type": "mergeExercise",
+      "sourceExerciseId": "6485fbc7-54d3-4cb8-bbfe-37911798f7c4",
+      "targetExerciseId": "58dfbfc1-78cb-4bb6-b6d0-f44ae9a0e641",
+      "expectSourceName": "Cable Triceps",
+      "expectSourceNormalizedName": "cable triceps",
+      "expectSourceAliases": [],
+      "expectTargetName": "Cable Tricep Pushdown",
+      "expectTargetNormalizedName": "cable tricep pushdown",
+      "expectTargetAliases": [
+        "Rope Triceps Pushdown",
+        "Tricep Pushdown",
+        "Tricep Rope Press Down",
+        "Tricep Rope Pushdown",
+        "Triceps Pushdown",
+        "Cable Triceps Pushdown"
+      ],
+      "setTargetAliases": [
+        "Cable Triceps",
+        "Cable Triceps Pushdown",
+        "Rope Triceps Pushdown",
+        "Tricep Pushdown",
+        "Tricep Rope Press Down",
+        "Tricep Rope Pushdown",
+        "Triceps Pushdown"
+      ],
+      "expectedTrackIds": [
+        "1850ce7f-4ff8-4de6-b729-e98a75ce978b"
+      ]
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "0b8dcf92-97b1-4a15-9331-6226611b4eac",
+      "expect": {
+        "createdAt": 1793633972011
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "pull",
+        "strengthSignalRole": "included",
+        "bodyPart": "Back"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "79a60857-49a9-4efb-af9c-5f7adf9c0d4f",
+      "expect": {
+        "createdAt": 1793633972011
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "pull",
+        "strengthSignalRole": "included",
+        "bodyPart": "Back"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "4e134bc8-33a7-4732-9fb8-45b108cfd164",
+      "expect": {
+        "createdAt": 1795270474955
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "lunge",
+        "strengthSignalRole": "secondary",
+        "bodyPart": "Legs"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "daf46bdc-416b-40f8-8c50-a0655f017860",
+      "expect": {
+        "createdAt": 1795270474955
+      },
+      "expectUnsetFields": [
+        "movementPattern",
+        "strengthSignalRole",
+        "bodyPart"
+      ],
+      "set": {
+        "movementPattern": "lunge",
+        "strengthSignalRole": "secondary",
+        "bodyPart": "Legs"
+      }
+    },
+    {
+      "type": "mergeExercise",
+      "sourceExerciseId": "75550dc3-b027-4a42-9752-d4db74562b21",
+      "targetExerciseId": "d9bb4ba0-efde-4320-8a7f-8c5ab0c12edd",
+      "expectSourceName": "Scap CAR",
+      "expectSourceNormalizedName": "scap car",
+      "expectSourceAliases": [],
+      "expectTargetName": "Scapular CAR",
+      "expectTargetNormalizedName": "scapular car",
+      "expectTargetAliases": [],
+      "setTargetAliases": [
+        "Scap CAR"
+      ],
+      "expectedTrackIds": [
+        "e8e454a0-719e-44a5-bd12-ca598395bc9e"
+      ]
+    }
+  ]
+}
