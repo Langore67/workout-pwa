@@ -11,7 +11,7 @@ type Identity = { name: string; schemaVersion: number; counts: Record<string, nu
 const readonlyDb: ReadonlyMaintenanceDatabase = {
   name: db.name,
   verno: db.verno,
-  table: (name) => ({ get: (key) => db.table(name).get(key), count: () => db.table(name).count() }),
+  table: (name) => ({ get: (key) => db.table(name).get(key), count: () => db.table(name).count(), tracksForExercise: name === "tracks" ? (exerciseId) => db.tracks.where("exerciseId").equals(exerciseId).toArray() : undefined }),
 };
 const executionDb = createDexieMaintenanceExecutionDatabase(db);
 function issueText(errors: MaintenanceIssue[]) { return errors.map((entry) => `${entry.path}: ${entry.message}`); }
@@ -120,7 +120,7 @@ export function DatabaseMaintenanceCard() {
   return (
     <section aria-labelledby="database-maintenance-title" data-testid="database-maintenance-card" style={{ marginTop: 14 }}>
       <h4 id="database-maintenance-title" style={{ margin: "0 0 6px" }}>Database Maintenance</h4>
-      <p className="muted" style={{ marginTop: 0 }}>Upload declarative JSON, review a read-only dry run, and execute only validated field updates in one transaction.</p>
+      <p className="muted" style={{ marginTop: 0 }}>Upload declarative JSON, review a read-only dry run, then execute only validated field updates or canonical exercise merges in one transaction.</p>
       <div style={{ display: "grid", gap: 4, fontSize: 13 }}>
         <div><b>Origin:</b> {window.location.origin}</div><div><b>Database:</b> {identity?.name ?? "Loading…"}</div>
         <div><b>Dexie schema:</b> {identity?.schemaVersion ?? "Loading…"}</div><div><b>Build:</b> {BUILD_INFO.buildId}</div>

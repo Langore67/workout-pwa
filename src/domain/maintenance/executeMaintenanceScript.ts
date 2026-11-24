@@ -10,15 +10,16 @@ export type WritableMaintenanceTable = {
   get(key: string): Promise<unknown>;
   count(): Promise<number>;
   update(key: string, changes: Record<string, JsonValue>): Promise<number>;
+  tracksForExercise?(exerciseId: string): Promise<unknown[]>;
 };
-export type MaintenanceExecutionDatabase = ReadonlyMaintenanceDatabase & {
+export type MaintenanceExecutionDatabase = Omit<ReadonlyMaintenanceDatabase, "table"> & {
   table(name: string): WritableMaintenanceTable;
   runReadWriteTransaction<T>(tables: SupportedMaintenanceTable[], callback: () => Promise<T>): Promise<T>;
 };
 type DexieLikeMaintenanceDatabase = {
   name: string;
   verno: number;
-  table(name: string): { get(key: string): Promise<unknown>; count(): Promise<number>; update(key: string, changes: Record<string, JsonValue>): Promise<number> };
+  table(name: string): { get(key: string): Promise<unknown>; count(): Promise<number>; update(key: string, changes: Record<string, JsonValue>): Promise<number>; where?(index: string): { equals(value: unknown): { toArray(): Promise<unknown[]> } } };
   transaction<T>(mode: "rw", ...tablesAndCallback: unknown[]): Promise<T>;
 };
 export type ExecuteMaintenanceOptions = {
@@ -37,6 +38,7 @@ export function createDexieMaintenanceExecutionDatabase(database: DexieLikeMaint
       get: (key) => database.table(name).get(key),
       count: () => database.table(name).count(),
       update: (key, changes) => database.table(name).update(key, changes),
+      ...(name === "tracks" ? { tracksForExercise: async (exerciseId: string) => database.table(name).where?.("exerciseId").equals(exerciseId).toArray() ?? Promise.resolve([]) } : {}),
     }),
     runReadWriteTransaction: (tables, callback) => database.transaction("rw", ...tables.map((table) => database.table(table)), callback),
   };
@@ -45,6 +47,8 @@ export function createDexieMaintenanceExecutionDatabase(database: DexieLikeMaint
 const own = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key);
 const fieldsMatch = (record: Record<string, unknown>, patch: Record<string, JsonValue>) =>
   Object.entries(patch).every(([field, expected]) => own(record, field) && jsonDeepEqual(record[field], expected));
+const unsetFieldsMatch = (record: Record<string, unknown>, fields: string[] = []) =>
+  fields.every((field) => !own(record, field) || record[field] === null);
 const beforeValues = (record: Record<string, unknown>, fields: string[]) => Object.fromEntries(
   [...fields].sort().map((field) => [field, own(record, field) ? record[field] as JsonValue : { missing: true as const }]),
 );
@@ -60,7 +64,7 @@ class MaintenanceAbort extends Error {
 
 function refusedResult(script: Partial<MaintenanceScriptV1>, hash: string, startedAt: string, completedAt: string, database: MaintenanceExecutionDatabase, options: ExecuteMaintenanceOptions, errors: MaintenanceExecutionError[]): MaintenanceExecutionResult {
   const operations: MaintenanceExecutionOperationResult[] = Array.isArray(script.operations) ? script.operations.map((operation: any, index) => ({
-    index, type: operation.type, table: operation.type === "updateRecord" ? operation.table : operation.type === "repointTrackExercise" ? "tracks" : "exercises", key: operation.key ?? operation.trackId ?? operation.exerciseId, status: "REFUSED", changedFields: [], before: {}, after: operation.set ?? (operation.type === "repointTrackExercise" ? { exerciseId: operation.setExerciseId } : { archived: false, ...(operation.setTargetAliases ? { targetAliases: operation.setTargetAliases } : {}) }),
+    index, type: operation.type, table: operation.type === "updateRecord" ? operation.table : operation.type === "repointTrackExercise" ? "tracks" : "exercises", key: operation.key ?? operation.trackId ?? operation.exerciseId ?? operation.sourceExerciseId, status: "REFUSED", changedFields: [], before: {}, after: operation.set ?? (operation.type === "repointTrackExercise" ? { exerciseId: operation.setExerciseId } : operation.type === "mergeExercise" ? { targetExerciseId: operation.targetExerciseId } : { archived: false, ...(operation.setTargetAliases ? { targetAliases: operation.setTargetAliases } : {}) }),
     error: errors[0]?.message ?? "Execution was refused before the transaction began.",
   })) : [];
   return {
@@ -88,7 +92,7 @@ export async function executeMaintenanceScript(database: MaintenanceExecutionDat
   if (!clean) return refusedResult(script, hash, startedAt, now().toISOString(), database, options, [{ phase: "refused", message: "Fresh database checks no longer match the eligible dry run. Run a new dry check." }]);
 
   const operations: MaintenanceExecutionOperationResult[] = [];
-  const affectedTables = [...new Set(script.operations.flatMap((operation: any) => operation.type === "updateRecord" ? [operation.table] : operation.type === "repointTrackExercise" ? ["tracks", "exercises"] : ["exercises"]))] as SupportedMaintenanceTable[];
+  const affectedTables = [...new Set(script.operations.flatMap((operation: any) => operation.type === "updateRecord" ? [operation.table] : operation.type === "repointTrackExercise" || operation.type === "mergeExercise" ? ["tracks", "exercises"] : ["exercises"]))] as SupportedMaintenanceTable[];
   let transactionStarted = false;
   try {
     await database.runReadWriteTransaction(affectedTables, async () => {
@@ -121,6 +125,28 @@ export async function executeMaintenanceScript(database: MaintenanceExecutionDat
           if (await database.table("tracks").update(operation.trackId, after) !== 1) throw new MaintenanceAbort(index, "Track repoint did not modify exactly one track.");
           operations.push({ index, type: operation.type, table: "tracks", key: operation.trackId, status: "CHANGED", changedFields: ["exerciseId"], before, after }); continue;
         }
+        if (operation.type === "mergeExercise") {
+          const source = await database.table("exercises").get(operation.sourceExerciseId) as Record<string, unknown> | undefined;
+          const target = await database.table("exercises").get(operation.targetExerciseId) as Record<string, unknown> | undefined;
+          const tracks = await database.table("tracks").tracksForExercise?.(operation.sourceExerciseId);
+          if (!source || !target || !tracks) throw new MaintenanceAbort(index, "Merge source, target, or track-index support was not found inside the transaction.");
+          const actualTrackIds = tracks.map((track: any) => String(track.id)).sort();
+          const expectedTrackIds = [...operation.expectedTrackIds].sort();
+          const sourceAlreadyMerged = source.mergedIntoExerciseId === operation.targetExerciseId && !!source.archivedAt;
+          if (sourceAlreadyMerged && actualTrackIds.length === 0 && jsonDeepEqual(target.aliases ?? [], operation.setTargetAliases)) {
+            operations.push({ index, type: operation.type, table: "exercises", key: operation.sourceExerciseId, status: "ALREADY_SATISFIED", changedFields: [], before: { sourceName: String(source.name ?? ""), targetName: String(target.name ?? ""), trackIds: actualTrackIds }, after: { targetAliases: operation.setTargetAliases, sourceMergedInto: operation.targetExerciseId, trackExerciseId: operation.targetExerciseId } }); continue;
+          }
+          const sourceMatches = source.name === operation.expectSourceName && source.normalizedName === operation.expectSourceNormalizedName && jsonDeepEqual(source.aliases ?? [], operation.expectSourceAliases) && !source.archivedAt && !source.mergedIntoExerciseId;
+          const targetMatches = target.name === operation.expectTargetName && target.normalizedName === operation.expectTargetNormalizedName && jsonDeepEqual(target.aliases ?? [], operation.expectTargetAliases) && !target.archivedAt && !target.mergedIntoExerciseId;
+          if (!sourceMatches || !targetMatches || !jsonDeepEqual(actualTrackIds, expectedTrackIds)) throw new MaintenanceAbort(index, "Exercise identity, merge state, target aliases, or source track IDs differ from the reviewed backup.");
+          const nowMs = now().getTime(); const mergeNote = `Merged into ${operation.expectTargetName} on ${nowMs ? new Date(nowMs).toISOString() : ""}`;
+          const before = { source: beforeValues(source, ["archivedAt", "mergedIntoExerciseId", "mergeNote", "updatedAt"]), targetAliases: (target.aliases ?? []) as JsonValue, trackIds: actualTrackIds };
+          const after = { targetAliases: operation.setTargetAliases, source: { mergedIntoExerciseId: operation.targetExerciseId, archivedAt: nowMs, mergeNote, updatedAt: nowMs }, tracksMoved: actualTrackIds.length };
+          if (await database.table("exercises").update(operation.targetExerciseId, { aliases: operation.setTargetAliases }) !== 1) throw new MaintenanceAbort(index, "Canonical alias update did not modify exactly one exercise.");
+          for (const trackId of actualTrackIds) if (await database.table("tracks").update(trackId, { exerciseId: operation.targetExerciseId }) !== 1) throw new MaintenanceAbort(index, `Track ${trackId} could not be redirected to the canonical exercise.`);
+          if (await database.table("exercises").update(operation.sourceExerciseId, { mergedIntoExerciseId: operation.targetExerciseId, archivedAt: nowMs, mergeNote, updatedAt: nowMs }) !== 1) throw new MaintenanceAbort(index, "Source exercise redirect did not modify exactly one record.");
+          operations.push({ index, type: operation.type, table: "exercises", key: operation.sourceExerciseId, status: "CHANGED", changedFields: ["target.aliases", "source.archivedAt", "source.mergedIntoExerciseId", "source.mergeNote", "source.updatedAt", ...actualTrackIds.map((id) => `track:${id}.exerciseId`)].sort(), before, after }); continue;
+        }
         const record = await database.table(operation.table).get(operation.key) as Record<string, unknown> | undefined;
         if (!record) throw new MaintenanceAbort(index, "Target record was not found inside the transaction.");
         const fields = [...new Set([...Object.keys(operation.expect), ...Object.keys(operation.set)])];
@@ -130,7 +156,7 @@ export async function executeMaintenanceScript(database: MaintenanceExecutionDat
           operations.push({ index, type: "updateRecord", table: operation.table, key: operation.key, status: "ALREADY_SATISFIED", changedFields: [], before, after: operation.set });
           continue;
         }
-        if (!fieldsMatch(record, operation.expect)) throw new MaintenanceAbort(index, "Current values no longer match expected values inside the transaction.");
+        if (!fieldsMatch(record, operation.expect) || !unsetFieldsMatch(record, operation.expectUnsetFields)) throw new MaintenanceAbort(index, "Current values no longer match expected values inside the transaction.");
         const updated = await database.table(operation.table).update(operation.key, operation.set);
         if (updated !== 1) throw new MaintenanceAbort(index, "Field-level update did not modify exactly one record.");
         operations.push({ index, type: "updateRecord", table: operation.table, key: operation.key, status: "CHANGED", changedFields, before, after: operation.set });
@@ -141,7 +167,7 @@ export async function executeMaintenanceScript(database: MaintenanceExecutionDat
     const message = error instanceof Error ? error.message : String(error);
     const rolledBack = operations.map((operation) => operation.status === "CHANGED" ? { ...operation, status: "ROLLED_BACK" as const, error: "Transaction aborted; this update was rolled back." } : operation);
     const failedOperation: any = script.operations[failedIndex];
-    const operationIdentity = (operation: any) => ({ type: operation.type, table: operation.type === "updateRecord" ? operation.table : operation.type === "repointTrackExercise" ? "tracks" : "exercises", key: operation.key ?? operation.trackId ?? operation.exerciseId, after: operation.set ?? (operation.type === "repointTrackExercise" ? { exerciseId: operation.setExerciseId } : { archived: false, ...(operation.setTargetAliases ? { targetAliases: operation.setTargetAliases } : {}) }) });
+      const operationIdentity = (operation: any) => ({ type: operation.type, table: operation.type === "updateRecord" ? operation.table : operation.type === "repointTrackExercise" ? "tracks" : "exercises", key: operation.key ?? operation.trackId ?? operation.exerciseId ?? operation.sourceExerciseId, after: operation.set ?? (operation.type === "repointTrackExercise" ? { exerciseId: operation.setExerciseId } : operation.type === "mergeExercise" ? { targetExerciseId: operation.targetExerciseId } : { archived: false, ...(operation.setTargetAliases ? { targetAliases: operation.setTargetAliases } : {}) }) });
     if (failedOperation && !rolledBack.some((operation) => operation.index === failedIndex)) rolledBack.push({ index: failedIndex, ...operationIdentity(failedOperation), status: "FAILED", changedFields: [], before: {}, error: message });
     for (let index = failedIndex + 1; index < script.operations.length; index += 1) {
       const operation: any = script.operations[index];
@@ -163,6 +189,11 @@ export async function executeMaintenanceScript(database: MaintenanceExecutionDat
         const record = await database.table("exercises").get(operation.exerciseId) as Record<string, unknown> | undefined;
         const target = operation.targetExerciseId ? await database.table("exercises").get(operation.targetExerciseId) as Record<string, unknown> | undefined : undefined;
         if (!record || own(record, "archivedAt") || own(record, "mergedIntoExerciseId") || own(record, "mergeNote") || (operation.targetExerciseId && (!target || !jsonDeepEqual(target.aliases, operation.setTargetAliases)))) verificationErrors.push({ phase: "verification", operationIndex: index, message: `Post-commit verification failed for restored exercise ${operation.exerciseId}.` });
+      } else if (operation.type === "mergeExercise") {
+        const source = await database.table("exercises").get(operation.sourceExerciseId) as Record<string, unknown> | undefined;
+        const target = await database.table("exercises").get(operation.targetExerciseId) as Record<string, unknown> | undefined;
+        const tracks = await database.table("tracks").tracksForExercise?.(operation.sourceExerciseId);
+        if (!source || !target || !tracks || source.mergedIntoExerciseId !== operation.targetExerciseId || !source.archivedAt || !jsonDeepEqual(target.aliases ?? [], operation.setTargetAliases) || tracks.length) verificationErrors.push({ phase: "verification", operationIndex: index, message: `Post-commit verification failed for merged exercise ${operation.sourceExerciseId}.` });
       } else {
         const table = operation.type === "repointTrackExercise" ? "tracks" : operation.table; const key = operation.trackId ?? operation.key; const set = operation.type === "repointTrackExercise" ? { exerciseId: operation.setExerciseId } : operation.set;
         const record = await database.table(table).get(key) as Record<string, unknown> | undefined;

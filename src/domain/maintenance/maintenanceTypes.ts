@@ -24,6 +24,8 @@ export type UpdateRecordOperation = {
   table: SupportedMaintenanceTable;
   key: string;
   expect: Record<string, JsonValue>;
+  /** For reviewed backfills, every listed field must still be absent or null at execution time. */
+  expectUnsetFields?: string[];
   set: Record<string, JsonValue>;
 };
 
@@ -45,7 +47,23 @@ export type RepointTrackExerciseOperation = {
   setExerciseId: string;
 };
 
-export type MaintenanceOperation = UpdateRecordOperation | RestoreMergedExerciseOperation | RepointTrackExerciseOperation;
+/** A reviewed canonical merge. History remains attached to tracks while their exercise reference is redirected. */
+export type MergeExerciseOperation = {
+  type: "mergeExercise";
+  sourceExerciseId: string;
+  targetExerciseId: string;
+  expectSourceName: string;
+  expectSourceNormalizedName: string;
+  expectSourceAliases: JsonValue[];
+  expectTargetName: string;
+  expectTargetNormalizedName: string;
+  expectTargetAliases: JsonValue[];
+  setTargetAliases: JsonValue[];
+  /** Exact track IDs from the reviewed source backup; runtime verifies the full set before redirecting. */
+  expectedTrackIds: string[];
+};
+
+export type MaintenanceOperation = UpdateRecordOperation | RestoreMergedExerciseOperation | RepointTrackExerciseOperation | MergeExerciseOperation;
 
 export type MaintenanceScriptV1 = {
   format: typeof MAINTENANCE_FORMAT;
