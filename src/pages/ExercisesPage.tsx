@@ -28,7 +28,7 @@ import React, { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
 import { db, normalizeName } from "../db";
-import type { Exercise, BodyPart, MetricMode, Track, ExerciseMovementPattern, StrengthSignalRole } from "../db";
+import type { Exercise, BodyPart, MetricMode, Track, ExerciseMovementPattern, StrengthSignalRole, ExerciseCategory, Equipment } from "../db";
 import {
   TRAINING_ROLE_OPTIONS,
   parseTrainingRole,
@@ -55,6 +55,7 @@ import {
   buildExerciseCatalogIntegrityAudit,
   type ExerciseCatalogIntegrityAudit,
 } from "../domain/exercises/exerciseCatalogIntegrityAudit";
+import { createExerciseRecord } from "../domain/exercises/createExercise";
 import {
   buildExerciseHistoryExportText,
   formatExerciseHistorySetLabel,
@@ -137,6 +138,8 @@ const BODY_PARTS: BodyPart[] = [
 
 const MOVEMENT_PATTERNS: ExerciseMovementPattern[] = ["push", "pull", "hinge", "squat", "carry", "lunge"];
 const STRENGTH_SIGNAL_ROLES: StrengthSignalRole[] = ["included", "secondary", "excluded"];
+const EXERCISE_CATEGORIES: ExerciseCategory[] = ["Strength", "Machine", "Bodyweight", "Cardio", "Mobility", "Warmup", "Other"];
+const EQUIPMENT_OPTIONS: Equipment[] = ["Barbell", "Dumbbell", "Cable", "Machine", "Bodyweight", "Kettlebell", "Band", "Other"];
 
 /* ========================================================================== */
 /*  Breadcrumb 2 — Small helpers (string/arrays)                              */
@@ -1401,6 +1404,11 @@ export default function ExercisesPage() {
   const [draftName, setDraftName] = useState("");
   const [draftBodyPart, setDraftBodyPart] = useState<BodyPart | "">("");
   const [draftFocusArea, setDraftFocusArea] = useState<FocusArea | "">("");
+  const [draftMetricMode, setDraftMetricMode] = useState<MetricMode | "">("");
+  const [draftMovementPattern, setDraftMovementPattern] = useState<ExerciseMovementPattern | "">("");
+  const [draftStrengthSignalRole, setDraftStrengthSignalRole] = useState<StrengthSignalRole | "">("");
+  const [draftCategory, setDraftCategory] = useState<ExerciseCategory | "">("");
+  const [draftEquipment, setDraftEquipment] = useState<Equipment | "">("");
 
   const [viewingId, setViewingId] = useState<string>("");
   const [detailsTab, setDetailsTab] = useState<"details" | "history" | "charts" | "records">("details");
@@ -1623,6 +1631,11 @@ export default function ExercisesPage() {
     setDraftName((prefill ?? q).trim());
     setDraftBodyPart(bodyPart || "");
     setDraftFocusArea("");
+    setDraftMetricMode("");
+    setDraftMovementPattern("");
+    setDraftStrengthSignalRole("");
+    setDraftCategory("");
+    setDraftEquipment("");
     setShowCreate(true);
   }
 
@@ -1637,18 +1650,18 @@ export default function ExercisesPage() {
       return;
     }
 
-    const now = Date.now();
-    const ex: Exercise = {
-      id: uuid(),
+    const ex = createExerciseRecord({
       name,
-      normalizedName: norm,
-      equipmentTags: [],
-      bodyPart: draftBodyPart || undefined,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    if (draftFocusArea) (ex as any).focusArea = draftFocusArea;
+      metricMode: draftMetricMode || undefined,
+      knownMetadata: {
+        bodyPart: draftBodyPart || undefined,
+        focusArea: draftFocusArea || undefined,
+        movementPattern: draftMovementPattern || undefined,
+        strengthSignalRole: draftStrengthSignalRole || undefined,
+        category: draftCategory || undefined,
+        equipment: draftEquipment || undefined,
+      },
+    });
 
     await db.exercises.add(ex);
     setShowCreate(false);
@@ -3298,7 +3311,7 @@ export default function ExercisesPage() {
             <div className="row" style={{ marginTop: 10, gap: 10, flexWrap: "wrap" }}>
               <div style={{ minWidth: 180, flex: 1 }}>
                 <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Body Part</div>
-                <select className="input" value={draftBodyPart} onChange={(e) => setDraftBodyPart(e.target.value as any)}>
+                <select aria-label="Body Part" className="input" value={draftBodyPart} onChange={(e) => setDraftBodyPart(e.target.value as BodyPart | "")}>
                   <option value="">—</option>
                   {BODY_PARTS.map((bp) => (
                     <option key={bp} value={bp}>
@@ -3310,13 +3323,58 @@ export default function ExercisesPage() {
 
               <div style={{ minWidth: 180, flex: 1 }}>
                 <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Focus Area (optional)</div>
-                <select className="input" value={draftFocusArea} onChange={(e) => setDraftFocusArea(e.target.value as any)}>
+                <select aria-label="Focus Area" className="input" value={draftFocusArea} onChange={(e) => setDraftFocusArea(e.target.value as FocusArea | "")}>
                   <option value="">—</option>
                   {FOCUS_AREAS.map((fa) => (
                     <option key={fa} value={fa}>
                       {fa}
                     </option>
                   ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="row" style={{ marginTop: 10, gap: 10, flexWrap: "wrap" }}>
+              <div style={{ minWidth: 180, flex: 1 }}>
+                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Primary Metric (optional)</div>
+                <select aria-label="Primary Metric" className="input" value={draftMetricMode} onChange={(e) => setDraftMetricMode(e.target.value as MetricMode | "")}>
+                  <option value="">Not set</option>
+                  <option value="reps">Reps</option>
+                  <option value="distance">Distance</option>
+                  <option value="time">Time</option>
+                </select>
+              </div>
+              <div style={{ minWidth: 180, flex: 1 }}>
+                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Movement Pattern (optional)</div>
+                <select aria-label="Movement Pattern" className="input" value={draftMovementPattern} onChange={(e) => setDraftMovementPattern(e.target.value as ExerciseMovementPattern | "")}>
+                  <option value="">Not set</option>
+                  {MOVEMENT_PATTERNS.map((pattern) => <option key={pattern} value={pattern}>{pattern[0].toUpperCase() + pattern.slice(1)}</option>)}
+                </select>
+              </div>
+              <div style={{ minWidth: 180, flex: 1 }}>
+                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Strength Signal Role (optional)</div>
+                <select aria-label="Strength Signal Role" className="input" value={draftStrengthSignalRole} onChange={(e) => setDraftStrengthSignalRole(e.target.value as StrengthSignalRole | "")}>
+                  <option value="">Not set</option>
+                  <option value="included">Primary / Default</option>
+                  <option value="secondary">Secondary (downweighted)</option>
+                  <option value="excluded">Excluded</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="row" style={{ marginTop: 10, gap: 10, flexWrap: "wrap" }}>
+              <div style={{ minWidth: 180, flex: 1 }}>
+                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Category (optional)</div>
+                <select aria-label="Category" className="input" value={draftCategory} onChange={(e) => setDraftCategory(e.target.value as ExerciseCategory | "")}>
+                  <option value="">Not set</option>
+                  {EXERCISE_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
+                </select>
+              </div>
+              <div style={{ minWidth: 180, flex: 1 }}>
+                <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Equipment (optional)</div>
+                <select aria-label="Equipment" className="input" value={draftEquipment} onChange={(e) => setDraftEquipment(e.target.value as Equipment | "")}>
+                  <option value="">Not set</option>
+                  {EQUIPMENT_OPTIONS.map((equipment) => <option key={equipment} value={equipment}>{equipment}</option>)}
                 </select>
               </div>
             </div>
