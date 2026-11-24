@@ -14,7 +14,10 @@ export type ExerciseCreationMetadata = Partial<
     | "mergedIntoExerciseId"
     | "mergeNote"
   >
->;
+> & {
+  /** Existing optional Exercises-catalog extension, retained for callers. */
+  focusArea?: string;
+};
 
 export type CreateExerciseRecordInput = {
   name: string;
