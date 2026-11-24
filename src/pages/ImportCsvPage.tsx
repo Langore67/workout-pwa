@@ -27,6 +27,7 @@ import {
   normalizeName,
 } from "../db";
 import { uuid } from "../utils";
+import { createExerciseRecord } from "../domain/exercises/createExercise";
 import { addAppLog } from "../appLog";
 import {
   appendExerciseAlias,
@@ -618,16 +619,10 @@ export default function ImportCsvPage() {
         return;
       }
 
-      const normalized = normalizeName(name);
-      const ex: Exercise = {
-        id: uuid(),
+      const ex = createExerciseRecord({
         name,
-        normalizedName: normalized,
-        aliases: [],
-        equipmentTags: [],
-        createdAt: now,
-        updatedAt: now,
-      };
+        now,
+      });
 
       newExercises.push(ex);
       exerciseByImportedName.set(name, ex);

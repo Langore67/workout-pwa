@@ -76,6 +76,23 @@ async function openImportCsvReview(page: Parameters<typeof test>[0]["page"]) {
   });
 }
 
+async function importCsvFile(
+  page: Parameters<typeof test>[0]["page"],
+  fileName: string,
+  csvText: string
+) {
+  await page.locator('input[type="file"]').setInputFiles({
+    name: fileName,
+    mimeType: "text/csv",
+    buffer: Buffer.from(csvText, "utf8"),
+  });
+  await page.getByLabel(/Dry run/i).uncheck();
+  const reviewCheckbox = page.getByLabel(/I reviewed these possible duplicates/i);
+  if (await reviewCheckbox.count()) await reviewCheckbox.check();
+  await page.getByRole("button", { name: "Import Now" }).click();
+  await expect(page.getByText(/Imported/i)).toBeVisible();
+}
+
 test("Import CSV REVIEW use-existing path imports against the existing exercise", async ({ page }) => {
   await seedBenchDuplicateCandidate(page);
   await openImportCsvReview(page);
@@ -650,4 +667,91 @@ test("Import CSV Use existing without alias memory still requires review on the 
   await expect(page.locator("span.badge").filter({ hasText: /^REVIEW$/ })).toBeVisible();
   await expect(page.getByText("Possible duplicate", { exact: true })).toBeVisible();
   await expect(page.getByText("DB Bench Press", { exact: true })).toBeVisible();
+});
+
+test("Import CSV creates a new exercise with shared defaults and repeated import reuses it", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+  await page.goto(new URL("/import", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+
+  const csv = `date,session_type,program_day,exercise,set,load,reps,rir,notes,set_type
+2026-04-01,lift,Pull,Cable Row,1,50,10,2,,working`;
+  await importCsvFile(page, "new-exercise.csv", csv);
+
+  const afterFirstImport = await page.evaluate(async () => (window as any).__db.exercises.toArray());
+  expect(afterFirstImport).toHaveLength(1);
+  const created = afterFirstImport[0];
+  expect(created.id).toBeTruthy();
+  expect(created.name).toBe("Cable Row");
+  expect(created.normalizedName).toBe("cable row");
+  expect(created.aliases).toEqual([]);
+  expect(created.equipmentTags).toEqual([]);
+  expect(created.createdAt).toBeTruthy();
+  expect(created.updatedAt).toBe(created.createdAt);
+  expect(created.metricMode).toBeUndefined();
+  for (const field of ["bodyPart", "movementPattern", "strengthSignalRole", "category", "equipment"]) {
+    expect(created[field]).toBeUndefined();
+  }
+
+  await importCsvFile(page, "new-exercise-round-2.csv", csv.replace("2026-04-01", "2026-04-02"));
+  const afterSecondImport = await page.evaluate(async () => (window as any).__db.exercises.toArray());
+  expect(afterSecondImport).toHaveLength(1);
+  expect(afterSecondImport[0].id).toBe(created.id);
+  expect(afterSecondImport[0].movementPattern).toBeUndefined();
+  expect(afterSecondImport[0].strengthSignalRole).toBeUndefined();
+});
+
+test("Import CSV follows a merged exercise name to its active canonical identity", async ({ page }) => {
+  await page.goto(new URL("/", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await resetDexieDb(page);
+  await page.evaluate(async () => {
+    const db = (window as any).__db;
+    const now = Date.now();
+    await db.exercises.bulkAdd([
+      {
+        id: "canonical-row",
+        name: "Cable Row",
+        normalizedName: "cable row",
+        movementPattern: "pull",
+        strengthSignalRole: "secondary",
+        equipment: "Cable",
+        aliases: [],
+        equipmentTags: ["cable"],
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "merged-row",
+        name: "Legacy Cable Row",
+        normalizedName: "legacy cable row",
+        mergedIntoExerciseId: "canonical-row",
+        archivedAt: now,
+        aliases: [],
+        equipmentTags: [],
+        createdAt: now - 1,
+        updatedAt: now - 1,
+      },
+    ]);
+  });
+  await page.goto(new URL("/import", BASE_URL).toString(), { waitUntil: "domcontentloaded" });
+  await importCsvFile(
+    page,
+    "merged-name.csv",
+    `date,session_type,program_day,exercise,set,load,reps,rir,notes,set_type\n2026-04-01,lift,Pull,Legacy Cable Row,1,50,10,2,,working`
+  );
+
+  const result = await page.evaluate(async () => {
+    const db = (window as any).__db;
+    const exercises = await db.exercises.toArray();
+    const track = await db.tracks.where("displayName").equals("Legacy Cable Row").first();
+    return { exercises, track };
+  });
+  expect(result.exercises).toHaveLength(2);
+  expect(result.exercises.find((exercise: any) => exercise.id === "canonical-row")).toMatchObject({
+    movementPattern: "pull",
+    strengthSignalRole: "secondary",
+    equipment: "Cable",
+  });
+  expect(result.track.exerciseId).toBe("canonical-row");
+  expect(result.exercises.some((exercise: any) => exercise.id !== "canonical-row" && exercise.name === "Legacy Cable Row" && !exercise.mergedIntoExerciseId)).toBe(false);
 });
