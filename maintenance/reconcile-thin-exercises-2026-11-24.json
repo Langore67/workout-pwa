@@ -1,0 +1,127 @@
+{
+  "format": "ironforge-db-maintenance",
+  "version": 1,
+  "id": "reconcile-remaining-thin-exercises-2026-11-24",
+  "name": "Reviewed metadata backfill for remaining eight thin exercises",
+  "createdAt": "2026-11-24T00:00:00.000Z",
+  "operationCount": 8,
+  "preconditions": {
+    "dbName": "workout_mvp_db",
+    "dexieSchemaVersion": 19,
+    "supportedBackupVersion": 2
+  },
+  "sourceBackup": {
+    "exportedAt": "2026-11-23T19:31:08.979Z",
+    "sha256": "faff9501bc092b02846c472a058513b86d800f3d502ffadeec4d3fa9482029eb",
+    "recordCounts": {
+      "exercises": 491,
+      "tracks": 584,
+      "sessions": 296,
+      "sets": 5587,
+      "bodyMetrics": 161,
+      "bodyMeasurements": 13,
+      "app_meta": 8
+    }
+  },
+  "operations": [
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "d7345fd4-00bc-4bb9-b74d-717d0acc0500",
+      "expect": { "createdAt": 1793875899390 },
+      "expectUnsetFields": ["movementPattern", "strengthSignalRole", "bodyPart", "focusArea"],
+      "set": {
+        "movementPattern": "pull",
+        "strengthSignalRole": "secondary",
+        "bodyPart": "Back",
+        "focusArea": "Lats"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "8e19cba2-5d60-4e2f-89da-8a64f7797722",
+      "expect": { "createdAt": 1794910824799 },
+      "expectUnsetFields": ["movementPattern", "strengthSignalRole", "bodyPart", "focusArea"],
+      "set": {
+        "movementPattern": "pull",
+        "strengthSignalRole": "secondary",
+        "bodyPart": "Shoulders",
+        "focusArea": "Rear Delts"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "120eecb8-e367-434f-9ab7-e35147a6f50e",
+      "expect": { "createdAt": 1793050477453 },
+      "expectUnsetFields": ["movementPattern", "strengthSignalRole", "bodyPart", "focusArea"],
+      "set": {
+        "movementPattern": "push",
+        "strengthSignalRole": "secondary",
+        "bodyPart": "Arms",
+        "focusArea": "Triceps"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "4b926423-3c7e-4c94-9de0-d599831ed5f2",
+      "expect": { "createdAt": 1792158562710 },
+      "expectUnsetFields": ["strengthSignalRole", "bodyPart", "focusArea"],
+      "set": {
+        "strengthSignalRole": "secondary",
+        "bodyPart": "Legs",
+        "focusArea": "Hamstrings"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "2b29b58b-5b58-4fa1-8e68-b6662696139d",
+      "expect": { "createdAt": 1794527014093 },
+      "expectUnsetFields": ["movementPattern", "bodyPart", "focusArea"],
+      "set": {
+        "movementPattern": "push",
+        "bodyPart": "Chest",
+        "focusArea": "Serratus"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "31decbee-38ae-4a33-9cca-f19196b5fc0e",
+      "expect": { "createdAt": 1794527014093 },
+      "expectUnsetFields": ["movementPattern", "bodyPart", "focusArea"],
+      "set": {
+        "movementPattern": "push",
+        "bodyPart": "Chest",
+        "focusArea": "Serratus"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "f34a6716-2637-4bf5-8f3c-1341b07171ff",
+      "expect": { "createdAt": 1794527014093 },
+      "expectUnsetFields": ["movementPattern", "bodyPart", "focusArea"],
+      "set": {
+        "movementPattern": "pull",
+        "bodyPart": "Arms",
+        "focusArea": "Biceps"
+      }
+    },
+    {
+      "type": "updateRecord",
+      "table": "exercises",
+      "key": "b14e4220-af0a-4703-a5b4-679cfb43f5ef",
+      "expect": { "createdAt": 1794527014093 },
+      "expectUnsetFields": ["movementPattern", "bodyPart", "focusArea"],
+      "set": {
+        "movementPattern": "pull",
+        "bodyPart": "Arms",
+        "focusArea": "Biceps"
+      }
+    }
+  ]
+}

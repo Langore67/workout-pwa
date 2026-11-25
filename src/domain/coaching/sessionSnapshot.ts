@@ -744,47 +744,33 @@ function deriveSessionSnapshot(params: {
   currentRecommendation: WorkingRecommendation | null;
   trackSummaries: SessionSnapshotTrackSummary[];
 }): SessionSnapshotDerivation {
-  const noteSignals = deriveSessionNoteSignals(params.sessionNotes);
-  noteSignals.exerciseSignals = deriveExerciseSignals(
-    String(params.sessionNotes ?? ""),
-    params.trackSummaries
+  // Free-text observations are preserved verbatim for the Coach, not
+  // interpreted into exercise-specific or readiness conclusions here.
+  const noteLines = String(params.sessionNotes ?? "").split(/\r?\n/);
+  const carryForwardStart = noteLines.findIndex(
+    (line) => line.trim().toLowerCase() === "carry forward:"
   );
-  const readiness = deriveSessionReadiness({
-    noteSignals,
-    totalExercises: params.totalExercises,
-    completedExercises: params.completedExercises,
-  });
+  const carryForward: string[] = [];
+  if (carryForwardStart >= 0) {
+    for (let index = carryForwardStart + 1; index < noteLines.length; index += 1) {
+      const line = noteLines[index].trim();
+      if (!line || /^(session notes|start state|end verdict|carry forward):$/i.test(line)) break;
+      carryForward.push(line.replace(/^[-*]\s*/, ""));
+      if (carryForward.length === 3) break;
+    }
+  }
   return {
-    readiness,
-    focusFlags: deriveSessionFocusFlags({
-      noteSignals,
-      totalExercises: params.totalExercises,
-      completedExercises: params.completedExercises,
-      currentTrack: params.currentTrack,
-      currentRecommendation: params.currentRecommendation,
-    }),
-    movementQualitySignals: deriveMovementQualitySignals({
-      noteSignals,
-    }),
-    stimulusCoverage: deriveStimulusCoverage({
-      noteSignals,
-      totalExercises: params.totalExercises,
-      completedExercises: params.completedExercises,
-    }),
-    fatigueReadiness: deriveFatigueReadinessBullets({
-      noteSignals,
-      readiness,
-    }),
-    carryForward: deriveSessionCarryForward({
-      noteSignals,
-    }),
-    nextWorkoutFocus: deriveNextWorkoutFocus({
-      noteSignals,
-    }),
-    discussWithCoach: deriveDiscussWithCoach({
-      noteSignals,
-      currentTrack: params.currentTrack,
-    }),
+    readiness: "",
+    focusFlags: [],
+    movementQualitySignals: [],
+    stimulusCoverage:
+      params.totalExercises > 0
+        ? [`${params.completedExercises}/${params.totalExercises} exercises produced completed work`]
+        : [],
+    fatigueReadiness: [],
+    carryForward,
+    nextWorkoutFocus: [],
+    discussWithCoach: [],
   };
 }
 
@@ -887,11 +873,11 @@ export function buildSessionSnapshotText(params: {
     lines.push(`Date: ${new Date(startedAt).toLocaleDateString()}`);
   }
   lines.push(`Exercises: ${completedExercises}/${totalExercises} with completed work`);
-  lines.push(derived.readiness);
-  lines.push("");
-  lines.push("Focus Flags");
-  for (const flag of derived.focusFlags) {
-    lines.push(`- ${flag}`);
+  if (derived.readiness) lines.push(derived.readiness);
+  if (derived.focusFlags.length) {
+    lines.push("");
+    lines.push("Focus Flags");
+    for (const flag of derived.focusFlags) lines.push(`- ${flag}`);
   }
 
   if (derived.movementQualitySignals.length) {
