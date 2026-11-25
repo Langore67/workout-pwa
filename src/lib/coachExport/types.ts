@@ -14,6 +14,7 @@ import type { CardioStrengthInterferenceContext } from "./cardioStrengthInterfer
 import type { IntendedWeeklyScheduleContext } from "../../domain/schedule/weeklyTrainingSchedule";
 import type { TrainingExposureContext } from "../../domain/training/trainingExposureContext";
 import type { RecentSessionNoteEvidence } from "../../domain/coaching/recentSessionNotes";
+import type { StrengthComparabilityEvidence } from "../../strength/strengthComparabilityEvidence";
 
 export type CoachExportMetric = {
   latest: number | null;
@@ -489,6 +490,8 @@ export type CoachExportMetrics = {
   goalProgress?: GoalProgress | null;
   leanPreservation?: LeanPreservationComposite | null;
   strengthSignal: CoachExportStrengthSignal;
+  /** Read-only evidence backing aggregate/exercise comparability; not rendered or used by current decisions. */
+  strengthComparabilityEvidence?: StrengthComparabilityEvidence;
   phaseQuality: PhaseQualityResult | null;
   anchorLifts: CoachExportAnchorLift[];
   recentExerciseProgression?: import("../../domain/progression/exerciseProgressionContext").ExerciseProgressionContext[];

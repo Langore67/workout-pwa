@@ -1,8 +1,8 @@
 import type { CoachReport, CoachReportSection } from "./coachReportTypes";
 import { getTrainingRoleLabel, type TrainingRole } from "../../domain/trainingRole";
-import { getCardioActivityTypeLabel } from "../cardio/cardioActivityType";
-import { getCardioIntentLabel } from "../cardio/cardioIntent";
-import { getCardioFormatLabel } from "../cardio/cardioFormat";
+import { getCardioActivityTypeLabel, parseCardioActivityType } from "../cardio/cardioActivityType";
+import { getCardioIntentLabel, parseCardioIntent } from "../cardio/cardioIntent";
+import { getCardioFormatLabel, parseCardioFormat } from "../cardio/cardioFormat";
 import type { CardioProgressionContext, CardioProgressionObservation } from "../cardio/cardioProgressionContext";
 import type {
   ExerciseProgressionContext,
@@ -16,6 +16,27 @@ import type { AerobicBaseGoalProgress } from "../cardio/aerobicBaseGoalProgress"
 
 function countLabel(count: number, singular: string, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function cardioActivityTypeLabels(values: string[]) {
+  return values.map((value) => {
+    const parsed = parseCardioActivityType(value);
+    return parsed ? getCardioActivityTypeLabel(parsed) : "Unknown";
+  });
+}
+
+function cardioIntentLabels(values: string[]) {
+  return values.map((value) => {
+    const parsed = parseCardioIntent(value);
+    return parsed ? getCardioIntentLabel(parsed) : "Unknown";
+  });
+}
+
+function cardioFormatLabels(values: string[]) {
+  return values.map((value) => {
+    const parsed = parseCardioFormat(value);
+    return parsed ? getCardioFormatLabel(parsed) : "Unknown";
+  });
 }
 
 function renderAerobicBaseGoalProgress(progress?: AerobicBaseGoalProgress) {
@@ -534,7 +555,7 @@ function renderProgrammingContext(
     const progressionGroups = cardio.progression.groups;
     const currentWeekSummary = options.cardio?.rows?.find((row) => row.label === "Last 7 Days")?.value ?? "";
     const previousWindowSummary = options.cardio?.rows?.find((row) => row.label === "Last 28 Days")?.value ?? "";
-    const summaryNumbers = (value: string) => value.match(/\d+(?:\.\d+)?/g) ?? [];
+    const summaryNumbers = (value: string): string[] => value.match(/\d+(?:\.\d+)?/g) ?? [];
     const walkOnly = cardio.activityTypes.length > 0 && cardio.activityTypes.every((type) => /walk/i.test(type));
     const ownsWindow = (summary: string, count: number, durationSeconds: number, distanceMeters: number) => {
       if (!walkOnly || !summary) return false;
@@ -546,23 +567,17 @@ function renderProgrammingContext(
     };
     const summaryOwnsCurrentCount = ownsWindow(currentWeekSummary, cardio.activities7d, cardio.duration7dSeconds, cardio.distance7dMeters);
     const summaryOwnsPreviousCount = ownsWindow(previousWindowSummary, cardio.activities28d, 0, 0);
-    const representedTypes = new Set(progressionGroups.map((group) => (getCardioActivityTypeLabel(group.activityType) ?? group.activityType).toLocaleLowerCase()));
-    const representedIntents = new Set(progressionGroups.map((group) => group.intent ? (getCardioIntentLabel(group.intent) ?? group.intent).toLocaleLowerCase() : ""));
-    const representedFormats = new Set(progressionGroups.map((group) => (getCardioFormatLabel(group.cardioFormat) ?? group.cardioFormat).toLocaleLowerCase()));
-    const unrepresentedTypes = cardio.activityTypes.filter((value) => !representedTypes.has(value.toLocaleLowerCase()));
-    const unrepresentedIntents = cardio.intents.filter((value) => !representedIntents.has(value.toLocaleLowerCase()));
-    const unrepresentedFormats = cardio.formats.filter((value) => !representedFormats.has(value.toLocaleLowerCase()));
     const hasCardioDetails = !summaryOwnsCurrentCount || !summaryOwnsPreviousCount
-      || unrepresentedTypes.length > 0 || unrepresentedIntents.length > 0 || unrepresentedFormats.length > 0
+      || cardio.activityTypes.length > 0 || cardio.intents.length > 0 || cardio.formats.length > 0
       || progressionGroups.length > 0 || (cardio.strengthProximity?.observations ?? []).some((observation) => Boolean(observation.strength.performanceSignal));
     if (hasCardioDetails) lines.push("", "Cardio Context");
     if (!summaryOwnsCurrentCount) lines.push(`- Last 7d: ${countLabel(cardio.activities7d, "activity", "activities")} | ${Math.round(cardio.duration7dSeconds / 60)} min${cardio.distance7dMeters > 0 ? ` | ${(cardio.distance7dMeters / 1609.344).toFixed(1)} mi` : ""}`);
     if (!summaryOwnsPreviousCount) lines.push(`- Last 28d: ${countLabel(cardio.activities28d, "activity", "activities")}`);
-    if (unrepresentedTypes.length) lines.push(`- Activity types: ${unrepresentedTypes.join(", ")}`);
-    if (unrepresentedIntents.length) lines.push(`- Intents: ${unrepresentedIntents.join(", ")}`);
-    if (unrepresentedFormats.length) lines.push(`- Formats: ${unrepresentedFormats.join(", ")}`);
+    if (cardio.activityTypes.length) lines.push(`- Last 28d activity types: ${cardioActivityTypeLabels(cardio.activityTypes).join(", ")}`);
+    if (cardio.intents.length) lines.push(`- Last 28d intents: ${cardioIntentLabels(cardio.intents).join(", ")}`);
+    if (cardio.formats.length) lines.push(`- Last 28d formats: ${cardioFormatLabels(cardio.formats).join(", ")}`);
     if (progressionGroups.length) {
-      lines.push("", "Recent Cardio Progression");
+      lines.push("", "Recent Cardio Progression (eligible comparable groups, last 28d)");
       for (const group of progressionGroups) {
         lines.push(`- ${group.label} / ${getCardioActivityTypeLabel(group.activityType)}${group.intent ? ` / ${getCardioIntentLabel(group.intent)}` : ""} / ${getCardioFormatLabel(group.cardioFormat)}`);
         lines.push(`  - Observations: ${group.observationCount}`);
@@ -579,7 +594,7 @@ function renderProgrammingContext(
       .filter((observation) => Boolean(observation.strength.performanceSignal))
       .slice(0, 5);
     if (proximity.length) {
-      lines.push("", "Cardio / Strength Proximity");
+      lines.push("", "Cardio / Strength Proximity (cardio within 24h before strength; up to 5 pairs)");
       for (const observation of proximity) {
         const cardioFields = [
           observation.cardio.activityType,

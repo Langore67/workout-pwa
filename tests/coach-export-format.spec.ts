@@ -12,6 +12,8 @@ import { buildGoalProgress } from "../src/lib/coachExport/goalEngine";
 import { buildBodyConfidence } from "../src/body/bodyConfidenceEngine";
 import { buildRollingBodyMetric } from "../src/body/bodyTrendAverages";
 import { evaluatePhaseQuality } from "../src/body/phaseQualityModel";
+import { computeStrengthDeltaFromStrengthTrend } from "../src/body/phaseQualityModel";
+import { buildExerciseProgressionContext } from "../src/domain/progression/exerciseProgressionContext";
 import { buildCurrentMovementFocus } from "../src/lib/coachExport/currentMovementFocus";
 import { buildCoachReport } from "../src/lib/coachReport/buildCoachReport";
 import { buildLeanPreservationComposite } from "../src/lib/coachExport/leanPreservationComposite";
@@ -3025,4 +3027,136 @@ test("next workout focus omits empty subsection headings when no bullets exist",
   expect(focusSection).toContain("Progression Guardrails");
   expect(focusSection).not.toContain("Execution Priorities");
   expect(focusSection).not.toContain("Adjustment Triggers");
+});
+
+test("Strength Preservation characterizes the four-point aggregate trend, not exercise comparability", () => {
+  const rows = (values: number[]) => values.map((normalizedIndex, index) => ({
+    weekEndMs: index * 7 * 24 * 60 * 60 * 1000,
+    normalizedIndex,
+    absoluteIndex: normalizedIndex,
+    // The production trend rows contain aggregate scores; exercise identity / population is not part of this input.
+    contributingExercises: index === 0 ? ["Trap Bar Deadlift"] : ["Romanian Deadlift"],
+  } as any));
+
+  const stable = computeStrengthDeltaFromStrengthTrend(rows([6.4, 6.4, 6.39, 6.41]), "cut");
+  const declining = computeStrengthDeltaFromStrengthTrend(rows([9.83, 8.9, 7.2, 6.41]), "cut");
+  const stableClassification = evaluatePhaseQuality("cut", {
+    weightDelta: -3,
+    waistDelta: -0.6,
+    correctedLeanDelta: -0.2,
+    correctedBodyFatDelta: -0.7,
+    strengthDelta: stable.strengthDelta,
+    sampleCount: 6,
+  });
+  const decliningClassification = evaluatePhaseQuality("cut", {
+    weightDelta: -3,
+    waistDelta: -0.6,
+    correctedLeanDelta: -0.2,
+    correctedBodyFatDelta: -0.7,
+    strengthDelta: declining.strengthDelta,
+    sampleCount: 6,
+  });
+  const insufficient = computeStrengthDeltaFromStrengthTrend(rows([6.4]), "cut");
+
+  expect(stable.strengthDelta).toBeCloseTo(0.01);
+  expect(stableClassification.metricCards.find((card) => card.label === "Strength Preservation")?.value).toBe("Stable");
+  expect(declining.strengthDelta).toBeCloseTo(-3.42);
+  expect(decliningClassification.metricCards.find((card) => card.label === "Strength Preservation")?.value).toBe("Significant Drop");
+  expect(insufficient.strengthDelta).toBeUndefined();
+
+  // A high earlier weekly score can fall out of a rolling 28-day snapshot population;
+  // the phase classifier receives only the resulting aggregate sequence and still labels the delta.
+  const afterStrongObservationLeavesWindow = computeStrengthDeltaFromStrengthTrend(rows([9.83, 8.9, 7.2, 6.41]), "cut");
+  expect(afterStrongObservationLeavesWindow.strengthDelta).toBeCloseTo(-3.42);
+  expect(decliningClassification.metricCards.find((card) => card.label === "Strength Preservation")?.value).toBe("Significant Drop");
+
+  // A stable aggregate result is identical when the exercise population is constant or replaced:
+  // the classifier receives only the numeric trend and cannot verify same-exercise comparability.
+  const replacementStable = computeStrengthDeltaFromStrengthTrend(rows([6.4, 6.4, 6.39, 6.41]), "cut");
+  expect(replacementStable).toEqual(stable);
+});
+
+test("same-exercise progression can distinguish stable from lower comparable performance but does not feed preservation", () => {
+  const asOf = Date.UTC(2026, 10, 25, 12);
+  const day = 24 * 60 * 60 * 1000;
+  const exercise = { id: "trap", name: "Trap Bar Deadlift", normalizedName: "trap bar deadlift", movementPattern: "hinge", equipmentTags: [], createdAt: asOf } as any;
+  const track = { id: "trap-track", exerciseId: "trap", displayName: "Trap Bar Deadlift", trackType: "strength", trackingMode: "weightedReps", createdAt: asOf } as any;
+  const progression = (latestLoad: number) => buildExerciseProgressionContext({
+    exerciseId: "trap",
+    exercises: [exercise],
+    tracks: [track],
+    sessions: [
+      { id: "prior", startedAt: asOf - 8 * day, endedAt: asOf - 8 * day },
+      { id: "latest", startedAt: asOf - day, endedAt: asOf - day },
+    ] as any,
+    sets: [
+      { id: "prior-set", sessionId: "prior", trackId: "trap-track", completedAt: asOf - 8 * day, setType: "working", weight: 150, reps: 8 },
+      { id: "latest-set", sessionId: "latest", trackId: "trap-track", completedAt: asOf - day, setType: "working", weight: latestLoad, reps: 8 },
+    ] as any,
+    asOf,
+  })!;
+
+  expect(progression(150).direction).toBe("similar");
+  expect(progression(135).direction).toBe("lower");
+  // Strength Preservation's input is still the four-point aggregate delta, not this exercise context.
+  expect(computeStrengthDeltaFromStrengthTrend([
+    { weekEndMs: 1, normalizedIndex: 6.4, absoluteIndex: 6.4, label: "a", bodyweight: 200, bodyweightDaysUsed: 5 },
+    { weekEndMs: 2, normalizedIndex: 6.4, absoluteIndex: 6.4, label: "b", bodyweight: 200, bodyweightDaysUsed: 5 },
+  ], "cut").strengthDelta).toBe(0);
+});
+
+test("strength and lean-preservation classifications propagate without anchor comparability inputs", () => {
+  const metrics = buildMetrics();
+  metrics.strengthSignal = {
+    current: 6.41,
+    delta14d: -3.42,
+    vs90dBestPct: -37.3,
+    currentBodyweight: 198,
+    bodyweightDaysUsed: 5,
+  };
+  metrics.phaseQuality = evaluatePhaseQuality("cut", {
+    weightDelta: -3,
+    waistDelta: -0.6,
+    correctedLeanDelta: -2,
+    correctedBodyFatDelta: -0.7,
+    strengthDelta: -3.42,
+    sampleCount: 6,
+  });
+  metrics.bodyComp.leanMass = { latest: 152, baseline14d: 154, delta14d: -2 };
+  metrics.bodyComp.waist = { latest: 35.5, baseline14d: 35.4, delta14d: 0.1 };
+  metrics.leanPreservation = buildLeanPreservationComposite({
+    leanMass: metrics.bodyComp.leanMass,
+    weight: metrics.bodyComp.weight,
+    waist: metrics.bodyComp.waist,
+    bodyFatPct: metrics.bodyComp.bodyFatPct,
+    hydration: metrics.hydration,
+    bodyConfidence: metrics.bodyConfidence,
+    strengthSignal: metrics.strengthSignal,
+    recentPerformanceSignals: [],
+  });
+  metrics.anchorLifts = [{
+    pattern: "hinge",
+    exerciseId: "trap-bar",
+    exerciseName: "Trap Bar Deadlift",
+    effectiveWeightLb: 245,
+    reps: 11,
+    ageDays: 20,
+    movementStatus: "inactive",
+    benchmarkStatus: "historical",
+    relationship: "same_family_different_exercise",
+    interpretation: "Current hinge work uses Romanian Deadlift; same-exercise comparison confidence is low.",
+  } as any];
+
+  const withoutNotes = buildCoachIntelligence(metrics);
+  metrics.recentSessionNoteEvidence = [{
+    occurredAt: Date.now(), sessionName: "Upper A", sourceKind: "session_note",
+    rawText: "Ambiguous note: felt unusually hard; maybe the setup changed.",
+  } as any];
+  const withAmbiguousNotes = buildCoachIntelligence(metrics);
+
+  expect(metrics.leanPreservation?.status).toBe("Poor");
+  expect(metrics.leanPreservation?.confidence).toBe("High");
+  expect(withoutNotes.overallStatus).toBe("Intervene");
+  expect(withAmbiguousNotes).toEqual(withoutNotes);
+  expect(metrics.anchorLifts[0].interpretation).toContain("same-exercise comparison confidence is low");
 });

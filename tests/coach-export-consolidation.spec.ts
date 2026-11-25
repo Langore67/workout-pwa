@@ -29,7 +29,7 @@ test("canonical Coach Export consolidates repeated structured context without re
     ],
   } as any);
   const lines = text.split("\n");
-  const headings = ["Current Context", "Evidence Quality", "Evidence Completeness", "Goals", "Performance", "Training Exposure / Schedule", "Training Exposure", "Programming Context", "Recent Exercise Progression", "Cardio", "Cardio Context", "Recent Cardio Progression", "Aerobic Base Exposure", "Recent Session Observations"];
+  const headings = ["Current Context", "Evidence Quality", "Evidence Completeness", "Goals", "Performance", "Training Exposure / Schedule", "Training Exposure", "Programming Context", "Recent Exercise Progression", "Cardio", "Cardio Context", "Recent Cardio Progression (eligible comparable groups, last 28d)", "Aerobic Base Exposure", "Recent Session Observations"];
   const counts = Object.fromEntries(headings.map((heading) => [heading, lines.filter((line) => line === heading).length]));
   const majorHeadings = ["Current Context", "Evidence Completeness", "Goals", "Performance", "Recent Session Observations", "Cardio", "Training Exposure / Schedule", "Aerobic Base Exposure", "Programming Context", "Methods / Definitions"];
   const sectionCounts = Object.fromEntries(majorHeadings.map((heading, index) => {
@@ -38,7 +38,7 @@ test("canonical Coach Export consolidates repeated structured context without re
     const end = nextStarts.length ? Math.min(...nextStarts) : lines.length;
     return [heading, start < 0 ? 0 : end - start];
   }));
-  expect(lines.length).toBe(106);
+  expect(lines.length).toBe(109);
   expect(sectionCounts).toEqual({
     "Current Context": 13,
     "Evidence Completeness": 8,
@@ -48,7 +48,7 @@ test("canonical Coach Export consolidates repeated structured context without re
     Cardio: 5,
     "Training Exposure / Schedule": 22,
     "Aerobic Base Exposure": 6,
-    "Programming Context": 19,
+    "Programming Context": 22,
     "Methods / Definitions": 4,
   });
   expect(counts["Current Context"]).toBe(1);
@@ -62,7 +62,7 @@ test("canonical Coach Export consolidates repeated structured context without re
   expect(counts["Programming Context"]).toBe(1);
   expect(counts["Recent Exercise Progression"]).toBe(1);
   expect(counts["Cardio Context"]).toBe(1);
-  expect(counts["Recent Cardio Progression"]).toBe(1);
+  expect(counts["Recent Cardio Progression (eligible comparable groups, last 28d)"]).toBe(1);
   expect(counts["Aerobic Base Exposure"]).toBe(1);
   expect(counts["Recent Session Observations"]).toBe(1);
   expect(text).not.toContain("Current focus: Upper A · Bench strength");
@@ -79,9 +79,9 @@ test("canonical Coach Export consolidates repeated structured context without re
   expect(text).toContain("Last 28 Days: 6 walks | 270 min | 18.0 mi");
   expect(text).not.toContain("Last 7d: 2 activities");
   expect(text).not.toContain("Last 28d: 6 activities");
-  expect(text).not.toContain("Activity types: Walk");
-  expect(text).not.toContain("Intents: Fitness");
-  expect(text).not.toContain("Formats: Continuous");
+  expect(text).toContain("Last 28d activity types: Walk");
+  expect(text).toContain("Last 28d intents: Fitness");
+  expect(text).toContain("Last 28d formats: Continuous");
   expect(text).toContain("Comparability: same route");
   expect(text).toContain("Exposure: unquantified current week");
   expect(text.match(/Recent Session Observations/g)).toHaveLength(1);

@@ -1,6 +1,9 @@
 import type { Exercise, Session, SetEntry, Track } from "../../db";
 import { TRAINING_ROLES, parseTrainingRole, type TrainingRole } from "../../domain/trainingRole";
-import { buildCardioProgressionContext } from "../cardio/cardioProgressionContext";
+import { buildCardioProgressionContext, CARDIO_PROGRESSION_LOOKBACK_DAYS } from "../cardio/cardioProgressionContext";
+import { parseCardioActivityType } from "../cardio/cardioActivityType";
+import { parseCardioIntent } from "../cardio/cardioIntent";
+import { parseCardioFormat } from "../cardio/cardioFormat";
 import { buildCardioStrengthInterferenceContext } from "./cardioStrengthInterferenceContext";
 import { buildTrainingExposureContext } from "../../domain/training/trainingExposureContext";
 import { localCalendarDayDifference } from "../../domain/training/trainingCalendarContext";
@@ -29,6 +32,17 @@ function freshness(anchor: CoachExportMetrics["anchorLifts"][number]) {
 function uniqueDefined(values: Array<string | undefined>) {
   return [...new Set(values.filter((value): value is string => !!value))].sort();
 }
+
+function cardioDimensionValues<T extends string>(
+  events: CardioExportEvent[],
+  select: (event: CardioExportEvent) => T | undefined
+): string[] {
+  return [...new Set(events.map((event) => select(event) ?? "unknown"))].sort();
+}
+
+type CardioExportEvent = NonNullable<CoachExportMetrics["cardioSummary"]>["normalizedWalks"][number];
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function nameKey(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -94,15 +108,22 @@ export function buildCoachProgrammingContext(args: {
   }
 
   const cardioEvents = args.metrics.cardioSummary?.normalizedWalks ?? [];
+  const cardioWindowStart = args.asOf - CARDIO_PROGRESSION_LOOKBACK_DAYS * DAY_MS;
+  const cardioContextEvents = cardioEvents.filter((event) =>
+    event.startedAt >= cardioWindowStart && event.startedAt <= args.asOf
+  );
   const cardio = args.metrics.cardioSummary && args.metrics.cardioSummary.last28d.count > 0
     ? {
         activities7d: args.metrics.cardioSummary.last7d.count,
         duration7dSeconds: args.metrics.cardioSummary.last7d.totalDurationSeconds,
         distance7dMeters: args.metrics.cardioSummary.last7d.totalDistanceMeters,
         activities28d: args.metrics.cardioSummary.last28d.count,
-        activityTypes: uniqueDefined(cardioEvents.map((event) => event.activityType)),
-        intents: uniqueDefined(cardioEvents.map((event) => event.conditioningIntent)),
-        formats: uniqueDefined(cardioEvents.map((event) => event.cardioFormat)),
+        // Classifications describe the same 28-day population as activities28d.
+        // Missing structured fields remain visible as unknown; no values are
+        // inferred from activity names or progression eligibility.
+        activityTypes: cardioDimensionValues(cardioContextEvents, (event) => parseCardioActivityType(event.activityType)),
+        intents: cardioDimensionValues(cardioContextEvents, (event) => parseCardioIntent(event.conditioningIntent)),
+        formats: cardioDimensionValues(cardioContextEvents, (event) => parseCardioFormat(event.cardioFormat)),
         // Coach exports provide this once on CoachExportMetrics. The fallback
         // preserves compatibility for direct callers that supply only the
         // older cardio summary shape.
