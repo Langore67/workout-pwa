@@ -232,6 +232,51 @@ test("coach export includes recent training signals section", async () => {
   expect(text).not.toContain("Lower B");
 });
 
+test("empty note-derived sections are suppressed while raw recent observations remain canonical", () => {
+  const metrics = buildMetrics();
+  metrics.trainingSignals = {
+    movementQuality: [],
+    stimulusCoverage: [],
+    fatigueReadiness: [],
+    nextWorkoutFocus: [],
+    discussWithGaz: [],
+  };
+  metrics.patternSummary = {
+    movementQuality: [],
+    stimulus: [],
+    fatigue: [],
+    constraints: [],
+    progression: [],
+  };
+  metrics.coachingMemory = {
+    validatedLearnings: [],
+    activeWatchItems: [],
+    resolvedItems: [],
+  } as any;
+  metrics.nextWorkoutFocus = {
+    progressionGuardrails: [],
+    executionPriorities: [],
+    adjustmentTriggers: [],
+  };
+  metrics.recentSessionNoteEvidence = [{
+    evidenceId: "session:raw-1",
+    occurredAt: Date.UTC(2026, 10, 24),
+    sessionId: "raw-1",
+    sessionName: "Upper A",
+    sourceKind: "session_note",
+    rawText: "Right shoulder rotated forward on the final rep.\nLeft arm completed the set without issues.",
+  }];
+  metrics.coachIntelligence = buildCoachIntelligence(metrics);
+
+  const text = formatCoachExportText(metrics);
+  expect(text).not.toContain("Training Signals (Recent Sessions)");
+  expect(text).not.toContain("Recent Patterns (Last 4 Sessions)");
+  expect(text).not.toContain("Next Workout Focus");
+  expect(text).toContain("Recent Session Observations");
+  expect(text.match(/Right shoulder rotated forward on the final rep\./g) ?? []).toHaveLength(1);
+  expect(text).toContain("Left arm completed the set without issues.");
+});
+
 test("tightened canonical export removes repeated values and internal progression ids", () => {
   const metrics = buildMetrics();
   metrics.goalProgress = buildGoalProgress({

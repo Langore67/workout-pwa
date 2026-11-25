@@ -242,5 +242,6 @@ Session Notes:
   expect(combinedSignals).not.toContain("Knee pain");
   expect(combinedSignals).not.toContain("Shoulder pain");
   expect(combinedSignals).not.toMatch(/trap compensation|trap takeover/i);
-  expect(combinedSignals).toContain("Elbow irritation");
+  expect(combinedSignals).toBe("");
+  expect(imported.sessionNotes.toLowerCase()).toContain("elbow irritation");
 });
