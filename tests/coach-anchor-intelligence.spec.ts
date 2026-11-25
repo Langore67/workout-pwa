@@ -248,6 +248,37 @@ test.describe("Anchor Intelligence", () => {
     expect(result.interpretation).not.toContain("replaced");
   });
 
+  test("characterizes a historical Trap Bar benchmark beside current Romanian Deadlift work", async ({ page }) => {
+    await goto(page);
+    const result = await page.evaluate(async () => {
+      const AS_OF = Date.UTC(2026, 6, 14, 9, 0, 0, 0);
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      const { buildAnchorIntelligence } = await import("/src/lib/coachExport/anchorIntelligence.ts");
+      const rdlAt = AS_OF - DAY_MS;
+      const [anchor] = buildAnchorIntelligence({
+        anchors: [{
+          pattern: "hinge", exerciseId: "trap-bar", exerciseName: "Trap Bar Deadlift",
+          trackDisplayName: "Trap Bar Deadlift", effectiveWeightLb: 245, reps: 11,
+          e1rm: 334.8, performedAt: AS_OF - 25 * DAY_MS, ageDays: 25,
+          recency: "historical", isStale: false,
+        }] as any,
+        sessions: [{ id: "rdl-session", startedAt: rdlAt - 45 * 60 * 1000, endedAt: rdlAt }] as any,
+        sets: [{ id: "rdl-set", sessionId: "rdl-session", trackId: "rdl-track", completedAt: rdlAt, setType: "working", weight: 135, reps: 8 }] as any,
+        tracks: [{ id: "rdl-track", exerciseId: "rdl", displayName: "Romanian Deadlift", trackType: "strength", trackingMode: "weightedReps", createdAt: AS_OF }] as any,
+        exercises: [{ id: "rdl", name: "Romanian Deadlift", normalizedName: "romanian deadlift", movementPattern: "hinge", equipmentTags: [], createdAt: AS_OF }] as any,
+        asOf: AS_OF,
+      });
+      return anchor;
+    });
+
+    expect(result.status).toBe("historical_anchor");
+    expect(result.benchmarkStatus).toBe("historical");
+    expect(result.movementStatus).toBe("inactive");
+    expect(result.relationship).toBe("same_family_different_exercise");
+    expect(result.latestFamilyMovement.exerciseName).toBe("Romanian Deadlift");
+    expect(result.interpretation).toContain("not direct evidence of Trap Bar Deadlift regression");
+  });
+
   test("keeps horizontal pull distinct from vertical pull", async ({ page }) => {
     await goto(page);
     const result = await page.evaluate(async () => {

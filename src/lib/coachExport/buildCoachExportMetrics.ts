@@ -11,6 +11,7 @@ import {
   type StrengthPattern,
 } from "../../strength/Strength";
 import { computeStrengthSignalV2 } from "../../strength/v2/computeStrengthSignalV2";
+import { buildStrengthComparabilityEvidence } from "../../strength/strengthComparabilityEvidence";
 import {
   getBodyFatPctRaw,
   getFatMassLb,
@@ -210,16 +211,23 @@ async function buildStrengthSignal(now: number) {
     .filter((value): value is number => value != null)
     .reduce<number | null>((best, value) => (best == null || value > best ? value : best), null);
 
+  const best90dRow = (weeklyTrend ?? []).find((row) =>
+    now - row.weekEndMs <= 90 * DAY_MS && row.normalizedIndex === best90d
+  ) ?? null;
+
   return {
-    current: currentValue,
-    delta14d:
-      currentValue != null && priorValue != null ? currentValue - priorValue : null,
-    vs90dBestPct:
-      currentValue != null && best90d != null && best90d > 0
-        ? ((currentValue - best90d) / best90d) * 100
-        : null,
-    currentBodyweight: cleanNumber(current.bodyweight),
-    bodyweightDaysUsed: cleanNumber(current.bodyweightDaysUsed),
+    value: {
+      current: currentValue,
+      delta14d:
+        currentValue != null && priorValue != null ? currentValue - priorValue : null,
+      vs90dBestPct:
+        currentValue != null && best90d != null && best90d > 0
+          ? ((currentValue - best90d) / best90d) * 100
+          : null,
+      currentBodyweight: cleanNumber(current.bodyweight),
+      bodyweightDaysUsed: cleanNumber(current.bodyweightDaysUsed),
+    },
+    snapshots: { current, prior14d, best90d: best90dRow },
   };
 }
 
@@ -519,7 +527,8 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     bodyComp: coachBodyComp,
     hydration,
   });
-  const strengthSignal = await buildStrengthSignal(generatedAt);
+  const strengthSignalBuild = await buildStrengthSignal(generatedAt);
+  const strengthSignal = strengthSignalBuild.value;
   const [sessions, sets, tracks, exercises, strengthGoals, weeklySchedule, templates, aerobicBaseGoal] = await Promise.all([
     db.sessions.toArray(),
     db.sets.toArray(),
@@ -577,6 +586,16 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     sets: sets ?? [],
     tracks: tracks ?? [],
     exercises: exercises ?? [],
+    asOf: generatedAt,
+  });
+  const strengthComparabilityEvidence = buildStrengthComparabilityEvidence({
+    trend: sharedStrengthTrend,
+    exercises: exercises ?? [],
+    tracks: tracks ?? [],
+    sessions: sessions ?? [],
+    sets: sets ?? [],
+    anchors: anchorIntelligence,
+    strengthSignalSnapshots: strengthSignalBuild.snapshots,
     asOf: generatedAt,
   });
   const recentExerciseProgression = buildRecentExerciseProgressionPacket({
@@ -716,6 +735,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     goalProgress,
     leanPreservation,
     strengthSignal,
+    strengthComparabilityEvidence,
     phaseQuality,
     anchorLifts: anchorIntelligence,
     recentExerciseProgression,

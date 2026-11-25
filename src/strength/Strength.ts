@@ -44,6 +44,8 @@ export type StrengthPattern = "squat" | "hinge" | "push" | "pull";
 
 export interface PatternScore {
   pattern: StrengthPattern;
+  /** Canonical exercises with at least one eligible, scored set in this snapshot. */
+  exerciseIds: string[];
 
   // Core components
   topSet: number; // best scored e1RM in window
@@ -61,6 +63,9 @@ export interface PatternScore {
 }
 
 export interface StrengthIndexResult {
+  snapshotAt: number;
+  windowStartAt: number;
+  windowDays: number;
   absoluteIndex: number;
   relativeIndex: number; // legacy linear relative score for compatibility
   normalizedIndex: number; // preferred relative score for MPS / bodyweight changes
@@ -77,6 +82,10 @@ export type StrengthTrendRow = {
   absoluteIndex: number;
   relativeIndex: number; // legacy linear
   normalizedIndex: number; // preferred relative trend
+  /** Read-only provenance from the same computation that produced the indices. */
+  windowStartAt: number;
+  windowDays: number;
+  patterns: PatternScore[];
 };
 
 export type StrengthHeroMeta = {
@@ -422,14 +431,15 @@ type PatternAccumulator = {
   working: number[];
   hardSets: number;
   completedWorkingSets: number;
+  exerciseIds: Set<string>;
 };
 
 function makeAccumulator(): Record<StrengthPattern, PatternAccumulator> {
   return {
-    squat: { top: 0, working: [], hardSets: 0, completedWorkingSets: 0 },
-    hinge: { top: 0, working: [], hardSets: 0, completedWorkingSets: 0 },
-    push: { top: 0, working: [], hardSets: 0, completedWorkingSets: 0 },
-    pull: { top: 0, working: [], hardSets: 0, completedWorkingSets: 0 },
+    squat: { top: 0, working: [], hardSets: 0, completedWorkingSets: 0, exerciseIds: new Set() },
+    hinge: { top: 0, working: [], hardSets: 0, completedWorkingSets: 0, exerciseIds: new Set() },
+    push: { top: 0, working: [], hardSets: 0, completedWorkingSets: 0, exerciseIds: new Set() },
+    pull: { top: 0, working: [], hardSets: 0, completedWorkingSets: 0, exerciseIds: new Set() },
   };
 }
 
@@ -462,6 +472,7 @@ function buildPatternScore(pattern: StrengthPattern, acc: PatternAccumulator, bo
 
   return {
     pattern,
+    exerciseIds: Array.from(acc.exerciseIds).sort(),
     topSet: Number.isFinite(topSet) ? topSet : 0,
     working: Number.isFinite(working) ? working : 0,
     exposure,
@@ -508,6 +519,9 @@ export async function computeStrengthIndexAt(
     const setTable = pickSetTable();
     if (!setTable) {
       return {
+        snapshotAt: safeEndAtMs,
+        windowStartAt: windowStartMs,
+        windowDays: safeWindowDays,
         absoluteIndex: 0,
         relativeIndex: 0,
         normalizedIndex: 0,
@@ -696,6 +710,8 @@ export async function computeStrengthIndexAt(
  
      const bucket = acc[pattern];
      bucket.completedWorkingSets += 1;
+     const canonicalExerciseId = String(canonicalExercise?.id ?? track?.exerciseId ?? "").trim();
+     if (canonicalExerciseId) bucket.exerciseIds.add(canonicalExerciseId);
  
      if (scored > bucket.top) bucket.top = scored;
      const role = String(canonicalExercise?.strengthSignalRole ?? "")
@@ -725,6 +741,9 @@ export async function computeStrengthIndexAt(
   const normalizedIndex = patterns.reduce((sum, p) => sum + p.normalized, 0) / patterns.length;
 
   return {
+    snapshotAt: safeEndAtMs,
+    windowStartAt: windowStartMs,
+    windowDays: safeWindowDays,
     absoluteIndex: Number.isFinite(absoluteIndex) ? absoluteIndex : 0,
     relativeIndex: Number.isFinite(relativeIndex) ? relativeIndex : 0,
     normalizedIndex: Number.isFinite(normalizedIndex) ? normalizedIndex : 0,
@@ -775,6 +794,9 @@ export async function computeStrengthTrend(weeks = 12, windowDays = 28): Promise
       absoluteIndex: r.absoluteIndex,
       relativeIndex: r.relativeIndex,
       normalizedIndex: r.normalizedIndex,
+      windowStartAt: r.windowStartAt,
+      windowDays: r.windowDays,
+      patterns: r.patterns,
     });
   }
 
