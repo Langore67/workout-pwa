@@ -1,5 +1,6 @@
 import type { BodyConfidence } from "../../body/bodyConfidenceEngine";
 import type { CoachExportHydration, CoachExportMetric, CoachExportStrengthSignal } from "./types";
+import type { ComparableStrengthAssessment } from "../../strength/strengthComparabilityEvidence";
 
 export type LeanPreservationCompositeStatus = "Strong" | "Acceptable" | "Watch" | "Poor";
 export type LeanPreservationCompositeConfidence = "High" | "Moderate" | "Low";
@@ -26,6 +27,7 @@ type BuildLeanPreservationCompositeInput = {
   hydration: CoachExportHydration;
   bodyConfidence?: BodyConfidence;
   strengthSignal: CoachExportStrengthSignal;
+  comparableStrength?: ComparableStrengthAssessment;
   fatigueSignals?: string[];
   recentPerformanceSignals?: string[];
 };
@@ -115,22 +117,23 @@ export function buildLeanPreservationComposite(
   const leanDelta = finite(input.leanMass.delta14d) ? input.leanMass.delta14d : null;
   if (leanLatest == null && leanDelta == null) return null;
 
-  const strength = strengthState(input.strengthSignal.delta14d);
+  const aggregateStrength = strengthState(input.strengthSignal.delta14d);
+  const comparableStrength = input.comparableStrength?.state ?? "insufficient_comparable_evidence";
   const waist = direction(input.waist.delta14d, 0.25);
   const bodyFat = direction(input.bodyFatPct.delta14d, 0.3);
   const leanStable = !finite(leanDelta) || leanDelta >= -0.5;
   const leanModestlyDown = finite(leanDelta) && leanDelta < -0.5 && leanDelta >= -1.5;
   const leanDown = finite(leanDelta) && leanDelta < -0.5;
   const leanDeclining = finite(leanDelta) && leanDelta < -1.5;
-  const strengthImproving = strength === "improving";
-  const strengthStableOrImproving = strength === "stable" || strength === "improving";
-  const strengthDeclining = strength === "slipping" || strength === "declining";
+  const strengthImproving = comparableStrength === "improving";
+  const strengthStableOrImproving = comparableStrength === "maintained" || comparableStrength === "improving";
+  const strengthDeclining = comparableStrength === "declining";
   const waistImproving = waist === "down";
   const waistNotImproving = waist === "flat" || waist === "up" || waist === "unknown";
   const bodyFatImproving = bodyFat === "down";
   const aggressiveCut = aggressiveWeightLoss(input.weight);
   const repeatedFatigue = (input.fatigueSignals ?? []).length >= 2;
-  const hasPerformanceMetric = strength !== "unknown";
+  const hasPerformanceMetric = ["improving", "maintained", "declining"].includes(comparableStrength);
   const recentPerformance = recentPerformanceState(input.recentPerformanceSignals);
   const recentPerformanceClearlyNegative = recentPerformance === "negative";
   const bodyConfidenceHydration = input.bodyConfidence?.hydration ?? (hydrationIsHigh(input.hydration) ? "high" : hydrationIsLow(input.hydration) ? "low" : "moderate");
@@ -142,8 +145,11 @@ export function buildLeanPreservationComposite(
   const negative: string[] = [];
 
   if (strengthImproving) positive.push("Strength improving");
-  else if (strength === "stable") positive.push("Strength stable");
-  else if (strengthDeclining) negative.push("Strength declining");
+  else if (comparableStrength === "maintained") positive.push("Comparable strength maintained");
+  else if (strengthDeclining) negative.push("Comparable strength decline supported");
+  else if (comparableStrength === "mixed_evidence") negative.push("Comparable strength evidence mixed");
+  else negative.push("Comparable strength evidence insufficient");
+  if (aggregateStrength === "slipping" || aggregateStrength === "declining") negative.push("Aggregate Strength Signal down");
 
   if (recentPerformance === "positive") {
     positive.push(
@@ -218,7 +224,7 @@ export function buildLeanPreservationComposite(
   let confidence: LeanPreservationCompositeConfidence = "Low";
   const evidenceCount = [
     finite(leanDelta),
-    strength !== "unknown",
+    hasPerformanceMetric,
     waist !== "unknown",
     bodyFat !== "unknown",
     input.hydration.confidenceLabel !== "Unknown",
@@ -227,6 +233,7 @@ export function buildLeanPreservationComposite(
   else if (evidenceCount >= 3) confidence = "Moderate";
 
   if (strengthImproving && hasPerformanceMetric) confidence = improveConfidence(confidence);
+  if (comparableStrength === "mixed_evidence" || comparableStrength === "insufficient_comparable_evidence") confidence = reduceConfidence(confidence);
   if (hydrationConfidenceLow) confidence = reduceConfidence(confidence);
 
   let coachInterpretation: string | undefined;

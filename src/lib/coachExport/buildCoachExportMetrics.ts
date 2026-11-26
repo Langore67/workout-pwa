@@ -569,19 +569,6 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
   });
   const sharedStrengthTrend = await computeStrengthTrend(12, 28);
   const computedStrength = computeStrengthDeltaFromStrengthTrend(sharedStrengthTrend, currentPhase);
-  const phaseQualityInputs = buildPhaseQualityInputsFromBodyRows(
-    bodyRows,
-    computedStrength.strengthDelta,
-    10,
-    bodyConfidence,
-    {
-      weight: bodyTrendInputs.weight14d,
-      bodyFatPct: bodyTrendInputs.bodyFatPct,
-      leanMass: bodyTrendInputs.leanMass,
-    }
-  );
-  const phaseQuality =
-    (phaseQualityInputs.sampleCount ?? 0) > 0 ? evaluatePhaseQuality(currentPhase, phaseQualityInputs) : null;
   const anchorLifts = await buildAnchorLifts(generatedAt);
   const anchorIntelligence = buildAnchorIntelligence({
     anchors: anchorLifts,
@@ -602,6 +589,20 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     asOf: generatedAt,
   });
   const comparableStrengthAssessment = assessComparableStrengthEvidence(strengthComparabilityEvidence);
+  const phaseQualityInputs = buildPhaseQualityInputsFromBodyRows(
+    bodyRows,
+    computedStrength.strengthDelta,
+    10,
+    bodyConfidence,
+    {
+      weight: bodyTrendInputs.weight14d,
+      bodyFatPct: bodyTrendInputs.bodyFatPct,
+      leanMass: bodyTrendInputs.leanMass,
+    }
+  );
+  phaseQualityInputs.comparableStrength = comparableStrengthAssessment;
+  const phaseQuality =
+    (phaseQualityInputs.sampleCount ?? 0) > 0 ? evaluatePhaseQuality(currentPhase, phaseQualityInputs) : null;
   const recentExerciseProgression = buildRecentExerciseProgressionPacket({
     sessions: sessions ?? [],
     sets: sets ?? [],
@@ -650,6 +651,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     hydration,
     bodyConfidence,
     strengthSignal,
+    comparableStrength: comparableStrengthAssessment,
     fatigueSignals: trainingSignalBundle.trainingSignals.fatigueReadiness,
     recentPerformanceSignals: [
       ...trainingSignalBundle.trainingSignals.movementQuality,

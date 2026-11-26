@@ -495,7 +495,7 @@ export type CoachExportMetrics = {
   strengthSignal: CoachExportStrengthSignal;
   /** Read-only provenance backing aggregate/exercise comparability; not rendered verbatim. */
   strengthComparabilityEvidence?: StrengthComparabilityEvidence;
-  /** Additive evidence assessment; downstream decision models intentionally do not consume it in Slice B. */
+  /** Canonical direct-comparison assessment consumed by downstream strength-preservation decisions. */
   comparableStrengthAssessment?: ComparableStrengthAssessment;
   phaseQuality: PhaseQualityResult | null;
   anchorLifts: CoachExportAnchorLift[];

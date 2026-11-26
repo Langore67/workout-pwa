@@ -197,6 +197,22 @@ function buildMetrics(): CoachExportMetrics {
   };
 }
 
+function comparableAssessment(state: "improving" | "maintained" | "declining" | "mixed_evidence" | "insufficient_comparable_evidence") {
+  const directionCounts = state === "improving" ? { higher: 2, similar: 0, lower: 0 }
+    : state === "maintained" ? { higher: 0, similar: 2, lower: 0 }
+      : state === "declining" ? { higher: 0, similar: 0, lower: 2 }
+        : state === "mixed_evidence" ? { higher: 1, similar: 1, lower: 1 }
+          : { higher: 0, similar: 0, lower: 0 };
+  return {
+    state,
+    evidenceScope: state === "insufficient_comparable_evidence" ? "none" : "multiple_exercise_sample",
+    wholeProgramConclusion: "not_established",
+    directComparableExerciseCount: directionCounts.higher + directionCounts.similar + directionCounts.lower,
+    directionCounts,
+    staleExerciseNames: [], insufficientExerciseNames: [], missingExerciseNames: [], limitations: [],
+  } as any;
+}
+
 function buildMetricsWithCurrentMovementFocus() {
   const metrics = buildMetrics();
   metrics.currentMovementFocus = [
@@ -988,6 +1004,7 @@ test("lean preservation composite is acceptable when lean mass is down but stren
     bodyFatPct: { latest: 16.2, baseline14d: 16.9, delta14d: -0.7 },
     hydration: { latestWaterPct: 57, confidenceLabel: "High", confidenceScore: 82, note: "Stable" },
     strengthSignal: { current: 1.92, delta14d: 0.04, vs90dBestPct: -1, currentBodyweight: 198, bodyweightDaysUsed: 5 },
+    comparableStrength: comparableAssessment("improving"),
   });
 
   expect(composite?.status).toBe("Acceptable");
@@ -1006,11 +1023,12 @@ test("lean preservation composite is poor only with lean decline plus performanc
     bodyFatPct: { latest: 17, baseline14d: 17, delta14d: 0 },
     hydration: { latestWaterPct: 56, confidenceLabel: "High", confidenceScore: 80, note: "Stable" },
     strengthSignal: { current: 1.8, delta14d: -0.1, vs90dBestPct: -8, currentBodyweight: 198, bodyweightDaysUsed: 5 },
+    comparableStrength: comparableAssessment("declining"),
   });
 
   expect(composite?.status).toBe("Poor");
   expect(composite?.evidence.negative).toEqual(
-    expect.arrayContaining(["Lean mass estimate down 2.0 lb", "Strength declining"])
+    expect.arrayContaining(["Lean mass estimate down 2.0 lb", "Comparable strength decline supported"])
   );
 });
 
@@ -1022,6 +1040,7 @@ test("lean preservation composite is strong when lean mass is flat and strength 
     bodyFatPct: { latest: 16.5, baseline14d: 16.7, delta14d: -0.2 },
     hydration: { latestWaterPct: 57, confidenceLabel: "High", confidenceScore: 82, note: "Stable" },
     strengthSignal: { current: 1.95, delta14d: 0.05, vs90dBestPct: 0, currentBodyweight: 198, bodyweightDaysUsed: 5 },
+    comparableStrength: comparableAssessment("improving"),
   });
 
   expect(composite?.status).toBe("Strong");
@@ -1035,6 +1054,7 @@ test("lean preservation composite keeps classification but reduces confidence wh
     bodyFatPct: { latest: 16.2, baseline14d: 16.9, delta14d: -0.7 },
     hydration: { latestWaterPct: 57, confidenceLabel: "High", confidenceScore: 82, note: "Stable" },
     strengthSignal: { current: 1.92, delta14d: 0.04, vs90dBestPct: -1, currentBodyweight: 198, bodyweightDaysUsed: 5 },
+    comparableStrength: comparableAssessment("improving"),
   });
   const lowHydration = buildLeanPreservationComposite({
     leanMass: { latest: 146.7, baseline14d: 147.7, delta14d: -1 },
@@ -1043,6 +1063,7 @@ test("lean preservation composite keeps classification but reduces confidence wh
     bodyFatPct: { latest: 16.2, baseline14d: 16.9, delta14d: -0.7 },
     hydration: { latestWaterPct: 50, confidenceLabel: "Low", confidenceScore: 30, note: "Distorted", distortionLikely: true },
     strengthSignal: { current: 1.92, delta14d: 0.04, vs90dBestPct: -1, currentBodyweight: 198, bodyweightDaysUsed: 5 },
+    comparableStrength: comparableAssessment("improving"),
   });
 
   expect(lowHydration?.status).toBe("Watch");
@@ -1063,6 +1084,7 @@ test("lean preservation caps poor to watch when low hydration makes lean mass de
       distortionLikely: true,
     },
     strengthSignal: { current: 1.8, delta14d: -0.1, vs90dBestPct: -8, currentBodyweight: 198, bodyweightDaysUsed: 5 },
+    comparableStrength: comparableAssessment("declining"),
     recentPerformanceSignals: ["Lat Pulldown: improved stretch and contraction"],
   });
 
@@ -1086,6 +1108,7 @@ test("lean preservation can remain poor when low hydration and performance both 
       distortionLikely: true,
     },
     strengthSignal: { current: 1.8, delta14d: -0.1, vs90dBestPct: -8, currentBodyweight: 198, bodyweightDaysUsed: 5 },
+    comparableStrength: comparableAssessment("declining"),
     recentPerformanceSignals: [
       "Bench Press: form breakdown under fatigue",
       "Lat Pulldown: reduced capacity",
@@ -1104,6 +1127,7 @@ test("lean preservation includes positive recent performance evidence when globa
     bodyFatPct: { latest: 17, baseline14d: 17, delta14d: 0 },
     hydration: { latestWaterPct: 57, confidenceLabel: "High", confidenceScore: 80, note: "Stable" },
     strengthSignal: { current: 1.8, delta14d: -0.1, vs90dBestPct: -8, currentBodyweight: 198, bodyweightDaysUsed: 5 },
+    comparableStrength: comparableAssessment("mixed_evidence"),
     recentPerformanceSignals: [
       "3-Point DB Row: breakthrough pattern found",
       "Lat Pulldown: improved stretch and contraction",
@@ -1111,7 +1135,7 @@ test("lean preservation includes positive recent performance evidence when globa
   });
 
   expect(composite?.evidence.positive.join(" ")).toContain(
-    "Strength is pressured globally, but recent session performance includes positive evidence"
+    "Recent exercise-level performance evidence is positive"
   );
   expect(composite?.evidence.positive).not.toHaveLength(0);
 });
@@ -1152,6 +1176,7 @@ test("coach export lean preservation composite replaces single-factor lean prese
   metrics.bodyComp.waist = { latest: 35.5, baseline14d: 36.1, delta14d: -0.6 };
   metrics.bodyComp.bodyFatPct = { latest: 16.2, baseline14d: 16.9, delta14d: -0.7 };
   metrics.strengthSignal.delta14d = 0.04;
+  metrics.comparableStrengthAssessment = comparableAssessment("improving");
   metrics.hydration.confidenceLabel = "High";
   metrics.phaseQuality = {
     title: "CUT QUALITY",
@@ -1177,6 +1202,7 @@ test("coach export lean preservation composite replaces single-factor lean prese
     bodyFatPct: metrics.bodyComp.bodyFatPct,
     hydration: metrics.hydration,
     strengthSignal: metrics.strengthSignal,
+    comparableStrength: metrics.comparableStrengthAssessment,
   });
 
   const text = formatCoachExportText(metrics);
@@ -1201,6 +1227,7 @@ test("coach intelligence summary removes strength and lean-preservation contradi
   metrics.bodyComp.leanMass = { latest: 146.7, baseline14d: 147.7, delta14d: -1 };
   metrics.bodyComp.visceralFat = { latest: 7, baseline14d: 8, delta14d: -1 };
   metrics.strengthSignal.delta14d = -0.05;
+  metrics.comparableStrengthAssessment = comparableAssessment("mixed_evidence");
   metrics.phaseQuality = {
     title: "CUT QUALITY",
     quadrant: "fast_loss",
@@ -1230,13 +1257,14 @@ test("coach intelligence summary removes strength and lean-preservation contradi
     bodyFatPct: metrics.bodyComp.bodyFatPct,
     hydration: metrics.hydration,
     strengthSignal: metrics.strengthSignal,
+    comparableStrength: metrics.comparableStrengthAssessment,
   });
 
   const text = formatCoachExportText(metrics);
   expect(text).not.toContain("Coach Summary");
   expect(text).not.toContain("Fat Loss:");
   expect(text).not.toContain("Muscle Preservation");
-  expect(text).toContain("Strength evidence is mixed");
+  expect(text).toContain("Comparable strength evidence mixed");
   expect(text).not.toContain("Strength declining");
   expect(text).not.toContain("Lean Preservation: Poor");
   expect(text).not.toContain("Phase quality:");
@@ -2015,8 +2043,7 @@ test("Coach Export separates aggregate Strength Signal from comparable exercise 
   expect(section).toContain("Aggregate Strength Signal direction: Down");
   expect(section).toContain("Comparable exercise evidence: Mixed evidence");
   expect(section).toContain("sampled exercises, not a whole-program conclusion");
-  expect(section).toContain("Legacy aggregate-based Phase Quality Strength Preservation: Significant Drop");
-  expect(section).toContain("this is not a confirmed comparable-exercise regression");
+  expect(section).not.toContain("Legacy aggregate-based Phase Quality Strength Preservation");
   expect(section).toContain("Aggregate population changed");
   expect(section).toContain("Bodyweight normalization input changed: 200→195 lb");
   expect(text.match(/Comparable Strength Preservation/g)).toHaveLength(1);
@@ -3085,7 +3112,7 @@ test("next workout focus omits empty subsection headings when no bullets exist",
   expect(focusSection).not.toContain("Adjustment Triggers");
 });
 
-test("Strength Preservation characterizes the four-point aggregate trend, not exercise comparability", () => {
+test("aggregate thresholds remain contextual and do not establish comparable preservation", () => {
   const rows = (values: number[]) => values.map((normalizedIndex, index) => ({
     weekEndMs: index * 7 * 24 * 60 * 60 * 1000,
     normalizedIndex,
@@ -3115,16 +3142,18 @@ test("Strength Preservation characterizes the four-point aggregate trend, not ex
   const insufficient = computeStrengthDeltaFromStrengthTrend(rows([6.4]), "cut");
 
   expect(stable.strengthDelta).toBeCloseTo(0.01);
-  expect(stableClassification.metricCards.find((card) => card.label === "Strength Preservation")?.value).toBe("Stable");
+  expect(stableClassification.metricCards.find((card) => card.label === "Aggregate Strength Signal")?.value).toBe("Stable");
+  expect(stableClassification.metricCards.find((card) => card.label === "Comparable Strength Preservation")?.value).toBe("Insufficient Evidence");
   expect(declining.strengthDelta).toBeCloseTo(-3.42);
-  expect(decliningClassification.metricCards.find((card) => card.label === "Strength Preservation")?.value).toBe("Significant Drop");
+  expect(decliningClassification.metricCards.find((card) => card.label === "Aggregate Strength Signal")?.value).toBe("Significant Drop");
+  expect(decliningClassification.metricCards.find((card) => card.label === "Comparable Strength Preservation")?.value).toBe("Insufficient Evidence");
   expect(insufficient.strengthDelta).toBeUndefined();
 
   // A high earlier weekly score can fall out of a rolling 28-day snapshot population;
   // the phase classifier receives only the resulting aggregate sequence and still labels the delta.
   const afterStrongObservationLeavesWindow = computeStrengthDeltaFromStrengthTrend(rows([9.83, 8.9, 7.2, 6.41]), "cut");
   expect(afterStrongObservationLeavesWindow.strengthDelta).toBeCloseTo(-3.42);
-  expect(decliningClassification.metricCards.find((card) => card.label === "Strength Preservation")?.value).toBe("Significant Drop");
+  expect(decliningClassification.metricCards.find((card) => card.label === "Aggregate Strength Signal")?.value).toBe("Significant Drop");
 
   // A stable aggregate result is identical when the exercise population is constant or replaced:
   // the classifier receives only the numeric trend and cannot verify same-exercise comparability.
@@ -3132,7 +3161,7 @@ test("Strength Preservation characterizes the four-point aggregate trend, not ex
   expect(replacementStable).toEqual(stable);
 });
 
-test("same-exercise progression can distinguish stable from lower comparable performance but does not feed preservation", () => {
+test("same-exercise progression remains the canonical comparable-performance input", () => {
   const asOf = Date.UTC(2026, 10, 25, 12);
   const day = 24 * 60 * 60 * 1000;
   const exercise = { id: "trap", name: "Trap Bar Deadlift", normalizedName: "trap bar deadlift", movementPattern: "hinge", equipmentTags: [], createdAt: asOf } as any;
@@ -3154,32 +3183,46 @@ test("same-exercise progression can distinguish stable from lower comparable per
 
   expect(progression(150).direction).toBe("similar");
   expect(progression(135).direction).toBe("lower");
-  // Strength Preservation's input is still the four-point aggregate delta, not this exercise context.
+  // The aggregate delta remains independently available as exposure/performance context.
   expect(computeStrengthDeltaFromStrengthTrend([
     { weekEndMs: 1, normalizedIndex: 6.4, absoluteIndex: 6.4, label: "a", bodyweight: 200, bodyweightDaysUsed: 5 },
     { weekEndMs: 2, normalizedIndex: 6.4, absoluteIndex: 6.4, label: "b", bodyweight: 200, bodyweightDaysUsed: 5 },
   ], "cut").strengthDelta).toBe(0);
 });
 
-test("strength and lean-preservation classifications propagate without anchor comparability inputs", () => {
+test("November 26 aggregate decline with mixed comparable evidence preserves body risk without asserting strength loss", () => {
   const metrics = buildMetrics();
   metrics.strengthSignal = {
-    current: 6.41,
-    delta14d: -3.42,
-    vs90dBestPct: -37.3,
-    currentBodyweight: 198,
+    current: 5.33,
+    delta14d: -4.5,
+    vs90dBestPct: -48,
+    currentBodyweight: 173.4,
     bodyweightDaysUsed: 5,
   };
+  metrics.comparableStrengthAssessment = {
+    state: "mixed_evidence",
+    evidenceScope: "multiple_exercise_sample",
+    wholeProgramConclusion: "not_established",
+    directComparableExerciseCount: 12,
+    directionCounts: { higher: 2, similar: 4, lower: 6 },
+    staleExerciseNames: Array.from({ length: 17 }, (_, i) => `Stale ${i}`),
+    insufficientExerciseNames: Array.from({ length: 27 }, (_, i) => `Insufficient ${i}`),
+    missingExerciseNames: [],
+    limitations: ["Direct comparisons describe the observed exercise sample; whole-program strength status is not established."],
+  };
   metrics.phaseQuality = evaluatePhaseQuality("cut", {
-    weightDelta: -3,
-    waistDelta: -0.6,
-    correctedLeanDelta: -2,
-    correctedBodyFatDelta: -0.7,
-    strengthDelta: -3.42,
+    weightDelta: -1.1,
+    waistDelta: 0,
+    correctedLeanDelta: -1.9,
+    correctedBodyFatDelta: -0.6,
+    strengthDelta: -4.5,
+    comparableStrength: metrics.comparableStrengthAssessment,
     sampleCount: 6,
   });
-  metrics.bodyComp.leanMass = { latest: 152, baseline14d: 154, delta14d: -2 };
-  metrics.bodyComp.waist = { latest: 35.5, baseline14d: 35.4, delta14d: 0.1 };
+  metrics.bodyComp.weight = { latest: 173.4, baseline14d: 174.5, delta14d: -1.1 };
+  metrics.bodyComp.leanMass = { latest: 152, baseline14d: 153.9, delta14d: -1.9 };
+  metrics.bodyComp.waist = { latest: 35.5, baseline14d: 35.5, delta14d: 0 };
+  metrics.bodyComp.bodyFatPct = { latest: 16, baseline14d: 16.6, delta14d: -0.6 };
   metrics.leanPreservation = buildLeanPreservationComposite({
     leanMass: metrics.bodyComp.leanMass,
     weight: metrics.bodyComp.weight,
@@ -3188,6 +3231,7 @@ test("strength and lean-preservation classifications propagate without anchor co
     hydration: metrics.hydration,
     bodyConfidence: metrics.bodyConfidence,
     strengthSignal: metrics.strengthSignal,
+    comparableStrength: metrics.comparableStrengthAssessment,
     recentPerformanceSignals: [],
   });
   metrics.anchorLifts = [{
@@ -3210,9 +3254,42 @@ test("strength and lean-preservation classifications propagate without anchor co
   } as any];
   const withAmbiguousNotes = buildCoachIntelligence(metrics);
 
-  expect(metrics.leanPreservation?.status).toBe("Poor");
-  expect(metrics.leanPreservation?.confidence).toBe("High");
-  expect(withoutNotes.overallStatus).toBe("Intervene");
+  expect(metrics.phaseQuality.finalStatus).toBe("Aggressive Cut / Muscle-Risk Cut");
+  expect(metrics.phaseQuality.metricCards).toEqual(expect.arrayContaining([
+    expect.objectContaining({ label: "Comparable Strength Preservation", value: "Mixed Evidence" }),
+    expect.objectContaining({ label: "Aggregate Strength Signal", value: "Significant Drop" }),
+  ]));
+  expect(metrics.leanPreservation?.status).toBe("Watch");
+  expect(metrics.leanPreservation?.confidence).toBe("Moderate");
+  expect(metrics.leanPreservation?.evidence.negative).toEqual(expect.arrayContaining([
+    "Lean mass estimate down 1.9 lb",
+    "Comparable strength evidence mixed",
+    "Aggregate Strength Signal down",
+  ]));
+  expect(withoutNotes.performanceTrendStatus).toBe("Mixed");
+  expect(withoutNotes.overallStatus).toBe("Watch");
+  expect(withoutNotes.confidence).toBe("Moderate");
   expect(withAmbiguousNotes).toEqual(withoutNotes);
   expect(metrics.anchorLifts[0].interpretation).toContain("same-exercise comparison confidence is low");
+});
+
+test("supported comparable decline can independently satisfy the lean-preservation Poor rule", () => {
+  const metrics = buildMetrics();
+  const comparable = {
+    state: "declining", evidenceScope: "multiple_exercise_sample", wholeProgramConclusion: "not_established",
+    directComparableExerciseCount: 3, directionCounts: { higher: 0, similar: 0, lower: 3 },
+    staleExerciseNames: [], insufficientExerciseNames: [], missingExerciseNames: [], limitations: [],
+  } as const;
+  const composite = buildLeanPreservationComposite({
+    leanMass: { latest: 152, baseline14d: 154, delta14d: -2 },
+    weight: metrics.bodyComp.weight,
+    waist: { latest: 35.5, baseline14d: 35.5, delta14d: 0 },
+    bodyFatPct: metrics.bodyComp.bodyFatPct,
+    hydration: metrics.hydration,
+    bodyConfidence: metrics.bodyConfidence,
+    strengthSignal: { ...metrics.strengthSignal, delta14d: -4.5 },
+    comparableStrength: comparable,
+  });
+  expect(composite?.status).toBe("Poor");
+  expect(composite?.evidence.negative).toContain("Comparable strength decline supported");
 });
