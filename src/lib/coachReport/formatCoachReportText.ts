@@ -878,6 +878,7 @@ export function formatCoachReportText(
           "",
         ]
       : []),
+    ...(exportOnly?.comparableStrength ? [...renderSection(exportOnly.comparableStrength)] : []),
     ...(!hasFactualTrainingExposure && weeklyVolume ? [...renderWeeklyVolume(weeklyVolume)] : []),
     ...formatRecentSessionObservations(report),
     ...renderBodyRecovery(report, bodyHeading, bodyConfidenceSummarized),

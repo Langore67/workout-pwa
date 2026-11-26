@@ -11,7 +11,10 @@ import {
   type StrengthPattern,
 } from "../../strength/Strength";
 import { computeStrengthSignalV2 } from "../../strength/v2/computeStrengthSignalV2";
-import { buildStrengthComparabilityEvidence } from "../../strength/strengthComparabilityEvidence";
+import {
+  assessComparableStrengthEvidence,
+  buildStrengthComparabilityEvidence,
+} from "../../strength/strengthComparabilityEvidence";
 import {
   getBodyFatPctRaw,
   getFatMassLb,
@@ -598,6 +601,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     strengthSignalSnapshots: strengthSignalBuild.snapshots,
     asOf: generatedAt,
   });
+  const comparableStrengthAssessment = assessComparableStrengthEvidence(strengthComparabilityEvidence);
   const recentExerciseProgression = buildRecentExerciseProgressionPacket({
     sessions: sessions ?? [],
     sets: sets ?? [],
@@ -736,6 +740,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     leanPreservation,
     strengthSignal,
     strengthComparabilityEvidence,
+    comparableStrengthAssessment,
     phaseQuality,
     anchorLifts: anchorIntelligence,
     recentExerciseProgression,

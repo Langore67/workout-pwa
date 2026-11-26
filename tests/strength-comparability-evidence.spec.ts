@@ -13,7 +13,7 @@ test.describe("Strength comparability evidence foundation", () => {
   test("November 25 synthetic scenario keeps aggregate decline separate from exercise evidence", async ({ page }) => {
     await open(page);
     const result = await page.evaluate(async ({ asOf, day }) => {
-      const { buildStrengthComparabilityEvidence } = await import("/src/strength/strengthComparabilityEvidence.ts");
+      const { assessComparableStrengthEvidence, buildStrengthComparabilityEvidence } = await import("/src/strength/strengthComparabilityEvidence.ts");
       const pattern = (name: "hinge" | "push", exerciseIds: string[], count: number, score: number) => ({
         pattern: name, exerciseIds, topSet: score, working: score, exposure: Math.min(1, count / 6),
         absolute: score, relative: score / 200, normalized: score / Math.pow(200, 0.67),
@@ -65,20 +65,24 @@ test.describe("Strength comparability evidence foundation", () => {
         ] as any,
         exercises, tracks, sessions, sets, anchors, asOf,
       });
-      return evidence;
+      return { evidence, assessment: assessComparableStrengthEvidence(evidence) };
     }, { asOf: AS_OF, day: DAY });
 
-    expect(result.aggregate.normalizedDelta).toBeCloseTo(-3.42);
-    expect(result.aggregate.baseline.patterns.find((item: any) => item.pattern === "hinge").contributingExerciseIds).toEqual(["trap"]);
-    expect(result.populationChange.exercisesEntering).toContain("rdl");
-    expect(result.populationChange.exercisesLeaving).toContain("trap");
-    expect(result.populationChange.bodyweightDeltaLb).toBe(-5);
-    expect(result.exerciseEvidence.find((item: any) => item.canonicalExerciseId === "trap").status).toBe("stale");
-    expect(result.exerciseEvidence.find((item: any) => item.canonicalExerciseId === "rdl").direction).toBe("lower");
-    expect(result.exerciseEvidence.find((item: any) => item.canonicalExerciseId === "bench").direction).toBe("similar");
-    expect(result.exerciseEvidence.find((item: any) => item.canonicalExerciseId === "incline").direction).toBe("higher");
-    expect(result.anchorRelationships[0].relationship).toBe("same_family_different_exercise");
-    expect(result.limitations.join(" ")).toContain("documents a comparability limitation, not a cause");
+    const { evidence, assessment } = result;
+    expect(evidence.aggregate.normalizedDelta).toBeCloseTo(-3.42);
+    expect(evidence.aggregate.baseline.patterns.find((item: any) => item.pattern === "hinge").contributingExerciseIds).toEqual(["trap"]);
+    expect(evidence.populationChange.exercisesEntering).toContain("rdl");
+    expect(evidence.populationChange.exercisesLeaving).toContain("trap");
+    expect(evidence.populationChange.bodyweightDeltaLb).toBe(-5);
+    expect(evidence.exerciseEvidence.find((item: any) => item.canonicalExerciseId === "trap").status).toBe("stale");
+    expect(evidence.exerciseEvidence.find((item: any) => item.canonicalExerciseId === "rdl").direction).toBe("lower");
+    expect(evidence.exerciseEvidence.find((item: any) => item.canonicalExerciseId === "bench").direction).toBe("similar");
+    expect(evidence.exerciseEvidence.find((item: any) => item.canonicalExerciseId === "incline").direction).toBe("higher");
+    expect(evidence.anchorRelationships[0].relationship).toBe("same_family_different_exercise");
+    expect(evidence.limitations.join(" ")).toContain("documents a comparability limitation, not a cause");
+    expect(assessment.wholeProgramConclusion).toBe("not_established");
+    expect(assessment.staleExerciseNames).toContain("Trap Bar Deadlift");
+    expect(assessment.directionCounts).toEqual({ higher: 1, similar: 1, lower: 1 });
   });
 
   test("captures exposure change without changing same-exercise comparison and respects intent filtering", async ({ page }) => {
@@ -232,4 +236,51 @@ test.describe("Strength comparability evidence foundation", () => {
     expect(result.evidenceValue).toBe(result.before);
     expect(result.classificationsAfter).toEqual(result.classificationsBefore);
   });
+});
+
+test("comparable assessment reports direction states without majority voting or stale evidence", async ({ page }) => {
+  await open(page);
+  const result = await page.evaluate(async () => {
+    const { assessComparableStrengthEvidence } = await import("/src/strength/strengthComparabilityEvidence.ts");
+    const evidence = (items: any[]) => ({ exerciseEvidence: items });
+    const item = (id: string, direction: string, status = "direct_comparable", freshness = "current") => ({
+      canonicalExerciseId: id, canonicalExerciseName: id, direction, status, freshness,
+    });
+    return {
+      stable: assessComparableStrengthEvidence(evidence([item("A", "similar"), item("B", "similar")] as any)),
+      decliningSingle: assessComparableStrengthEvidence(evidence([item("A", "lower")] as any)),
+      mixed: assessComparableStrengthEvidence(evidence([item("A", "lower"), item("B", "similar")] as any)),
+      staleOnly: assessComparableStrengthEvidence(evidence([item("A", "lower", "stale", "stale")] as any)),
+      unavailable: assessComparableStrengthEvidence(evidence([
+        item("A", "insufficient_context", "insufficient", "recent"),
+        item("B", "insufficient_context", "missing", "missing"),
+      ] as any)),
+    };
+  });
+
+  expect(result.stable).toMatchObject({ state: "maintained", evidenceScope: "multiple_exercise_sample", wholeProgramConclusion: "not_established" });
+  expect(result.decliningSingle).toMatchObject({ state: "declining", evidenceScope: "single_exercise", wholeProgramConclusion: "not_established" });
+  expect(result.mixed).toMatchObject({ state: "mixed_evidence", directionCounts: { higher: 0, similar: 1, lower: 1 } });
+  expect(result.staleOnly).toMatchObject({ state: "insufficient_comparable_evidence", directComparableExerciseCount: 0, staleExerciseNames: ["A"] });
+  expect(result.unavailable).toMatchObject({ state: "insufficient_comparable_evidence", directComparableExerciseCount: 0 });
+});
+
+test("stable direct comparisons remain distinct from a declining aggregate score", async ({ page }) => {
+  await open(page);
+  const result = await page.evaluate(async () => {
+    const { assessComparableStrengthEvidence } = await import("/src/strength/strengthComparabilityEvidence.ts");
+    const evidence = {
+      aggregate: { normalizedDelta: -3.42 },
+      exerciseEvidence: ["Bench", "Row"].map((name) => ({
+        canonicalExerciseName: name,
+        status: "direct_comparable",
+        freshness: "current",
+        direction: "similar",
+      })),
+    };
+    return { aggregateDelta: evidence.aggregate.normalizedDelta, assessment: assessComparableStrengthEvidence(evidence as any) };
+  });
+  expect(result.aggregateDelta).toBe(-3.42);
+  expect(result.assessment.state).toBe("maintained");
+  expect(result.assessment.wholeProgramConclusion).toBe("not_established");
 });
