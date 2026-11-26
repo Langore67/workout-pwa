@@ -1086,10 +1086,10 @@ export default function HistoryPage() {
               </span>
             </div>
 
-            <div className="list" style={{ marginTop: 12 }} data-testid="history-completed-list">
+            <div className="list history-completed-list" style={{ marginTop: 12 }} data-testid="history-completed-list">
               {completed.length ? (
                 groupedVisibleCompleted.map((group) => (
-                  <div key={group.key} style={{ display: "grid", gap: 8 }} data-testid={`history-group:${group.key}`}>
+                  <div key={group.key} className="history-completed-group" style={{ display: "grid", gap: 8 }} data-testid={`history-group:${group.key}`}>
                     <div
                       className="muted"
                       style={{
@@ -1111,7 +1111,7 @@ export default function HistoryPage() {
                       return (
                         <div
                           key={s.id}
-                          className="card list-card clickable"
+                          className="card list-card clickable history-completed-card"
                           role="button"
                           tabIndex={0}
                           data-testid={`history-completed-card:${s.id}`}

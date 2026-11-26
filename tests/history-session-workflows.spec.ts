@@ -236,9 +236,12 @@ test.describe("history and ad hoc session workflows", () => {
     const copiedText = await page.evaluate(() => (window as any).__copiedText.text);
     expect(copiedText).toContain("Session Snapshot");
     expect(copiedText).toContain("Session: Lower B");
-    expect(copiedText).toContain("Readiness:");
-    expect(copiedText).toContain("Focus Flags");
+    expect(copiedText).not.toContain("Readiness:");
+    expect(copiedText).not.toContain("Focus Flags");
+    expect(copiedText).toContain("Stimulus / Coverage");
+    expect(copiedText).toContain("1/1 exercises produced completed work");
     expect(copiedText).toContain("Session Notes");
+    expect(copiedText).toContain("Coach summary line 1\nCoach summary line 2");
     expect(copiedText).toContain("Barbell RDL");
     expect(copiedText).toContain("Current Recommendation");
   });
@@ -598,24 +601,25 @@ test.describe("history and ad hoc session workflows", () => {
 
     const copiedText = await page.evaluate(() => (window as any).__copiedText.text);
     expect(copiedText).not.toContain("Questions to answer:");
-    expect(copiedText).toContain("Next Workout Focus");
-    expect(copiedText).toContain("Progression Guardrails");
-    expect(copiedText).toContain("Execution Priorities");
-    expect(copiedText).toContain("Adjustment Triggers");
+    expect(copiedText).toContain("Current Context");
+    expect(copiedText).toContain("Performance");
+    expect(copiedText).toContain("Strength Signal:");
+    expect(copiedText).toContain("Training Exposure");
     expect(copiedText).toContain("Training Signals (Recent Sessions)");
-    expect(copiedText).toContain("Recent Patterns (Last 4 Sessions)");
+    expect(copiedText).toContain("Stimulus / Coverage");
+    expect(copiedText).toContain("Recent Session Observations");
+    expect(copiedText.match(/Recent Session Observations/g)).toHaveLength(1);
+    const recentObservations = getSection(copiedText, "Recent Session Observations", "Body / Recovery");
+    expect(recentObservations).toContain("Bradford Press: stopped due to shoulder twinge.");
+    expect(recentObservations).toContain("Lateral Raise: medial delt isolation still not clean.");
+    // Ambiguous free-text observations remain evidence; retired heuristic advice is not regenerated.
+    expect(copiedText).not.toContain("Next Workout Focus");
+    expect(copiedText).not.toContain("Progression Guardrails");
+    expect(copiedText).not.toContain("Execution Priorities");
+    expect(copiedText).not.toContain("Adjustment Triggers");
+    expect(copiedText).not.toContain("Discuss with Gaz");
     expect(copiedText).not.toContain("Readiness / Confidence Notes");
     expect(copiedText).not.toContain("No additional readiness notes.");
-    expect(copiedText).toContain("Discuss with Gaz");
-
-    const focusSection = getSection(copiedText, "Next Workout Focus", "Training Signals (Recent Sessions)");
-    expect(focusSection).not.toMatch(/next workout:\s*(upper|lower)/i);
-    expect(focusSection).not.toMatch(/\bdo\s+(upper|lower)\b/i);
-    expect(focusSection).not.toMatch(/next session should be/i);
-    expect(focusSection).not.toMatch(/\badd\s+\d+\s+sets?\b/i);
-    expect(focusSection).not.toMatch(/\bdo\s+\d+\s+sets?\s+of\b/i);
-    expect(focusSection).not.toMatch(/\bincrease by\s+\d+\s*(lb|lbs|kg)?\b/i);
-    expect(focusSection).not.toMatch(/\bperform\s+\d+\s*-\s*\d+\s+reps?\b/i);
   });
 
   test("History Walks filter uses the conservative Cardio walk classifier", async ({ page }) => {

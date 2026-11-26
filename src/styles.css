@@ -359,6 +359,24 @@ textarea:focus-visible{
   word-break: break-word;
 }
 
+/* Completed History rows add a month-group grid between the list and each card.
+   Give each grid level a shrinkable track so card actions cannot widen the page. */
+.history-completed-list{
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+.history-completed-group{
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+.history-completed-card{
+  width: 100%;
+  min-width: 0;
+}
+.history-completed-card .card-head{
+  min-width: 0;
+}
+
 /* =========================================
    Breadcrumb S8 (Swipe-to-delete surfaces)
    ========================================= */
