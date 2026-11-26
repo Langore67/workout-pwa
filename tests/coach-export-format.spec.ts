@@ -1966,6 +1966,62 @@ test("coach export delegates fully to coach report rendering", async () => {
   );
 });
 
+test("Coach Export separates aggregate Strength Signal from comparable exercise evidence", () => {
+  const metrics = buildMetrics();
+  metrics.strengthComparabilityEvidence = {
+    aggregate: {
+      normalizedDelta: -3.42,
+      comparedWeeklyPoints: 4,
+      baseline: { normalizedIndex: 9.83 },
+      recent: { normalizedIndex: 6.41 },
+    },
+    populationChange: {
+      exercisesEntering: ["rdl"],
+      exercisesLeaving: ["trap"],
+      sharedExerciseIds: [],
+      patternsEntering: [],
+      patternsLeaving: [],
+      patternChanges: [],
+      baselineBodyweightLb: 200,
+      recentBodyweightLb: 195,
+      bodyweightDeltaLb: -5,
+    },
+    exerciseEvidence: [
+      { canonicalExerciseId: "bench", canonicalExerciseName: "Bench Press", status: "direct_comparable", freshness: "current", direction: "similar" },
+      { canonicalExerciseId: "rdl", canonicalExerciseName: "Romanian Deadlift", status: "direct_comparable", freshness: "current", direction: "lower" },
+      { canonicalExerciseId: "trap", canonicalExerciseName: "Trap Bar Deadlift", status: "stale", freshness: "stale", direction: "insufficient_context" },
+    ],
+    anchorRelationships: [],
+    limitations: ["Synthetic evidence fixture; not reconstructed production observations."],
+  } as any;
+  metrics.comparableStrengthAssessment = {
+    state: "mixed_evidence",
+    evidenceScope: "multiple_exercise_sample",
+    wholeProgramConclusion: "not_established",
+    directComparableExerciseCount: 2,
+    directionCounts: { higher: 0, similar: 1, lower: 1 },
+    staleExerciseNames: ["Trap Bar Deadlift"],
+    insufficientExerciseNames: [],
+    missingExerciseNames: [],
+    limitations: ["Synthetic evidence fixture; not reconstructed production observations."],
+  } as any;
+  metrics.phaseQuality = {
+    drivers: [],
+    metricCards: [{ label: "Strength Preservation", value: "Significant Drop" }],
+  } as any;
+
+  const text = formatCoachExportText(metrics);
+  const section = getSection(text, "Comparable Strength Preservation", "Training Exposure");
+  expect(section).toContain("Aggregate Strength Signal direction: Down");
+  expect(section).toContain("Comparable exercise evidence: Mixed evidence");
+  expect(section).toContain("sampled exercises, not a whole-program conclusion");
+  expect(section).toContain("Legacy aggregate-based Phase Quality Strength Preservation: Significant Drop");
+  expect(section).toContain("this is not a confirmed comparable-exercise regression");
+  expect(section).toContain("Aggregate population changed");
+  expect(section).toContain("Bodyweight normalization input changed: 200→195 lb");
+  expect(text.match(/Comparable Strength Preservation/g)).toHaveLength(1);
+});
+
 test("coach export preserves the structured coaching loop as plain text", async () => {
   const text = formatCoachExportText(buildMetrics());
 

@@ -256,6 +256,7 @@ export type CoachReport = {
     leanPreservation?: CoachReportSection;
     visceralFat?: CoachReportSection;
     phaseQuality?: CoachReportSection;
+    comparableStrength?: CoachReportSection;
     strengthSignalDetails?: CoachReportSection;
     movementIntelligence?: CoachReportMovementIntelligence;
     movementCoverage?: CoachReportMovementCoverage;

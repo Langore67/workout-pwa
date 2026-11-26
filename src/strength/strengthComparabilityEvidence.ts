@@ -79,6 +79,8 @@ export type StrengthComparabilityEvidence = {
       baselineExposure: number;
       recentExposure: number;
     }>;
+    baselineBodyweightLb: number;
+    recentBodyweightLb: number;
     bodyweightDeltaLb: number;
   } | null;
   exerciseEvidence: StrengthExerciseComparabilityEvidence[];
@@ -91,6 +93,26 @@ export type StrengthComparabilityEvidence = {
     currentFamilyExerciseName?: string;
     interpretation?: string;
   }>;
+  limitations: string[];
+};
+
+export type ComparableStrengthState =
+  | "improving"
+  | "maintained"
+  | "declining"
+  | "mixed_evidence"
+  | "insufficient_comparable_evidence";
+
+export type ComparableStrengthAssessment = {
+  state: ComparableStrengthState;
+  /** Scope is deliberately a sample; this model never asserts whole-program representativeness. */
+  evidenceScope: "none" | "single_exercise" | "multiple_exercise_sample";
+  wholeProgramConclusion: "not_established";
+  directComparableExerciseCount: number;
+  directionCounts: { higher: number; similar: number; lower: number };
+  staleExerciseNames: string[];
+  insufficientExerciseNames: string[];
+  missingExerciseNames: string[];
   limitations: string[];
 };
 
@@ -258,6 +280,8 @@ export function buildStrengthComparabilityEvidence(args: {
             baselineExposure: baselinePatterns.get(pattern)?.exposure ?? 0,
             recentExposure: recentPatterns.get(pattern)?.exposure ?? 0,
           })),
+          baselineBodyweightLb: baseline.bodyweightLb,
+          recentBodyweightLb: recent.bodyweightLb,
           bodyweightDeltaLb: recent.bodyweightLb - baseline.bodyweightLb,
         };
       })()
@@ -322,5 +346,62 @@ export function buildStrengthComparabilityEvidence(args: {
       interpretation: anchor.interpretation ?? undefined,
     })),
     limitations,
+  };
+}
+
+/**
+ * Summarizes only existing direct, fresh exercise comparisons. This is directional
+ * evidence reporting—not voting: every distinct direction remains visible, and the
+ * result is never promoted to a whole-program conclusion.
+ */
+export function assessComparableStrengthEvidence(
+  evidence: StrengthComparabilityEvidence | null | undefined
+): ComparableStrengthAssessment {
+  const exercises = evidence?.exerciseEvidence ?? [];
+  const direct = exercises.filter((item) =>
+    item.status === "direct_comparable" &&
+    (item.freshness === "current" || item.freshness === "recent") &&
+    (item.direction === "higher" || item.direction === "similar" || item.direction === "lower")
+  );
+  const directionCounts = {
+    higher: direct.filter((item) => item.direction === "higher").length,
+    similar: direct.filter((item) => item.direction === "similar").length,
+    lower: direct.filter((item) => item.direction === "lower").length,
+  };
+  const directions = [
+    directionCounts.higher > 0 ? "improving" : null,
+    directionCounts.similar > 0 ? "maintained" : null,
+    directionCounts.lower > 0 ? "declining" : null,
+  ].filter((direction): direction is "improving" | "maintained" | "declining" => direction !== null);
+  const state: ComparableStrengthState = directions.length === 0
+    ? "insufficient_comparable_evidence"
+    : directions.length > 1
+      ? "mixed_evidence"
+      : directions[0];
+  const evidenceScope: ComparableStrengthAssessment["evidenceScope"] = direct.length === 0
+    ? "none"
+    : direct.length === 1
+      ? "single_exercise"
+      : "multiple_exercise_sample";
+  const staleExerciseNames = exercises.filter((item) => item.status === "stale").map((item) => item.canonicalExerciseName).sort();
+  const insufficientExerciseNames = exercises.filter((item) => item.status === "insufficient").map((item) => item.canonicalExerciseName).sort();
+  const missingExerciseNames = exercises.filter((item) => item.status === "missing").map((item) => item.canonicalExerciseName).sort();
+  const limitations = [...(evidence?.limitations ?? [])];
+  if (staleExerciseNames.length) limitations.push(`${staleExerciseNames.length} exercise comparison${staleExerciseNames.length === 1 ? " is" : "s are"} stale and cannot establish current performance.`);
+  if (insufficientExerciseNames.length) limitations.push(`${insufficientExerciseNames.length} exercise comparison${insufficientExerciseNames.length === 1 ? " has" : "s have"} insufficient comparable observations.`);
+  if (missingExerciseNames.length) limitations.push(`${missingExerciseNames.length} exercise${missingExerciseNames.length === 1 ? " has" : "s have"} no available comparable evidence.`);
+  if (direct.length) limitations.push("Direct comparisons describe the observed exercise sample; whole-program strength status is not established.");
+  if (!direct.length) limitations.push("No fresh direct exercise comparison establishes maintained or declining strength.");
+
+  return {
+    state,
+    evidenceScope,
+    wholeProgramConclusion: "not_established",
+    directComparableExerciseCount: direct.length,
+    directionCounts,
+    staleExerciseNames,
+    insufficientExerciseNames,
+    missingExerciseNames,
+    limitations: Array.from(new Set(limitations)),
   };
 }

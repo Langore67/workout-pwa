@@ -1344,6 +1344,81 @@ function buildStrengthSignalReportSection(metrics: CoachExportMetrics): CoachRep
   };
 }
 
+function buildComparableStrengthReportSection(metrics: CoachExportMetrics): CoachReportSection | undefined {
+  const evidence = metrics.strengthComparabilityEvidence;
+  const assessment = metrics.comparableStrengthAssessment;
+  if (!evidence || !assessment) return undefined;
+
+  const bullets: string[] = [];
+  const aggregate = evidence.aggregate;
+  if (aggregate && aggregate.comparedWeeklyPoints >= 2) {
+    const delta = aggregate.normalizedDelta;
+    const direction = delta > 0 ? "Up" : delta < 0 ? "Down" : "Unchanged";
+    bullets.push(`Aggregate Strength Signal direction: ${direction} across ${aggregate.comparedWeeklyPoints} weekly snapshots (${fmtSigned(delta, 2)} normalized points).`);
+  } else {
+    bullets.push("Aggregate Strength Signal direction: Unavailable; fewer than two comparable weekly snapshots.");
+  }
+
+  const directionCounts = assessment.directionCounts;
+  const directionSummary = [
+    directionCounts.higher ? `${directionCounts.higher} higher` : "",
+    directionCounts.similar ? `${directionCounts.similar} similar` : "",
+    directionCounts.lower ? `${directionCounts.lower} lower` : "",
+  ].filter(Boolean).join(", ");
+  const stateLabels = {
+    improving: "Improving",
+    maintained: "Maintained",
+    declining: "Declining",
+    mixed_evidence: "Mixed evidence",
+    insufficient_comparable_evidence: "Insufficient comparable evidence",
+  } as const;
+  const scopeLabel = assessment.evidenceScope === "single_exercise"
+    ? "single exercise"
+    : assessment.evidenceScope === "multiple_exercise_sample"
+      ? "sampled exercises"
+      : "no direct exercise sample";
+  bullets.push(
+    assessment.directComparableExerciseCount
+      ? `Comparable exercise evidence: ${stateLabels[assessment.state]} across ${assessment.directComparableExerciseCount} ${assessment.directComparableExerciseCount === 1 ? "direct comparison" : "direct comparisons"}${directionSummary ? ` (${directionSummary})` : ""}; ${scopeLabel}, not a whole-program conclusion.`
+      : `Comparable exercise evidence: ${stateLabels[assessment.state]}; no fresh direct comparison establishes maintenance or regression.`
+  );
+  bullets.push(`Comparable confidence: not separately scored; ${assessment.directComparableExerciseCount} fresh direct, ${assessment.staleExerciseNames.length} stale, ${assessment.insufficientExerciseNames.length} insufficient, ${assessment.missingExerciseNames.length} missing.`);
+
+  if (assessment.staleExerciseNames.length) {
+    bullets.push(`Stale evidence: ${assessment.staleExerciseNames.join(", ")}.`);
+  }
+
+  const population = evidence.populationChange;
+  if (population) {
+    if (population.exercisesEntering.length || population.exercisesLeaving.length) {
+      const nameForId = (id: string) => evidence.exerciseEvidence.find((item) => item.canonicalExerciseId === id)?.canonicalExerciseName;
+      const entering = population.exercisesEntering.map(nameForId).filter((name): name is string => !!name);
+      const leaving = population.exercisesLeaving.map(nameForId).filter((name): name is string => !!name);
+      const enteredText = entering.length ? entering.join(", ") : `${population.exercisesEntering.length} exercise${population.exercisesEntering.length === 1 ? "" : "s"}`;
+      const leftText = leaving.length ? leaving.join(", ") : `${population.exercisesLeaving.length} exercise${population.exercisesLeaving.length === 1 ? "" : "s"}`;
+      bullets.push(`Aggregate population changed: entered — ${enteredText}; left — ${leftText}. This limits score comparability; it does not establish cause.`);
+    }
+    const coverageChanged = [...population.patternsEntering.map((pattern) => `${pattern} entered`), ...population.patternsLeaving.map((pattern) => `${pattern} left`)];
+    if (coverageChanged.length) bullets.push(`Movement-pattern coverage changed: ${coverageChanged.join(", ")}.`);
+    const exposureChanges = population.patternChanges
+      .filter((change) => change.baselineQualifyingWorkingSets !== change.recentQualifyingWorkingSets)
+      .map((change) => `${change.pattern} ${change.baselineQualifyingWorkingSets}→${change.recentQualifyingWorkingSets} qualifying sets`);
+    if (exposureChanges.length) bullets.push(`Qualifying-set exposure changed: ${exposureChanges.join(", ")}.`);
+    if (population.bodyweightDeltaLb !== 0) {
+      bullets.push(`Bodyweight normalization input changed: ${fmtNumber(population.baselineBodyweightLb, 1)}→${fmtNumber(population.recentBodyweightLb, 1)} lb.`);
+    }
+  }
+
+  const legacyAggregateStrength = metrics.phaseQuality?.metricCards.find((card) =>
+    card.label === "Strength Preservation" || card.label === "Strength Signal"
+  )?.value;
+  if (legacyAggregateStrength) {
+    bullets.push(`Legacy aggregate-based Phase Quality Strength Preservation: ${legacyAggregateStrength}; this is not a confirmed comparable-exercise regression.`);
+  }
+
+  return { title: "Comparable Strength Preservation", bullets };
+}
+
 function buildCurrentMovementFocusReportSection(metrics: CoachExportMetrics): CoachReportSection | undefined {
   if (!metrics.currentMovementFocus?.length) return undefined;
 
@@ -2204,6 +2279,7 @@ export function buildCoachReport({
     visceralFat: buildVisceralFatReportSection(metrics),
     phaseQuality: buildPhaseQualityReportSection(metrics),
     strengthSignalDetails: buildStrengthSignalReportSection(metrics),
+    comparableStrength: buildComparableStrengthReportSection(metrics),
     movementIntelligence: buildMovementIntelligenceReportSection(metrics),
     movementCoverage: buildMovementCoverageReportSection(metrics),
     currentMovementFocus: buildCurrentMovementFocusReportSection(metrics),
