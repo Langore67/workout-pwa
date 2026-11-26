@@ -53,10 +53,6 @@ function strengthTrend(metrics: CoachExportMetrics): "improving" | "stable" | "s
   return "declining";
 }
 
-function hasPhaseStrengthImproving(metrics: CoachExportMetrics): boolean {
-  return (metrics.phaseQuality?.drivers ?? []).some((driver) => /Strength Preservation:\s*Improving/i.test(driver));
-}
-
 function aggressiveCut(metrics: CoachExportMetrics): boolean {
   const delta = metrics.bodyComp.weight.delta14d;
   const latest = metrics.bodyComp.weight.latest;
@@ -162,44 +158,37 @@ function classifyPerformanceTrend(metrics: CoachExportMetrics): {
   watchItems: string[];
 } {
   const strength = strengthTrend(metrics);
-  const { allText } = trainingEvidenceText(metrics);
-  const hasPositivePerformanceEvidence =
-    /pr\b|personal record|breakthrough|improved|improving|strong|consistent/i.test(allText) ||
-    hasPhaseStrengthImproving(metrics);
+  const comparable = metrics.comparableStrengthAssessment?.state ?? "insufficient_comparable_evidence";
   const positives: string[] = [];
   const watchItems: string[] = [];
 
   if (strength === "improving") positives.push("Strength Signal is improving");
   else if (strength === "stable") positives.push("Strength Signal is stable");
   else if (strength === "slipping") watchItems.push("Strength Signal is modestly below recent best");
-  else if (strength === "declining") {
-    watchItems.push(
-      hasPhaseStrengthImproving(metrics)
-        ? "Strength evidence is mixed"
-        : "Strength Signal is below recent trend"
-    );
-  }
+  else if (strength === "declining") watchItems.push("Aggregate Strength Signal is below recent trend");
 
-  if (hasPositivePerformanceEvidence) {
-    positives.push("Recent notes include positive performance or breakthrough evidence");
-  }
+  if (comparable === "improving") positives.push("Comparable exercise performance is improving");
+  else if (comparable === "maintained") positives.push("Comparable exercise performance is maintained");
+  else if (comparable === "declining") watchItems.push("Comparable exercise performance decline is supported");
+  else if (comparable === "mixed_evidence") watchItems.push("Comparable exercise evidence is mixed");
+  else watchItems.push("Comparable exercise evidence is insufficient");
 
-  if (strength === "unknown" && !hasPositivePerformanceEvidence) {
+  if (strength === "unknown" && comparable === "insufficient_comparable_evidence") {
     return { status: "Insufficient Data", explanation: "Performance trend needs more strength or performance evidence.", positives, watchItems };
   }
-  if (strength === "improving") {
-    return { status: "Improving", explanation: "Strength Signal and recent performance evidence are moving positively.", positives, watchItems };
+  if (comparable === "declining") {
+    return { status: "Regressing", explanation: "Fresh direct exercise comparisons support a performance decline; aggregate Strength Signal is retained as exposure context.", positives, watchItems };
   }
-  if (strength === "stable") {
-    return { status: "Stable", explanation: "Strength Signal is holding steady.", positives, watchItems };
+  if (comparable === "mixed_evidence") {
+    return { status: "Mixed", explanation: "Fresh direct exercise comparisons disagree; aggregate Strength Signal does not resolve comparable strength preservation.", positives, watchItems };
   }
-  if (strength === "declining" && hasPositivePerformanceEvidence) {
-    return { status: "Mixed", explanation: "Global strength is down, but recent exercise-level performance evidence is positive.", positives, watchItems };
+  if (comparable === "improving") {
+    return { status: strength === "declining" ? "Mixed" : "Improving", explanation: strength === "declining" ? "Comparable exercises improved while aggregate performance or exposure declined." : "Comparable exercise performance is improving.", positives, watchItems };
   }
-  if (strength === "declining") {
-    return { status: "Regressing", explanation: "Global strength is below recent trend.", positives, watchItems };
+  if (comparable === "maintained") {
+    return { status: strength === "declining" ? "Mixed" : "Stable", explanation: strength === "declining" ? "Comparable exercises were maintained while aggregate performance or exposure declined." : "Comparable exercise performance is maintained.", positives, watchItems };
   }
-  return { status: "Mixed", explanation: "Performance evidence is mixed across global strength and recent sessions.", positives, watchItems };
+  return { status: "Mixed", explanation: "Aggregate performance or exposure changed, but fresh direct comparisons are insufficient to establish strength maintenance or regression.", positives, watchItems };
 }
 
 function classifyMovementQuality(metrics: CoachExportMetrics): {
@@ -339,7 +328,7 @@ function chooseBiggestRisk(
   }
 
   if (performance.status === "Regressing") {
-    return "Global strength is below recent trend and needs monitoring before pushing load.";
+    return "Fresh direct exercise comparisons support declining performance; monitor before pushing load.";
   }
 
   const movementRisk = movement.watchItems[0];
@@ -391,12 +380,12 @@ export function buildCoachIntelligence(metrics: CoachExportMetrics): CoachIntell
   const recovery = classifyRecovery(metrics);
   const bodyConfidence = metrics.bodyConfidence;
   const muscleStatus = metrics.leanPreservation?.status ?? "Watch";
-  const confidenceInputs = [
+  const bodyConfidenceInputs = [
     metrics.bodyComp.weight.delta14d,
     metrics.bodyComp.waist.delta14d,
     metrics.bodyComp.leanMass.delta14d,
-    metrics.strengthSignal.delta14d,
   ].filter(finite).length;
+  const comparableConclusionSupported = ["improving", "maintained", "declining"].includes(metrics.comparableStrengthAssessment?.state ?? "");
 
   let overallStatus: CoachIntelligence["overallStatus"] = "Watch";
   if (fatLoss.status === "On Track" && (muscleStatus === "Strong" || muscleStatus === "Acceptable") && trainingStatus !== "Regressing") {
@@ -409,9 +398,9 @@ export function buildCoachIntelligence(metrics: CoachExportMetrics): CoachIntell
   const confidence: CoachIntelligence["confidence"] =
     bodyConfidence?.overall === "low"
       ? "Low"
-      : confidenceInputs >= 4 && metrics.leanPreservation?.confidence === "High"
+      : bodyConfidenceInputs >= 3 && metrics.leanPreservation?.confidence === "High" && comparableConclusionSupported
         ? "High"
-        : confidenceInputs >= 3
+        : bodyConfidenceInputs >= 2
           ? "Moderate"
           : "Low";
 
@@ -423,7 +412,7 @@ export function buildCoachIntelligence(metrics: CoachExportMetrics): CoachIntell
         : muscleStatus === "Poor"
           ? bodyConfidence?.leanMass === "low"
             ? "Lean-mass confidence is limited, so the muscle-preservation warning is cautious rather than definitive."
-            : "Lean-mass and performance evidence both indicate elevated muscle-preservation risk."
+            : "Lean-mass estimate and comparable performance evidence both indicate elevated muscle-preservation risk."
           : "Muscle-preservation evidence needs monitoring before increasing cut pressure.";
 
   const positives = unique([
@@ -436,9 +425,7 @@ export function buildCoachIntelligence(metrics: CoachExportMetrics): CoachIntell
 
   const watchItems = unique([
     ...fatLoss.watchItems,
-    ...(metrics.leanPreservation?.evidence.negative ?? []).map((item) =>
-      item === "Strength declining" ? "Strength evidence is mixed" : item
-    ),
+    ...(metrics.leanPreservation?.evidence.negative ?? []),
     ...performance.watchItems,
     ...movement.watchItems,
     ...recovery.watchItems,

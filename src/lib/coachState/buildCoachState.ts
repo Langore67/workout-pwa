@@ -191,6 +191,7 @@ export function buildCoachStateFromExportMetrics(metrics: CoachExportMetrics | n
       strengthSignalCurrent: source.strengthSignal?.current ?? undefined,
       strengthSignalDelta14d: source.strengthSignal?.delta14d ?? undefined,
       strengthSignalVsBestPct: source.strengthSignal?.vs90dBestPct ?? undefined,
+      comparableStrengthState: source.comparableStrengthAssessment?.state,
       anchors: buildStrengthAnchors(source),
     },
     cardio: buildCardioState(cardioSummary),

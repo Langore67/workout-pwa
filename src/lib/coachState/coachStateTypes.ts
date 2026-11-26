@@ -88,6 +88,7 @@ export type CoachStateStrength = {
   strengthSignalCurrent?: number;
   strengthSignalDelta14d?: number;
   strengthSignalVsBestPct?: number;
+  comparableStrengthState?: import("../../strength/strengthComparabilityEvidence").ComparableStrengthState;
   anchors?: CoachStateStrengthAnchor[];
 };
 

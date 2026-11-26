@@ -34,7 +34,8 @@ test.describe("phase quality confidence", () => {
       };
     });
 
-    expect(result.stableConfidence).toBe("High");
+    // Aggregate numeric availability alone is not confidence in comparable preservation.
+    expect(result.stableConfidence).toBe("Moderate");
     expect(result.distortedConfidence).toBe("Low");
     expect(result.distortedDrivers).toContain(
       "Hydration context may be distorting impedance-derived lean mass and body-fat changes."

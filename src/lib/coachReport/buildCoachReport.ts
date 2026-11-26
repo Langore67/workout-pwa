@@ -1409,13 +1409,6 @@ function buildComparableStrengthReportSection(metrics: CoachExportMetrics): Coac
     }
   }
 
-  const legacyAggregateStrength = metrics.phaseQuality?.metricCards.find((card) =>
-    card.label === "Strength Preservation" || card.label === "Strength Signal"
-  )?.value;
-  if (legacyAggregateStrength) {
-    bullets.push(`Legacy aggregate-based Phase Quality Strength Preservation: ${legacyAggregateStrength}; this is not a confirmed comparable-exercise regression.`);
-  }
-
   return { title: "Comparable Strength Preservation", bullets };
 }
 
@@ -1813,7 +1806,7 @@ function buildProgrammingIntelligence(metrics: CoachExportMetrics, coachState: C
       title: "Aggressive Cut",
       priority: metrics.leanPreservation.status === "Poor" ? "critical" : "high",
       category: "recovery",
-      concernKey: typeof metrics.strengthSignal.delta14d === "number" && metrics.strengthSignal.delta14d < -0.03
+      concernKey: metrics.comparableStrengthAssessment?.state === "declining"
         ? "recovery_performance_preservation"
         : "recovery:lean_preservation",
       severity: metrics.leanPreservation.status === "Poor" ? 110 : 95,
@@ -1821,24 +1814,24 @@ function buildProgrammingIntelligence(metrics: CoachExportMetrics, coachState: C
       evidence: [
         `Coach Snapshot ${titleCaseStatus(coachState.snapshot.overallStatus)}`,
         `Lean Preservation ${metrics.leanPreservation.status}`,
-        ...(typeof metrics.strengthSignal.delta14d === "number" && metrics.strengthSignal.delta14d < 0 ? ["Strength Signal down"] : []),
+        ...(metrics.comparableStrengthAssessment?.state === "declining" ? ["Comparable strength decline supported"] : []),
       ],
       coachAction: "Hold progression conservative.",
     });
   }
 
-  if (typeof metrics.strengthSignal.delta14d === "number" && Number.isFinite(metrics.strengthSignal.delta14d) && metrics.strengthSignal.delta14d < -0.03) {
+  if (metrics.comparableStrengthAssessment?.state === "declining") {
     addPriority({
       title: "Performance Pressure",
-      priority: metrics.strengthSignal.delta14d < -0.08 ? "high" : "medium",
+      priority: "high",
       category: "performance",
       concernKey: coachState.snapshot.overallStatus === "intervene" &&
         (metrics.leanPreservation?.status === "Watch" || metrics.leanPreservation?.status === "Poor")
           ? "recovery_performance_preservation"
           : "performance:strength_regression",
       severity: 90,
-      reason: "Strength Signal is trending down.",
-      evidence: [`14d Strength Signal ${fmtSigned(metrics.strengthSignal.delta14d, 2)}`],
+      reason: "Fresh direct exercise comparisons support declining performance.",
+      evidence: ["Comparable strength decline supported", ...(typeof metrics.strengthSignal.delta14d === "number" ? [`Aggregate Strength Signal ${fmtSigned(metrics.strengthSignal.delta14d, 2)}`] : [])],
       coachAction: "Keep progression conservative until performance stabilizes.",
     });
   }
