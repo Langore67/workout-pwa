@@ -59,8 +59,9 @@ export type TrainingExposureContext = {
   };
 };
 
-type ExposureEvent = {
+export type TrainingExposureEvent = {
   at: number;
+  setId: string;
   sessionId: string;
   canonicalExerciseId?: string;
   sourceExerciseId?: string;
@@ -71,6 +72,11 @@ type ExposureEvent = {
   movementPatternExempt?: boolean;
   limitation?: string;
 };
+
+export type TrainingExposureEventSource = Readonly<{
+  events: readonly TrainingExposureEvent[];
+  completedStrengthSessions: readonly { id: string; endedAt: number }[];
+}>;
 
 function meaningfulPayload(set: SetEntry) {
   return (typeof set.reps === "number" && Number.isFinite(set.reps) && set.reps > 0)
@@ -136,13 +142,13 @@ function buildWindow(args: {
   endAt: number;
   endExclusive?: boolean;
   complete: boolean;
-  events: ExposureEvent[];
+  events: readonly TrainingExposureEvent[];
   completedStrengthSessions: Array<{ id: string; endedAt: number }>;
 }): TrainingExposureWindow {
   const inRange = (at: number) => at >= args.startAt && (args.endExclusive ? at < args.endAt : at <= args.endAt);
   const events = args.events.filter((event) => inRange(event.at));
-  const movement = new Map<string, ExposureEvent[]>();
-  const roles = new Map<ExposureTrainingRole, ExposureEvent[]>();
+  const movement = new Map<string, TrainingExposureEvent[]>();
+  const roles = new Map<ExposureTrainingRole, TrainingExposureEvent[]>();
   for (const event of events) {
     if (event.movementPattern) movement.set(event.movementPattern, [...(movement.get(event.movementPattern) ?? []), event]);
     roles.set(event.trainingRole, [...(roles.get(event.trainingRole) ?? []), event]);
@@ -208,13 +214,51 @@ export function buildTrainingExposureContext(args: {
 }): TrainingExposureContext {
   const asOf = Number.isFinite(args.asOf) ? args.asOf : Date.now();
   const boundaries = buildTrainingCalendarBoundaries(asOf);
+  const source = buildTrainingExposureEventSource(args);
+  const events = source.events;
+  const completedStrengthSessions = [...source.completedStrengthSessions];
+  const cardioTimestamps = (args.dedicatedCardioObservations ?? [])
+    .map((event) => event.endedAt)
+    .filter((at): at is number => Number.isFinite(at) && Number(at) <= asOf);
+  const calendar = buildTrainingCalendarContext({
+    asOf,
+    completedStrengthSessionTimestamps: completedStrengthSessions.map((session) => session.endedAt),
+    completedDedicatedCardioSessionTimestamps: cardioTimestamps,
+    intendedWeeklySchedule: args.intendedWeeklySchedule,
+  });
+  return {
+    generatedAt: asOf,
+    ...(completedStrengthSessions.length
+      ? { latestCompletedStrengthSessionAt: Math.max(...completedStrengthSessions.map((session) => session.endedAt)) }
+      : {}),
+    calendar,
+    windows: {
+      currentWeekToDate: buildWindow({ kind: "week_to_date", startAt: boundaries.currentWeekStartAt, endAt: asOf, complete: false, events, completedStrengthSessions }),
+      previousCompleteWeek: buildWindow({ kind: "previous_complete_week", startAt: boundaries.previousWeekStartAt, endAt: boundaries.currentWeekStartAt, endExclusive: true, complete: true, events, completedStrengthSessions }),
+      rolling14Days: buildWindow({ kind: "rolling_14_days", startAt: boundaries.rolling14DaysStartAt, endAt: asOf, complete: false, events, completedStrengthSessions }),
+    },
+  };
+}
+
+/**
+ * Shared read-only source for production Training Exposure and isolated audits.
+ * Keeping eligibility and identity resolution here prevents diagnostic drift.
+ */
+export function buildTrainingExposureEventSource(args: {
+  sessions: readonly Session[];
+  sets: readonly SetEntry[];
+  tracks: readonly Track[];
+  exercises: readonly Exercise[];
+  asOf: number;
+}): TrainingExposureEventSource {
+  const asOf = Number.isFinite(args.asOf) ? args.asOf : Date.now();
   const completedSessions = (args.sessions ?? []).filter((session) => !session.deletedAt && Number.isFinite(session.endedAt) && Number(session.endedAt) <= asOf);
   const sessionsById = new Map(completedSessions.map((session) => [session.id, session]));
   const tracksById = new Map((args.tracks ?? []).map((track) => [track.id, track]));
   const exercises = (args.exercises ?? []).slice();
   const exercisesById = new Map(exercises.map((exercise) => [exercise.id, exercise]));
   const resolverIndex = buildExerciseResolverIndex(exercises);
-  const events: ExposureEvent[] = [];
+  const events: TrainingExposureEvent[] = [];
   const strengthSessionIds = new Set<string>();
 
   for (const set of args.sets ?? []) {
@@ -246,6 +290,7 @@ export function buildTrainingExposureContext(args: {
     if (!Number.isFinite(at) || at > asOf) continue;
     events.push({
       at,
+      setId: set.id,
       sessionId: session.id,
       canonicalExerciseId: canonical?.id,
       sourceExerciseId: source?.id,
@@ -262,25 +307,8 @@ export function buildTrainingExposureContext(args: {
   const completedStrengthSessions = completedSessions
     .filter((session) => strengthSessionIds.has(session.id))
     .map((session) => ({ id: session.id, endedAt: Number(session.endedAt) }));
-  const cardioTimestamps = (args.dedicatedCardioObservations ?? [])
-    .map((event) => event.endedAt)
-    .filter((at): at is number => Number.isFinite(at) && Number(at) <= asOf);
-  const calendar = buildTrainingCalendarContext({
-    asOf,
-    completedStrengthSessionTimestamps: completedStrengthSessions.map((session) => session.endedAt),
-    completedDedicatedCardioSessionTimestamps: cardioTimestamps,
-    intendedWeeklySchedule: args.intendedWeeklySchedule,
+  return Object.freeze({
+    events: Object.freeze(events.map((event) => Object.freeze({ ...event }))),
+    completedStrengthSessions: Object.freeze(completedStrengthSessions.map((session) => Object.freeze({ ...session }))),
   });
-  return {
-    generatedAt: asOf,
-    ...(completedStrengthSessions.length
-      ? { latestCompletedStrengthSessionAt: Math.max(...completedStrengthSessions.map((session) => session.endedAt)) }
-      : {}),
-    calendar,
-    windows: {
-      currentWeekToDate: buildWindow({ kind: "week_to_date", startAt: boundaries.currentWeekStartAt, endAt: asOf, complete: false, events, completedStrengthSessions }),
-      previousCompleteWeek: buildWindow({ kind: "previous_complete_week", startAt: boundaries.previousWeekStartAt, endAt: boundaries.currentWeekStartAt, endExclusive: true, complete: true, events, completedStrengthSessions }),
-      rolling14Days: buildWindow({ kind: "rolling_14_days", startAt: boundaries.rolling14DaysStartAt, endAt: asOf, complete: false, events, completedStrengthSessions }),
-    },
-  };
 }

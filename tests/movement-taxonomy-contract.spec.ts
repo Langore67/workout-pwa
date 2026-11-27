@@ -3,19 +3,21 @@ import {
   MOVEMENT_PATTERN_FAMILY_RELATIONSHIPS,
   MOVEMENT_TAXONOMY_FAMILIES,
   MOVEMENT_TAXONOMY_PATTERNS,
+  MOVEMENT_TAXONOMY_LATERALITIES,
   MOVEMENT_TAXONOMY_VERSION,
   getMovementTaxonomyFamily,
   isMovementTaxonomyFamily,
   isMovementTaxonomyPattern,
+  isMovementTaxonomyLaterality,
   resolveMovementTaxonomyClassification,
 } from "../src/domain/training/movementTaxonomyContract";
 
 test("validates the complete family and specific-pattern vocabularies", () => {
-  expect(MOVEMENT_TAXONOMY_VERSION).toBe("1.0.0");
+  expect(MOVEMENT_TAXONOMY_VERSION).toBe("1.1.0");
   expect(MOVEMENT_TAXONOMY_FAMILIES).toEqual(["push", "pull", "squat", "hinge", "lunge", "carry"]);
   expect(MOVEMENT_TAXONOMY_PATTERNS).toEqual([
     "horizontal_push", "vertical_push", "horizontal_pull", "vertical_pull",
-    "squat", "hinge", "lunge", "single_leg", "glute_extension", "carry",
+    "squat", "hinge", "lunge", "glute_extension", "carry",
     "core", "rotation", "anti_rotation",
   ]);
   for (const family of MOVEMENT_TAXONOMY_FAMILIES) expect(isMovementTaxonomyFamily(family)).toBe(true);
@@ -23,18 +25,34 @@ test("validates the complete family and specific-pattern vocabularies", () => {
   expect(isMovementTaxonomyFamily("vertical_pull")).toBe(false);
   expect(isMovementTaxonomyPattern("pull")).toBe(false);
   expect(isMovementTaxonomyPattern("anything_nonempty")).toBe(false);
+  expect(isMovementTaxonomyPattern("single_leg")).toBe(false);
+  expect(MOVEMENT_TAXONOMY_LATERALITIES).toEqual(["bilateral", "unilateral", "alternating", "unknown"]);
+  for (const laterality of MOVEMENT_TAXONOMY_LATERALITIES) expect(isMovementTaxonomyLaterality(laterality)).toBe(true);
 });
 
 test("defines deterministic roll-ups without implying a Strength Signal mapping", () => {
   expect(MOVEMENT_PATTERN_FAMILY_RELATIONSHIPS).toEqual({
     horizontal_push: "push", vertical_push: "push",
     horizontal_pull: "pull", vertical_pull: "pull",
-    squat: "squat", hinge: "hinge", lunge: "lunge", single_leg: "lunge",
+    squat: "squat", hinge: "hinge", lunge: "lunge",
     glute_extension: undefined, carry: "carry", core: undefined,
     rotation: undefined, anti_rotation: undefined,
   });
   expect(getMovementTaxonomyFamily("vertical_pull")).toBe("pull");
   expect(getMovementTaxonomyFamily("core")).toBeUndefined();
+});
+
+test("keeps exercise and performed-set laterality independent of movement pattern", () => {
+  const hinge = resolveMovementTaxonomyClassification({
+    pattern: "hinge", exerciseLaterality: "unilateral", performedSetLaterality: "unknown",
+  });
+  const squat = resolveMovementTaxonomyClassification({
+    pattern: "squat", exerciseLaterality: "unilateral", performedSetLaterality: "unilateral",
+  });
+  expect(hinge).toMatchObject({ pattern: "hinge", family: "hinge", laterality: { exercise: "unilateral", performedSet: "unknown" } });
+  expect(squat).toMatchObject({ pattern: "squat", family: "squat", laterality: { exercise: "unilateral", performedSet: "unilateral" } });
+  expect(resolveMovementTaxonomyClassification({ pattern: "single_leg" })).toMatchObject({ state: "invalid" });
+  expect(resolveMovementTaxonomyClassification({ pattern: "lunge", exerciseLaterality: "one_side" })).toMatchObject({ state: "invalid" });
 });
 
 test("resolves explicit, reviewed, legacy fallback, and broad-only provenance", () => {
