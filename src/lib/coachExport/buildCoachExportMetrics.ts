@@ -272,12 +272,11 @@ async function buildAnchorLifts(generatedAt: number): Promise<CoachExportAnchorL
 
 function buildReadinessNotes(metrics: {
   hydrationNote: string;
-  phaseQualityStatus: string | null;
-  phaseQualityDrivers: string[];
+  phaseQuality: CoachExportMetrics["phaseQuality"];
 }) {
   const notes: string[] = [];
-  notes.push(metrics.phaseQualityStatus ? `Phase quality: ${metrics.phaseQualityStatus}.` : "Phase quality: Insufficient Data.");
-  notes.push(...metrics.phaseQualityDrivers.slice(0, 3));
+  notes.push(metrics.phaseQuality ? `Phase quality: ${metrics.phaseQuality.finalStatus}.` : "Phase quality: Insufficient Data.");
+  if (metrics.phaseQuality?.quadrantNote) notes.push(metrics.phaseQuality.quadrantNote);
   notes.push(metrics.hydrationNote || "Hydration confidence: Unknown.");
   return notes;
 }
@@ -717,8 +716,7 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
   
 
   const readinessNotes = buildReadinessNotes({
-    phaseQualityStatus: phaseQuality?.finalStatus ?? null,
-    phaseQualityDrivers: phaseQuality?.drivers ?? [],
+    phaseQuality,
     hydrationNote: hydration.note,
   });
   const goalProgress = buildGoalProgress({

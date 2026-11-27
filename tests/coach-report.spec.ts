@@ -517,7 +517,7 @@ test("coach report includes structured export-only sections", async () => {
   expect(report.exportOnly?.leanPreservation?.rows?.map((row) => row.text ?? "")).toEqual(
     expect.arrayContaining([expect.stringContaining("Raw Metrics"), expect.stringContaining("Composite")])
   );
-  expect(report.exportOnly?.leanPreservation?.positive?.join(" ")).toContain("Strength");
+  expect(report.exportOnly?.leanPreservation?.positive?.join(" ")).toContain("performance evidence is positive");
   expect(report.exportOnly?.visceralFat?.title).toBe("Visceral Fat");
   expect(report.exportOnly?.phaseQuality?.title).toBe("Cut / Phase Quality");
   expect(report.exportOnly?.phaseQuality?.blocks?.[0].heading).toBe("Drivers");

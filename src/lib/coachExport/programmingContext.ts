@@ -99,14 +99,18 @@ export function buildCoachProgrammingContext(args: {
     if (anchor.freshness === "stale") constraints.push(`${label} benchmark is stale.`);
     if (!anchor.benchmark) constraints.push(`${label} benchmark is unavailable.`);
   }
+  if (args.metrics.phaseQuality) {
+    constraints.push(`Phase quality: ${args.metrics.phaseQuality.finalStatus}.`);
+  }
+  if (args.metrics.leanPreservation) {
+    constraints.push(`Lean Preservation: ${args.metrics.leanPreservation.status}.`);
+  }
+  if (args.metrics.hydration?.note) {
+    constraints.push(args.metrics.hydration.note);
+  }
   // Legacy Movement Coverage statuses are compatibility-only. Training
   // Exposure carries the factual partial/complete-period context, so no
   // deficiency constraint is generated from legacy status labels.
-  for (const note of args.metrics.readinessNotes ?? []) {
-    const clean = note.trim();
-    if (clean) constraints.push(clean);
-  }
-
   const cardioEvents = args.metrics.cardioSummary?.normalizedWalks ?? [];
   const cardioWindowStart = args.asOf - CARDIO_PROGRESSION_LOOKBACK_DAYS * DAY_MS;
   const cardioContextEvents = cardioEvents.filter((event) =>

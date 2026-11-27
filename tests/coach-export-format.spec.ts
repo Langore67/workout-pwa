@@ -3271,6 +3271,14 @@ test("November 26 aggregate decline with mixed comparable evidence preserves bod
   expect(withoutNotes.confidence).toBe("Moderate");
   expect(withAmbiguousNotes).toEqual(withoutNotes);
   expect(metrics.anchorLifts[0].interpretation).toContain("same-exercise comparison confidence is low");
+
+  metrics.coachIntelligence = withoutNotes;
+  const exportText = formatCoachExportText(metrics);
+  const leanSection = getSection(exportText, "Lean Preservation", "Training Signals (Recent Sessions)");
+  expect(leanSection.match(/Comparable strength evidence mixed/g)).toHaveLength(1);
+  expect(leanSection.match(/Aggregate Strength Signal down/g)).toHaveLength(1);
+  expect(leanSection).not.toContain("Comparable exercise evidence is mixed");
+  expect(leanSection).not.toContain("Aggregate Strength Signal is below recent trend");
 });
 
 test("supported comparable decline can independently satisfy the lean-preservation Poor rule", () => {

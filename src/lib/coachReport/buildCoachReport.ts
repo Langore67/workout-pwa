@@ -1215,11 +1215,10 @@ function buildLeanPreservationReportSection(metrics: CoachExportMetrics): CoachR
   const composite = metrics.leanPreservation;
   if (!composite) return undefined;
 
-  const intelligence = metrics.coachIntelligence ?? buildCoachIntelligence(metrics);
   const positive = composite.evidence.positive.length
     ? composite.evidence.positive.map((item) => `✓ ${clarifyCoachExportLine(item)}`)
     : [];
-  const negativeSource = intelligence.watchItems.length ? intelligence.watchItems : composite.evidence.negative;
+  const negativeSource = composite.evidence.negative;
   const negative = negativeSource.length ? negativeSource.map((item) => `• ${clarifyCoachExportLine(item)}`) : [];
 
   return {
