@@ -217,7 +217,7 @@ test.describe("Strength comparability evidence foundation", () => {
         leanPreservation: { status: "Poor", confidence: "High", evidence: { positive: [], negative: ["Strength declining"] } },
         trainingSignals: { movementQuality: [], stimulusCoverage: [], fatigueReadiness: [], nextWorkoutFocus: [], discussWithGaz: [] },
         patternSummary: { movementQuality: [], stimulus: [], fatigue: [], constraints: [], progression: [] },
-        phaseQuality: { drivers: ["Strength Preservation: Significant Drop"] },
+        phaseQuality: { drivers: [] },
       };
       const classificationsBefore = buildCoachIntelligence(metrics);
       metrics.strengthComparabilityEvidence = evidence;

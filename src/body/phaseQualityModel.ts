@@ -15,7 +15,6 @@ export type PhaseQualityInputs = {
   waistDelta?: number;
   correctedLeanDelta?: number;
   correctedBodyFatDelta?: number;
-  strengthDelta?: number;
   comparableStrength?: ComparableStrengthAssessment;
   sampleCount?: number;
   bodyConfidence?: BodyConfidence;
@@ -84,31 +83,12 @@ function getLeanBulkStatus(delta?: number): "positive" | "flat" | "negative" {
   return "flat";
 }
 
-function getAggregateStrengthStatus(
-  delta: number | undefined,
-  mode: PhaseMode
-): "stable" | "drop" | "significant_drop" | "improving" {
-  if (!isFiniteNum(delta)) return "stable";
-
-  if (mode === "cut" || mode === "maintain") {
-    if (delta > 0.03) return "improving";
-    if (delta >= -0.03) return "stable";
-    if (delta >= -0.08) return "drop";
-    return "significant_drop";
-  }
-
-  if (delta > 8) return "improving";
-  if (delta >= -5) return "stable";
-  if (delta >= -15) return "drop";
-  return "significant_drop";
-}
-
-type DecisionStrengthStatus = "stable" | "drop" | "significant_drop" | "improving" | "mixed" | "insufficient";
+type DecisionStrengthStatus = "stable" | "declining" | "improving" | "mixed" | "insufficient";
 
 function getDecisionStrengthStatus(state?: ComparableStrengthState): DecisionStrengthStatus {
   if (state === "improving") return "improving";
   if (state === "maintained") return "stable";
-  if (state === "declining") return "significant_drop";
+  if (state === "declining") return "declining";
   if (state === "mixed_evidence") return "mixed";
   return "insufficient";
 }
@@ -158,10 +138,10 @@ function getCutFinalStatus(args: {
     if (lean === "good" && (strength === "stable" || strength === "improving") && bf === "improving") {
       return "High-Quality Cut";
     }
-    if (lean === "watch" && (strength === "drop" || strength === "stable") && bf === "improving") {
+    if (lean === "watch" && strength === "stable" && bf === "improving") {
       return "Acceptable Cut";
     }
-    if (lean === "poor" || strength === "significant_drop") {
+    if (lean === "poor" || strength === "declining") {
       if (
         hydrationDistortionLikely &&
         lean === "poor" &&
@@ -263,7 +243,7 @@ function getMaintainStatus(args: {
     };
   }
 
-  if (weightTrend === "down" && waistTrend === "down" && strength === "significant_drop") {
+  if (weightTrend === "down" && waistTrend === "down" && strength === "declining") {
     return {
       label: "Possible Under-Recovery",
       note: "Bodyweight is dropping while strength is falling sharply.",
@@ -343,7 +323,6 @@ export function evaluatePhaseQuality(mode: PhaseMode, inputs: PhaseQualityInputs
     waistDelta,
     correctedLeanDelta,
     correctedBodyFatDelta,
-    strengthDelta,
     sampleCount = 10,
     bodyConfidence,
   } = inputs;
@@ -351,7 +330,6 @@ export function evaluatePhaseQuality(mode: PhaseMode, inputs: PhaseQualityInputs
   const waistTrend = getTrend(waistDelta, 0.25);
   const cutLean = getLeanCutStatus(correctedLeanDelta);
   const bulkLean = getLeanBulkStatus(correctedLeanDelta);
-  const aggregateStrength = getAggregateStrengthStatus(strengthDelta, mode);
   const strength = getDecisionStrengthStatus(inputs.comparableStrength?.state);
   const bf = getBFStatus(correctedBodyFatDelta);
 
@@ -379,7 +357,7 @@ export function evaluatePhaseQuality(mode: PhaseMode, inputs: PhaseQualityInputs
             ? "Stable"
             : strength === "improving"
               ? "Improving"
-              : strength === "significant_drop"
+              : strength === "declining"
                 ? "Supported Decline"
                 : strength === "mixed"
                   ? "Mixed Evidence"
@@ -387,12 +365,7 @@ export function evaluatePhaseQuality(mode: PhaseMode, inputs: PhaseQualityInputs
         tone:
           strength === "stable" || strength === "improving"
             ? "good"
-            : strength === "significant_drop" ? "bad" : "watch",
-      },
-      {
-        label: "Aggregate Strength Signal",
-        value: aggregateStrength === "stable" ? "Stable" : aggregateStrength === "improving" ? "Improving" : aggregateStrength === "drop" ? "Slight Drop" : "Significant Drop",
-        tone: aggregateStrength === "stable" || aggregateStrength === "improving" ? "good" : "watch",
+            : strength === "declining" ? "bad" : "watch",
       },
       {
         label: "BF Trend",
@@ -443,18 +416,13 @@ export function evaluatePhaseQuality(mode: PhaseMode, inputs: PhaseQualityInputs
             ? "Stable"
             : strength === "improving"
               ? "Improving"
-              : strength === "significant_drop"
+              : strength === "declining"
                 ? "Supported Decline"
                 : strength === "mixed" ? "Mixed Evidence" : "Insufficient Evidence",
         tone:
           strength === "stable" || strength === "improving"
             ? "good"
-            : strength === "significant_drop" ? "bad" : "watch",
-      },
-      {
-        label: "Aggregate Strength Signal",
-        value: aggregateStrength === "stable" ? "Stable" : aggregateStrength === "improving" ? "Improving" : aggregateStrength === "drop" ? "Slight Drop" : "Significant Drop",
-        tone: aggregateStrength === "stable" || aggregateStrength === "improving" ? "good" : "watch",
+            : strength === "declining" ? "bad" : "watch",
       },
     ];
 
@@ -491,25 +459,8 @@ export function evaluatePhaseQuality(mode: PhaseMode, inputs: PhaseQualityInputs
     },
     {
       label: "Comparable Strength Preservation",
-      value: strength === "stable" ? "Stable" : strength === "improving" ? "Improving" : strength === "significant_drop" ? "Supported Decline" : strength === "mixed" ? "Mixed Evidence" : "Insufficient Evidence",
-      tone: strength === "stable" || strength === "improving" ? "good" : strength === "significant_drop" ? "bad" : "watch",
-    },
-    {
-      label: "Aggregate Strength Signal",
-      value:
-        aggregateStrength === "stable"
-          ? "Stable"
-          : aggregateStrength === "improving"
-            ? "Improving"
-            : aggregateStrength === "drop"
-              ? "Slight Drop"
-              : "Significant Drop",
-      tone:
-        aggregateStrength === "stable" || aggregateStrength === "improving"
-          ? "good"
-          : aggregateStrength === "drop"
-            ? "watch"
-            : "bad",
+      value: strength === "stable" ? "Stable" : strength === "improving" ? "Improving" : strength === "declining" ? "Supported Decline" : strength === "mixed" ? "Mixed Evidence" : "Insufficient Evidence",
+      tone: strength === "stable" || strength === "improving" ? "good" : strength === "declining" ? "bad" : "watch",
     },
   ];
 
@@ -576,7 +527,6 @@ export function computeStrengthDeltaFromStrengthTrend(
 
 export function buildPhaseQualityInputsFromBodyRows(
   rows: BodyMetricEntry[],
-  strengthDelta?: number,
   sampleWindow = 10,
   bodyConfidence?: BodyConfidence | boolean,
   trendInputs?: PhaseQualityTrendInputs
@@ -592,7 +542,6 @@ export function buildPhaseQualityInputsFromBodyRows(
       waistDelta: undefined,
       correctedLeanDelta: trendInputs?.leanMass?.delta14d ?? undefined,
       correctedBodyFatDelta: trendInputs?.bodyFatPct?.delta14d ?? undefined,
-      strengthDelta,
       sampleCount: window.length,
       bodyConfidence: typeof bodyConfidence === "object" ? bodyConfidence : undefined,
       hydrationDistortionLikely: typeof bodyConfidence === "boolean" ? bodyConfidence : undefined,
@@ -613,7 +562,6 @@ export function buildPhaseQualityInputsFromBodyRows(
     correctedBodyFatDelta:
       trendInputs?.bodyFatPct?.delta14d ??
       ((getCorrectedBodyFatPct(last as any) ?? 0) - (getCorrectedBodyFatPct(first as any) ?? 0)),
-    strengthDelta,
     sampleCount: window.length,
     bodyConfidence: typeof bodyConfidence === "object" ? bodyConfidence : undefined,
     hydrationDistortionLikely: typeof bodyConfidence === "boolean" ? bodyConfidence : undefined,

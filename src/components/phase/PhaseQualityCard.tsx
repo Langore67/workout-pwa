@@ -22,7 +22,6 @@ export type PhaseQualityCardProps = {
   waistDelta?: number;
   correctedLeanDelta?: number;
   correctedBodyFatDelta?: number;
-  strengthDelta?: number;
   sampleCount?: number;
 };
 
@@ -157,7 +156,6 @@ export default function PhaseQualityCard({
   waistDelta,
   correctedLeanDelta,
   correctedBodyFatDelta,
-  strengthDelta,
   sampleCount = 10,
 }: PhaseQualityCardProps) {
   const derived = useMemo(
@@ -167,7 +165,6 @@ export default function PhaseQualityCard({
         waistDelta,
         correctedLeanDelta,
         correctedBodyFatDelta,
-        strengthDelta,
         sampleCount,
       }),
     [
@@ -176,7 +173,6 @@ export default function PhaseQualityCard({
       waistDelta,
       correctedLeanDelta,
       correctedBodyFatDelta,
-      strengthDelta,
       sampleCount,
     ]
   );

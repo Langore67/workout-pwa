@@ -31,7 +31,6 @@ import { pickTime } from "../../body/bodySignalModel";
 import { computeSignalConfidence } from "../../body/signalConfidence";
 import {
   buildPhaseQualityInputsFromBodyRows,
-  computeStrengthDeltaFromStrengthTrend,
   evaluatePhaseQuality,
 } from "../../body/phaseQualityModel";
 import { buildBodyConfidence } from "../../body/bodyConfidenceEngine";
@@ -567,7 +566,6 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
     windowDays: 7,
   });
   const sharedStrengthTrend = await computeStrengthTrend(12, 28);
-  const computedStrength = computeStrengthDeltaFromStrengthTrend(sharedStrengthTrend, currentPhase);
   const anchorLifts = await buildAnchorLifts(generatedAt);
   const anchorIntelligence = buildAnchorIntelligence({
     anchors: anchorLifts,
@@ -590,7 +588,6 @@ export async function buildCoachExportMetrics(): Promise<CoachExportMetrics> {
   const comparableStrengthAssessment = assessComparableStrengthEvidence(strengthComparabilityEvidence);
   const phaseQualityInputs = buildPhaseQualityInputsFromBodyRows(
     bodyRows,
-    computedStrength.strengthDelta,
     10,
     bodyConfidence,
     {
