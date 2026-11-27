@@ -368,7 +368,7 @@ export function evaluatePhaseQuality(mode: PhaseMode, inputs: PhaseQualityInputs
     });
     const metricCards: PhaseQualityMetricCard[] = [
       {
-        label: "Lean Preservation",
+        label: "Lean Mass Estimate",
         value: cutLean === "good" ? "Good" : cutLean === "watch" ? "Watch" : "Poor",
         tone: cutLean === "good" ? "good" : cutLean === "watch" ? "watch" : "bad",
       },

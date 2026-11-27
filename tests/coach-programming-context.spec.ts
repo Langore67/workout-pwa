@@ -118,6 +118,36 @@ test("programming context is source-backed, neutral, and split-independent", () 
   expect(contexts[1]).toEqual(contexts[2]);
 });
 
+test("Constraints / Data Quality uses the canonical Lean Preservation assessment for every state", () => {
+  const history = strengthHistory(["Full Body"]);
+  for (const status of ["Strong", "Acceptable", "Watch", "Poor"] as const) {
+    const context = buildCoachProgrammingContext({
+      metrics: metrics({
+        leanPreservation: {
+          status,
+          confidence: "Moderate",
+          rawMetrics: { leanMassLatest: 150, leanMassDelta14d: -1 },
+          evidence: { positive: [], negative: [] },
+        },
+        // A legacy contradictory note must not enter structured constraints.
+        readinessNotes: ["Lean Preservation: Poor"],
+      }),
+      ...history,
+      exercises: roleExercises,
+      asOf: AS_OF,
+    });
+    const matching = context.constraints.filter((item) => item.startsWith("Lean Preservation:"));
+    expect(matching).toEqual([`Lean Preservation: ${status}.`]);
+
+    const text = formatCoachReportText({
+      generatedAt: "Nov 26, 2026",
+      snapshot: { status: "Watch", confidence: "Moderate", why: "Canonical evidence.", today: "Monitor." },
+      programmingContext: context,
+    } as any);
+    expect(text).toContain(`- Lean Preservation: ${status}.`);
+  }
+});
+
 test("Programming Context export is concise and omits unavailable goals and cardio", () => {
   const history = strengthHistory(["Anything"]);
   const context = buildCoachProgrammingContext({
