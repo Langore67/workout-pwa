@@ -74,7 +74,6 @@ import {
 } from "../strength/v2/computeStrengthSignalV2";
 import {
   buildPhaseQualityInputsFromBodyRows,
-  computeStrengthDeltaFromStrengthTrend,
   evaluatePhaseQuality,
   type PhaseQualityResult,
 } from "../body/phaseQualityModel";
@@ -1436,10 +1435,8 @@ export default function PerformanceDashboardPage() {
     if (activePhase !== "CUT") return null;
     const bodyRows = dbSource?.bodyMetrics ?? [];
     const hydration = computeHydrationConfidenceFromBodyRows(bodyRows as any);
-    const strengthDelta = computeStrengthDeltaFromStrengthTrend(sharedStrengthTrend, "cut");
     const inputs = buildPhaseQualityInputsFromBodyRows(
       bodyRows,
-      strengthDelta.strengthDelta,
       10,
       !!(hydration?.likelyHydrationDistortion || hydration?.hydrationBaselineLow)
     );

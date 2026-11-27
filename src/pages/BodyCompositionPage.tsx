@@ -724,11 +724,9 @@ export default function BodyCompositionPage() {
     return {
       ...buildPhaseQualityInputsFromBodyRows(
         (chartRows ?? []) as any,
-        phaseQualityStrength.strengthDelta,
         10,
         hydrationDistortionLikely
       ),
-      strengthDelta: phaseQualityStrength.strengthDelta,
       strengthLabel: phaseQualityStrength.strengthLabel,
     };
   }, [chartRows, phaseQualityStrength, hydrationConfidence]);
@@ -1578,7 +1576,6 @@ export default function BodyCompositionPage() {
           waistDelta={phaseQualityInputs.waistDelta}
           correctedLeanDelta={phaseQualityInputs.correctedLeanDelta}
           correctedBodyFatDelta={phaseQualityInputs.correctedBodyFatDelta}
-          strengthDelta={phaseQualityInputs.strengthDelta}
           sampleCount={phaseQualityInputs.sampleCount}
         />
       </Section>

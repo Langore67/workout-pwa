@@ -1295,7 +1295,7 @@ test("coach export suppresses readiness notes that repeat phase, hydration, lean
     metricCards: [],
     drivers: [
       "Weight down / Waist flat or up over last 10 entries",
-      "Strength Preservation: Significant Drop",
+      "Aggregate Strength Signal: Down",
       hydrationCaveat,
       "Status: Aggressive Cut / Muscle-Risk Cut",
     ],
@@ -1303,7 +1303,7 @@ test("coach export suppresses readiness notes that repeat phase, hydration, lean
   metrics.readinessNotes = [
     "Phase quality: Aggressive Cut / Muscle-Risk Cut.",
     "Weight down / Waist flat or up over last 10 entries",
-    "Strength Preservation: Significant Drop",
+    "Aggregate Strength Signal: Down",
     hydrationCaveat,
     "Lean Preservation: Poor",
     "Hydration confidence low",
@@ -1321,7 +1321,7 @@ test("coach export suppresses readiness notes that repeat phase, hydration, lean
 
   expect(text).not.toContain("Readiness / Confidence Notes");
   expect(text.match(/Hydration context may be distorting impedance-derived lean mass and body-fat changes\./g) ?? []).toHaveLength(1);
-  expect(text.match(/Strength Preservation: Significant Drop/g) ?? []).toHaveLength(1);
+  expect(text.match(/Aggregate Strength Signal: Down/g) ?? []).toHaveLength(1);
   expect(text).not.toContain("Lean Preservation: Poor");
   expect(text).not.toContain("Coach Summary");
   expect(text).not.toContain("Muscle Preservation");
@@ -1341,12 +1341,12 @@ test("coach export keeps unique readiness notes after duplicate narrative suppre
     metricCards: [],
     drivers: [
       "Weight down / Waist flat or up over last 10 entries",
-      "Strength Preservation: Significant Drop",
+      "Aggregate Strength Signal: Down",
     ],
   };
   metrics.readinessNotes = [
     "Phase quality: Aggressive Cut / Muscle-Risk Cut.",
-    "Strength Preservation: Significant Drop",
+    "Aggregate Strength Signal: Down",
     "Sleep disrupted.",
     "Recovery improved.",
   ];
@@ -1355,7 +1355,7 @@ test("coach export keeps unique readiness notes after duplicate narrative suppre
 
   expect(section).toContain("- Sleep disrupted.");
   expect(section).toContain("- Recovery improved.");
-  expect(section).not.toContain("Strength Preservation: Significant Drop");
+  expect(section).not.toContain("Aggregate Strength Signal: Down");
   expect(section).not.toContain("Phase quality:");
 });
 
@@ -2035,7 +2035,7 @@ test("Coach Export separates aggregate Strength Signal from comparable exercise 
   } as any;
   metrics.phaseQuality = {
     drivers: [],
-    metricCards: [{ label: "Strength Preservation", value: "Significant Drop" }],
+    metricCards: [],
   } as any;
 
   const text = formatCoachExportText(metrics);
@@ -3112,7 +3112,7 @@ test("next workout focus omits empty subsection headings when no bullets exist",
   expect(focusSection).not.toContain("Adjustment Triggers");
 });
 
-test("aggregate thresholds remain contextual and do not establish comparable preservation", () => {
+test("four-week aggregate delta remains factual evidence without severity classification", () => {
   const rows = (values: number[]) => values.map((normalizedIndex, index) => ({
     weekEndMs: index * 7 * 24 * 60 * 60 * 1000,
     normalizedIndex,
@@ -3122,41 +3122,29 @@ test("aggregate thresholds remain contextual and do not establish comparable pre
   } as any));
 
   const stable = computeStrengthDeltaFromStrengthTrend(rows([6.4, 6.4, 6.39, 6.41]), "cut");
-  const declining = computeStrengthDeltaFromStrengthTrend(rows([9.83, 8.9, 7.2, 6.41]), "cut");
-  const stableClassification = evaluatePhaseQuality("cut", {
+  const declining = computeStrengthDeltaFromStrengthTrend(rows([9.84, 8.9, 7.2, 5.33]), "cut");
+  const phaseQuality = evaluatePhaseQuality("cut", {
     weightDelta: -3,
     waistDelta: -0.6,
     correctedLeanDelta: -0.2,
     correctedBodyFatDelta: -0.7,
-    strengthDelta: stable.strengthDelta,
-    sampleCount: 6,
-  });
-  const decliningClassification = evaluatePhaseQuality("cut", {
-    weightDelta: -3,
-    waistDelta: -0.6,
-    correctedLeanDelta: -0.2,
-    correctedBodyFatDelta: -0.7,
-    strengthDelta: declining.strengthDelta,
     sampleCount: 6,
   });
   const insufficient = computeStrengthDeltaFromStrengthTrend(rows([6.4]), "cut");
 
   expect(stable.strengthDelta).toBeCloseTo(0.01);
-  expect(stableClassification.metricCards.find((card) => card.label === "Aggregate Strength Signal")?.value).toBe("Stable");
-  expect(stableClassification.metricCards.find((card) => card.label === "Comparable Strength Preservation")?.value).toBe("Insufficient Evidence");
-  expect(declining.strengthDelta).toBeCloseTo(-3.42);
-  expect(decliningClassification.metricCards.find((card) => card.label === "Aggregate Strength Signal")?.value).toBe("Significant Drop");
-  expect(decliningClassification.metricCards.find((card) => card.label === "Comparable Strength Preservation")?.value).toBe("Insufficient Evidence");
+  expect(phaseQuality.metricCards.find((card) => card.label === "Aggregate Strength Signal")).toBeUndefined();
+  expect(phaseQuality.metricCards.find((card) => card.label === "Comparable Strength Preservation")?.value).toBe("Insufficient Evidence");
+  expect(declining.strengthDelta).toBeCloseTo(-4.51);
   expect(insufficient.strengthDelta).toBeUndefined();
 
   // A high earlier weekly score can fall out of a rolling 28-day snapshot population;
-  // the phase classifier receives only the resulting aggregate sequence and still labels the delta.
-  const afterStrongObservationLeavesWindow = computeStrengthDeltaFromStrengthTrend(rows([9.83, 8.9, 7.2, 6.41]), "cut");
-  expect(afterStrongObservationLeavesWindow.strengthDelta).toBeCloseTo(-3.42);
-  expect(decliningClassification.metricCards.find((card) => card.label === "Aggregate Strength Signal")?.value).toBe("Significant Drop");
+  // the numeric delta remains available without a severity label.
+  const afterStrongObservationLeavesWindow = computeStrengthDeltaFromStrengthTrend(rows([9.84, 8.9, 7.2, 5.33]), "cut");
+  expect(afterStrongObservationLeavesWindow.strengthDelta).toBeCloseTo(-4.51);
 
   // A stable aggregate result is identical when the exercise population is constant or replaced:
-  // the classifier receives only the numeric trend and cannot verify same-exercise comparability.
+  // the evidence calculator receives only the numeric trend and cannot verify same-exercise comparability.
   const replacementStable = computeStrengthDeltaFromStrengthTrend(rows([6.4, 6.4, 6.39, 6.41]), "cut");
   expect(replacementStable).toEqual(stable);
 });
@@ -3190,12 +3178,12 @@ test("same-exercise progression remains the canonical comparable-performance inp
   ], "cut").strengthDelta).toBe(0);
 });
 
-test("November 26 aggregate decline with mixed comparable evidence preserves body risk without asserting strength loss", () => {
+test("November 27 production reference retires aggregate severity without changing canonical decisions", () => {
   const metrics = buildMetrics();
   metrics.strengthSignal = {
     current: 5.33,
-    delta14d: -4.5,
-    vs90dBestPct: -48,
+    delta14d: -4.44,
+    vs90dBestPct: -48.1,
     currentBodyweight: 173.4,
     bodyweightDaysUsed: 5,
   };
@@ -3205,7 +3193,7 @@ test("November 26 aggregate decline with mixed comparable evidence preserves bod
     wholeProgramConclusion: "not_established",
     directComparableExerciseCount: 12,
     directionCounts: { higher: 2, similar: 4, lower: 6 },
-    staleExerciseNames: Array.from({ length: 17 }, (_, i) => `Stale ${i}`),
+    staleExerciseNames: Array.from({ length: 15 }, (_, i) => `Stale ${i}`),
     insufficientExerciseNames: Array.from({ length: 27 }, (_, i) => `Insufficient ${i}`),
     missingExerciseNames: [],
     limitations: ["Direct comparisons describe the observed exercise sample; whole-program strength status is not established."],
@@ -3215,7 +3203,6 @@ test("November 26 aggregate decline with mixed comparable evidence preserves bod
     waistDelta: 0,
     correctedLeanDelta: -1.9,
     correctedBodyFatDelta: -0.6,
-    strengthDelta: -4.5,
     comparableStrength: metrics.comparableStrengthAssessment,
     sampleCount: 6,
   });
@@ -3255,10 +3242,16 @@ test("November 26 aggregate decline with mixed comparable evidence preserves bod
   const withAmbiguousNotes = buildCoachIntelligence(metrics);
 
   expect(metrics.phaseQuality.finalStatus).toBe("Aggressive Cut / Muscle-Risk Cut");
+  expect(metrics.phaseQuality.confidence).toBe("Moderate");
+  expect(metrics.strengthSignal).toEqual(expect.objectContaining({
+    current: 5.33,
+    delta14d: -4.44,
+    vs90dBestPct: -48.1,
+  }));
   expect(metrics.phaseQuality.metricCards).toEqual(expect.arrayContaining([
     expect.objectContaining({ label: "Comparable Strength Preservation", value: "Mixed Evidence" }),
-    expect.objectContaining({ label: "Aggregate Strength Signal", value: "Significant Drop" }),
   ]));
+  expect(metrics.phaseQuality.metricCards.find((card) => card.label === "Aggregate Strength Signal")).toBeUndefined();
   expect(metrics.leanPreservation?.status).toBe("Watch");
   expect(metrics.leanPreservation?.confidence).toBe("Moderate");
   expect(metrics.leanPreservation?.evidence.negative).toEqual(expect.arrayContaining([
@@ -3274,6 +3267,8 @@ test("November 26 aggregate decline with mixed comparable evidence preserves bod
 
   metrics.coachIntelligence = withoutNotes;
   const exportText = formatCoachExportText(metrics);
+  expect(exportText).not.toContain("Significant Drop");
+  expect(exportText).not.toContain("Slight Drop");
   const leanSection = getSection(exportText, "Lean Preservation", "Training Signals (Recent Sessions)");
   expect(leanSection.match(/Comparable strength evidence mixed/g)).toHaveLength(1);
   expect(leanSection.match(/Aggregate Strength Signal down/g)).toHaveLength(1);

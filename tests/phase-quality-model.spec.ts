@@ -13,7 +13,6 @@ test.describe("phase quality confidence", () => {
         waistDelta: -1,
         correctedLeanDelta: -0.2,
         correctedBodyFatDelta: -0.8,
-        strengthDelta: 0,
         sampleCount: 6,
         hydrationDistortionLikely: false,
       });
@@ -22,7 +21,6 @@ test.describe("phase quality confidence", () => {
         waistDelta: -1,
         correctedLeanDelta: -0.2,
         correctedBodyFatDelta: -0.8,
-        strengthDelta: 0,
         sampleCount: 6,
         hydrationDistortionLikely: true,
       });

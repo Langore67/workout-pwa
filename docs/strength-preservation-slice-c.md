@@ -34,13 +34,21 @@ as independent corroboration. Direct comparisons remain a sampled-exercise asses
 establish a whole-program conclusion. Stale, insufficient, and missing comparisons are excluded from
 fresh directional conclusions and retain their provenance.
 
-## Threshold audit
+## Slice D retirement audit
 
-The existing aggregate thresholds are unchanged:
+The Phase Quality aggregate severity classifier was retired after Slice C removed its decision and
+confidence dependencies. Its cut/maintenance branch classified the first-to-last change across the
+last four weekly, overlapping 28-day normalized-index snapshots. Its bulk branch classified the same
+four-point comparison using absolute-index units. The different inputs explain the different numeric
+scales, but the resulting Stable/Slight Drop/Significant Drop labels had become presentation-only and
+added no evidence beyond the preserved numeric delta and direction.
 
-- Cut/maintenance: improving above +0.03; stable at -0.03 or higher; slight drop through -0.08;
-  significant drop below -0.08.
-- Bulk: improving above +8; stable at -5 or higher; drop through -15; significant drop below -15.
+The four-week delta calculator remains because it supplies factual aggregate provenance. The current
+Strength Signal, distinct 14-day delta, percentage versus best, snapshot populations, exposure
+changes, bodyweight inputs, and direct comparable assessment are unchanged.
 
-These thresholds now classify aggregate context only where comparable preservation is at issue.
-Their different scales/units remain unresolved and require a separate calibration slice.
+Two older 14-day helpers remain outside Phase Quality: Coach Intelligence uses aggregate direction
+as context when comparable evidence improves or is maintained, and Lean Preservation records whether
+aggregate performance/exposure is pressured. They are active behavioral dependencies, not the retired
+Phase Quality severity presentation. Removing or redefining them would change established decisions
+or evidence and therefore requires a separately authorized decision-rule slice.
