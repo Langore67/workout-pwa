@@ -6,7 +6,7 @@
  * Training Exposure resolvers.
  */
 
-export const MOVEMENT_TAXONOMY_VERSION = "1.0.0" as const;
+export const MOVEMENT_TAXONOMY_VERSION = "1.1.0" as const;
 
 export const MOVEMENT_TAXONOMY_FAMILIES = [
   "push",
@@ -27,7 +27,6 @@ export const MOVEMENT_TAXONOMY_PATTERNS = [
   "squat",
   "hinge",
   "lunge",
-  "single_leg",
   "glute_extension",
   "carry",
   "core",
@@ -36,6 +35,21 @@ export const MOVEMENT_TAXONOMY_PATTERNS = [
 ] as const;
 
 export type MovementTaxonomyPattern = (typeof MOVEMENT_TAXONOMY_PATTERNS)[number];
+
+export const MOVEMENT_TAXONOMY_LATERALITIES = [
+  "bilateral",
+  "unilateral",
+  "alternating",
+  "unknown",
+] as const;
+
+export type MovementTaxonomyLaterality =
+  (typeof MOVEMENT_TAXONOMY_LATERALITIES)[number];
+
+export type MovementTaxonomyLateralityEvidence = Readonly<{
+  exercise: MovementTaxonomyLaterality;
+  performedSet: MovementTaxonomyLaterality;
+}>;
 
 export type MovementTaxonomyDisposition =
   | "pattern"
@@ -82,7 +96,6 @@ export const MOVEMENT_PATTERN_FAMILY_RELATIONSHIPS: Readonly<
   squat: "squat",
   hinge: "hinge",
   lunge: "lunge",
-  single_leg: "lunge",
   glute_extension: undefined,
   carry: "carry",
   core: undefined,
@@ -95,6 +108,8 @@ export type MovementTaxonomyResolutionInput = {
   pattern?: unknown;
   disposition?: unknown;
   evidenceSource?: unknown;
+  exerciseLaterality?: unknown;
+  performedSetLaterality?: unknown;
 };
 
 export type MovementTaxonomyResolution = Readonly<{
@@ -105,6 +120,7 @@ export type MovementTaxonomyResolution = Readonly<{
   family?: MovementTaxonomyFamily;
   pattern?: MovementTaxonomyPattern;
   expectedFamily?: MovementTaxonomyFamily;
+  laterality: MovementTaxonomyLateralityEvidence;
   issues: readonly string[];
 }>;
 
@@ -126,6 +142,11 @@ export function isMovementTaxonomyDisposition(value: unknown): value is Movement
   return value === "pattern" || value === "accessory" || value === "unsupported";
 }
 
+export function isMovementTaxonomyLaterality(value: unknown): value is MovementTaxonomyLaterality {
+  return typeof value === "string"
+    && (MOVEMENT_TAXONOMY_LATERALITIES as readonly string[]).includes(value);
+}
+
 export function isMovementTaxonomyEvidenceSource(value: unknown): value is MovementTaxonomyEvidenceSource {
   return typeof value === "string"
     && (MOVEMENT_TAXONOMY_EVIDENCE_SOURCES as readonly string[]).includes(value);
@@ -143,6 +164,11 @@ function freezeResolution(
   return Object.freeze({
     taxonomyVersion: MOVEMENT_TAXONOMY_VERSION,
     ...value,
+    laterality: Object.freeze({
+      exercise: "unknown",
+      performedSet: "unknown",
+      ...(value as Partial<MovementTaxonomyResolution>).laterality,
+    }),
     issues: Object.freeze([...(value.issues ?? [])]),
   });
 }
@@ -159,6 +185,8 @@ export function resolveMovementTaxonomyClassification(
   if (!isMissing(input.pattern) && !isMovementTaxonomyPattern(input.pattern)) invalidFields.push("pattern");
   if (!isMissing(input.disposition) && !isMovementTaxonomyDisposition(input.disposition)) invalidFields.push("disposition");
   if (!isMissing(input.evidenceSource) && !isMovementTaxonomyEvidenceSource(input.evidenceSource)) invalidFields.push("evidenceSource");
+  if (!isMissing(input.exerciseLaterality) && !isMovementTaxonomyLaterality(input.exerciseLaterality)) invalidFields.push("exerciseLaterality");
+  if (!isMissing(input.performedSetLaterality) && !isMovementTaxonomyLaterality(input.performedSetLaterality)) invalidFields.push("performedSetLaterality");
 
   if (invalidFields.length) {
     return freezeResolution({
@@ -180,6 +208,10 @@ export function resolveMovementTaxonomyClassification(
     : family && !pattern
       ? "legacy_broad_metadata"
       : undefined;
+  const laterality = {
+    exercise: isMovementTaxonomyLaterality(input.exerciseLaterality) ? input.exerciseLaterality : "unknown",
+    performedSet: isMovementTaxonomyLaterality(input.performedSetLaterality) ? input.performedSetLaterality : "unknown",
+  } as const;
 
   if (disposition === "accessory" || disposition === "unsupported") {
     if (pattern) {
@@ -187,6 +219,7 @@ export function resolveMovementTaxonomyClassification(
         state: "conflicting",
         provenance: "conflicting_classification",
         disposition,
+        laterality,
         ...(family ? { family } : {}),
         pattern,
         issues: [`${disposition} disposition cannot assert compound-pattern exposure.`],
@@ -196,6 +229,7 @@ export function resolveMovementTaxonomyClassification(
       state: disposition,
       provenance: source ?? "missing_classification",
       disposition,
+      laterality,
       ...(family ? { family } : {}),
     });
   }
@@ -207,6 +241,7 @@ export function resolveMovementTaxonomyClassification(
         state: "conflicting",
         provenance: "conflicting_classification",
         disposition: "pattern",
+        laterality,
         family,
         pattern,
         ...(expectedFamily ? { expectedFamily } : {}),
@@ -219,6 +254,7 @@ export function resolveMovementTaxonomyClassification(
       state: "classified",
       provenance: source ?? "explicit_metadata",
       disposition: "pattern",
+      laterality,
       ...(expectedFamily ? { family: expectedFamily, expectedFamily } : {}),
       pattern,
     });
@@ -229,6 +265,7 @@ export function resolveMovementTaxonomyClassification(
       state: "broad_only",
       provenance: source ?? "legacy_broad_metadata",
       family,
+      laterality,
       issues: ["A validated broad family is available without a specific movement pattern."],
     });
   }
@@ -236,6 +273,7 @@ export function resolveMovementTaxonomyClassification(
   return freezeResolution({
     state: "missing",
     provenance: "missing_classification",
+    laterality,
     issues: ["No movement taxonomy classification was supplied."],
   });
 }
