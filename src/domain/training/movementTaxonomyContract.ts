@@ -159,7 +159,7 @@ export function getMovementTaxonomyFamily(
 }
 
 function freezeResolution(
-  value: Omit<MovementTaxonomyResolution, "taxonomyVersion" | "issues"> & { issues?: string[] }
+  value: Omit<MovementTaxonomyResolution, "taxonomyVersion" | "issues" | "laterality"> & { issues?: string[]; laterality?: MovementTaxonomyLateralityEvidence }
 ): MovementTaxonomyResolution {
   return Object.freeze({
     taxonomyVersion: MOVEMENT_TAXONOMY_VERSION,

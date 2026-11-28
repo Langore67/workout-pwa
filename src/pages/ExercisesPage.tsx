@@ -1,4 +1,5 @@
 // src/pages/ExercisesPage.tsx
+import { taxonomyMergeConflict } from '../domain/training/persistedMovementTaxonomy';
 /* ========================================================================== */
 /*  ExercisesPage.tsx                                                         */
 /*  BUILD_ID: 2026-02-25-EX-07                                                */
@@ -1891,6 +1892,10 @@ export default function ExercisesPage() {
       ) as Exercise[];
 
       if (!sourceExercises.length) throw new Error("No source exercises found.");
+      for (const source of sourceExercises) {
+        const taxonomyConflict = taxonomyMergeConflict(source, keep);
+        if (taxonomyConflict) throw new Error(taxonomyConflict);
+      }
 
       const now = Date.now();
 

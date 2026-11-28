@@ -116,6 +116,7 @@ function guessEquipmentFromTags(tags: string[]): Equipment | undefined {
    Core domain models
    ============================================================ */
 export interface Exercise {
+  movementTaxonomy?: import('./domain/training/persistedMovementTaxonomy').PersistedMovementTaxonomy;
   id: UUID;
   name: string;
   normalizedName: string;

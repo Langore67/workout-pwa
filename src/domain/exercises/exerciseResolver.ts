@@ -1,4 +1,5 @@
 import { db, normalizeName, type Exercise } from "../../db";
+import { taxonomyMergeConflict } from '../training/persistedMovementTaxonomy';
 import {
   getCanonicalExerciseNormalizedName,
   isMappedExerciseAlias,
@@ -242,6 +243,8 @@ export async function resolveExerciseToCanonicalAlias(params: {
     if (canonical.archivedAt) throw new Error("Canonical exercise must be active, not archived.");
     if (canonical.mergedIntoExerciseId) throw new Error("Canonical exercise must not already redirect to another exercise.");
     if (source.mergedIntoExerciseId) throw new Error("Source exercise is already merged.");
+    const taxonomyConflict = taxonomyMergeConflict(source, canonical);
+    if (taxonomyConflict) throw new Error(taxonomyConflict);
 
     const existingAliases = Array.isArray(canonical.aliases) ? canonical.aliases : [];
     const existingNorms = new Set(
