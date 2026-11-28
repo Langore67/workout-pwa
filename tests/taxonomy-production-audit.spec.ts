@@ -18,11 +18,12 @@ test('private backup candidate dry run and historical invariance', async ({ page
   const backup = JSON.parse(backupText);
   expect(backup.meta.exportedAt).toBe('2026-11-27T14:56:26.037Z');
   const selections = JSON.parse(fs.readFileSync(path.join(directory, 'candidate-selections.json'), 'utf8')).selections;
+  const approvedText = process.env.IRONFORGE_AUDIT_APPROVED_ARTIFACT ? fs.readFileSync(path.join(directory, process.env.IRONFORGE_AUDIT_APPROVED_ARTIFACT), 'utf8') : null;
   expect(selections).toHaveLength(34);
   page.on('console', message => { if (message.text().startsWith('AUDIT_STAGE')) console.log(message.text()); });
   await page.route('**/__taxonomy-audit', route => route.fulfill({ contentType: 'text/html', body: '<html><body>Isolated taxonomy audit</body></html>' }));
   await page.goto('/__taxonomy-audit');
-  const result = await page.evaluate(async ({ backup, selections, hash }) => {
+  const result = await page.evaluate(async ({ backup, selections, hash, approvedText }) => {
     const { db } = await import('/src/db.ts');
     const { buildTaxonomyCandidate } = await import('/src/domain/maintenance/buildTaxonomyCandidate.ts');
     const { dryRunMaintenanceScript } = await import('/src/domain/maintenance/dryRunMaintenanceScript.ts');
@@ -54,7 +55,9 @@ test('private backup candidate dry run and historical invariance', async ({ page
         canonicalExerciseId, group,
         taxonomy: { taxonomyVersion: '1.1.0', disposition: pattern === 'accessory' ? 'accessory' : 'pattern', ...(pattern !== 'accessory' ? { pattern } : {}), exerciseLaterality, provenance: 'reviewed_catalog_mapping' },
       }));
-      const candidate = buildTaxonomyCandidate({ id: 'training-taxonomy-e1-candidate-2026-11-28', createdAt: '2026-11-28T12:00:00.000Z', dbName: db.name, schemaVersion: db.verno, sourceBackup: { sha256: hash, exportedAt: backup.meta.exportedAt }, exercises: backup.tables.exercises, mappings });
+      const generated = buildTaxonomyCandidate({ id: 'training-taxonomy-e1-candidate-2026-11-28', createdAt: '2026-11-28T12:00:00.000Z', dbName: db.name, schemaVersion: db.verno, sourceBackup: { sha256: hash, exportedAt: backup.meta.exportedAt }, exercises: backup.tables.exercises, mappings });
+      const candidate = approvedText ? JSON.parse(approvedText) : generated;
+      if (approvedText && (candidate.taxonomyReview !== 'approved' || JSON.stringify(candidate.operations) !== JSON.stringify(generated.operations))) throw new Error('Approved operations differ from exact reviewed mappings or preconditions.');
       const source = buildTrainingExposureEventSource({ ...backup.tables, asOf });
       const diagnosticMappings = mappings.map((m: any) => ({ canonicalExerciseId: m.canonicalExerciseId, ...m.taxonomy, reviewStatus: 'candidate' }));
       const diagnostic = buildDualMovementClassificationDiagnostic({ events: source.events, candidateMappings: diagnosticMappings, asOf });
@@ -64,9 +67,9 @@ test('private backup candidate dry run and historical invariance', async ({ page
         return { ...mapping, exercise, family: mapping.taxonomy.pattern ? getMovementTaxonomyFamily(mapping.taxonomy.pattern) ?? null : null, frequencies, reviewStatus: 'candidate', rationale: mapping.group === 'C' ? 'Reviewed isolation/accessory identity; compound-pattern exposure is inappropriate.' : mapping.group === 'D' ? 'Reviewed scapular pull-up identity; vertical-pull classification does not assign set intent.' : 'Reviewed canonical exercise identity; existing structured metadata is corroboration, not automatic classification approval.', expectedCurrentMetadata: candidate.operations.find((op: any) => op.key === exercise.id) };
       });
       const adapter = createDexieMaintenanceExecutionDatabase(db);
-      const candidateText = JSON.stringify(candidate);
+      const candidateText = approvedText ?? JSON.stringify(candidate);
       const dryRun = await dryRunMaintenanceScript(adapter, candidate);
-      const refused = await executeMaintenanceScript(adapter, candidateText, { origin: location.origin, dryRunSha256: await sha256MaintenanceText(candidateText) });
+      const refused = approvedText ? null : await executeMaintenanceScript(adapter, candidateText, { origin: location.origin, dryRunSha256: await sha256MaintenanceText(candidateText) });
       const afterRecords = await records();
       const capture = async () => {
         console.log('AUDIT_STAGE metrics');
@@ -77,10 +80,13 @@ test('private backup candidate dry run and historical invariance', async ({ page
       const before = await capture();
       console.log('AUDIT_STAGE before capture complete');
       const beforeApplication = await records();
-      await db.transaction('rw', db.exercises, async () => {
+      const execution = approvedText ? await executeMaintenanceScript(adapter, candidateText, { origin: location.origin, dryRunSha256: await sha256MaintenanceText(candidateText) }) : null;
+      if (!approvedText) await db.transaction('rw', db.exercises, async () => {
         for (const mapping of mappings) await db.exercises.update(mapping.canonicalExerciseId, { movementTaxonomy: mapping.taxonomy });
       });
       const afterApplication = await records();
+      const repeatedDryRun = approvedText ? await dryRunMaintenanceScript(adapter, candidate) : null;
+      const assignmentsExact = mappings.every((mapping: any) => JSON.stringify(afterApplication.exercises.find((e: any) => e.id === mapping.canonicalExerciseId)?.movementTaxonomy) === JSON.stringify(mapping.taxonomy));
       const withoutTaxonomy = (tables: any) => ({ ...tables, exercises: tables.exercises.map(({ movementTaxonomy, ...exercise }: any) => exercise) });
       const onlyTaxonomyChanged = JSON.stringify(withoutTaxonomy(beforeApplication)) === JSON.stringify(withoutTaxonomy(afterApplication));
       buildDualMovementClassificationDiagnostic({ events: source.events, candidateMappings: diagnosticMappings, asOf });
@@ -88,18 +94,24 @@ test('private backup candidate dry run and historical invariance', async ({ page
       await db.transaction('rw', db.exercises, async () => { for (const mapping of mappings) await db.exercises.put(beforeApplication.exercises.find((e: any) => e.id === mapping.canonicalExerciseId)); });
       const recoveryRecordsExact = JSON.stringify(beforeApplication) === JSON.stringify(await records());
       console.log('AUDIT_STAGE recovered');
-      return { candidate, inventory, diagnostic, dryRun, refused, onlyTaxonomyChanged, recoveryRecordsExact, recordsUnchanged: JSON.stringify(beforeRecords) === JSON.stringify(afterRecords), invariant: JSON.stringify(before) === JSON.stringify(after), baseline: before, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone };
+      return { candidate, inventory, diagnostic, dryRun, refused, execution, repeatedDryRun, assignmentsExact, onlyTaxonomyChanged, recoveryRecordsExact, recordsUnchanged: JSON.stringify(beforeRecords) === JSON.stringify(afterRecords), invariant: JSON.stringify(before) === JSON.stringify(after), baseline: before, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone };
     } finally { Date.now = originalNow; }
-  }, { backup, selections, hash });
+  }, { backup, selections, hash, approvedText });
   expect(result.recordsUnchanged).toBe(true);
   expect(result.invariant).toBe(true);
   expect(result.onlyTaxonomyChanged).toBe(true);
   expect(result.recoveryRecordsExact).toBe(true);
   expect(result.dryRun).toMatchObject({ wouldChangeCount: 34, alreadySatisfiedCount: 0, conflictCount: 0, notFoundCount: 0, invalidCount: 0 });
-  expect(result.refused).toMatchObject({ transactionStarted: false, committed: false });
+  expect(result.assignmentsExact).toBe(true);
+  if (approvedText) {
+    expect(result.execution).toMatchObject({ committed: true, verified: true, changedCount: 34 });
+    expect(result.repeatedDryRun).toMatchObject({ wouldChangeCount: 0, alreadySatisfiedCount: 34, conflictCount: 0, invalidCount: 0, notFoundCount: 0 });
+  } else expect(result.refused).toMatchObject({ transactionStarted: false, committed: false });
   const prefix = testInfo.project.name;
   fs.writeFileSync(path.join(directory, `${prefix}-audit.json`), JSON.stringify(result, null, 2));
-  fs.writeFileSync(path.join(directory, 'candidate-maintenance.json'), JSON.stringify(result.candidate, null, 2));
-  fs.writeFileSync(path.join(directory, 'mapping-inventory.json'), JSON.stringify(result.inventory, null, 2));
+  if (!approvedText) {
+    fs.writeFileSync(path.join(directory, 'candidate-maintenance.json'), JSON.stringify(result.candidate, null, 2));
+    fs.writeFileSync(path.join(directory, 'mapping-inventory.json'), JSON.stringify(result.inventory, null, 2));
+  }
   console.log(JSON.stringify({ project: prefix, invariant: result.invariant, dryRun: { applicable: result.dryRun.wouldChangeCount }, periods: result.diagnostic.periods.map((p: any) => ({ period: p.kind, total: p.qualifyingSetCount, legacy: p.legacyAccounting, accessory: p.accessoryComparison })) }));
 });

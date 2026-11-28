@@ -25,12 +25,47 @@ function fieldsMatch(record: Record<string, unknown>, patch: Record<string, Json
   return Object.entries(patch).every(([field, expected]) => own(record, field) && jsonDeepEqual(record[field], expected));
 }
 
-export function taxonomyRecordMatches(record: Record<string, unknown>, expected?: Record<string, JsonValue>, desired?: unknown) {
-  if (!expected) return true;
+export type SnapshotDifference = { path: string; expected: string; actual: string };
+
+/** JSON backups omit undefined object properties. Ignore only that representation
+ * difference; keep arrays, null, defined extra fields, and all values strict. */
+export function taxonomyRecordDifferences(record: Record<string, unknown>, expected?: Record<string, JsonValue>, desired?: unknown): SnapshotDifference[] {
+  if (!expected) return [];
+  const differences: SnapshotDifference[] = [];
+  const display = (value: unknown, present = true): string => !present ? '<missing>' : value === undefined ? '<undefined>' : JSON.stringify(value) ?? String(value);
+  const visit = (actual: unknown, wanted: unknown, path: string, actualPresent = true, expectedPresent = true) => {
+    if (actualPresent === expectedPresent && jsonDeepEqual(actual, wanted)) return;
+    if (actualPresent && expectedPresent && actual && wanted && typeof actual === 'object' && typeof wanted === 'object' && !Array.isArray(actual) && !Array.isArray(wanted)) {
+      const a = actual as Record<string, unknown>; const e = wanted as Record<string, unknown>;
+      const keys = [...new Set([...Object.keys(a), ...Object.keys(e)])].sort();
+      for (const key of keys) {
+        const ap = own(a, key) && a[key] !== undefined; const ep = own(e, key) && e[key] !== undefined;
+        if (ap || ep) visit(a[key], e[key], path ? `${path}.${key}` : key, ap, ep);
+      }
+      return;
+    }
+    if (Array.isArray(actual) && Array.isArray(wanted) && actual.length === wanted.length) {
+      for (let i = 0; i < actual.length; i++) visit(actual[i], wanted[i], `${path}[${i}]`, own(actual, String(i)), own(wanted, String(i)));
+      return;
+    }
+    differences.push({ path, expected: display(wanted, expectedPresent), actual: display(actual, actualPresent) });
+  };
   const withoutTaxonomy = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'movementTaxonomy'));
-  if (record.mergedIntoExerciseId || record.archivedAt || !jsonDeepEqual(withoutTaxonomy(record), withoutTaxonomy(expected))) return false;
-  if (desired !== undefined && jsonDeepEqual(record.movementTaxonomy, desired)) return true;
-  return own(record, 'movementTaxonomy') === own(expected, 'movementTaxonomy') && jsonDeepEqual(record.movementTaxonomy, expected.movementTaxonomy);
+  visit(withoutTaxonomy(record), withoutTaxonomy(expected), '');
+  for (const key of ['mergedIntoExerciseId', 'archivedAt']) {
+    if (record[key] && !differences.some(d => d.path === key)) differences.push({ path: key, expected: '<inactive state absent>', actual: display(record[key]) });
+  }
+  if (!(desired !== undefined && jsonDeepEqual(record.movementTaxonomy, desired))) {
+    // Taxonomy is a validated write contract, not legacy optional metadata.
+    if (own(record, 'movementTaxonomy') !== own(expected, 'movementTaxonomy') || !jsonDeepEqual(record.movementTaxonomy, expected.movementTaxonomy)) {
+      differences.push({ path: 'movementTaxonomy', expected: display(expected.movementTaxonomy, own(expected, 'movementTaxonomy')), actual: display(record.movementTaxonomy, own(record, 'movementTaxonomy')) });
+    }
+  }
+  return differences;
+}
+
+export function taxonomyRecordMatches(record: Record<string, unknown>, expected?: Record<string, JsonValue>, desired?: unknown) {
+  return taxonomyRecordDifferences(record, expected, desired).length === 0;
 }
 function unsetFieldsMatch(record: Record<string, unknown>, fields: string[] = []) {
   return fields.every((field) => !own(record, field) || record[field] === null);
@@ -128,8 +163,9 @@ export async function dryRunMaintenanceScript(
     if (!record) { operations.push({ index, type: operation.type, table: operation.table, key: operation.key, status: "NOT_FOUND", changedFields: [], expected: operation.expect, before: {}, after: operation.set, error: "Target record was not found." }); continue; }
     const fields = [...new Set([...Object.keys(operation.expect), ...Object.keys(operation.set)])];
     const before = relevantBefore(record, fields);
-    if (!taxonomyRecordMatches(record, operation.expectExerciseRecord, operation.set.movementTaxonomy)) {
-      operations.push({ index, type: operation.type, table: operation.table, key: operation.key, status: 'CONFLICT', changedFields: [], expected: operation.expect, before, after: operation.set, error: 'Canonical record differs from the reviewed metadata snapshot.' }); continue;
+    const snapshotDifferences = taxonomyRecordDifferences(record, operation.expectExerciseRecord, operation.set.movementTaxonomy);
+    if (snapshotDifferences.length) {
+      operations.push({ index, type: operation.type, table: operation.table, key: operation.key, status: 'CONFLICT', changedFields: [], expected: operation.expect, before, after: operation.set, snapshotDifferences, error: `Canonical record differs from the reviewed metadata snapshot. ${snapshotDifferences.map(d => `${d.path}: expected ${d.expected}; actual ${d.actual}`).join(' | ')}` }); continue;
     }
     const changedFields = Object.keys(operation.set).filter((field) => !own(record, field) || !jsonDeepEqual(record[field], operation.set[field])).sort();
     if (!changedFields.length) { operations.push({ index, type: operation.type, table: operation.table, key: operation.key, status: "ALREADY_SATISFIED", changedFields, expected: operation.expect, before, after: operation.set }); continue; }
