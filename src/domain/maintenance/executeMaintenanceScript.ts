@@ -1,4 +1,4 @@
-import { dryRunMaintenanceScript, jsonDeepEqual, taxonomyRecordMatches, type ReadonlyMaintenanceDatabase } from "./dryRunMaintenanceScript";
+import { dryRunMaintenanceScript, jsonDeepEqual, taxonomyRecordMatches, taxonomyRecordDifferences, type ReadonlyMaintenanceDatabase } from "./dryRunMaintenanceScript";
 import { parseMaintenanceScript } from "./parseMaintenanceScript";
 import { validateMaintenanceScript } from "./validateMaintenanceScript";
 import { taxonomyMergeConflict } from '../training/persistedMovementTaxonomy';
@@ -153,7 +153,8 @@ export async function executeMaintenanceScript(database: MaintenanceExecutionDat
         }
         const record = await database.table(operation.table).get(operation.key) as Record<string, unknown> | undefined;
         if (!record) throw new MaintenanceAbort(index, "Target record was not found inside the transaction.");
-        if (!taxonomyRecordMatches(record, operation.expectExerciseRecord, operation.set.movementTaxonomy)) throw new MaintenanceAbort(index, 'Canonical record changed after review.');
+        const snapshotDifferences = taxonomyRecordDifferences(record, operation.expectExerciseRecord, operation.set.movementTaxonomy);
+        if (snapshotDifferences.length) throw new MaintenanceAbort(index, `Canonical record changed after review. ${snapshotDifferences.map(d => `${d.path}: expected ${d.expected}; actual ${d.actual}`).join(' | ')}`);
         const fields = [...new Set([...Object.keys(operation.expect), ...Object.keys(operation.set)])];
         const before = beforeValues(record, fields);
         const changedFields = Object.keys(operation.set).filter((field) => !own(record, field) || !jsonDeepEqual(record[field], operation.set[field])).sort();

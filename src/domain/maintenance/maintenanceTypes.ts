@@ -102,6 +102,7 @@ export type MaintenanceOperationResult = {
   after: Record<string, JsonValue>;
   error?: string;
   limitation?: string;
+  snapshotDifferences?: { path: string; expected: string; actual: string }[];
 };
 
 export type MaintenanceDryRunResult = {
