@@ -59,6 +59,9 @@ export type DualClassificationPeriod = Readonly<{
   observedCanonicalExerciseCount: number;
   mappedQualifyingSetCount: number;
   unresolvedSetCount: number;
+  legacyAccounting: Readonly<Record<'classified' | 'accessory_residual' | 'unclassified' | 'unresolved_identity', number>>;
+  legacyResidualSets: readonly { setId: string; canonicalExerciseId?: string; category: string }[];
+  accessoryComparison: Readonly<{ total: number; inLegacyCompoundBuckets: number; outsideLegacyCompoundBuckets: number }>;
 }>;
 
 export type DualMovementClassificationDiagnostic = Readonly<{
@@ -132,6 +135,10 @@ export function buildDualMovementClassificationDiagnostic(args: {
     const mappedIds = new Set<string>();
     let mappedQualifyingSetCount = 0;
     let unresolvedSetCount = 0;
+    const legacyAccounting = { classified: 0, accessory_residual: 0, unclassified: 0, unresolved_identity: 0 };
+    const legacyResidualSets: Array<{ setId: string; canonicalExerciseId?: string; category: string }> = [];
+    const accessoryComparison = { total: 0, inLegacyCompoundBuckets: 0, outsideLegacyCompoundBuckets: 0 };
+    const compoundBuckets = new Set(['push', 'pull', 'hinge', 'squat', 'lunge', 'carry', 'horizontal_push', 'vertical_push', 'horizontal_pull', 'vertical_pull', 'single_leg']);
 
     for (const event of rows) {
       increment(event.kind === "control" ? legacyControlBuckets : legacyQualifyingBuckets, event.movementPattern);
@@ -146,6 +153,16 @@ export function buildDualMovementClassificationDiagnostic(args: {
         performedSetLaterality: event.unilateralSide ? "unilateral" : "unknown",
       }) : undefined;
       const state = accountingState(event, resolution);
+      if (event.kind !== 'control') {
+        const category = !event.canonicalExerciseId ? 'unresolved_identity' : event.movementPattern ? 'classified' : event.movementPatternExempt ? 'accessory_residual' : 'unclassified';
+        legacyAccounting[category] += 1;
+        if (category !== 'classified') legacyResidualSets.push({ setId: event.setId, canonicalExerciseId: event.canonicalExerciseId, category });
+        if (state === 'accessory') {
+          accessoryComparison.total += 1;
+          if (compoundBuckets.has(event.movementPattern ?? '')) accessoryComparison.inLegacyCompoundBuckets += 1;
+          else accessoryComparison.outsideLegacyCompoundBuckets += 1;
+        }
+      }
       const targetAccounting = event.kind === "control" ? controlAccounting : accounting;
       targetAccounting[state] += 1;
       if (state === "unresolved_identity") unresolvedSetCount += 1;
@@ -175,6 +192,9 @@ export function buildDualMovementClassificationDiagnostic(args: {
       observedCanonicalExerciseCount: observedIds.size,
       mappedQualifyingSetCount,
       unresolvedSetCount,
+      legacyAccounting: Object.freeze(legacyAccounting),
+      legacyResidualSets: Object.freeze(legacyResidualSets),
+      accessoryComparison: Object.freeze(accessoryComparison),
     });
   });
   return Object.freeze({ asOf, periods: Object.freeze(periods) });

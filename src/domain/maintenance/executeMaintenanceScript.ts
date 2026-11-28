@@ -1,6 +1,7 @@
-import { dryRunMaintenanceScript, jsonDeepEqual, type ReadonlyMaintenanceDatabase } from "./dryRunMaintenanceScript";
+import { dryRunMaintenanceScript, jsonDeepEqual, taxonomyRecordMatches, type ReadonlyMaintenanceDatabase } from "./dryRunMaintenanceScript";
 import { parseMaintenanceScript } from "./parseMaintenanceScript";
 import { validateMaintenanceScript } from "./validateMaintenanceScript";
+import { taxonomyMergeConflict } from '../training/persistedMovementTaxonomy';
 import type {
   JsonValue, MaintenanceExecutionError, MaintenanceExecutionOperationResult, MaintenanceExecutionResult,
   MaintenanceScriptV1, SupportedMaintenanceTable,
@@ -82,6 +83,7 @@ export async function executeMaintenanceScript(database: MaintenanceExecutionDat
   const parsed = parseMaintenanceScript(scriptText);
   if (!parsed.ok) return refusedResult({}, hash, startedAt, now().toISOString(), database, options, [{ phase: "refused", message: parsed.errors.map((error) => `${error.path}: ${error.message}`).join(" ") }]);
   const script = parsed.script;
+  if (script.taxonomyReview === 'candidate') return refusedResult(script, hash, startedAt, now().toISOString(), database, options, [{ phase: 'refused', message: 'Candidate taxonomy mappings require explicit review and a separately approved artifact before execution.' }]);
   const validation = validateMaintenanceScript(script);
   if (!validation.valid) return refusedResult(script, hash, startedAt, now().toISOString(), database, options, [{ phase: "refused", message: validation.errors.map((error) => `${error.path}: ${error.message}`).join(" ") }]);
   if (hash !== options.dryRunSha256) return refusedResult(script, hash, startedAt, now().toISOString(), database, options, [{ phase: "refused", message: "Uploaded script SHA-256 no longer matches the successful dry run." }]);
@@ -130,6 +132,8 @@ export async function executeMaintenanceScript(database: MaintenanceExecutionDat
           const target = await database.table("exercises").get(operation.targetExerciseId) as Record<string, unknown> | undefined;
           const tracks = await database.table("tracks").tracksForExercise?.(operation.sourceExerciseId);
           if (!source || !target || !tracks) throw new MaintenanceAbort(index, "Merge source, target, or track-index support was not found inside the transaction.");
+          const taxonomyConflict = taxonomyMergeConflict(source, target);
+          if (taxonomyConflict) throw new MaintenanceAbort(index, taxonomyConflict);
           const actualTrackIds = tracks.map((track: any) => String(track.id)).sort();
           const expectedTrackIds = [...operation.expectedTrackIds].sort();
           const sourceAlreadyMerged = source.mergedIntoExerciseId === operation.targetExerciseId && !!source.archivedAt;
@@ -149,6 +153,7 @@ export async function executeMaintenanceScript(database: MaintenanceExecutionDat
         }
         const record = await database.table(operation.table).get(operation.key) as Record<string, unknown> | undefined;
         if (!record) throw new MaintenanceAbort(index, "Target record was not found inside the transaction.");
+        if (!taxonomyRecordMatches(record, operation.expectExerciseRecord, operation.set.movementTaxonomy)) throw new MaintenanceAbort(index, 'Canonical record changed after review.');
         const fields = [...new Set([...Object.keys(operation.expect), ...Object.keys(operation.set)])];
         const before = beforeValues(record, fields);
         const changedFields = Object.keys(operation.set).filter((field) => !own(record, field) || !jsonDeepEqual(record[field], operation.set[field])).sort();
@@ -197,7 +202,7 @@ export async function executeMaintenanceScript(database: MaintenanceExecutionDat
       } else {
         const table = operation.type === "repointTrackExercise" ? "tracks" : operation.table; const key = operation.trackId ?? operation.key; const set = operation.type === "repointTrackExercise" ? { exerciseId: operation.setExerciseId } : operation.set;
         const record = await database.table(table).get(key) as Record<string, unknown> | undefined;
-        if (!record || !fieldsMatch(record, set)) verificationErrors.push({ phase: "verification", operationIndex: index, message: `Post-commit verification failed for ${table} ${key}.` });
+        if (!record || !fieldsMatch(record, set) || !taxonomyRecordMatches(record, operation.expectExerciseRecord, set.movementTaxonomy)) verificationErrors.push({ phase: "verification", operationIndex: index, message: `Post-commit verification failed for ${table} ${key}.` });
       }
     } catch (error) {
       verificationErrors.push({ phase: "verification", operationIndex: index, message: error instanceof Error ? error.message : String(error) });

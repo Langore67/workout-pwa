@@ -1,5 +1,6 @@
 import { normalizeName, type Exercise, type MetricMode } from "../../db";
 import { uuid } from "../../utils";
+import { validatePersistedMovementTaxonomy } from '../training/persistedMovementTaxonomy';
 
 /** Structured metadata supplied by a trusted caller; never inferred from name. */
 export type ExerciseCreationMetadata = Partial<
@@ -38,6 +39,10 @@ export function createExerciseRecord(input: CreateExerciseRecordInput): Exercise
   if (!name || !normalizedName) throw new Error("Exercise name is required.");
 
   const metadata = input.knownMetadata ?? {};
+  if (metadata.movementTaxonomy !== undefined) {
+    const errors = validatePersistedMovementTaxonomy(metadata.movementTaxonomy);
+    if (errors.length) throw new Error(errors.join(' '));
+  }
   const metricMode = input.metricMode ?? metadata.metricMode;
   const now = input.now ?? Date.now();
 

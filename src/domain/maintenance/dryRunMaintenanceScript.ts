@@ -1,6 +1,7 @@
 import { MAINTENANCE_TABLE_REGISTRY, isSupportedMaintenanceTable } from "./maintenanceTableRegistry";
 import { SUPPORTED_MAINTENANCE_TABLES, type JsonValue, type MaintenanceDryRunResult, type MaintenanceIssue, type MaintenanceOperationResult, type MaintenanceScriptV1 } from "./maintenanceTypes";
 import { validateMaintenanceScript } from "./validateMaintenanceScript";
+import { taxonomyMergeConflict } from '../training/persistedMovementTaxonomy';
 
 export type ReadonlyMaintenanceTable = { get(key: string): Promise<unknown>; count(): Promise<number>; tracksForExercise?(exerciseId: string): Promise<unknown[]> };
 export type ReadonlyMaintenanceDatabase = { name: string; verno: number; table(name: string): ReadonlyMaintenanceTable };
@@ -22,6 +23,14 @@ export function jsonDeepEqual(left: unknown, right: unknown): boolean {
 
 function fieldsMatch(record: Record<string, unknown>, patch: Record<string, JsonValue>) {
   return Object.entries(patch).every(([field, expected]) => own(record, field) && jsonDeepEqual(record[field], expected));
+}
+
+export function taxonomyRecordMatches(record: Record<string, unknown>, expected?: Record<string, JsonValue>, desired?: unknown) {
+  if (!expected) return true;
+  const withoutTaxonomy = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'movementTaxonomy'));
+  if (record.mergedIntoExerciseId || record.archivedAt || !jsonDeepEqual(withoutTaxonomy(record), withoutTaxonomy(expected))) return false;
+  if (desired !== undefined && jsonDeepEqual(record.movementTaxonomy, desired)) return true;
+  return own(record, 'movementTaxonomy') === own(expected, 'movementTaxonomy') && jsonDeepEqual(record.movementTaxonomy, expected.movementTaxonomy);
 }
 function unsetFieldsMatch(record: Record<string, unknown>, fields: string[] = []) {
   return fields.every((field) => !own(record, field) || record[field] === null);
@@ -97,6 +106,8 @@ export async function dryRunMaintenanceScript(
       const after = { targetAliases: operation.setTargetAliases, sourceMergedInto: operation.targetExerciseId, trackExerciseId: operation.targetExerciseId };
       if (!source || !target || !tracks) { operations.push({ index, type: operation.type, table: "exercises", key: operation.sourceExerciseId, status: "NOT_FOUND", changedFields: [], expected, before: {}, after, error: !source ? "Merge source was not found." : !target ? "Merge target was not found." : "Database adapter cannot verify source tracks." }); continue; }
       const sourceAlreadyMerged = source.mergedIntoExerciseId === operation.targetExerciseId && !!source.archivedAt;
+      const taxonomyConflict = taxonomyMergeConflict(source, target);
+      if (taxonomyConflict) { operations.push({ index, type: operation.type, table: 'exercises', key: operation.sourceExerciseId, status: 'CONFLICT', changedFields: [], expected, before: {}, after, error: taxonomyConflict }); continue; }
       const actualTrackIds = tracks.map((track: any) => String(track.id)).sort();
       const expectedTrackIds = [...operation.expectedTrackIds].sort();
       const tracksAlreadyMoved = actualTrackIds.length === 0;
@@ -117,6 +128,9 @@ export async function dryRunMaintenanceScript(
     if (!record) { operations.push({ index, type: operation.type, table: operation.table, key: operation.key, status: "NOT_FOUND", changedFields: [], expected: operation.expect, before: {}, after: operation.set, error: "Target record was not found." }); continue; }
     const fields = [...new Set([...Object.keys(operation.expect), ...Object.keys(operation.set)])];
     const before = relevantBefore(record, fields);
+    if (!taxonomyRecordMatches(record, operation.expectExerciseRecord, operation.set.movementTaxonomy)) {
+      operations.push({ index, type: operation.type, table: operation.table, key: operation.key, status: 'CONFLICT', changedFields: [], expected: operation.expect, before, after: operation.set, error: 'Canonical record differs from the reviewed metadata snapshot.' }); continue;
+    }
     const changedFields = Object.keys(operation.set).filter((field) => !own(record, field) || !jsonDeepEqual(record[field], operation.set[field])).sort();
     if (!changedFields.length) { operations.push({ index, type: operation.type, table: operation.table, key: operation.key, status: "ALREADY_SATISFIED", changedFields, expected: operation.expect, before, after: operation.set }); continue; }
     const expected = { ...operation.expect, ...(operation.expectUnsetFields?.length ? { unsetFields: operation.expectUnsetFields } : {}) };

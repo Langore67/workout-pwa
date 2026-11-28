@@ -1,4 +1,5 @@
 import type { JsonValue, SupportedMaintenanceTable } from "./maintenanceTypes";
+import { validatePersistedMovementTaxonomy } from '../training/persistedMovementTaxonomy';
 
 type FieldValidator = (value: JsonValue) => boolean;
 const optional = (validator: FieldValidator): FieldValidator => (value) => value === null || validator(value);
@@ -15,6 +16,7 @@ export type MaintenanceTableDefinition = { primaryKey: "id" | "key"; fields: Rea
 
 export const MAINTENANCE_TABLE_REGISTRY: Readonly<Record<SupportedMaintenanceTable, MaintenanceTableDefinition>> = Object.freeze({
   exercises: { primaryKey: "id", fields: fields({
+    movementTaxonomy: optional(value => validatePersistedMovementTaxonomy(value).length === 0),
     bodyPart: oneOf("Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Full Body", "Cardio", "Other"),
     category: oneOf("Strength", "Machine", "Bodyweight", "Cardio", "Mobility", "Warmup", "Other"),
     equipment: oneOf("Barbell", "Dumbbell", "Cable", "Machine", "Bodyweight", "Kettlebell", "Band", "Other"),

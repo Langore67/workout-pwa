@@ -20,6 +20,8 @@ export const SUPPORTED_MAINTENANCE_TABLES = [
 export type SupportedMaintenanceTable = typeof SUPPORTED_MAINTENANCE_TABLES[number];
 
 export type UpdateRecordOperation = {
+  /** Taxonomy-only operations guard the complete reviewed record, excluding the proposed field. */
+  expectExerciseRecord?: Record<string, JsonValue>;
   type: "updateRecord";
   table: SupportedMaintenanceTable;
   key: string;
@@ -66,6 +68,7 @@ export type MergeExerciseOperation = {
 export type MaintenanceOperation = UpdateRecordOperation | RestoreMergedExerciseOperation | RepointTrackExerciseOperation | MergeExerciseOperation;
 
 export type MaintenanceScriptV1 = {
+  taxonomyReview?: 'candidate' | 'approved';
   format: typeof MAINTENANCE_FORMAT;
   version: typeof MAINTENANCE_VERSION;
   id: string;

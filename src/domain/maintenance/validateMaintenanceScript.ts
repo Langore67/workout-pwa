@@ -1,5 +1,6 @@
 import { MAINTENANCE_FORMAT, MAINTENANCE_LIMITS, MAINTENANCE_VERSION, SUPPORTED_BACKUP_VERSION, type JsonValue, type MaintenanceIssue, type MaintenanceScriptV1 } from "./maintenanceTypes";
 import { isSupportedMaintenanceTable, MAINTENANCE_TABLE_REGISTRY, PROTOTYPE_SENSITIVE_FIELDS, validateMaintenanceField } from "./maintenanceTableRegistry";
+import { validatePersistedMovementTaxonomy } from '../training/persistedMovementTaxonomy';
 
 export type MaintenanceValidationResult = { valid: boolean; errors: MaintenanceIssue[] };
 const issue = (code: string, path: string, message: string): MaintenanceIssue => ({ code, path, message });
@@ -38,6 +39,7 @@ export function validateMaintenanceScript(script: unknown): MaintenanceValidatio
   }
   operations.forEach((raw, index) => {
     const base = `operations[${index}]`;
+    if (script.taxonomyReview && (!plainObject(raw) || raw.type !== 'updateRecord')) errors.push(issue('TAXONOMY_ONLY', base, 'Taxonomy artifacts only support taxonomy field updates.'));
     if (!plainObject(raw)) { errors.push(issue("INVALID_OPERATION", base, "Operation must be an object.")); return; }
     if (!(["updateRecord", "restoreMergedExercise", "repointTrackExercise", "mergeExercise"] as unknown[]).includes(raw.type)) {
       errors.push(issue("UNKNOWN_OPERATION", `${base}.type`, "Operation type is not supported.")); return;
@@ -74,6 +76,13 @@ export function validateMaintenanceScript(script: unknown): MaintenanceValidatio
       validateJson(raw, base, errors); return;
     }
     if (!isSupportedMaintenanceTable(raw.table)) { errors.push(issue("UNKNOWN_TABLE", `${base}.table`, "Table is not allowlisted.")); return; }
+    if (plainObject(raw.set) && own(raw.set, 'movementTaxonomy')) {
+      for (const message of validatePersistedMovementTaxonomy(raw.set.movementTaxonomy)) errors.push(issue('INVALID_TAXONOMY', base, message));
+      if (raw.table !== 'exercises' || Object.keys(raw.set).length !== 1) errors.push(issue('TAXONOMY_ONLY', base, 'Taxonomy operations may only patch exercises.movementTaxonomy.'));
+      if (!['candidate', 'approved'].includes(String(script.taxonomyReview))) errors.push(issue('TAXONOMY_REVIEW', base, 'Explicit candidate or approved review status is required.'));
+      if (!plainObject(raw.expectExerciseRecord) || raw.expectExerciseRecord.id !== raw.key || raw.expectExerciseRecord.mergedIntoExerciseId || raw.expectExerciseRecord.archivedAt) errors.push(issue('CANONICAL_PRECONDITION', base, 'An exact active terminal canonical exercise record is required.'));
+    }
+    if (script.taxonomyReview && (!plainObject(raw.set) || !own(raw.set, 'movementTaxonomy'))) errors.push(issue('TAXONOMY_ONLY', base, 'A taxonomy artifact may only contain taxonomy updates.'));
     if (typeof raw.key !== "string" || !raw.key.trim()) errors.push(issue("INVALID_KEY", `${base}.key`, "Record key is required."));
     for (const patchName of ["expect", "set"] as const) {
       const patch = raw[patchName]; const path = `${base}.${patchName}`;

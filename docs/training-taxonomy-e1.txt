@@ -1,0 +1,105 @@
+Training Exposure E.1 — persistence preparation
+
+Exercise.movementTaxonomy is optional, non-indexed metadata. Dexie schema 19
+already stores full structured-clone exercise objects; its indexes do not need
+to change. No schema upgrade, automatic initialization, backfill, or production
+report consumer is introduced. The semantic taxonomy version stays 1.1.0.
+
+Shape:
+  taxonomyVersion: "1.1.0"
+  disposition: "pattern" | "accessory" | "unsupported" (absent for broad-only)
+  pattern: a valid specific pattern (only for pattern disposition)
+  family: a valid family (only for broad-only evidence)
+  exerciseLaterality: "bilateral" | "unilateral" | "alternating" | "unknown"
+  provenance: "explicit_metadata" | "reviewed_catalog_mapping" |
+              "legacy_broad_metadata"
+
+Specific-pattern family is derived, never persisted twice. Independent patterns
+have no forced family. Accessory has neither pattern nor family. Legacy family
+remains available in Exercise.movementPattern, outside this object. No new set
+field or exercise-to-set laterality inference is introduced. Name fallback is
+not accepted as authoritative persisted provenance. Unknown fields, conflicting
+classification, invalid laterality and unsupported versions are rejected by
+the new write contract. Missing metadata remains valid on existing exercises.
+
+Maintenance preparation
+-----------------------
+Reuse maintenance format/version 1, updateRecord, existing dry-run and
+transactional executor. Taxonomy operations patch only movementTaxonomy and
+require taxonomyReview candidate/approved and an exact expectExerciseRecord.
+The complete current exercise excluding movementTaxonomy must match that
+snapshot. This catches missing versus null, changed aliases/metadata, merges,
+archival, IDs, and timestamps. Preconditions run before the already-satisfied
+check and again inside the write transaction. No name matching is performed.
+Candidate artifacts are accepted by dry run but refused by execution before
+the transaction. buildTaxonomyCandidate never generates approved artifacts.
+The review flag is a workflow gate, not a cryptographic authorization system;
+changing it by hand is not approval. E.2 must document human approval and create
+a separately hashed executable artifact only after that approval.
+
+Idempotence means all non-taxonomy preconditions still match and the proposed
+taxonomy is already identical. Changing unrelated metadata after the reviewed
+backup is a conflict even when taxonomy is already satisfied. Fresh review is
+required; stale expected records must not be silently regenerated at apply time.
+
+Recovery
+--------
+Existing executor rolls back the entire transaction on any write failure.
+It retains auditable before/after operation results and verifies after commit.
+A post-commit verification failure is not an automatic rollback. Before E.2,
+take and verify a full backup and retain the execution report. Immediate full
+backup restore is the existing recovery path (it replaces all current tables).
+Do not restore a stale backup over subsequent workouts; stop writes and review
+targeted recovery if newer data exists. This slice does not generate a rollback
+script that could overwrite concurrent exercise changes.
+
+Compatibility inspection
+------------------------
+dbBackup exports complete table.toArray records and restores via bulkPut in a
+transaction. Optional taxonomy survives actual export/restore, both empty and
+populated destinations. Old backups omit it and restore normally. Restore of an
+old backup intentionally replaces newer taxonomy along with all other table
+data; this is existing full-restore semantics. Restore remains lossless for
+unrecognized optional fields and does not silently repair taxonomy.
+createExerciseRecord spreads explicit metadata, now validating supplied
+taxonomy. Existing creation with no taxonomy remains unchanged. Exercise editing
+uses field-level update. Paste import's syncExerciseMetricMode spreads the whole
+exercise before bulkPut. Seed reconciliation and alias sync use partial updates.
+Merge operations preserve both source and target records' unrelated fields.
+New guards refuse a source taxonomy different from (or absent on) the target,
+so reviewed source evidence cannot silently become inactive. No automatic copy
+or arbitration is performed. Existing merge undo restores captured records;
+avoid intervening edits before undo, as for all existing exercise metadata.
+
+Diagnostics
+-----------
+Legacy accounting is mutually exclusive: unresolved identity first, otherwise
+classified if a legacy bucket exists, otherwise known accessory exemption,
+otherwise unclassified. Proposed accounting remains independent. Accessory
+comparison splits total proposed accessory sets into those in the preserved
+compound family/pattern bucket vocabulary and those already outside. Reporting
+uses diagnostic fields directly. Family roll-ups are alternative views and
+must not be summed with specific patterns. Control sets remain separate.
+
+Private review artifacts
+------------------------
+Production selections/inventory/artifacts belong outside Git. Generic tests
+accept IRONFORGE_AUDIT_BACKUP, IRONFORGE_AUDIT_HASH, and
+IRONFORGE_AUDIT_DIRECTORY, verify source identity, and use a disposable browser
+IndexedDB context. Private tests default to skip and disable failure capture.
+scripts/render-taxonomy-review.mjs renders the private diagnostic and inventory
+without recalculating classifications or totals. Outputs include exact IDs,
+current records, frequency by period, proposed metadata and artifact hashes.
+
+E.2 execution checkpoint
+-----------------------
+1. Obtain explicit approval for the exact candidate groups/IDs and hash.
+2. Capture a fresh backup; compare every reviewed target and source identity.
+3. Resolve conflicts explicitly; never auto-match by name or expand population.
+4. Produce the approved artifact and new hash, retain original candidate.
+5. Dry run the approved artifact in the intended database; review all results.
+6. Execute only with separate production authorization and matching dry-run hash.
+7. Verify 34 target results (or explicitly approved subset), full non-taxonomy
+   records, idempotence, historical Strength Signal/coaching/export invariance.
+8. Keep production Training Exposure integration for its separately approved
+   slice. Preserve backup and operation report for recovery.
